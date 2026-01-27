@@ -1,0 +1,30 @@
+
+version: '3.8'
+
+services:
+  # The Frontend Dashboard (This App)
+  dashboard:
+    build: .
+    ports:
+      - "8080:80"
+    restart: always
+    environment:
+      - NODE_ENV=production
+    networks:
+      - craftcommand-network
+
+  # PLACEHOLDER: The Real Backend (Node.js/Go/Rust)
+  # This is what you need to build to replace 'MockBackend'
+  # backend:
+  #   image: craftcommand/backend:latest
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock # Required to spawn Minecraft containers
+  #     - ./server-data:/data
+  #   ports:
+  #     - "3000:3000"
+  #   networks:
+  #     - craftcommand-network
+
+networks:
+  craftcommand-network:
+    driver: bridge
