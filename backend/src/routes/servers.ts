@@ -667,8 +667,6 @@ router.post('/:id/install', async (req, res) => {
                 // Spark only works on Spigot/Paper/Fabric/Forge/NeoForge
                 // We'll assume the user picked a compatible version or understands it.
                 // Currently only downloading Bukkit version (works on Paper/Spigot)
-                // TODO: Add Fabric support if needed, but for now just Bukkit.
-                // TODO: Add Fabric support if needed, but for now just Bukkit.
                 if (type === 'paper' || type === 'purpur' || type === 'spigot') {
                      console.log(`[Installation] Installing Spark for ${type} server...`);
                      await installerService.installSpark(server.workingDirectory);

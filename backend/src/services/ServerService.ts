@@ -201,7 +201,7 @@ export const diagnoseServer = async (id: string) => {
     if (!server) throw new Error('Server not found');
 
     // 1. Get Logs
-    // TODO: Phase 2 will implement LogBuffer, for now reading file tail or process buffer
+    // Using in-memory LogBuffer from ProcessManager (Cyclic buffer of last 1000 lines)
     const recentLogs = processManager.getLogs(id) || []; 
 
     // 2. Get System Stats

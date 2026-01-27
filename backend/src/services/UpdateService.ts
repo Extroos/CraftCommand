@@ -3,7 +3,6 @@ import fs from 'fs-extra';
 import path from 'path';
 import { authService } from './AuthService';
 
-// TODO: Replace with your actual repository URL
 const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/Extroos/craftCommand/main/version.json';
 
 interface VersionInfo {

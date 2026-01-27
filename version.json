@@ -1,8 +1,10 @@
 {
-    "version": "1.0.0",
-    "title": "Initial Release",
-    "notes": [
-        "First stable release of CraftCommand",
-        "Repository prepared for GitHub publication"
-    ]
+  "version": "1.3.0",
+  "title": "Explain-My-Server & Security Update",
+  "notes": [
+    "Added 'Explain-My-Server' Diagnosis Engine",
+    "Security Hardening: Removed default credentials",
+    "EULA Auto-Fix",
+    "Global Server Health Alerts"
+  ]
 }
