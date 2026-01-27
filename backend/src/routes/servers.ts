@@ -624,6 +624,8 @@ router.post('/:id/install', async (req, res) => {
 
         if (type === 'paper') {
             await installerService.installPaper(server.workingDirectory, version || '1.21.11', build);
+        } else if (type === 'purpur') {
+            await installerService.installPurpur(server.workingDirectory, version || '1.21.1', build);
         } else if (type === 'vanilla') {
             await installerService.installVanilla(server.workingDirectory, version || '1.21.11');
         } else if (type === 'fabric') {
@@ -652,7 +654,8 @@ router.post('/:id/install', async (req, res) => {
                 // We'll assume the user picked a compatible version or understands it.
                 // Currently only downloading Bukkit version (works on Paper/Spigot)
                 // TODO: Add Fabric support if needed, but for now just Bukkit.
-                if (type === 'paper' || type === 'spigot') {
+                // TODO: Add Fabric support if needed, but for now just Bukkit.
+                if (type === 'paper' || type === 'purpur' || type === 'spigot') {
                      await installerService.installSpark(server.workingDirectory);
                 }
             }

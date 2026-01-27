@@ -67,6 +67,38 @@ export class InstallerService extends EventEmitter {
         }
     }
 
+    // Install Purpur
+    async installPurpur(serverDir: string, version: string, build: string = 'latest') {
+        try {
+            this.emit('status', 'Fetching Purpur builds...');
+            
+            // Purpur API: https://api.purpurmc.org/v2/purpur/{version}/latest/download
+            // Or specific build: https://api.purpurmc.org/v2/purpur/{version}/{build}/download
+            
+            let downloadUrl;
+            if (build === 'latest') {
+                downloadUrl = `https://api.purpurmc.org/v2/purpur/${version}/latest/download`;
+            } else {
+                 downloadUrl = `https://api.purpurmc.org/v2/purpur/${version}/${build}/download`;
+            }
+            
+            const dest = path.join(serverDir, 'server.jar');
+
+            await fs.ensureDir(serverDir);
+            this.emit('status', `Downloading Purpur ${version}...`);
+            await this.downloadFile(downloadUrl, dest);
+            
+            await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
+            
+            this.emit('status', 'Installation Complete');
+            return true;
+
+        } catch (e) {
+            console.error('Purpur install failed', e);
+            throw e;
+        }
+    }
+
     // Install CurseForge/Modrinth Modpack
     async installModpackFromZip(serverDir: string, zipUrl: string) {
         try {

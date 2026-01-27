@@ -3,6 +3,7 @@ import path from 'path';
 import { EventEmitter } from 'events';
 import { processManager } from './ProcessManager';
 import { backupService } from './BackupService';
+import { startServer } from './ServerService';
 
 export interface ScheduleTask {
     id: string;
@@ -121,11 +122,18 @@ export class ScheduleService extends EventEmitter {
                 await this.logExecution(serverId, task.name, true, "Backup created");
             } else if (task.command === 'restart') {
                 processManager.stopServer(serverId);
-                setTimeout(() => {
-                    // Logic to start would need command context...
-                    // For now, logging success for stop action
-                }, 5000);
-                await this.logExecution(serverId, task.name, true, "Server restart triggered");
+                
+                // Wait for graceful shutdown (15s), then start
+                setTimeout(async () => {
+                    try {
+                        await startServer(serverId);
+                        await this.logExecution(serverId, task.name, true, "Server restarted successfully");
+                    } catch (e: any) {
+                        await this.logExecution(serverId, task.name, false, `Restart start failed: ${e.message}`);
+                    }
+                }, 15000);
+
+                await this.logExecution(serverId, task.name, true, "Server restart triggered (Shutdown initiated)");
             } else {
                 // Console Command
                 const process = processManager.getProcess(serverId);

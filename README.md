@@ -121,8 +121,6 @@ craftcommand/
 
 ## Roadmap
 
-### Completed (Phases 1-20)
-=======
 ### Completed
 
 - [x] Real-time console streaming
@@ -145,21 +143,22 @@ craftcommand/
 - [x] Spark profiler integration
 - [x] Advanced system settings
 
+
 ### In Progress (Phases 21-22)
 
 - [ ] Plugin marketplace (Backend implementation)
 
 ### In Progress
 
-- [ ] Proxy mode support (Velocity/BungeeCord)
-- [ ] Spark profiler integration
-- [ ] Advanced system settings
+- [ ] Plugin marketplace (Backend implementation)
 
 ### Planned
 
 - [ ] Multi-server dashboard
 - [ ] Docker containerization
 - [ ] Plugin marketplace
+- [ ] RCON support
+
 
 ## Technologies
 
