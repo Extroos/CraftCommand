@@ -28,13 +28,11 @@ A web-based control panel for managing Minecraft servers on your local machine. 
 - **File Manager**: In-browser editor for configs and scripts
 - **Player Management**: Ops, whitelist, bans with UUID resolution
 - **Discord Webhooks**: Server event notifications (start/stop/crash/join/leave)
-<<<<<<< HEAD
 - **Startup Protection**: Intelligent locking system to prevent data corruption during boot sequences
 - **Global State Sync**: Instant, unified UI updates across all tabs and windows
 - **Secure Authentication**: Built-in admin password management with professional login interface
 - **Auto-Backup**: One-click automation to snapshot servers every 2 hours without manual cron setup
 =======
->>>>>>> 2ef453490dee428e5f5ec49f6016d38599379b6a
 
 ## Quick Start
 
@@ -124,11 +122,9 @@ craftcommand/
 
 ## Roadmap
 
-<<<<<<< HEAD
 ### Completed (Phases 1-20)
 =======
 ### Completed
->>>>>>> 2ef453490dee428e5f5ec49f6016d38599379b6a
 
 - [x] Real-time console streaming
 - [x] Live CPU/RAM monitoring
@@ -161,7 +157,6 @@ craftcommand/
 - [ ] Proxy mode support (Velocity/BungeeCord)
 - [ ] Spark profiler integration
 - [ ] Advanced system settings
->>>>>>> 2ef453490dee428e5f5ec49f6016d38599379b6a
 
 ### Planned
 
@@ -171,7 +166,6 @@ craftcommand/
 <<<<<<< HEAD
 =======
 - [ ] Plugin marketplace
->>>>>>> 2ef453490dee428e5f5ec49f6016d38599379b6a
 
 ## Technologies
 
