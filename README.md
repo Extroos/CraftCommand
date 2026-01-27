@@ -143,6 +143,11 @@ craftcommand/
 - [x] Spark profiler integration
 - [x] Advanced system settings
 
+
+### In Progress (Phases 21-22)
+
+- [ ] Plugin marketplace (Backend implementation)
+
 ### In Progress
 
 - [ ] Plugin marketplace (Backend implementation)
@@ -151,7 +156,9 @@ craftcommand/
 
 - [ ] Multi-server dashboard
 - [ ] Docker containerization
+- [ ] Plugin marketplace
 - [ ] RCON support
+
 
 ## Technologies
 
