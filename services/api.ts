@@ -100,7 +100,7 @@ class ApiService {
         return res.json();
     }
 
-    async installServer(id: string, type: 'paper'|'modpack'|'vanilla'|'fabric'|'forge'|'spigot'|'neoforge', data: any): Promise<void> {
+    async installServer(id: string, type: 'paper'|'modpack'|'vanilla'|'fabric'|'forge'|'spigot'|'neoforge'|'purpur', data: any): Promise<void> {
         await fetch(`${API_URL}/servers/${id}/install`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

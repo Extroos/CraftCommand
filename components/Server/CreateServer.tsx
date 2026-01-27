@@ -95,6 +95,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
             
             switch (formData.software) {
                 case 'Paper': await API.installServer(server.id, 'paper', installOpts); break;
+                case 'Purpur': await API.installServer(server.id, 'purpur', installOpts); break;
                 case 'Vanilla': await API.installServer(server.id, 'vanilla', installOpts); break;
                 case 'Fabric': await API.installServer(server.id, 'fabric', installOpts); break;
                 case 'Spigot': await API.installServer(server.id, 'spigot', installOpts); break;
@@ -127,6 +128,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
 
     const softwareOptions = [
         { id: 'Paper', icon: <Leaf className="text-emerald-500" />, desc: 'High performance for plugins.' },
+        { id: 'Purpur', icon: <Sparkles className="text-pink-500" />, desc: 'Features & Customization.' },
         { id: 'NeoForge', icon: <Zap className="text-orange-500" />, desc: 'The future of modding.' },
         { id: 'Forge', icon: <Hammer className="text-red-500" />, desc: 'Classic mod loader.' },
         { id: 'Fabric', icon: <FileCode className="text-blue-500" />, desc: 'Lightweight & fast.' },

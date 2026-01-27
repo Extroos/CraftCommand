@@ -32,7 +32,6 @@ A web-based control panel for managing Minecraft servers on your local machine. 
 - **Global State Sync**: Instant, unified UI updates across all tabs and windows
 - **Secure Authentication**: Built-in admin password management with professional login interface
 - **Auto-Backup**: One-click automation to snapshot servers every 2 hours without manual cron setup
-=======
 
 ## Quick Start
 
@@ -122,8 +121,6 @@ craftcommand/
 
 ## Roadmap
 
-### Completed (Phases 1-20)
-=======
 ### Completed
 
 - [x] Real-time console streaming
@@ -138,7 +135,6 @@ craftcommand/
 - [x] Aikar's Flags JVM optimization
 - [x] Automatic Java provisioning
 - [x] Discord webhook integration
-<<<<<<< HEAD
 - [x] **Status Stabilization**: True `STARTING` vs `ONLINE` states, startup lock protection
 - [x] **Player Tracking**: Real-time join/leave events, port conflict prevention
 - [x] **Security Hardening**: Secure login redesign, password update system
@@ -147,25 +143,15 @@ craftcommand/
 - [x] Spark profiler integration
 - [x] Advanced system settings
 
-### In Progress (Phases 21-22)
-
-- [ ] Plugin marketplace (Backend implementation)
-=======
-
 ### In Progress
 
-- [ ] Proxy mode support (Velocity/BungeeCord)
-- [ ] Spark profiler integration
-- [ ] Advanced system settings
+- [ ] Plugin marketplace (Backend implementation)
 
 ### Planned
 
 - [ ] Multi-server dashboard
 - [ ] Docker containerization
 - [ ] RCON support
-<<<<<<< HEAD
-=======
-- [ ] Plugin marketplace
 
 ## Technologies
 
