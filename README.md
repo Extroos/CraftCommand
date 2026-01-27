@@ -64,7 +64,8 @@ Open `http://localhost:3000` in your browser.
 **Default credentials:**
 
 - Email: `admin@craftcommand.local`
-- Password: `changeme`
+- Password: `admin`
+- You should change the default password immediately after first login.
 
 ## Documentation
 
@@ -143,11 +144,6 @@ craftcommand/
 - [x] Spark profiler integration
 - [x] Advanced system settings
 
-
-### In Progress (Phases 21-22)
-
-- [ ] Plugin marketplace (Backend implementation)
-
 ### In Progress
 
 - [ ] Plugin marketplace (Backend implementation)
@@ -158,6 +154,8 @@ craftcommand/
 - [ ] Docker containerization
 - [ ] Plugin marketplace
 - [ ] RCON support
+- [ ] Proxy compatibility (Velocity/BungeeCord supported as server types)
+- [ ] Smart Proxy management (hostname routing, one-port setup)
 
 
 ## Technologies
