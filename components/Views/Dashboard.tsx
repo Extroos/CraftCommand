@@ -8,6 +8,7 @@ import { socketService } from '../../services/socket';
 
 import { useToast } from '../UI/Toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { DiagnosisCard } from '../Dashboard/DiagnosisCard';
 
 
 interface DashboardProps {
@@ -106,6 +107,33 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     // Update Logic
     const [updateInfo, setUpdateInfo] = useState<any>(null);
     const [dismissedVersion, setDismissedVersion] = useState(() => localStorage.getItem('craftcommand_dismissed_update'));
+
+    // Diagnosis State
+    const [diagnosisResult, setDiagnosisResult] = useState<any>(null);
+
+    // Auto-Diagnosis Trigger
+    useEffect(() => {
+        if (server?.status === 'CRASHED' || (server?.status === 'OFFLINE' && !diagnosisResult)) {
+            // Check if we should diagnose (e.g. if it just crashed)
+            // For now, we'll run it once if we see CRASHED
+            if (server.status === 'CRASHED') {
+                runDiagnosis();
+            }
+        } else if (server?.status === 'ONLINE' || server?.status === 'STARTING') {
+            setDiagnosisResult(null); // Clear on start
+        }
+    }, [server?.status]);
+
+    const runDiagnosis = async () => {
+        try {
+            const result = await API.runDiagnosis(serverId);
+            if (result) {
+                setDiagnosisResult(result);
+            }
+        } catch (e) {
+            console.error('Diagnosis failed:', e);
+        }
+    };
 
     useEffect(() => {
         const check = async () => {
@@ -444,6 +472,14 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                 {/* Aesthetic Decoration */}
                 <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-gradient-to-br from-white/5 to-transparent blur-[100px] pointer-events-none" />
             </div>
+
+            {/* --- SMART ANALYSIS HINTS (Legacy) --- */}
+            <DiagnosisCard 
+                result={diagnosisResult} 
+                serverId={serverId} 
+                onFix={runDiagnosis} // Re-run after fix
+                onDismiss={() => setDiagnosisResult(null)}
+            />
 
             {/* --- SMART ANALYSIS HINTS --- */}
             <AnimatePresence>

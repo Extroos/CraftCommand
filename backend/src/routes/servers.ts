@@ -8,7 +8,8 @@ import { getSystemStats } from '../services/SystemStats';
 import { javaManager } from '../services/JavaManager';
 import { FileSystemManager } from '../services/FileSystemManager';
 import { installerService } from '../services/InstallerService';
-import { getServers, saveServer, getServer, removeServer, updateServer, DATA_PATHS } from '../services/ServerService';
+import { getServers, saveServer, getServer, removeServer, updateServer, diagnoseServer } from '../services/ServerService';
+import { DATA_PATHS } from '../constants';
 
 
 const util = require('minecraft-server-util');
@@ -189,7 +190,7 @@ router.get('/', (req, res) => {
         return {
             ...s,
             // Trust ProcessManager's state machine (STARTING vs ONLINE)
-            status: isRunning ? (cached.status || 'STARTING') : 'OFFLINE' 
+            status: isRunning ? (cached.status || 'STARTING') : (s.status === 'CRASHED' ? 'CRASHED' : 'OFFLINE') 
         };
     });
     res.json(enhanced);
@@ -230,6 +231,17 @@ router.get('/:id/crash-report', (req, res) => {
     const logs = processManager.getLogs(id);
     const analysis = analyticsService.analyzeCrash(logs);
     res.json({ analysis, logs: logs.slice(-50) });
+});
+
+// Run Diagnosis
+router.get('/:id/diagnosis', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const results = await diagnoseServer(id);
+        res.json(results);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Create Server
@@ -621,10 +633,12 @@ router.post('/:id/install', async (req, res) => {
     if (!server) return res.status(404).json({ error: 'Server not found' });
 
     try {
+        console.log(`[Installation] Request for server ${id} | Type: ${type} | Version: ${version}`);
 
         if (type === 'paper') {
             await installerService.installPaper(server.workingDirectory, version || '1.21.11', build);
         } else if (type === 'purpur') {
+             console.log(`[Installation] CONFIRMED PURPUR selected for ${id}. Using PurpurMC API.`);
             await installerService.installPurpur(server.workingDirectory, version || '1.21.1', build);
         } else if (type === 'vanilla') {
             await installerService.installVanilla(server.workingDirectory, version || '1.21.11');
@@ -656,6 +670,7 @@ router.post('/:id/install', async (req, res) => {
                 // TODO: Add Fabric support if needed, but for now just Bukkit.
                 // TODO: Add Fabric support if needed, but for now just Bukkit.
                 if (type === 'paper' || type === 'purpur' || type === 'spigot') {
+                     console.log(`[Installation] Installing Spark for ${type} server...`);
                      await installerService.installSpark(server.workingDirectory);
                 }
             }

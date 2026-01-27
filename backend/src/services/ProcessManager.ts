@@ -73,6 +73,16 @@ class ProcessManager extends EventEmitter {
         this.logHistory.set(id, []); 
         this.players.set(id, new Set()); // Clear players too just in case
 
+        // STARTUP TIMEOUT WATCHDOG (Stabilization)
+        // If server hasn't started in 3 minutes, force unlock to prevent UI freeze
+        const startupTimeout = setTimeout(() => {
+            if (this.startupLocks.has(id)) {
+                console.error(`[ProcessManager] ${id} Startup timed out (180s). Releasing lock to allow user intervention.`);
+                this.startupLocks.delete(id);
+                this.maybeEmitStatus(id, 'OFFLINE'); // Assume failed
+            }
+        }, 180000);
+
         const handleLog = (line: string, type: 'stdout' | 'stderr') => {
             const history = this.logHistory.get(id) || [];
             history.push(line);
@@ -87,11 +97,13 @@ class ProcessManager extends EventEmitter {
                 // Done (seconds)! | Listening on port | Can't bind to port
                 if (line.includes('Done (') || line.includes('Listening on')) {
                     this.startupLocks.delete(id);
+                    clearTimeout(startupTimeout); // Clear watchdog
                     this.updateCachedStatus(id, { online: true, status: 'ONLINE' });
                     console.log(`[ProcessManager] ${id} Transitioned to ONLINE (Log Trigger).`);
                 } else if (line.includes('FAILED TO BIND') || line.includes('Address already in use')) {
                      // Crash Detection during startup
                      this.startupLocks.delete(id);
+                     clearTimeout(startupTimeout); // Clear watchdog
                      // Let the close handler deal with the crash state, but release lock so we don't hang.
                      console.warn(`[ProcessManager] ${id} Startup Failed (Bind Error).`);
                 }
@@ -138,6 +150,7 @@ class ProcessManager extends EventEmitter {
             
             // Release lock if it crashes early
             this.startupLocks.delete(id);
+            clearTimeout(startupTimeout); // Safe cleanup
 
             const isIntentional = this.stoppingServers.has(id);
             let finalStatus = 'OFFLINE';

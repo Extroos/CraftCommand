@@ -36,7 +36,8 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
         aikarFlags: true,
         proxySupport: false,
         installSpark: false,
-        onlineMode: true
+        onlineMode: true,
+        usePurpur: false // New Toggle State
     });
 
     const [selectedModpack, setSelectedModpack] = useState<any>(null);
@@ -94,8 +95,10 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
             const installOpts = { version: formData.version };
             
             switch (formData.software) {
-                case 'Paper': await API.installServer(server.id, 'paper', installOpts); break;
-                case 'Purpur': await API.installServer(server.id, 'purpur', installOpts); break;
+
+                case 'Paper': 
+                    await API.installServer(server.id, formData.usePurpur ? 'purpur' : 'paper', installOpts); 
+                    break;
                 case 'Vanilla': await API.installServer(server.id, 'vanilla', installOpts); break;
                 case 'Fabric': await API.installServer(server.id, 'fabric', installOpts); break;
                 case 'Spigot': await API.installServer(server.id, 'spigot', installOpts); break;
@@ -128,7 +131,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
 
     const softwareOptions = [
         { id: 'Paper', icon: <img src="/software_icons/paper.png" className="w-12 h-12 object-contain" alt="Paper" />, desc: 'High performance for plugins.' },
-        { id: 'Purpur', icon: <img src="/software_icons/purpur.png" className="w-12 h-12 object-contain" alt="Purpur" />, desc: 'Features & Customization.' },
+        // Purpur removed from top-level
         { id: 'NeoForge', icon: <img src="/software_icons/neoforge.png" className="w-12 h-12 object-contain" alt="NeoForge" />, desc: 'The future of modding.' },
         { id: 'Forge', icon: <img src="/software_icons/forge.png" className="w-12 h-12 object-contain" alt="Forge" />, desc: 'Classic mod loader.' },
         { id: 'Fabric', icon: <img src="/software_icons/fabric.png" className="w-12 h-12 object-contain" alt="Fabric" />, desc: 'Lightweight & fast.' },
@@ -160,7 +163,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         whileTap={{ scale: 0.98 }}
                         onClick={() => {
                             setFormData({ ...formData, software: sw.id });
-                            if (mode === 'wizard') setStep('details');
+                            // Don't auto-advance in wizard mode to allow Purpur toggle
                         }}
                         className={`group relative p-4 rounded-xl border text-left transition-all ${
                             formData.software === sw.id 
@@ -188,6 +191,39 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     </motion.button>
                 ))}
             </div>
+
+
+
+            {/* Paper Fork Selection */}
+            {formData.software === 'Paper' && (
+                 <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.2 }}
+                    className="mt-4 p-4 border border-white/5 rounded-xl bg-zinc-900/40"
+                 >
+                     <div className="flex items-center justify-between">
+                         <div className="flex items-center gap-3">
+                             <div className="p-2 bg-pink-500/10 rounded-lg border border-pink-500/20">
+                                 <img src="/software_icons/purpur.png" className="w-6 h-6 object-contain" alt="Purpur" />
+                             </div>
+                             <div>
+                                 <h3 className="text-sm font-bold text-white">Use Purpur Fork</h3>
+                                 <p className="text-[10px] text-zinc-500 font-medium">Alternative high-performance fork with more gameplay features.</p>
+                             </div>
+                         </div>
+                         <label className="relative inline-flex items-center cursor-pointer">
+                             <input 
+                                type="checkbox" 
+                                className="sr-only peer" 
+                                checked={(formData as any).usePurpur} 
+                                onChange={(e) => setFormData({...formData, usePurpur: e.target.checked} as any)} 
+                             />
+                             <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-pink-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-500"></div>
+                         </label>
+                     </div>
+                 </motion.div>
+            )}
 
             {mode === 'wizard' && (
                 <div className="flex justify-end pt-2">
@@ -352,7 +388,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     <div className="flex justify-between items-center">
                         <span className="text-zinc-500 font-medium">Software</span>
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-zinc-400">{formData.software}</span>
+                            <span className="text-[10px] font-bold text-zinc-400">{(formData as any).usePurpur ? 'Purpur (Paper Fork)' : formData.software}</span>
                             <span className="text-zinc-300">{formData.version}</span>
                         </div>
                     </div>

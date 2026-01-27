@@ -4,10 +4,9 @@ import net from 'net';
 import { logger } from '../utils/logger';
 import { javaManager } from './JavaManager';
 import { processManager } from './ProcessManager';
-
-const DATA_DIR = path.join(__dirname, '../../data');
-const SERVERS_FILE = path.join(DATA_DIR, 'servers.json');
-const SERVERS_ROOT = path.join(process.cwd(), 'minecraft_servers');
+import { diagnosisService } from './DiagnosisService';
+import { systemService } from './SystemService';
+import { DATA_DIR, SERVERS_FILE, SERVERS_ROOT } from '../constants';
 
 const operationLocks = new Set<string>();
 
@@ -195,6 +194,23 @@ export const stopServer = async (id: string, force: boolean = false) => {
     }
 };
 
-export const DATA_PATHS = {
-    SERVERS_ROOT
+
+
+export const diagnoseServer = async (id: string) => {
+    const server = getServer(id);
+    if (!server) throw new Error('Server not found');
+
+    // 1. Get Logs
+    // TODO: Phase 2 will implement LogBuffer, for now reading file tail or process buffer
+    const recentLogs = processManager.getLogs(id) || []; 
+
+    // 2. Get System Stats
+    const stats = await systemService.getSystemStats();
+
+    // 3. Run Diagnosis
+    return diagnosisService.diagnose(server, recentLogs, {
+        totalMemory: stats.mem.total,
+        freeMemory: stats.mem.free,
+        javaVersion: 'unknown' // Placeholder for Phase 2
+    });
 };

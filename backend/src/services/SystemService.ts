@@ -1,18 +1,34 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { DATA_PATHS } from './ServerService';
+import { DATA_PATHS, JAVA_DIR, TEMP_UPLOADS_DIR } from '../constants';
+import si from 'systeminformation';
 
 class SystemService {
+
+    async getSystemStats() {
+        const mem = await si.mem();
+        const load = await si.currentLoad();
+        return {
+            mem: {
+                total: mem.total,
+                free: mem.available,
+                used: mem.active
+            },
+            cpu: {
+                load: load.currentLoad
+            }
+        };
+    }
     
     // Get Cache Stats
     async getCacheStats() {
         // 1. Java Cache
         // 1. Java Cache
-        const javaDir = path.join(process.cwd(), 'data', 'java');
+        const javaDir = JAVA_DIR;
         
         // 2. Temp Uploads
-        const tempDir = path.join(process.cwd(), 'data', 'temp_uploads'); // Defined in routes/servers.ts multer config
+        const tempDir = TEMP_UPLOADS_DIR;
         
         // 3. Backups (Global? No, per server. Maybe list total backup size?)
         // For now just Cache (Java + Temp)
@@ -42,7 +58,7 @@ class SystemService {
                  await fs.emptyDir(javaDir);
              }
         } else if (type === 'temp') {
-             const tempDir = path.join(process.cwd(), 'data', 'temp_uploads');
+             const tempDir = TEMP_UPLOADS_DIR;
              if (await fs.pathExists(tempDir)) {
                  console.log('[System] Clearing Temp Uploads...');
                  await fs.emptyDir(tempDir);

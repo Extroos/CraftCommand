@@ -38,7 +38,21 @@ const ServerContext = createContext<ServerContextType | undefined>(undefined);
 
 export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [servers, setServers] = useState<ServerConfig[]>([]);
-    const [currentServer, setCurrentServer] = useState<ServerConfig | null>(null);
+    const [currentServer, _setCurrentServer] = useState<ServerConfig | null>(null);
+    const currentServerRef = React.useRef<ServerConfig | null>(null);
+
+    const setCurrentServer = (value: ServerConfig | null | ((prev: ServerConfig | null) => ServerConfig | null)) => {
+        if (typeof value === 'function') {
+            _setCurrentServer(prev => {
+                const newValue = value(prev);
+                currentServerRef.current = newValue;
+                return newValue;
+            });
+        } else {
+            currentServerRef.current = value;
+            _setCurrentServer(value);
+        }
+    };
     const [stats, setStats] = useState<Record<string, ServerStats>>({});
     const [loading, setLoading] = useState(true);
 
@@ -56,10 +70,12 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Sync Current Server if it exists
             if (currentServer) {
                 const updated = data.find(s => s.id === currentServer.id);
-                if (updated) setCurrentServer(updated);
+                if (updated) setCurrentServer(prev => ({ ...(prev || updated!), ...updated }));
             }
         } catch (error) {
-            console.error('Failed to fetch servers:', error);
+            console.error('Failed to fetch servers (Retrying in 5s):', error);
+            // Retry logic if backend is temporarily down
+            setTimeout(refreshServers, 5000);
         } finally {
             setLoading(false);
         }
@@ -178,8 +194,9 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 s.id === data.id ? { ...s, status } : s
             ));
             
-            if (currentServer?.id === data.id) {
-                setCurrentServer(prev => prev ? { ...prev, status } : null);
+            // Use Ref to get fresh currentServer without re-subscribing
+            if (currentServerRef.current?.id === data.id) {
+                setCurrentServer({ ...currentServerRef.current, status });
             }
         };
 

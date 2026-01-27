@@ -4,6 +4,10 @@
 
 **Full-stack Minecraft server management platform for local hosting**
 
+![version](https://img.shields.io/badge/version-v1.3.0-blue)
+![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![minecraft](https://img.shields.io/badge/Minecraft-local--hosting-green)
+![status](https://img.shields.io/badge/status-active--development-yellow)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/react-19.x-61dafb.svg)](https://reactjs.org/)
@@ -31,7 +35,6 @@ A web-based control panel for managing Minecraft servers on your local machine. 
 - **Startup Protection**: Intelligent locking system to prevent data corruption during boot sequences
 - **Global State Sync**: Instant, unified UI updates across all tabs and windows
 - **Secure Authentication**: Built-in admin password management with professional login interface
-- **Auto-Backup**: One-click automation to snapshot servers every 2 hours without manual cron setup
 
 ## Quick Start
 
@@ -63,9 +66,9 @@ Open `http://localhost:3000` in your browser.
 
 **Default credentials:**
 
-- Email: `admin@craftcommand.local`
+- Email: `admin@craftcommand.io`
 - Password: `admin`
-- You should change the default password immediately after first login.
+- **Important:** Create a `.env` file based on `.env.example` to set your own secure credentials before deploying.
 
 ## Documentation
 
@@ -74,6 +77,7 @@ Open `http://localhost:3000` in your browser.
 | Software | Versions       | Notes                       |
 | -------- | -------------- | --------------------------- |
 | Paper    | 1.8 - 1.21+    | Recommended for performance |
+| Purpur   | 1.16 - 1.21+   | Feature-rich Paper fork     |
 | Spigot   | 1.8 - 1.21+    | Plugin-compatible           |
 | Vanilla  | 1.8 - 1.21+    | Official Mojang server      |
 | Fabric   | 1.14 - 1.21+   | Lightweight mod loader      |
@@ -143,6 +147,8 @@ craftcommand/
 - [x] Proxy mode support (Velocity/BungeeCord)
 - [x] Spark profiler integration
 - [x] Advanced system settings
+- [x] **Purpur Support**: Seamless installation as a Paper alternative
+- [x] **Connection Stability**: Smart retry logic and context autosync
 
 ### In Progress
 
@@ -156,7 +162,6 @@ craftcommand/
 - [ ] RCON support
 - [ ] Proxy compatibility (Velocity/BungeeCord supported as server types)
 - [ ] Smart Proxy management (hostname routing, one-port setup)
-
 
 ## Technologies
 

@@ -245,6 +245,11 @@ class ApiService {
         return res.json();
     }
 
+    async runDiagnosis(id: string): Promise<any> {
+        const res = await fetch(`${API_URL}/servers/${id}/diagnosis`);
+        return res.json();
+    }
+
     async updateServer(id: string, updates: any): Promise<void> {
         await fetch(`${API_URL}/servers/${id}`, {
             method: 'PATCH',

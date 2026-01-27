@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { Plus, Server, Hash, Cpu, ArrowRight, HardDrive, Command, LogOut, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Server, Hash, Cpu, ArrowRight, HardDrive, Command, LogOut, Trash2, AlertTriangle, Stethoscope } from 'lucide-react';
 import { ServerConfig, ServerStatus } from '../../types';
 
 import { API } from '../../services/api';
@@ -117,6 +117,14 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({ onSelectServer, onCre
                                             <span className="text-foreground">{server.version}</span>
                                         </div>
                                     </div>
+
+                                    {/* Diagnosis Alert */}
+                                    {server.status === 'CRASHED' && (
+                                        <div className="flex items-center gap-2 text-rose-500 bg-rose-500/10 px-3 py-1.5 rounded-md border border-rose-500/20 animate-pulse">
+                                            <Stethoscope size={14} />
+                                            <span className="text-xs font-bold uppercase tracking-wider">Diagnosis Needed</span>
+                                        </div>
+                                    )}
 
                                     <div className="flex justify-end items-center gap-3">
                                         {/* Delete Button (Visible on Hover) */}

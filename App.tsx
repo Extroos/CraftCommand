@@ -40,11 +40,21 @@ const AppContent: React.FC = () => {
         localStorage.setItem('cc_appState', appState);
     }, [appState]);
 
-    // Restore Server Context on Mount (Sync with ServerProvider)
+    // Smart Auto-Recovery: If we are managing a server but context is lost (null),
+    // try to find it in the servers list and restore it.
+    React.useEffect(() => {
+        const savedServerId = localStorage.getItem('cc_serverId');
+        if (appState === 'MANAGE_SERVER' && savedServerId && !currentServer && servers.length > 0) {
+            console.log('[App] Smart Recovery: Found lost server context, restoring...');
+            setCurrentServerById(savedServerId);
+        }
+    }, [servers, currentServer, appState, setCurrentServerById]);
+
+    // Restore Server Context on Mount (Initial)
     React.useEffect(() => {
         if (!serversLoading) {
             const savedServerId = localStorage.getItem('cc_serverId');
-            if (appState === 'MANAGE_SERVER' && savedServerId) {
+            if (appState === 'MANAGE_SERVER' && savedServerId && !currentServer) {
                 setCurrentServerById(savedServerId);
             }
             setIsRestoring(false);
@@ -186,7 +196,7 @@ const AppContent: React.FC = () => {
 
                 <footer className="py-6 border-t border-border/40 mt-auto">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center text-[10px] font-mono tracking-wider text-muted-foreground/40 uppercase">
-                        <div>CraftCommand Management Protocol v1.4.2</div>
+                        <div>CraftCommand Management Protocol v1.3.0</div>
                         <div>Licensed under MIT &copy; 2026 Extroos</div>
                     </div>
                 </footer>

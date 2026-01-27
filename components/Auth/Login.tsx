@@ -137,18 +137,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                         <div>
                             <p className="text-xs font-bold text-zinc-200 uppercase tracking-wide">Developer Preview</p>
                             <p className="text-[10px] text-zinc-500 mt-0.5 leading-relaxed">
-                                Use these default credentials to access the dashboard environment.
+                                See README.md for default credentials or check your <code>.env</code> file configuration.
                             </p>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2">
-                            <div className="flex items-center justify-between bg-black/20 hover:bg-black/40 px-3 py-2.5 rounded-lg border border-white/5 cursor-pointer active:scale-[0.99] transition-all group/cred" onClick={() => setEmail('admin@craftcommand.io')}>
-                                <span className="text-[9px] uppercase font-bold text-muted-foreground/70 tracking-widest group-hover/cred:text-primary/70 transition-colors">E-Mail</span>
-                                <span className="font-mono text-[10px] text-zinc-300 font-medium">admin@craftcommand.io</span>
-                            </div>
-                             <div className="flex items-center justify-between bg-black/20 hover:bg-black/40 px-3 py-2.5 rounded-lg border border-white/5 cursor-pointer active:scale-[0.99] transition-all group/cred" onClick={() => setPassword('admin')}>
-                                <span className="text-[9px] uppercase font-bold text-muted-foreground/70 tracking-widest group-hover/cred:text-primary/70 transition-colors">Pass</span>
-                                <span className="font-mono text-[10px] text-zinc-300 font-medium">admin</span>
-                            </div>
                         </div>
                      </div>
                 </div>
