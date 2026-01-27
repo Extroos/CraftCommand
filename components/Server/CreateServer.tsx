@@ -127,13 +127,13 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
     };
 
     const softwareOptions = [
-        { id: 'Paper', icon: <Leaf className="text-emerald-500" />, desc: 'High performance for plugins.' },
-        { id: 'Purpur', icon: <Sparkles className="text-pink-500" />, desc: 'Features & Customization.' },
-        { id: 'NeoForge', icon: <Zap className="text-orange-500" />, desc: 'The future of modding.' },
-        { id: 'Forge', icon: <Hammer className="text-red-500" />, desc: 'Classic mod loader.' },
-        { id: 'Fabric', icon: <FileCode className="text-blue-500" />, desc: 'Lightweight & fast.' },
-        { id: 'Modpack', icon: <Package className="text-purple-500" />, desc: 'CurseForge & Modrinth.' },
-        { id: 'Vanilla', icon: <Box className="text-stone-500" />, desc: 'Official Mojang server.' },
+        { id: 'Paper', icon: <img src="/software_icons/paper.png" className="w-12 h-12 object-contain" alt="Paper" />, desc: 'High performance for plugins.' },
+        { id: 'Purpur', icon: <img src="/software_icons/purpur.png" className="w-12 h-12 object-contain" alt="Purpur" />, desc: 'Features & Customization.' },
+        { id: 'NeoForge', icon: <img src="/software_icons/neoforge.png" className="w-12 h-12 object-contain" alt="NeoForge" />, desc: 'The future of modding.' },
+        { id: 'Forge', icon: <img src="/software_icons/forge.png" className="w-12 h-12 object-contain" alt="Forge" />, desc: 'Classic mod loader.' },
+        { id: 'Fabric', icon: <img src="/software_icons/fabric.png" className="w-12 h-12 object-contain" alt="Fabric" />, desc: 'Lightweight & fast.' },
+        { id: 'Modpack', icon: <img src="/software_icons/modpack.png" className="w-12 h-12 object-contain" alt="Modpack" />, desc: 'CurseForge & Modrinth.' },
+        { id: 'Vanilla', icon: <img src="/software_icons/vanilla.png" className="w-12 h-12 object-contain" alt="Vanilla" />, desc: 'Official Mojang server.' },
     ];
 
     // --- RENDERERS ---

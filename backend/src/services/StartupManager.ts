@@ -4,6 +4,11 @@ import fs from 'fs-extra';
 import { processManager } from './ProcessManager';
 import { javaManager } from './JavaManager';
 import net from 'net';
+import si from 'systeminformation';
+import { exec } from 'child_process';
+import util from 'util';
+
+const execAsync = util.promisify(exec);
 
 export class StartupManager {
     
@@ -49,13 +54,48 @@ export class StartupManager {
 
     private async validateEnvironment(server: any) {
         const cwd = server.workingDirectory;
+        const id = server.id;
         
-        // Check Directory
+        // 1. Check Directory
         if (!(await fs.pathExists(cwd))) {
             throw new Error(`Server directory missing: ${cwd}`);
         }
 
-        // Check Executable
+        // 2. Check System RAM
+        const mem = await si.mem();
+        const availableRAM = mem.available / 1024 / 1024 / 1024; // GB
+        const allocatedRAM = server.ram || 2;
+        
+        // Allow a small buffer (e.g., if system has 16GB and we allocate 16GB, it might fail)
+        // Let's warn if allocated > available, error if allocated > total installed.
+        const totalRAM = mem.total / 1024 / 1024 / 1024;
+        
+        if (allocatedRAM > totalRAM) {
+             throw new Error(`CRITICAL: Cannot allocate ${allocatedRAM}GB RAM. System only has ${totalRAM.toFixed(1)}GB installed.`);
+        }
+        
+        if (allocatedRAM > availableRAM) {
+            console.warn(`[StartupManager:${id}] WARNING: Allocating ${allocatedRAM}GB but only ${availableRAM.toFixed(1)}GB is free. Swapping may occur.`);
+        }
+
+        // 3. Loader/Folder Checks
+        const software = server.software?.toLowerCase() || '';
+        if (software.includes('forge') || software.includes('fabric') || software.includes('neoforge')) {
+            const modsDir = path.join(cwd, 'mods');
+            if (!(await fs.pathExists(modsDir))) {
+                 console.warn(`[StartupManager:${id}] Modded server (${server.software}) detected but 'mods' folder is missing.`);
+                 // Determine if we should create it to be helpful
+                 await fs.ensureDir(modsDir);
+                 console.log(`[StartupManager:${id}] Created empty 'mods' directory.`);
+            }
+        } else if (software.includes('paper') || software.includes('spigot') || software.includes('purpur')) {
+             const pluginsDir = path.join(cwd, 'plugins');
+             if (!(await fs.pathExists(pluginsDir))) {
+                 await fs.ensureDir(pluginsDir);
+             }
+        }
+
+        // 4. Check Executable
         const exe = server.executable || 'server.jar';
         const exePath = path.join(cwd, exe);
         
@@ -63,7 +103,7 @@ export class StartupManager {
             throw new Error(`Startup file missing: ${exe}`);
         }
 
-        // Forge Specific Checks
+        // 5. Forge Specific Checks
         if (exe.endsWith('.bat') || server.software === 'Forge') {
              const argsFile = path.join(cwd, 'user_jvm_args.txt');
              if (await fs.pathExists(argsFile)) {
