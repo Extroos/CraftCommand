@@ -3,6 +3,7 @@ import { ArrowLeft, Check, Box, Cpu, Layers, Loader2, HardDrive, Shield, Zap, Gl
 import { motion, AnimatePresence } from 'framer-motion';
 import ModpackBrowser from './ModpackBrowser';
 import { API } from '../../services/api';
+import { useServers } from '../../context/ServerContext';
 
 interface CreateServerProps {
     onBack: () => void;
@@ -13,6 +14,7 @@ type WizardStep = 'marketing' | 'software' | 'details' | 'review';
 type CreateMode = 'wizard' | 'pro';
 
 const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
+    const { refreshServers } = useServers();
     const [mode, setMode] = useState<CreateMode>('wizard');
     const [step, setStep] = useState<WizardStep>('software');
     const [isDeploying, setIsDeploying] = useState(false);
@@ -111,6 +113,9 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     break;
             }
 
+            // 3. Refresh server list to ensure new server is in context
+            await refreshServers();
+            
             setIsDeploying(false);
             onDeploy();
         } catch (e) {
