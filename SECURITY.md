@@ -15,7 +15,7 @@ currently being supported with security updates.
 We take the security of our project seriously. If you find any vulnerability, please report it directly to the maintainers.
 
 1.  **Do not create a public issue** for security vulnerabilities.
-2.  Email `security@craftcommand.io` (or verify contact on GitHub profile) with details.
+2.  verify contact on GitHub profile with details.
 3.  We will respond within 48 hours.
 
 Thank you for helping keep the community safe.
