@@ -1,9 +1,11 @@
 import express from 'express';
-import { getSystemStats } from '../services/SystemStats';
-import { javaManager } from '../services/JavaManager';
-import { authService } from '../services/AuthService';
-import { systemSettingsService } from '../services/SystemSettingsService';
-import { discordService } from '../services/DiscordService';
+import { getSystemStats } from '../services/system/SystemStats';
+import { javaManager } from '../services/servers/JavaManager';
+import { authService } from '../services/auth/AuthService';
+import { systemSettingsService } from '../services/system/SystemSettingsService';
+import { discordService } from '../services/integrations/DiscordService';
+import { auditService } from '../services/system/AuditService';
+import { verifyToken, requireRole } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
@@ -14,7 +16,7 @@ router.get('/stats', async (req, res) => {
     res.json(stats);
 });
 
-import { systemService } from '../services/SystemService';
+import { systemService } from '../services/system/SystemService';
 
 // Cache Stats
 router.get('/cache', async (req, res) => {
@@ -44,22 +46,29 @@ router.get('/java', async (req, res) => {
 });
 
 // Login
-router.post('/login', (req, res) => {
-    const { email, password } = req.body;
-    const success = authService.verifyCredentials(email, password);
-    if (!success) {
-         return res.status(401).json({ success: false, error: 'Invalid credentials' });
+// Audit Logs
+router.get('/audit', verifyToken, requireRole(['OWNER', 'ADMIN']), (req, res) => {
+    const { limit, action, userId } = req.query;
+    let logs = auditService.getLogs(
+        limit ? parseInt(limit as string) : 100,
+        action as string
+    );
+    
+    // Additional client-side filtering for userId if needed
+    if (userId) {
+        logs = logs.filter(log => log.userId === userId);
     }
-    res.json({ success: true });
+    
+    res.json(logs);
 });
 
 // User Profile
-router.get('/user', (req, res) => {
-    res.json(authService.getUser());
+router.get('/user', verifyToken, (req, res) => {
+    res.json(authService.getUser((req as any).user.id));
 });
 
-router.patch('/user', (req, res) => {
-    const updated = authService.updateUser(req.body);
+router.patch('/user', verifyToken, (req, res) => {
+    const updated = authService.updateUser((req as any).user.id, req.body);
     res.json(updated);
 });
 
@@ -97,7 +106,7 @@ router.post('/discord/sync-commands', async (req, res) => {
     }
 });
 
-import { updateService } from '../services/UpdateService';
+import { updateService } from '../services/system/UpdateService';
 
 // Updates
 router.get('/updates/check', async (req, res) => {

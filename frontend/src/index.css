@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom globals */
+@layer base {
+  :root {
+    /* LIGHT MODE (Default) - "Perfect for Eyes" */
+    --background: 240 4.8% 95.9%; /* Zinc 100 - Soft Light Gray #f4f4f5 */
+    --foreground: 240 10% 3.9%;   /* Zinc 950 - Soft Black #09090b */
+    
+    --card: 0 0% 100%;            /* Pure White card pops against gray bg */
+    --card-foreground: 240 10% 3.9%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    
+    --primary: 240 5.9% 10%;      /* Zinc 900 for primary actions */
+    --primary-foreground: 0 0% 98%;
+    
+    --secondary: 240 5.9% 90%;    /* Slightly darker gray for secondary inputs */
+    --secondary-foreground: 240 5.9% 10%;
+    
+    --muted: 240 4.8% 90%;        /* Muted elements */
+    --muted-foreground: 240 3.8% 46.1%;
+    
+    --accent: 240 4.8% 90%;       /* Hover states */
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    /* DARK MODE */
+    --background: 240 6% 6%;      /* #0f0f11 */
+    --foreground: 240 5% 90%;     /* #e4e4e7 */
+    --card: 240 6% 7%;
+    --card-foreground: 240 5% 90%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 4% 12%;      /* #1c1c1e */
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 60%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 240 4.9% 83.9%;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    background: rgba(15, 15, 17, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .text-glow {
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Reduced Motion Override */
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Noise texture */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: overlay;
+}

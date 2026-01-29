@@ -6,9 +6,12 @@ export const SERVERS_ROOT = path.join(process.cwd(), 'minecraft_servers');
 export const JAVA_DIR = path.join(process.cwd(), 'data', 'java');
 export const TEMP_UPLOADS_DIR = path.join(process.cwd(), 'data', 'temp_uploads');
 
+export const AUDIT_FILE = path.join(DATA_DIR, 'audit.json');
+
 export const DATA_PATHS = {
     DATA_DIR,
     SERVERS_FILE,
+    AUDIT_FILE,
     SERVERS_ROOT,
     JAVA_DIR,
     TEMP_UPLOADS_DIR

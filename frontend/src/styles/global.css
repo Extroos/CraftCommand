@@ -1,0 +1,74 @@
+/* CraftCommand Theme System - Global Styles */
+
+/* CSS Variables are injected dynamically by ThemeContext */
+/* Variables available: --color-bg-app, --color-fg-primary, etc. */
+
+:root {
+  /* Font stack */
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: rgb(var(--color-bg-app));
+  color: rgb(var(--color-fg-primary));
+}
+
+/* Theme-aware utility classes */
+.bg-theme-app {
+  background: rgb(var(--color-bg-app));
+}
+.bg-theme-card {
+  background: rgb(var(--color-bg-card));
+}
+.bg-theme-secondary {
+  background: rgb(var(--color-bg-secondary));
+}
+.bg-theme-tertiary {
+  background: rgb(var(--color-bg-tertiary));
+}
+.bg-theme-input {
+  background: rgb(var(--color-bg-input));
+}
+
+.text-theme-primary {
+  color: rgb(var(--color-fg-primary));
+}
+.text-theme-secondary {
+  color: rgb(var(--color-fg-secondary));
+}
+.text-theme-muted {
+  color: rgb(var(--color-fg-muted));
+}
+.text-theme-subtle {
+  color: rgb(var(--color-fg-subtle));
+}
+
+.border-theme {
+  border-color: rgb(var(--color-border-default));
+}
+.border-theme-strong {
+  border-color: rgb(var(--color-border-strong));
+}
+
+/* Ensure smooth theme transitions */
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 200ms;
+  transition-timing-function: ease-in-out;
+}
+
+/* Disable transitions for reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0ms !important;
+  }
+}

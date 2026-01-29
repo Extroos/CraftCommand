@@ -3,12 +3,14 @@ import express from 'express';
 import fs from 'fs-extra';
 import path from 'path';
 
-import { processManager } from '../services/ProcessManager';
-import { getSystemStats } from '../services/SystemStats';
-import { javaManager } from '../services/JavaManager';
-import { FileSystemManager } from '../services/FileSystemManager';
-import { installerService } from '../services/InstallerService';
-import { getServers, saveServer, getServer, removeServer, updateServer, diagnoseServer } from '../services/ServerService';
+import { processManager } from '../services/servers/ProcessManager';
+import { getSystemStats } from '../services/system/SystemStats';
+import { javaManager } from '../services/servers/JavaManager';
+import { FileSystemManager } from '../services/files/FileSystemManager';
+import { installerService } from '../services/servers/InstallerService';
+import { getServers, saveServer, getServer, removeServer, updateServer, diagnoseServer } from '../services/servers/ServerService';
+import { SafetyError } from '../services/system/SafetyService';
+import { auditService } from '../services/system/AuditService';
 import { DATA_PATHS } from '../constants';
 
 
@@ -17,14 +19,30 @@ import multer from 'multer';
 import net from 'net';
 
 // Configure Multer (Generic storage, destination handled in route or moved after)
+import { verifyToken, requirePermission, requireRole } from '../middleware/authMiddleware';
+
 const upload = multer({ dest: path.join(path.dirname(DATA_PATHS.SERVERS_ROOT), 'temp_uploads') });
 
 const router = express.Router();
 
-import { analyticsService } from '../services/AnalyticsService';
+import { analyticsService } from '../services/system/AnalyticsService';
+
+// Public/Open Routes (for now, or maybe require login for everything?)
+// Let's require login for everything except potentially basic status?
+// For Host-Style, everything should require login except maybe a public status page.
+// We'll apply verifyToken globally to the router for now, BUT we need to handle the initial fetch?
+// Actually, let's just protect the mutation routes first to avoid breaking the frontend immediately until we update it.
+
+// P0: Protect mutations
+router.post('*', verifyToken);
+router.put('*', verifyToken);
+router.delete('*', verifyToken);
+router.patch('*', verifyToken);
+
+
 
 // Query Server Status (Real Ping)
-router.get('/:id/stats', async (req, res) => {
+router.get('/:id/stats', verifyToken, requirePermission('server.view'), async (req, res) => {
     const { id } = req.params;
     const server = getServer(id);
     if (!server) return res.status(404).json({ error: 'Server not found' });
@@ -46,6 +64,8 @@ router.get('/:id/stats', async (req, res) => {
 
     res.json({ ...stats, analysis });
 });
+
+
 
 // Query Server Status (Real Ping)
 router.get('/:id/query', async (req, res) => {
@@ -245,7 +265,7 @@ router.get('/:id/diagnosis', async (req, res) => {
 });
 
 // Create Server
-router.post('/', async (req, res) => {
+router.post('/', requireRole(['OWNER', 'ADMIN']), async (req, res) => {
     const config = req.body;
     const id = `local-${Date.now()}`;
     const serverDir = path.join(DATA_PATHS.SERVERS_ROOT, id);
@@ -262,54 +282,69 @@ router.post('/', async (req, res) => {
     saveServer(newServer);
     
     // Start File Watcher
-    const { fileWatcherService } = await import('../services/FileWatcherService');
+    const { fileWatcherService } = await import('../services/files/FileWatcherService');
     fileWatcherService.watchServer(id, serverDir);
+
+    auditService.log((req as any).user.id, 'SERVER_CREATE', id, { name: config.name });
 
     res.json(newServer);
 });
 
 
 // Start Server
-router.post('/:id/start', async (req, res) => {
+router.post('/:id/start', requirePermission('server.start'), async (req, res) => {
     const { id } = req.params;
+    const { force } = req.body;
     const server = getServer(id);
     
     if (!server) return res.status(404).json({ error: 'Server not found' });
-    
-    // Respond immediately to prevent timeout
-    res.json({ success: true, status: 'STARTING' });
 
-    // Run startup sequence in background
-    (async () => {
-        try {
-            console.log(`[Server:${id}] Initiating startup sequence via StartupManager...`);
-            
-            const { startupManager } = await import('../services/StartupManager');
+    try {
+        console.log(`[Server:${id}] Initiating startup sequence via StartupManager...`);
+        
+        const { startupManager } = await import('../services/servers/StartupManager');
 
-            // Record start time for persistence (pre-emptively)
-            server.status = 'STARTING';
-            server.startTime = Date.now();
-            saveServer(server);
+        // Record start time for persistence (pre-emptively)
+        server.status = 'STARTING';
+        server.startTime = Date.now();
+        saveServer(server);
 
-            await startupManager.startServer(server, (updatedServer) => {
-                 saveServer(updatedServer);
+        // Await the startup (includes safety checks and spawn)
+        // This is fast enough to await.
+        await startupManager.startServer(server, (updatedServer) => {
+                saveServer(updatedServer);
+        }, !!force);
+
+        res.json({ success: true, status: 'STARTING' });
+
+        auditService.log((req as any).user.id, 'SERVER_START', id, { force: !!force });
+
+    } catch (e: any) {
+        console.error(`[Server:${id}] Startup failed:`, e);
+        
+        // Revert status
+        server.status = 'OFFLINE';
+        delete server.startTime;
+        saveServer(server);
+
+        if (e instanceof SafetyError) {
+            return res.status(409).json({ 
+                error: e.message, 
+                code: e.code, 
+                details: e.details,
+                safetyError: true 
             });
-
-        } catch (e: any) {
-            console.error(`[Server:${id}] Startup failed:`, e);
-            // Revert status
-            server.status = 'OFFLINE';
-            delete server.startTime;
-            saveServer(server);
         }
-    })();
+        
+        res.status(500).json({ error: e.message });
+    }
 });
 
 
 
 
 // Stop Server
-router.post('/:id/stop', (req, res) => {
+router.post('/:id/stop', requirePermission('server.stop'), (req, res) => {
     const { id } = req.params;
     const { force } = req.body;
     const server = getServer(id);
@@ -324,6 +359,8 @@ router.post('/:id/stop', (req, res) => {
         }
 
         res.json({ success: true, status: 'STOPPING' });
+        
+        auditService.log((req as any).user.id, 'SERVER_STOP', id, { force: !!force });
     } catch (e: any) {
         if (e.message.includes('Server is initializing')) {
             return res.status(423).json({ // 423 Locked
@@ -337,7 +374,7 @@ router.post('/:id/stop', (req, res) => {
 });
 
 // Delete Server
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole(['OWNER', 'ADMIN']), async (req, res) => {
     const { id } = req.params;
     const server = getServer(id);
     
@@ -353,28 +390,53 @@ router.delete('/:id', async (req, res) => {
     removeServer(id);
     
     // Unwatch Files
-    const { fileWatcherService } = await import('../services/FileWatcherService');
+    const { fileWatcherService } = await import('../services/files/FileWatcherService');
     fileWatcherService.unwatchServer(id);
 
     res.json({ success: true });
+    
+    auditService.log((req as any).user.id, 'SERVER_DELETE', id);
 });
 
 // Update Server Config
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requirePermission('server.settings'), async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
     
     try {
         const updatedServer = await updateServer(id, updates);
         res.json(updatedServer);
+
+        auditService.log((req as any).user.id, 'SERVER_UPDATE', id, { updates: Object.keys(updates) });
     } catch (e: any) {
         if (e.message === 'Server not found') return res.status(404).json({ error: 'Server not found' });
         res.status(500).json({ error: e.message });
     }
 });
 
+// Check File Exists (Silent)
+router.get('/:id/files/exists', verifyToken, requirePermission('server.files.read'), async (req, res) => {
+    const { id } = req.params;
+    const { path: relativePath } = req.query;
+    const server = getServer(id);
+    
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+    if (!relativePath || typeof relativePath !== 'string') return res.status(400).json({ error: 'Path is required' });
+
+    try {
+        const targetPath = path.resolve(server.workingDirectory, relativePath);
+        if (!targetPath.startsWith(server.workingDirectory)) {
+            return res.json({ exists: false });
+        }
+        const exists = await fs.pathExists(targetPath);
+        res.json({ exists });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Get File Content
-router.get('/:id/files/content', async (req, res) => {
+router.get('/:id/files/content', verifyToken, requirePermission('server.files.read'), async (req, res) => {
     const { id } = req.params;
     const { path: relativePath } = req.query;
     const server = getServer(id);
@@ -387,12 +449,15 @@ router.get('/:id/files/content', async (req, res) => {
         const content = await fsManager.readFile(relativePath as string);
         res.json({ content });
     } catch (e: any) {
+        if (e.code === 'ENOENT') {
+            return res.status(404).json({ error: 'File not found' });
+        }
         res.status(500).json({ error: e.message });
     }
 });
 
 // Save File Content
-router.post('/:id/files/content', async (req, res) => {
+router.post('/:id/files/content', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
     const { path: relativePath, content } = req.body;
     const server = getServer(id);
@@ -410,7 +475,7 @@ router.post('/:id/files/content', async (req, res) => {
 });
 
 // Create Folder
-router.post('/:id/files/folder', async (req, res) => {
+router.post('/:id/files/folder', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
     const { path: relativePath } = req.body;
     const server = getServer(id);
@@ -428,7 +493,7 @@ router.post('/:id/files/folder', async (req, res) => {
 });
 
 // Get Files
-router.get('/:id/files', async (req, res) => {
+router.get('/:id/files', verifyToken, requirePermission('server.files.read'), async (req, res) => {
     const { id } = req.params;
     const { path: relativePath } = req.query;
     const server = getServer(id);
@@ -446,7 +511,7 @@ router.get('/:id/files', async (req, res) => {
 });
 
 // Delete Files (Accepts array of paths in body)
-router.delete('/:id/files', async (req, res) => {
+router.delete('/:id/files', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
     const { paths } = req.body;
     const server = getServer(id);
@@ -466,7 +531,7 @@ router.delete('/:id/files', async (req, res) => {
 });
 
 // Move Files
-router.post('/:id/files/move', async (req, res) => {
+router.post('/:id/files/move', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
     const { source, dest } = req.body;
     const server = getServer(id);
@@ -482,7 +547,7 @@ router.post('/:id/files/move', async (req, res) => {
 });
 
 // Copy Files
-router.post('/:id/files/copy', async (req, res) => {
+router.post('/:id/files/copy', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
     const { source, dest } = req.body;
     const server = getServer(id);
@@ -498,7 +563,7 @@ router.post('/:id/files/copy', async (req, res) => {
 });
 
 // Compress Files
-router.post('/:id/files/compress', async (req, res) => {
+router.post('/:id/files/compress', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
     const { paths, name } = req.body; // paths: string[], name: archive filename
     const server = getServer(id);
@@ -514,7 +579,7 @@ router.post('/:id/files/compress', async (req, res) => {
 });
 
 // Download File
-router.get('/:id/files/download', async (req, res) => {
+router.get('/:id/files/download', verifyToken, requirePermission('server.files.read'), async (req, res) => {
     const { id } = req.params;
     const { path: relativePath } = req.query;
     const server = getServer(id);
@@ -538,7 +603,7 @@ router.get('/:id/files/download', async (req, res) => {
 });
 
 // Upload File to Server Directory
-router.post('/:id/files/upload', upload.single('file'), async (req, res) => {
+router.post('/:id/files/upload', requirePermission('server.files.write'), upload.single('file'), async (req, res) => {
     const { id } = req.params;
     const { path: relativePath } = req.query; // Support ?path=plugins
     const server = getServer(id);
@@ -571,7 +636,7 @@ router.post('/:id/files/upload', upload.single('file'), async (req, res) => {
 
 // Extract ZIP file
 // Extract ZIP file (Smart Extract)
-router.post('/:id/files/extract', async (req, res) => {
+router.post('/:id/files/extract', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
     const { filePath } = req.body;
     const server = getServer(id);
@@ -625,7 +690,7 @@ router.post('/:id/files/extract', async (req, res) => {
 
 
 // Install Server Software
-router.post('/:id/install', async (req, res) => {
+router.post('/:id/install', requirePermission('server.settings'), async (req, res) => {
     const { id } = req.params;
     const { type, version, build, url } = req.body; // type: 'paper' | 'modpack'
     const server = getServer(id);
@@ -657,6 +722,8 @@ router.post('/:id/install', async (req, res) => {
             saveServer(server);
         } else if (type === 'spigot') {
             await installerService.installSpigot(server.workingDirectory, version || '1.21.11');
+
+
         } else {
             return res.status(400).json({ error: 'Invalid installation type or missing parameters' });
         }
@@ -673,9 +740,7 @@ router.post('/:id/install', async (req, res) => {
                 }
             }
 
-            if (server.advancedFlags.proxySupport) {
-                await installerService.configureProxy(server.workingDirectory);
-            }
+
         }
 
         // --- Post-Install: Online Mode (Crack Server) ---
@@ -698,12 +763,14 @@ router.post('/:id/install', async (req, res) => {
         }
 
         res.json({ success: true, message: 'Installation started' });
+
+        auditService.log((req as any).user.id, 'TEMPLATE_INSTALL', id, { type, version });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-import { scheduleService } from '../services/ScheduleService';
+import { scheduleService } from '../services/scheduling/ScheduleService';
 
 // ==================== SCHEDULE ROUTES ====================
 
@@ -766,7 +833,7 @@ router.delete('/:id/schedules/:taskId', async (req, res) => {
 
 // ==================== BACKUP ROUTES ====================
 
-import { backupService } from '../services/BackupService';
+import { backupService } from '../services/backups/BackupService';
 
 // Toggle Lock
 router.post('/:id/backups/:backupId/lock', async (req, res) => {
@@ -866,7 +933,7 @@ export default router;
 
 // ==================== PLAYER ROUTES ====================
 
-import { playerService } from '../services/PlayerService';
+import { playerService } from '../services/servers/PlayerService';
 
 // Get Player List
 router.get('/:id/players/:listType', async (req, res) => {

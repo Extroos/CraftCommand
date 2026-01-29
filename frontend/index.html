@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CraftCommand Professional</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <script>
+      // Immediate Theme Check to prevent FOUC (Flash of Unstyled Content/White Flash)
+      (function() {
+        try {
+          const stored = localStorage.getItem('cc_theme');
+          const system = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          
+          if (stored === 'dark' || (!stored && system)) {
+             document.documentElement.classList.add('dark');
+          } else if (stored === 'light') {
+             document.documentElement.classList.remove('dark');
+          } else {
+             // Default to dark if nothing set
+             document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* Critical CSS to prevent White Flash */
+      html, body {
+        background-color: #09090b; /* Default to dark */
+        color: #e4e4e7;
+        margin: 0;
+        padding: 0;
+      }
+      /* If class is explicitly NOT dark (i.e. 'light'), override it */
+      html:not(.dark) body {
+        background-color: #ffffff;
+        color: #09090b;
+      }
+      /* Ensure full height to cover potential white voids */
+      html, body, #root {
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+    <link rel="stylesheet" href="/src/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/src/index.tsx"></script>
+</body>
+</html>

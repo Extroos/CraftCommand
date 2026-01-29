@@ -1,5 +1,5 @@
 import express from 'express';
-import { modpackService } from '../services/ModpackService';
+import { modpackService } from '../services/servers/ModpackService';
 
 const router = express.Router();
 
