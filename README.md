@@ -4,7 +4,7 @@
 
 **Enterprise-grade Minecraft server management platform with multi-user authentication**
 
-![version](https://img.shields.io/badge/version-v1.4.0-blue)
+![version](https://img.shields.io/badge/version-v1.4.3-blue)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![minecraft](https://img.shields.io/badge/Minecraft-local--hosting-green)
 ![status](https://img.shields.io/badge/status-active--development-yellow)

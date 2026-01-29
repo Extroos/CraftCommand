@@ -90,7 +90,7 @@ const Sparkline: React.FC<{ data: number[], color: string, height?: number, max?
 import { useServers } from '../../context/ServerContext';
 
 const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
-    const { servers, stats: allStats, logs, javaDownloadStatus } = useServers();
+    const { servers, stats: allStats, logs } = useServers();
     const server = servers.find(s => s.id === serverId);
     
     const [hasConflict, setHasConflict] = useState(false);
@@ -110,12 +110,6 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
 
     // Diagnosis State
     const [diagnosisResult, setDiagnosisResult] = useState<any>(null);
-
-    // Java Download Status - only consider active download phases
-    const isJavaDownloading = javaDownloadStatus && 
-        (javaDownloadStatus.phase === 'downloading' || 
-         javaDownloadStatus.phase === 'extracting' || 
-         javaDownloadStatus.phase === 'installing');
 
     // Auto-Diagnosis Trigger
     useEffect(() => {
@@ -160,9 +154,8 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                 // Silent fail
             }
         };
+        check();
     }, [dismissedVersion]);
-
-    // Java download status is now managed by ServerContext
 
     const handleDismissUpdate = () => {
         if (!updateInfo) return;
@@ -526,10 +519,9 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                     <div className="flex gap-1 bg-card p-1.5 rounded-lg border border-border">
                         <button 
                             onClick={() => handlePower('start')}
-                            disabled={(status !== ServerStatus.OFFLINE && status !== ServerStatus.CRASHED) || isJavaDownloading}
-                            title={isJavaDownloading ? "Java is being downloaded. Please wait..." : "Start Server"}
+                            disabled={status !== ServerStatus.OFFLINE && status !== ServerStatus.CRASHED}
                             className={`px-6 py-3 rounded md:w-32 font-medium text-sm transition-all border border-transparent ${
-                                (status === ServerStatus.OFFLINE || status === ServerStatus.CRASHED) && !isJavaDownloading
+                                status === ServerStatus.OFFLINE || status === ServerStatus.CRASHED
                                 ? 'bg-[#1c1c1f] text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
                                 : 'text-muted-foreground opacity-30 cursor-not-allowed'
                             }`}
@@ -565,45 +557,6 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                         </button>
                     </div>
                 </div>
-
-                {/* Java Download Status Indicator */}
-                <AnimatePresence>
-                    {javaDownloadStatus && (javaDownloadStatus.phase === 'downloading' || javaDownloadStatus.phase === 'extracting' || javaDownloadStatus.phase === 'installing') && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2 }}
-                            className="px-6 pb-4"
-                        >
-                            <div className="bg-card border border-border rounded-lg p-3">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                                    <span className="text-sm font-medium text-foreground">
-                                        {javaDownloadStatus.phase === 'downloading' && 'Downloading Java Runtime'}
-                                        {javaDownloadStatus.phase === 'extracting' && 'Extracting Java Runtime'}
-                                        {javaDownloadStatus.phase === 'installing' && 'Installing Java Runtime'}
-                                    </span>
-                                    {javaDownloadStatus.percent !== undefined && (
-                                        <span className="ml-auto text-xs font-mono text-muted-foreground">
-                                            {javaDownloadStatus.percent}%
-                                        </span>
-                                    )}
-                                </div>
-                                {javaDownloadStatus.percent !== undefined && (
-                                    <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                                        <motion.div 
-                                            className="h-full bg-blue-500 rounded-full"
-                                            initial={{ width: 0 }}
-                                            animate={{ width: `${javaDownloadStatus.percent}%` }}
-                                            transition={{ duration: 0.3, ease: "easeOut" }}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
 
                 {/* Aesthetic Decoration */}
                 <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-gradient-to-br from-white/5 to-transparent blur-[100px] pointer-events-none" />

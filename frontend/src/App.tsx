@@ -272,7 +272,7 @@ const AppContent: React.FC = () => {
 
                 <footer className="py-6 border-t border-border/40 mt-auto">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center text-[10px] font-mono tracking-wider text-muted-foreground/40 uppercase">
-                        <div>CraftCommand Management Protocol v1.4.0</div>
+                        <div>CraftCommand Management Protocol v1.4.3</div>
                         <div>Licensed under MIT &copy; 2026 Extroos</div>
                     </div>
                 </footer>

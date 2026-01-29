@@ -40,64 +40,124 @@ export class JavaManager extends EventEmitter {
         const url = `https://api.adoptium.net/v3/binary/latest/${majorVer}/ga/windows/x64/jdk/hotspot/normal/eclipse`;
         const zipPath = path.join(destDir, '../', `java-${majorVer}.zip`);
         
-        await fs.ensureDir(path.dirname(zipPath));
+        try {
+            await fs.ensureDir(path.dirname(zipPath));
 
-        console.log(`[JavaManager] Downloading JDK ${majorVer} from ${url}`);
-        this.emit('status', { message: `Downloading JDK ${majorVer}...` });
-        const response = await axios({
-            url,
-            method: 'GET',
-            responseType: 'arraybuffer'
-        });
-        
-        await fs.writeFile(zipPath, response.data);
-        
-        console.log(`[JavaManager] Extracting JDK ${majorVer}...`);
-        this.emit('status', { message: `Extracting JDK ${majorVer}...` });
-        const zip = new AdmZip(zipPath);
-        zip.extractAllTo(path.dirname(zipPath), true);
-        
-        // Adoptium zips usually have a root folder like 'jdk-17.0.x+y'. We need to find it and rename/move contents to destDir
-        // Or just find the bin path dynamically. Let's try to locate the extracted folder.
-        const entries = await fs.readdir(path.dirname(zipPath));
-        const jdkFolder = entries.find(e => e.startsWith('jdk') && !e.endsWith('.zip'));
-        
-        
-        if (jdkFolder) {
-            const source = path.join(path.dirname(zipPath), jdkFolder);
+            console.log(`[JavaManager] Downloading JDK ${majorVer} from ${url}`);
+            this.emit('status', { message: `Downloading Java ${majorVer}...`, phase: 'downloading' });
             
-            // Safety: Ensure destination is clear
-            if (await fs.pathExists(destDir)) {
-                await fs.remove(destDir);
-            }
-
-            // Retry loop for Windows permissions
-            let attempts = 0;
-            while (attempts < 5) {
-                try {
-                    // Try Copy + Remove instead of Move (more robust on Windows)
-                    await fs.copy(source, destDir, { overwrite: true });
-                    // Give it a moment before trying to delete the source
-                    await new Promise(r => setTimeout(r, 500)); 
-                    try {
-                        await fs.remove(source);
-                    } catch (cleanupErr) {
-                        console.warn(`[JavaManager] Warning: Could not cleanup source ${source}: ${cleanupErr}`);
+            // Throttle progress updates to prevent performance issues
+            let lastProgressEmit = 0;
+            let lastPercent = 0;
+            
+            // Download with progress tracking
+            const response = await axios({
+                url,
+                method: 'GET',
+                responseType: 'arraybuffer',
+                timeout: 600000, // 10 minute timeout
+                onDownloadProgress: (progressEvent) => {
+                    if (progressEvent.total) {
+                        const now = Date.now();
+                        const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+                        
+                        // Only emit if: 1 second has passed OR percentage changed by 5% or more
+                        if (now - lastProgressEmit > 1000 || Math.abs(percent - lastPercent) >= 5) {
+                            this.emit('progress', { 
+                                phase: 'downloading',
+                                percent,
+                                message: `Downloading Java ${majorVer}... ${percent}%`
+                            });
+                            lastProgressEmit = now;
+                            lastPercent = percent;
+                        }
                     }
-                    break;
-                } catch (e: any) {
-                    attempts++;
-                    console.warn(`[JavaManager] Copy failed (Attempt ${attempts}/5). Retrying in 2s... Error: ${e.message}`);
-                    await new Promise(r => setTimeout(r, 2000));
-                    if (attempts === 5) throw e;
                 }
+            });
+            
+            // Verify download size (JDK should be at least 50MB)
+            const minSize = 50 * 1024 * 1024; // 50MB
+            if (response.data.byteLength < minSize) {
+                throw new Error(`Downloaded file is too small (${(response.data.byteLength / 1024 / 1024).toFixed(1)}MB). Download may be corrupted.`);
             }
-        } else {
-            throw new Error('Failed to find extracted JDK folder');
-        }
+            
+            await fs.writeFile(zipPath, response.data);
+            console.log(`[JavaManager] Download complete. Size: ${(response.data.byteLength / 1024 / 1024).toFixed(1)}MB`);
+            
+            console.log(`[JavaManager] Extracting JDK ${majorVer}...`);
+            this.emit('status', { message: `Extracting Java ${majorVer}...`, phase: 'extracting' });
+            
+            const zip = new AdmZip(zipPath);
+            zip.extractAllTo(path.dirname(zipPath), true);
+            
+            // Adoptium zips usually have a root folder like 'jdk-17.0.x+y'. We need to find it and rename/move contents to destDir
+            // Or just find the bin path dynamically. Let's try to locate the extracted folder.
+            const entries = await fs.readdir(path.dirname(zipPath));
+            const jdkFolder = entries.find(e => e.startsWith('jdk') && !e.endsWith('.zip'));
+            
+            
+            if (jdkFolder) {
+                const source = path.join(path.dirname(zipPath), jdkFolder);
+                
+                this.emit('status', { message: `Installing Java ${majorVer}...`, phase: 'installing' });
+                
+                // Safety: Ensure destination is clear
+                if (await fs.pathExists(destDir)) {
+                    await fs.remove(destDir);
+                }
 
-        await fs.remove(zipPath);
-        console.log(`[JavaManager] JDK ${majorVer} installed to ${destDir}`);
+                // Retry loop for Windows permissions
+                let attempts = 0;
+                while (attempts < 5) {
+                    try {
+                        // Try Copy + Remove instead of Move (more robust on Windows)
+                        await fs.copy(source, destDir, { overwrite: true });
+                        // Give it a moment before trying to delete the source
+                        await new Promise(r => setTimeout(r, 500)); 
+                        try {
+                            await fs.remove(source);
+                        } catch (cleanupErr) {
+                            console.warn(`[JavaManager] Warning: Could not cleanup source ${source}: ${cleanupErr}`);
+                        }
+                        break;
+                    } catch (e: any) {
+                        attempts++;
+                        console.warn(`[JavaManager] Copy failed (Attempt ${attempts}/5). Retrying in 2s... Error: ${e.message}`);
+                        await new Promise(r => setTimeout(r, 2000));
+                        if (attempts === 5) throw e;
+                    }
+                }
+            } else {
+                throw new Error('Failed to find extracted JDK folder');
+            }
+
+            await fs.remove(zipPath);
+            console.log(`[JavaManager] JDK ${majorVer} installed to ${destDir}`);
+            this.emit('status', { message: `Java ${majorVer} ready`, phase: 'complete' });
+            
+        } catch (error: any) {
+            // Clean up partial downloads on error
+            try {
+                if (await fs.pathExists(zipPath)) {
+                    await fs.remove(zipPath);
+                }
+                if (await fs.pathExists(destDir)) {
+                    await fs.remove(destDir);
+                }
+            } catch (cleanupErr) {
+                console.warn(`[JavaManager] Failed to cleanup after error: ${cleanupErr}`);
+            }
+            
+            // Emit error event with user-friendly message
+            const userMessage = error.code === 'ECONNABORTED' 
+                ? 'Download timed out. Please check your internet connection.'
+                : error.code === 'ENOTFOUND' || error.code === 'EAI_AGAIN'
+                ? 'Cannot reach download server. Please check your internet connection.'
+                : `Download failed: ${error.message}`;
+            
+            this.emit('error', { message: userMessage, phase: 'failed' });
+            throw error;
+        }
     }
 
     // Simplistic detection - in reality needs to scan registry or common paths

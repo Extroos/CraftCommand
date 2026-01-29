@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GlobalSettings as GlobalSettingsType, SecurityConfig, DiscordConfig } from '@shared/types';
 import { API } from '../../services/api';
 import { useToast } from '../UI/Toast';
-import { Save, AlertTriangle, Monitor, Shield, Settings2 } from 'lucide-react';
+import { Save, AlertTriangle, Monitor, Shield, Settings2, Database } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useUser } from '../../context/UserContext';
 import AuditLog from './AuditLog';
@@ -61,6 +61,17 @@ const GlobalSettingsView: React.FC = () => {
             app: {
                 ...settings.app,
                 autoUpdate: !settings.app.autoUpdate
+            }
+        });
+    };
+
+    const toggleStorageProvider = () => {
+        if (!settings) return;
+        setSettings({
+            ...settings,
+            app: {
+                ...settings.app,
+                storageProvider: settings.app.storageProvider === 'sqlite' ? 'json' : 'sqlite'
             }
         });
     };
@@ -163,6 +174,54 @@ const GlobalSettingsView: React.FC = () => {
                         <div className="p-4 bg-secondary/30 rounded-lg border border-border/50">
                             <div className="font-medium text-sm mb-3">System Theme</div>
                             <ThemeToggle />
+                        </div>
+                    </div>
+                </motion.div>
+
+                {/* Data Storage Card (Phase 4) */}
+                <motion.div 
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+                    className="bg-card border border-border rounded-xl p-6 shadow-sm col-span-1 md:col-span-2"
+                >
+                     <div className="flex items-start gap-4 mb-6">
+                        <div className="p-3 bg-fuchsia-500/10 text-fuchsia-500 rounded-lg">
+                            <Database size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-lg">Data Storage</h3>
+                            <p className="text-sm text-muted-foreground">Configure how CraftCommand persists server data.</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg border border-border/50">
+                            <div>
+                                <div className="font-medium flex items-center gap-2">
+                                    SQLite Storage Database
+                                    {settings.app.storageProvider === 'sqlite' && <Database size={14} className="text-emerald-500" />}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Enable SQLite for better data integrity and crash resilience. Disabling switches back to standard JSON files.
+                                </p>
+                            </div>
+                            <button
+                                onClick={toggleStorageProvider}
+                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                    settings.app.storageProvider === 'sqlite' ? 'bg-primary' : 'bg-input'
+                                }`}
+                            >
+                                <span
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
+                                        settings.app.storageProvider === 'sqlite' ? 'translate-x-5' : 'translate-x-0'
+                                    }`}
+                                />
+                            </button>
+                        </div>
+                         <div className="flex gap-3 p-3 bg-blue-500/10 border border-blue-500/20 text-blue-600 rounded-lg text-xs">
+                            <Monitor size={16} className="shrink-0 mt-0.5" />
+                            <p>
+                                <strong>Note:</strong> Switching providers requires a restart. Data is auto-migrated from JSON to SQL, but NOT vice-versa.
+                            </p>
                         </div>
                     </div>
                 </motion.div>

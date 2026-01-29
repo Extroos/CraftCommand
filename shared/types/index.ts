@@ -78,6 +78,8 @@ export interface ServerAdvancedFlags {
 export interface ServerConfig {
     id: string;
     name: string;
+    folderName?: string; // Optional custom folder name
+    loaderBuild?: string; // Specific build version
     version: string; // Minecraft Version
     software: 'Paper' | 'Spigot' | 'Forge' | 'Fabric' | 'Vanilla' | 'Purpur';
     port: number;
@@ -148,6 +150,7 @@ export interface GlobalSettings {
         hostMode: boolean;
         autoUpdate: boolean;
         theme: 'dark' | 'light' | 'system';
+        storageProvider?: 'json' | 'sqlite';
     };
     discordBot?: DiscordBotConfig;
 }

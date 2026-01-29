@@ -100,7 +100,7 @@ export class InstallerService extends EventEmitter {
     }
 
     // Install CurseForge/Modrinth Modpack
-    async installModpackFromZip(serverDir: string, zipUrl: string) {
+    async installModpackFromZip(serverDir: string, zipUrl: string, mcVersion?: string) {
         try {
             await fs.ensureDir(serverDir);
             
@@ -108,44 +108,134 @@ export class InstallerService extends EventEmitter {
             if (zipUrl.startsWith('modrinth:')) {
                 const projectId = zipUrl.split(':')[1];
                 this.emit('status', `Resolving Modrinth Project ${projectId}...`);
-                // Get versions
                 const vRes = await axios.get(`https://api.modrinth.com/v2/project/${projectId}/version`);
-                // Find a valid modpack file (usually the first one that is a zip and has correct loaders)
-                const version = vRes.data[0]; // Naive 'latest'
+                const version = vRes.data[0];
                 const file = version.files.find((f: any) => f.primary) || version.files[0];
                 zipUrl = file.url;
                 this.emit('status', `Resolved to: ${version.name}`);
             }
 
             const zipPath = path.join(serverDir, 'modpack.zip');
+            const tempExtractDir = path.join(serverDir, 'temp_extract');
             
             this.emit('status', 'Downloading Modpack...');
             await this.downloadFile(zipUrl, zipPath);
             
-            this.emit('status', 'Extracting Modpack...');
-            const zip = new AdmZip(zipPath);
+            this.emit('status', 'Extracting Modpack for Analysis...');
+            // Extract to temp dir first to analyze
+            await fs.ensureDir(tempExtractDir);
             
-            // Extract files individually to preserve encoding
-            const entries = zip.getEntries();
-            for (const entry of entries) {
-                if (!entry.isDirectory) {
-                    const targetPath = path.join(serverDir, entry.entryName);
-                    await fs.ensureDir(path.dirname(targetPath));
-                    // Extract as buffer to preserve binary data
-                    const data = entry.getData();
-                    await fs.writeFile(targetPath, data);
-                }
-            }
-            
-            await fs.remove(zipPath);
-            await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
+            // Use extract-zip for better async performance and safety
+            await extract(zipPath, { dir: tempExtractDir });
 
-            this.emit('status', 'Modpack Extracted. You may need to run the Forge Installer manually if not included.');
+            // ANALYZE PACK TYPE
+            const packType = await this.scanModpackType(tempExtractDir);
+            console.log(`[Installer] Detected Modpack Type: ${packType.type} (${packType.loader || 'None'})`);
+
+            // Normalize content (Handle overrides folder for simple client packs)
+            let rootContentDir = tempExtractDir;
+            const subDirs = await fs.readdir(tempExtractDir);
+            if (subDirs.includes('overrides') && (await fs.stat(path.join(tempExtractDir, 'overrides'))).isDirectory()) {
+                // CurseForge Standard: effective content is in 'overrides'
+                rootContentDir = path.join(tempExtractDir, 'overrides');
+            } else if (subDirs.length === 1 && (await fs.stat(path.join(tempExtractDir, subDirs[0]))).isDirectory()) {
+                 // Nested single folder (common user error)
+                 rootContentDir = path.join(tempExtractDir, subDirs[0]);
+            }
+
+            // Move files to server root
+            this.emit('status', 'Installing Modpack Files...');
+            await fs.copy(rootContentDir, serverDir, { overwrite: true });
+
+            // Cleanup temp
+            await fs.remove(tempExtractDir);
+            await fs.remove(zipPath);
+
+            // SMART INSTALLER LOGIC
+            if (packType.type === 'CLIENT_PACK') {
+                this.emit('status', `Detected Client-Only Modpack (${packType.loader}). Checking Version...`);
+                
+                if (mcVersion) {
+                    this.emit('status', `Auto-Installing ${packType.loader} for ${mcVersion}...`);
+                    
+                    if (packType.loader === 'Fabric') {
+                        await this.installFabric(serverDir, mcVersion);
+                    } else if (packType.loader === 'NeoForge') {
+                        await this.installNeoForge(serverDir, mcVersion);
+                    } else if (packType.loader === 'Forge') {
+                        await this.installForge(serverDir, mcVersion);
+                    }
+                    
+                    this.emit('status', `${packType.loader} Installed. Client Pack Ready.`);
+
+                } else {
+                    this.emit('status', `WARNING: Client Pack detected (${packType.loader}) but no Minecraft version provided.`);
+                    this.emit('status', `Please manually install ${packType.loader} if the server fails to start.`);
+                }
+            } 
+            
+            await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
+            this.emit('status', 'Modpack Installed.');
             
         } catch (e) {
              console.error('Modpack install failed', e);
+             await fs.remove(path.join(serverDir, 'temp_extract')).catch(() => {});
              throw e;
         }
+    }
+
+    private async scanModpackType(dir: string): Promise<{ type: 'SERVER_PACK' | 'CLIENT_PACK' | 'UNKNOWN', loader?: string }> {
+        // recursive search ? No, usually top level or one deep.
+        // Let's checking for server starters
+        const files = await fs.readdir(dir);
+        
+        // 1. Check for Server Starters (Strong indicator of Server Pack)
+        if (files.some(f => f === 'run.bat' || f === 'run.sh' || f === 'start.bat' || (f.endsWith('.jar') && f.includes('server')))) {
+            return { type: 'SERVER_PACK' };
+        }
+        
+        // 2. Check for Libraries (Strong indicator of Server Pack / Installer ran)
+        if (files.includes('libraries') && (await fs.stat(path.join(dir, 'libraries'))).isDirectory()) {
+             return { type: 'SERVER_PACK' };
+        }
+        
+        // 3. Check for Mods folder (Client Pack indicator)
+        // Note: CurseForge packs have 'overrides/mods' or just 'mods'
+        let modsDir = path.join(dir, 'mods');
+        if (!await fs.pathExists(modsDir)) {
+            if (await fs.pathExists(path.join(dir, 'overrides', 'mods'))) {
+                modsDir = path.join(dir, 'overrides', 'mods');
+            } else {
+                 return { type: 'UNKNOWN' };
+            }
+        }
+        
+        // It has mods but no server files -> CLIENT PACK.
+        // Identify Loader
+        const modFiles = await fs.readdir(modsDir);
+        for (const file of modFiles) {
+             if (file.endsWith('.jar')) {
+                 // Open jar and check for fabric.mod.json or META-INF/mods.toml
+                 try {
+                     const jarPath = path.join(modsDir, file);
+                     const zip = new AdmZip(jarPath);
+                     
+                     if (zip.getEntry('fabric.mod.json')) {
+                         return { type: 'CLIENT_PACK', loader: 'Fabric' };
+                     }
+                     if (zip.getEntry('META-INF/mods.toml') || zip.getEntry('mcmod.info')) {
+                         return { type: 'CLIENT_PACK', loader: 'Forge' };
+                     }
+                     if (zip.getEntry('META-INF/neoforge.mods.toml')) { // NeoForge specific
+                          return { type: 'CLIENT_PACK', loader: 'NeoForge' };
+                     }
+                 } catch (e) {
+                     // ignore corrupted jars
+                 }
+             }
+        }
+
+        return { type: 'CLIENT_PACK', loader: 'Forge' }; // Default to Forge if ambiguous (safest bet for legacy)
     }
 
     // Install Vanilla (Mojang)
@@ -201,9 +291,15 @@ export class InstallerService extends EventEmitter {
         }
     }
     // Install Forge
-    async installForge(serverDir: string, version: string, localModpack?: string) {
+    async installForge(serverDir: string, version: string, localModpack?: string, build?: string) {
         try {
             const { javaManager } = await import('./JavaManager');
+            const { validateBuildId } = await import('../../utils/validation');
+
+            if (build && !validateBuildId(build)) {
+                throw new Error('Invalid Build ID format.');
+            }
+
             // Determine Java version for installer (Modern Forge needs modern java)
             const mcMajor = parseInt(version.split('.')[1]);
             let requiredJava = 'Java 17';
@@ -225,10 +321,14 @@ export class InstallerService extends EventEmitter {
             }
 
             this.emit('status', `Fetching Forge version for ${version}...`);
-            const promoRes = await axios.get('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json');
-            const promos = promoRes.data.promos;
             
-            const forgeVersion = promos[`${version}-recommended`] || promos[`${version}-latest`];
+            let forgeVersion = build;
+            if (!forgeVersion || forgeVersion === 'latest' || forgeVersion === 'recommended') {
+                const promoRes = await axios.get('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json');
+                const promos = promoRes.data.promos;
+                forgeVersion = promos[`${version}-recommended`] || promos[`${version}-latest`];
+            }
+
             if (!forgeVersion) {
                 throw new Error(`No Forge version found for Minecraft ${version}`);
             }
@@ -295,9 +395,15 @@ export class InstallerService extends EventEmitter {
     }
 
     // Install NeoForge
-    async installNeoForge(serverDir: string, version: string) {
+    async installNeoForge(serverDir: string, version: string, build?: string) {
         try {
             const { javaManager } = await import('./JavaManager');
+            const { validateBuildId } = await import('../../utils/validation');
+
+            if (build && !validateBuildId(build)) {
+                throw new Error('Invalid Build ID format.');
+            }
+
             // NeoForge is almost exclusively Java 21+ for 1.20.6+, or 17 for 1.20.1
             const mcMajor = parseInt(version.split('.')[1]);
             const mcMinor = parseInt(version.split('.')[2] || '0');
@@ -310,24 +416,28 @@ export class InstallerService extends EventEmitter {
 
             this.emit('status', `Fetching NeoForge version for ${version}...`);
             
-            // Use NeoForge metadata API
-            const metaUrl = `https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge`;
-            const metaRes = await axios.get(metaUrl);
-            const allVersions = metaRes.data.versions;
-            
-            // Filter versions that match the MC version prefix (e.g. 21.1.X for 1.21.1)
-            // NeoForge versioning: [MC_MINOR].[PATCH] - but recently changed.
-            // Actually, checking their maven, it seems to be [MC_VER].[BUILD] often.
-            // Let's rely on exact match or latest. 
-            // For robustness, let's just grab the latest that contains the MC version.
-            
-            // Allow override? No, simple logic: Find latest version that *starts* with or *contains* MC version if possible.
-            // Actually, simpler: Search XML metadata or assume latest compatible.
-            // BETTER: Use `https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml`
-            
-            // Quick approach: Just try downloading the installer for known pattern or scrape?
-            // Let's iterate versions reversed.
-            const matchingVersion = allVersions.reverse().find((v: string) => v.includes(version));
+            let matchingVersion = build;
+
+            if (!matchingVersion || matchingVersion === 'latest') {
+                 // Use NeoForge metadata API
+                const metaUrl = `https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge`;
+                const metaRes = await axios.get(metaUrl);
+                const allVersions = metaRes.data.versions;
+                
+                // Filter versions that match the MC version prefix (e.g. 21.1.X for 1.21.1)
+                // NeoForge versioning: [MC_MINOR].[PATCH] - but recently changed.
+                // Actually, checking their maven, it seems to be [MC_VER].[BUILD] often.
+                // Let's rely on exact match or latest. 
+                // For robustness, let's just grab the latest that contains the MC version.
+                
+                // Allow override? No, simple logic: Find latest version that *starts* with or *contains* MC version if possible.
+                // Actually, simpler: Search XML metadata or assume latest compatible.
+                // BETTER: Use `https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml`
+                
+                // Quick approach: Just try downloading the installer for known pattern or scrape?
+                // Let's iterate versions reversed.
+                matchingVersion = allVersions.reverse().find((v: string) => v.includes(version));
+            }
             
             if (!matchingVersion) {
                 throw new Error(`No NeoForge version found for ${version}`);

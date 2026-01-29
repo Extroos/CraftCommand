@@ -4,6 +4,8 @@ export type ServerCategory = 'GAME';
 
 export interface FormData {
     name: string;
+    folderName?: string; // Optional custom folder
+    loaderBuild?: string; // Specific build
     software: string;
     version: string;
     javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21';

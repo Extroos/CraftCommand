@@ -57,6 +57,12 @@ class ApiService {
             },
             body: JSON.stringify(config)
         });
+        
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to create server');
+        }
+
         return res.json();
     }
 
@@ -131,7 +137,7 @@ class ApiService {
     }
 
     async installServer(id: string, type: 'paper'|'modpack'|'vanilla'|'fabric'|'forge'|'spigot'|'neoforge'|'purpur', data: any): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/install`, {
+        const res = await fetch(`${API_URL}/servers/${id}/install`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -139,6 +145,11 @@ class ApiService {
             },
             body: JSON.stringify({ type, ...data })
         });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to install server software');
+        }
     }
     
     async deleteServer(id: string): Promise<void> {

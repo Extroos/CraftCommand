@@ -18,6 +18,7 @@ export interface SystemSettings {
         theme: 'dark' | 'light' | 'system';
         autoUpdate: boolean;
         hostMode: boolean; // New Flag
+        storageProvider?: 'json' | 'sqlite';
     };
 }
 

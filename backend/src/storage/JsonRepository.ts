@@ -1,12 +1,17 @@
 import fs from 'fs-extra';
 import path from 'path';
+import { StorageProvider } from './StorageProvider';
 
-export abstract class JsonRepository<T extends { id: string }> {
+export abstract class JsonRepository<T extends { id: string }> implements StorageProvider<T> {
     protected filePath: string;
     protected data: T[] = [];
 
     constructor(fileName: string) {
         this.filePath = path.join(process.cwd(), 'data', fileName);
+        this.load();
+    }
+
+    init() {
         this.load();
     }
 
@@ -47,6 +52,15 @@ export abstract class JsonRepository<T extends { id: string }> {
         return this.data.find(item => item.id === id);
     }
 
+    public findOne(criteria: Partial<T>): T | undefined {
+        return this.data.find(item => {
+            for (const key in criteria) {
+                if (item[key] !== criteria[key]) return false;
+            }
+            return true;
+        });
+    }
+
     public create(item: T): T {
         this.data.push(item);
         this.save();
@@ -70,5 +84,11 @@ export abstract class JsonRepository<T extends { id: string }> {
             return true;
         }
         return false;
+    }
+}
+
+export class GenericJsonProvider<T extends { id: string }> extends JsonRepository<T> {
+    constructor(fileName: string) {
+        super(fileName);
     }
 }

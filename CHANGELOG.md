@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.3] - 2026-01-29
+
+### Fixed
+
+- **UI Issue**: Fixed Start button being disabled after creating a new server until page refresh.
+- **Java Download**: Improved `isJavaDownloading` logic to only check active download phases.
+
+### Changed
+
+- **Java Installation**: Optimized Java download process for better performance.
+
 ## [1.4.0] - 2026-01-29
 
 ### Stability Update

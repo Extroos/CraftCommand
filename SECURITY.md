@@ -2,20 +2,34 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+The following versions of CraftCommand are currently supported with security updates:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.3.x   | :white_check_mark: |
-| 1.0.x   | :x:                |
+| 1.4.x   | :white_check_mark: |
+| 1.3.x   | :x:                |
+| < 1.3   | :x:                |
 
 ## Reporting a Vulnerability
 
-We take the security of our project seriously. If you find any vulnerability, please report it directly to the maintainers.
+Security is taken seriously in CraftCommand. If you discover a security vulnerability, please follow these steps:
 
-1.  **Do not create a public issue** for security vulnerabilities.
-2.  verify contact on GitHub profile with details.
-3.  We will respond within 48 hours.
+1. **Do not create a public issue** for security vulnerabilities.
+2. Contact me directly through GitHub with:
+   - A detailed description of the vulnerability
+   - Steps to reproduce the issue
+   - Potential impact assessment
+   - Suggested fixes (if any)
+3. I'll do my best to respond as quickly as possible and work on a fix.
+4. Once patched, you'll be publicly credited for the discovery (unless you prefer to remain anonymous).
 
-Thank you for helping keep the community safe.
+## Security Best Practices
+
+When using CraftCommand:
+
+- Keep your installation up to date with the latest version
+- Use strong authentication for any exposed endpoints
+- Review server configurations regularly
+- Monitor logs for suspicious activity
+
+Thank you for helping keep CraftCommand safe and secure!

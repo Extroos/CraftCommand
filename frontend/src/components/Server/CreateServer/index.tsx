@@ -19,6 +19,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
     const [step, setStep] = useState<WizardStep>('software'); // Start with Software Selection
     const [category, setCategory] = useState<ServerCategory | null>('GAME');
     const [isDeploying, setIsDeploying] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
     
     const [formData, setFormData] = useState<FormData>({
         name: '',
@@ -124,6 +125,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
             // 1. Create Server Container
             const server = await API.createServer({
                 name: formData.name,
+                folderName: formData.folderName, // Custom Folder Name (P0)
                 software: (formData.software as any),
                 version: formData.version,
                 port: formData.port,
@@ -156,7 +158,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
             }
             else {
                 // Fallback / Pro Mode Manual Install
-                const installOpts = { version: formData.version };
+                const installOpts = { version: formData.version, build: formData.loaderBuild };
                 
                 switch (formData.software) {
                     case 'Paper': 
@@ -176,8 +178,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         await API.installServer(server.id, 'forge', { ...installOpts, localModpack });
                         break;
                     case 'Modpack':
-                        await API.installServer(server.id, 'modpack', { url: formData.modpackUrl });
-                        await API.installServer(server.id, 'modpack', { url: formData.modpackUrl });
+                        await API.installServer(server.id, 'modpack', { url: formData.modpackUrl, version: formData.version });
                         break;
                 }
             }
@@ -370,6 +371,64 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 </p>
                             )}
                         </div>
+
+                        {/* Advanced Options (Folder Name & specific builds) */}
+                        <div className="pt-2">
+                             <button 
+                                onClick={() => setShowAdvanced(!showAdvanced)}
+                                className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground hover:text-white transition-colors uppercase tracking-widest"
+                             >
+                                <Settings2 size={12} />
+                                {showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options'}
+                             </button>
+                        </div>
+                        
+                        <AnimatePresence>
+                            {showAdvanced && (
+                                <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    className="overflow-hidden space-y-4 pt-2"
+                                >
+                                    {/* Folder Name */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Server Folder Name (Optional)</label>
+                                        <div className="relative">
+                                            <input 
+                                                value={formData.folderName || ''}
+                                                onChange={e => {
+                                                    const val = e.target.value.replace(/[^a-zA-Z0-9_\-]/g, '');
+                                                    setFormData({...formData, folderName: val});
+                                                }}
+                                                className="w-full bg-input border border-[rgb(var(--color-border-subtle))] rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-sm text-white font-medium font-mono"
+                                                placeholder="Auto-generated (local-timestamp)"
+                                            />
+                                            <div className="text-[9px] text-muted-foreground mt-1 font-mono break-all opacity-60">
+                                                Path: .../backend/minecraft_servers/{formData.folderName || `local-TIMESTAMP`}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Loader Build (Forge/NeoForge Only) */}
+                                    {(formData.software === 'Forge' || formData.software === 'NeoForge') && (
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Loader Build ID</label>
+                                            <input 
+                                                value={formData.loaderBuild || ''}
+                                                onChange={e => setFormData({...formData, loaderBuild: e.target.value})}
+                                                className="w-full bg-input border border-[rgb(var(--color-border-subtle))] rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-sm text-white font-medium"
+                                                placeholder="Latest (Default)"
+                                            />
+                                            <p className="text-[9px] text-amber-500/80 leading-tight flex items-center gap-1">
+                                                <AlertTriangle size={10} /> Advanced: Only set this if you need a specific build.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
 
                     <div className="space-y-4">

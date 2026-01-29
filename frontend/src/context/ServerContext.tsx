@@ -25,6 +25,9 @@ interface ServerContextType {
     players: Record<string, Player[]>;
     logs: Record<string, string[]>; // Latest 10 logs for each server
     
+    // Java Download Status
+    javaDownloadStatus: { message: string, phase: string, percent?: number } | null;
+    
     loading: boolean;
     isLoading: boolean;
     setCurrentServer: (server: ServerConfig | null) => void;
@@ -61,6 +64,9 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [schedules, setSchedules] = useState<Record<string, ScheduleTask[]>>({});
     const [players, setPlayers] = useState<Record<string, Player[]>>({});
     const [logs, setLogs] = useState<Record<string, string[]>>({});
+    
+    // Java Download Status
+    const [javaDownloadStatus, setJavaDownloadStatus] = useState<{ message: string, phase: string, percent?: number } | null>(null);
 
     const refreshServers = useCallback(async () => {
         try {
@@ -226,15 +232,38 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 return { ...prev, [data.id]: updated };
             });
         };
+        
+        // Java Download Status Handlers
+        const handleInstallStatus = (data: { message: string, phase: string }) => {
+            setJavaDownloadStatus({ message: data.message, phase: data.phase });
+            if (data.phase === 'complete') {
+                setTimeout(() => setJavaDownloadStatus(null), 3000);
+            }
+        };
+
+        const handleInstallProgress = (data: { phase: string, percent: number, message: string }) => {
+            setJavaDownloadStatus({ message: data.message, phase: data.phase, percent: data.percent });
+        };
+
+        const handleInstallError = (data: { message: string, phase: string }) => {
+            setJavaDownloadStatus({ message: data.message, phase: data.phase });
+            setTimeout(() => setJavaDownloadStatus(null), 5000);
+        };
 
         const unsubStatus = socketService.onStatus(handleStatus);
         const unsubStats = socketService.onStats(handleStats);
         const unsubLog = socketService.onLog(handleLog);
+        const unsubInstallStatus = socketService.onInstallStatus(handleInstallStatus);
+        const unsubInstallProgress = socketService.onInstallProgress(handleInstallProgress);
+        const unsubInstallError = socketService.onInstallError(handleInstallError);
 
         return () => {
              unsubStatus();
              unsubStats();
              unsubLog();
+             unsubInstallStatus();
+             unsubInstallProgress();
+             unsubInstallError();
         };
     }, []);
 
@@ -247,6 +276,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             schedules,
             players,
             logs,
+            javaDownloadStatus,
             isLoading: loading,
             loading, 
             setCurrentServer, 

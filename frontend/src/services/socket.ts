@@ -68,6 +68,21 @@ class SocketService {
         this.socket.on('backup:status', callback);
         return () => this.socket.off('backup:status', callback);
     }
+
+    onInstallStatus(callback: (data: { message: string, phase: string }) => void) {
+        this.socket.on('install:status', callback);
+        return () => this.socket.off('install:status', callback);
+    }
+
+    onInstallProgress(callback: (data: { phase: string, percent: number, message: string }) => void) {
+        this.socket.on('install:progress', callback);
+        return () => this.socket.off('install:progress', callback);
+    }
+
+    onInstallError(callback: (data: { message: string, phase: string }) => void) {
+        this.socket.on('install:error', callback);
+        return () => this.socket.off('install:error', callback);
+    }
 }
 
 

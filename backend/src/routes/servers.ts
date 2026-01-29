@@ -265,16 +265,42 @@ router.get('/:id/diagnosis', async (req, res) => {
 });
 
 // Create Server
+// Import at top (assumed added in previous step or handled by imports logic, but I'll add the logic inline or rely on auto-import)
+import { validateFolderName } from '../utils/validation';
+
+// ... (in the route)
+
 router.post('/', requireRole(['OWNER', 'ADMIN']), async (req, res) => {
     const config = req.body;
     const id = `local-${Date.now()}`;
-    const serverDir = path.join(DATA_PATHS.SERVERS_ROOT, id);
     
-    await fs.ensureDir(serverDir);
+    // Custom Folder Name Logic
+    let dirName = id;
+    if (config.folderName) {
+        if (!validateFolderName(config.folderName)) {
+            return res.status(400).json({ error: 'Folder name must be alphanumeric and cannot be a reserved system name (e.g. "backend", "logs").' });
+        }
+        dirName = config.folderName;
+    }
+
+    const serverDir = path.join(DATA_PATHS.SERVERS_ROOT, dirName);
+    
+    try {
+        // Atomic creation: Fails if exists. 
+        // Note: DATA_PATHS.SERVERS_ROOT must exist. logic below ensures the ROOT exists first.
+        await fs.ensureDir(DATA_PATHS.SERVERS_ROOT); 
+        await fs.promises.mkdir(serverDir); // Default recursive: false matches requirements (fail if exists)
+    } catch (e: any) {
+        if (e.code === 'EEXIST') {
+             return res.status(409).json({ error: `Server folder '${dirName}' already exists.` });
+        }
+        throw e;
+    }
     
     const newServer = {
         ...config,
         id,
+        folderName: dirName !== id ? dirName : undefined,
         workingDirectory: serverDir,
         status: 'OFFLINE'
     };
@@ -710,13 +736,13 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
         } else if (type === 'fabric') {
             await installerService.installFabric(server.workingDirectory, version || '1.21.11');
         } else if (type === 'modpack' && url) {
-            await installerService.installModpackFromZip(server.workingDirectory, url);
+            await installerService.installModpackFromZip(server.workingDirectory, url, version);
         } else if (type === 'forge') {
-            const executable = await installerService.installForge(server.workingDirectory, version || '1.21.11', (req.body as any).localModpack);
+            const executable = await installerService.installForge(server.workingDirectory, version || '1.21.11', (req.body as any).localModpack, build);
             server.executable = executable;
             saveServer(server);
         } else if (type === 'neoforge') {
-            const executable = await installerService.installNeoForge(server.workingDirectory, version || '1.21.1');
+            const executable = await installerService.installNeoForge(server.workingDirectory, version || '1.21.1', build);
             server.executable = executable;
             server.javaVersion = 'Java 21'; // NeoForge usually enforces this
             saveServer(server);

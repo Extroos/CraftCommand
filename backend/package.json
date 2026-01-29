@@ -1,6 +1,6 @@
 {
   "name": "craftcommand-backend",
-  "version": "1.4.0",
+  "version": "1.4.3",
   "author": "Extroos",
   "description": "Backend service for CraftCommand",
   "main": "src/server.ts",
@@ -12,11 +12,13 @@
   "dependencies": {
     "@types/adm-zip": "^0.5.7",
     "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jsonwebtoken": "^9.0.10",
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
     "axios": "^1.6.7",
     "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.6.2",
     "chalk": "^5.6.2",
     "chokidar": "^3.6.0",
     "cors": "^2.8.5",

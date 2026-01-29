@@ -15,9 +15,15 @@ interface ConsoleProps {
 import { useServers } from '../../context/ServerContext';
 
 const Console: React.FC<ConsoleProps> = ({ serverId }) => {
-    const { servers } = useServers();
+    const { servers, javaDownloadStatus } = useServers();
     const server = servers.find(s => s.id === serverId);
     const status = server?.status || ServerStatus.OFFLINE;
+    
+    // Check if Java is currently downloading - only active phases
+    const isJavaDownloading = javaDownloadStatus && 
+        (javaDownloadStatus.phase === 'downloading' || 
+         javaDownloadStatus.phase === 'extracting' || 
+         javaDownloadStatus.phase === 'installing');
 
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [command, setCommand] = useState('');
@@ -150,13 +156,13 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     <div className="flex items-center p-1 bg-background/50 border border-border rounded-lg shadow-sm">
                         <button 
                             onClick={() => handlePower('start')}
-                            disabled={status !== ServerStatus.OFFLINE}
+                            disabled={status !== ServerStatus.OFFLINE || isJavaDownloading}
+                            title={isJavaDownloading ? "Java is being downloaded. Please wait..." : "Start Server"}
                             className={`p-2 rounded-md transition-all duration-200 flex items-center gap-2 text-xs font-medium ${
-                                status === ServerStatus.OFFLINE 
+                                status === ServerStatus.OFFLINE && !isJavaDownloading
                                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-inner' 
                                 : 'text-muted-foreground opacity-50 cursor-not-allowed hover:bg-secondary'
                             }`}
-                            title="Start Server"
                         >
                             <Power size={14} /> <span className="hidden sm:inline">Start</span>
                         </button>

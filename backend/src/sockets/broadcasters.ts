@@ -33,7 +33,15 @@ export const registerBroadcasters = (io: Server) => {
 
     // 5. Java Manager (Status updates during auto-download)
     javaManager.removeAllListeners('status');
+    javaManager.removeAllListeners('progress');
+    javaManager.removeAllListeners('error');
     javaManager.on('status', (data: any) => {
         io.emit('install:status', data); 
+    });
+    javaManager.on('progress', (data: any) => {
+        io.emit('install:progress', data);
+    });
+    javaManager.on('error', (data: any) => {
+        io.emit('install:error', data);
     });
 };
