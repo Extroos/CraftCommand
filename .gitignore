@@ -53,6 +53,24 @@ crash-reports/
 .DS_Store
 Thumbs.db
 
+# Backup files
+*.bak
+*.old
+*.tmp
+
+# Temp directories
+backend/temp_uploads/
+backend/temp_modpack_test/
+
+# Debug files
+backend/debug*.log
+backend/debug*.ts
+backend/tsc_errors*.log
+frontend/build_error.log
+
+# Deprecated
+deprecated/
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
