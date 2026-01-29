@@ -1,0 +1,27 @@
+# Caddyfile Example for CraftCommand
+# Rename to 'Caddyfile' and place in your Caddy directory
+
+# Replace with your domain or IP
+my-craftcommand.com {
+    # Reverse Proxy for Dashboard
+    handle / {
+        reverse_proxy localhost:3000
+    }
+    
+    # Reverse Proxy for API & Socket.IO
+    # Note: Socket.IO requires WebSocket support (enabled by default in Caddy)
+    handle /api/* {
+        reverse_proxy localhost:3000
+    }
+    
+    handle /socket.io/* {
+        reverse_proxy localhost:3000
+    }
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000;"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+    }
+}

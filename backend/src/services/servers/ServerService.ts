@@ -186,6 +186,17 @@ export const startServer = async (id: string, force: boolean = false) => {
         if (!force) {
             await safetyService.validateServer(server);
         }
+
+        // S2: Stabilization - Enforce Config Sync before start
+        // This prevents the "Dashboard says 25565, server.properties says 25577" bug
+        logger.info(`[ServerService] Verifying config sync for ${id}...`);
+        import('./ServerConfigService').then(async ({ serverConfigService }) => {
+            const report = await serverConfigService.verifyConfig(server);
+            if (!report.synchronized) {
+                logger.warn(`[ServerService] Config mismatch detected. enforcing DB source of truth.`);
+                await serverConfigService.enforceConfig(server);
+            }
+        });
         
         // 1. Check if port is in use (by an external process)
         const isPortInUse = await new Promise((resolve) => {

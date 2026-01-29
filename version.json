@@ -1,10 +1,11 @@
 {
-  "version": "1.4.3",
-  "title": "Explain-My-Server & Security Update",
+  "version": "1.5.0-unstable",
+  "title": "Compact UI & Security Hardening (Unstable)",
   "notes": [
-    "Added 'Explain-My-Server' Diagnosis Engine",
-    "Security Hardening: Removed default credentials",
-    "EULA Auto-Fix",
-    "Global Server Health Alerts"
+    "Redesigned Global Settings for better density",
+    "Fixed Host Mode authentication bypass bug",
+    "Added missing System Audit API endpoint",
+    "Implemented Remote Access Disable features",
+    "Responsive 3-column dashboard layout"
   ]
 }

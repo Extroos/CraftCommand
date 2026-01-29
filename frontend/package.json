@@ -1,7 +1,7 @@
 {
   "name": "craftcommand-server-manager",
   "private": true,
-  "version": "1.4.3",
+  "version": "1.5.0-unstable",
   "author": "Extroos",
   "type": "module",
   "scripts": {

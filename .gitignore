@@ -36,7 +36,10 @@ backups/
 backend/data/
 data/
 backend/minecraft_servers/
-backend/runtimes/
+**/**/runtimes/
+proxy/cloudflared.exe
+proxy/playit.exe
+proxy/bin/
 
 # Backend Sensitive Data
 backend/auth.json

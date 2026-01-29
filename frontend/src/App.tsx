@@ -31,20 +31,28 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ServerProvider, useServers } from './context/ServerContext';
 
 const AppContent: React.FC = () => {
-    const { user } = useUser();
+    const { user, isAuthenticated, isLoading: authLoading } = useUser();
     const { servers, currentServer, setCurrentServerById, isLoading: serversLoading } = useServers();
     
-    // Initialize State from LocalStorage
-    const [appState, setAppState] = useState<AppState>(() => 
-        (localStorage.getItem('cc_appState') as AppState) || 'LOGIN'
-    );
+    // Initialize State - ALWAYS start at LOGIN for fresh console starts
+    const [appState, setAppState] = useState<AppState>('LOGIN');
     const [activeTab, setActiveTab] = useState<TabView>('DASHBOARD');
     const [isRestoring, setIsRestoring] = useState(true);
 
-    // Persist AppState
+    // Persist AppState to localStorage (but don't load from it on mount)
     React.useEffect(() => {
-        localStorage.setItem('cc_appState', appState);
+        if (appState !== 'LOGIN') {
+            localStorage.setItem('cc_appState', appState);
+        }
     }, [appState]);
+
+    // Auto-navigate authenticated users away from login screen
+    React.useEffect(() => {
+        if (!authLoading && isAuthenticated && appState === 'LOGIN') {
+            console.log('[App] User is authenticated, navigating to server selection');
+            setAppState('SERVER_SELECTION');
+        }
+    }, [authLoading, isAuthenticated, appState]);
 
     // Smart Auto-Recovery: If we are managing a server but context is lost (null),
     // try to find it in the servers list and restore it.
@@ -84,10 +92,11 @@ const AppContent: React.FC = () => {
 
     const handleLogout = () => {
         localStorage.removeItem('cc_serverId');
+        localStorage.removeItem('cc_appState');
         setAppState('LOGIN');
     };
 
-    if (isRestoring || serversLoading) {
+    if (isRestoring || serversLoading || authLoading) {
          return <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500 font-mono">INITIALIZING CONTROL PANEL...</div>;
     }
 
@@ -272,7 +281,10 @@ const AppContent: React.FC = () => {
 
                 <footer className="py-6 border-t border-border/40 mt-auto">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center text-[10px] font-mono tracking-wider text-muted-foreground/40 uppercase">
-                        <div>CraftCommand Management Protocol v1.4.3</div>
+                        <div className="flex items-center gap-2">
+                            CraftCommand Management Protocol v1.5.0
+                            <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-500 text-[10px] font-bold uppercase tracking-wider border border-orange-500/30">Unstable</span>
+                        </div>
                         <div>Licensed under MIT &copy; 2026 Extroos</div>
                     </div>
                 </footer>

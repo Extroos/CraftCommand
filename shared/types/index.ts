@@ -7,12 +7,16 @@ export type Permission =
     | 'server.view'
     | 'server.start'
     | 'server.stop'
-    | 'server.console'
-    | 'server.command'
+    | 'server.restart'
+    | 'server.console.read'
+    | 'server.console.write'
     | 'server.files.read'
     | 'server.files.write'
     | 'server.settings'
-    | 'users.manage';
+    | 'server.players.manage'
+    | 'server.backups.manage'
+    | 'users.manage'
+    | 'system.remote_access.manage';
 
 export interface ResourceConfig {
     cpuPriority: 'normal' | 'high' | 'realtime';
@@ -39,7 +43,9 @@ export interface UserProfile {
     username: string;
     passwordHash?: string; // Hashed with bcrypt
     role: UserRole;
-    permissions?: Partial<Record<string, Permission[]>>; // serverId -> permissions[]
+    schemaVersion?: number; // Added for Phase 5 Migration Check
+    permissions?: Partial<Record<string, Permission[]>>; // Deprecated: Migration target
+    serverAcl?: Record<string, { allow: Permission[], deny: Permission[] }>; // Phase 5 ACL
     avatarUrl?: string;
     preferences: {
         accentColor: string;
@@ -151,6 +157,17 @@ export interface GlobalSettings {
         autoUpdate: boolean;
         theme: 'dark' | 'light' | 'system';
         storageProvider?: 'json' | 'sqlite';
+        https?: {
+            enabled: boolean;
+            keyPath: string;
+            certPath: string;
+            passphrase?: string;
+        };
+        remoteAccess?: {
+            enabled: boolean;
+            method?: 'vpn' | 'proxy' | 'direct' | 'cloudflare';
+            externalIP?: string;
+        };
     };
     discordBot?: DiscordBotConfig;
 }
@@ -263,7 +280,8 @@ export type AuditAction =
     | 'LOGIN_SUCCESS' | 'LOGIN_FAIL' 
     | 'USER_CREATE' | 'USER_UPDATE' | 'USER_DELETE'
     | 'SERVER_CREATE' | 'SERVER_DELETE' | 'SERVER_START' | 'SERVER_STOP' | 'SERVER_RESTART' | 'SERVER_UPDATE'
-    | 'TEMPLATE_INSTALL' | 'FILE_EDIT' | 'EULA_ACCEPT';
+    | 'TEMPLATE_INSTALL' | 'FILE_EDIT' | 'EULA_ACCEPT' | 'PERMISSION_DENIED'
+    | 'SYSTEM_SETTINGS_UPDATE' | 'SYSTEM_CACHE_CLEAR' | 'DISCORD_RECONNECT' | 'DISCORD_SYNC';
 
 export interface AuditLog {
     id: string;

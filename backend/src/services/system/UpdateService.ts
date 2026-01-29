@@ -86,15 +86,26 @@ class UpdateService {
     }
 
     private compareVersions(v1: string, v2: string): number {
-        const parts1 = v1.split('.').map(Number);
-        const parts2 = v2.split('.').map(Number);
+        // Strip leading 'v' if present
+        const clean1 = v1.replace(/^v/, '');
+        const clean2 = v2.replace(/^v/, '');
+        
+        // Split by dots and compare numeric parts
+        const parts1 = clean1.split('.');
+        const parts2 = clean2.split('.');
         
         for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-            const p1 = parts1[i] || 0;
-            const p2 = parts2[i] || 0;
+            // Extract numeric part of segment (e.g. "0-unstable" -> 0)
+            const p1 = parseInt(parts1[i] || '0', 10);
+            const p2 = parseInt(parts2[i] || '0', 10);
+            
             if (p1 > p2) return 1;
             if (p1 < p2) return -1;
         }
+        
+        // If numeric parts are equal, consider them equal for our purposes.
+        // We aren't implementing a full semver parser (which would say 1.5.0-unstable < 1.5.0).
+        // For update notifications, we mostly care if the numeric version is HIGHER.
         return 0;
     }
 }

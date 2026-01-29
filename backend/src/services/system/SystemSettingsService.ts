@@ -19,6 +19,16 @@ export interface SystemSettings {
         autoUpdate: boolean;
         hostMode: boolean; // New Flag
         storageProvider?: 'json' | 'sqlite';
+        remoteAccess?: {
+            enabled: boolean;
+            method?: 'vpn' | 'proxy' | 'direct';
+        };
+        https?: {
+            enabled: boolean;
+            keyPath: string;
+            certPath: string;
+            passphrase?: string;
+        };
     };
 }
 
@@ -45,7 +55,9 @@ class SystemSettingsService {
                     app: {
                         theme: 'dark',
                         autoUpdate: true,
-                        hostMode: true // Default to Host Mode for now
+                        hostMode: true, // Default to Host Mode for now
+                        remoteAccess: { enabled: false },
+                        https: { enabled: false, keyPath: '', certPath: '' }
                     }
                 };
                 fs.writeJSONSync(SETTINGS_FILE, defaultSettings, { spaces: 4 });

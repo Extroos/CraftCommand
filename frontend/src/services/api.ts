@@ -586,6 +586,39 @@ class ApiService {
         
         if (!response.ok) throw new Error('Failed to update global settings');
     }
+
+    // --- Remote Access ---
+
+    async getRemoteAccessStatus(): Promise<{ enabled: boolean, method?: string, bindAddress: string }> {
+        const res = await fetch(`${API_URL}/system/remote-access/status`, {
+            headers: this.getAuthHeader()
+        });
+        return res.json();
+    }
+
+    async enableRemoteAccess(method: 'vpn' | 'proxy' | 'direct'): Promise<void> {
+        const res = await fetch(`${API_URL}/system/remote-access/enable`, {
+            method: 'POST',
+            headers: {
+                ...this.getAuthHeader(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ method })
+        });
+        if (!res.ok) throw new Error('Failed to enable remote access');
+    }
+
+    async disableRemoteAccess(): Promise<void> {
+        const res = await fetch(`${API_URL}/system/remote-access/disable`, {
+            method: 'POST',
+            headers: this.getAuthHeader()
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to disable remote access');
+        }
+    }
 }
 
 export const API = new ApiService();

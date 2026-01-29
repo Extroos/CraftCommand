@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
 
         port: 3000,
         host: '0.0.0.0',
+        allowedHosts: true, // Allow external tunnels (Cloudflare/Playit)
         proxy: {
             '/api': {
                 target: 'http://127.0.0.1:3001',

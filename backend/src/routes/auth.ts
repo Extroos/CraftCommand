@@ -3,10 +3,18 @@ import { authService } from '../services/auth/AuthService';
 import { verifyToken, requirePermission, requireRole } from '../middleware/authMiddleware';
 import { auditService } from '../services/system/AuditService';
 
+import rateLimit from 'express-rate-limit';
+
 const router = express.Router();
 
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // Limit each IP to 5 requests per windowMs
+    message: { error: 'Too many login attempts, please try again later' }
+});
+
 // Login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
     const { email, password } = req.body;
     try {
         const result = await authService.login(email, password);

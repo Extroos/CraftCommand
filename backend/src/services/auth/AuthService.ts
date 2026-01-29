@@ -1,5 +1,6 @@
 
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { UserProfile, UserRole } from '../../../../shared/types';
 import { auditService } from '../system/AuditService';
 import bcrypt from 'bcryptjs';
@@ -13,6 +14,11 @@ export class AuthService {
         // If we really need migration checks, they should be a separate utility or run once.
         // For simplicity in this refactor, we'll assume standard users.json exists via Repository load.
         this.ensureAdminExists();
+        
+        // Trigger Migration (Phase 5)
+        import('./MigrationService').then(({ migrationService }) => {
+            migrationService.migrateUsers();
+        });
     }
 
     private ensureAdminExists() {
@@ -74,8 +80,10 @@ export class AuthService {
         auditService.log(user.id, 'LOGIN_SUCCESS', undefined, undefined, undefined, user.email);
 
         const { passwordHash, ...safeUser } = user;
-        // Logic for JWT generation would be here, for now returning dummy token
-        const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
+        
+        // Use JWT for secure session management
+        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+        const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, secret, { expiresIn: '7d' });
         
         return { user: safeUser as UserProfile, token };
     }

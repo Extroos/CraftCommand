@@ -217,7 +217,7 @@ router.get('/', (req, res) => {
 });
 
 // Get Server Logs
-router.get('/:id/logs', async (req, res) => {
+router.get('/:id/logs', verifyToken, requirePermission('server.console.read'), async (req, res) => {
     const { id } = req.params;
     let logs = processManager.getLogs(id);
 
@@ -246,7 +246,7 @@ router.get('/:id/logs', async (req, res) => {
 });
 
 // Get Crash Report
-router.get('/:id/crash-report', (req, res) => {
+router.get('/:id/crash-report', verifyToken, requirePermission('server.files.read'), (req, res) => {
     const { id } = req.params;
     const logs = processManager.getLogs(id);
     const analysis = analyticsService.analyzeCrash(logs);
@@ -254,7 +254,7 @@ router.get('/:id/crash-report', (req, res) => {
 });
 
 // Run Diagnosis
-router.get('/:id/diagnosis', async (req, res) => {
+router.get('/:id/diagnosis', verifyToken, requirePermission('server.view'), async (req, res) => {
     const { id } = req.params;
     try {
         const results = await diagnoseServer(id);

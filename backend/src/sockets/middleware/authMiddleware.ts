@@ -1,4 +1,5 @@
 import { Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -17,11 +18,16 @@ export const socketAuthMiddleware = async (socket: Socket, next: (err?: any) => 
     if (!token) return next(new Error('Authentication Error: No Token'));
 
     try {
-        // Decode Token: base64(userId:timestamp)
-        const decoded = Buffer.from(token, 'base64').toString('utf-8');
-        const [userId, _timestamp] = decoded.split(':');
+        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+        const decoded = jwt.verify(token, secret) as any;
         
-        if (!userId) return next(new Error('Authentication Error: Invalid Token'));
+        // Use the centralized repository via the same logic ideally, but direct file read is okay for now if we don't assume dependency injection here.
+        // Better: Use the repo function if we can refactor this file to use 'userRepository' import.
+        // Checking imports... 'authMiddleware.ts' (socket) uses 'fs-extra'.
+        // Let's stick to the existing pattern but update the verification.
+        const userId = decoded.id;
+        
+        if (!userId) return next(new Error('Authentication Error: Invalid Token Payload'));
 
         // Load full user from disk to ensure we have Role/Permissions
         const user = getUserById(userId);
@@ -33,6 +39,6 @@ export const socketAuthMiddleware = async (socket: Socket, next: (err?: any) => 
         
         next();
     } catch (e) {
-        next(new Error('Authentication Error: Malformed Token'));
+        next(new Error('Authentication Error: Invalid or Expired Token'));
     }
 };

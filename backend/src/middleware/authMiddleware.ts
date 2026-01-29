@@ -1,29 +1,44 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 import { authService } from '../services/auth/AuthService';
 import { permissionService } from '../services/auth/PermissionService';
+import { systemSettingsService } from '../services/system/SystemSettingsService';
 import { Permission } from '../../../shared/types';
 
 export const verifyToken = (req: Request, res: Response, next: NextFunction) => {
+    // Check if Host Mode is disabled (Personal Mode)
+    const settings = systemSettingsService.getSettings();
+    if (!settings.app.hostMode) {
+        // Personal Mode: Bypass authentication, create a mock admin user
+        (req as any).user = {
+            id: 'personal-mode',
+            email: 'personal@localhost',
+            role: 'OWNER',
+            username: 'Personal'
+        };
+        return next();
+    }
+
+    // Host Mode: Require authentication
     const authHeader = req.headers['authorization'];
     if (!authHeader) return res.status(401).json({ error: 'Access denied' });
 
     // Format: "Bearer token"
     const token = authHeader.split(' ')[1];
     
-    // In a real implementation this would verify a JWT signature.
-    // Our mock implementation uses "userId:timestamp" in base64.
+    // Verify JWT
     try {
-        const decoded = Buffer.from(token, 'base64').toString('utf8');
-        const [userId, _timestamp] = decoded.split(':');
+        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+        const decoded = jwt.verify(token, secret) as any;
         
-        const user = authService.getUser(userId);
-        if (!user) return res.status(401).json({ error: 'Invalid token' });
+        const user = authService.getUser(decoded.id);
+        if (!user) return res.status(401).json({ error: 'Invalid token: User not found' });
 
         // Attach user to request
         (req as any).user = user;
         next();
     } catch (e) {
-        res.status(401).json({ error: 'Invalid token format' });
+        res.status(401).json({ error: 'Invalid or expired token' });
     }
 };
 
@@ -34,7 +49,14 @@ export const requirePermission = (permission: Permission) => {
 
         if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
+        if (!permissionService.can(user, 'server.console.write', serverId) && permission === 'server.console.write') { // Example logic, but actually we want generic
+             // We need to inject AuditService safely or generic log
+        }
+        
         if (!permissionService.can(user, permission, serverId)) {
+             import('../services/system/AuditService').then(({ auditService }) => {
+                auditService.log(user.id, 'PERMISSION_DENIED', serverId || 'system', { permission, method: req.method, path: req.path }, req.ip, user.email);
+            });
             return res.status(403).json({ error: 'Forbidden' });
         }
 

@@ -26,8 +26,25 @@ export const handleCommand = (socket: Socket, data: any) => {
         return;
     }
 
-    if (!permissionService.can(user, 'server.command', serverId)) {
+    // Hardening (Phase 5): Strict Authorization Check
+    // Map 'command' event to 'server.console.write' permission
+    const requiredPerm: any = 'server.console.write';
+
+    if (!permissionService.can(user, requiredPerm, serverId)) {
         console.warn(`[Socket] Forbidden command attempt by ${user.username} for ${serverId}`);
+        
+        // Audit Log (Phase 2/5 Requirement)
+        import('../../services/system/AuditService').then(({ auditService }) => {
+            auditService.log(
+                user.id, 
+                'PERMISSION_DENIED', 
+                serverId, 
+                { command: data.command, permission: requiredPerm }, 
+                socket.handshake.address, 
+                user.email
+            );
+        });
+        
         socket.emit('error', 'Permission Denied: You cannot send commands to this server.');
         return;
     }

@@ -160,6 +160,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                 // Silent fail
             }
         };
+        check();
     }, [dismissedVersion]);
 
     // Java download status is now managed by ServerContext

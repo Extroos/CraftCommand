@@ -12,10 +12,14 @@ interface AccessControlProps {
 const PERMISSIONS: { id: Permission; label: string; description: string }[] = [
     { id: 'server.view', label: 'View Server', description: 'Can see the server in the list and view status.' },
     { id: 'server.start', label: 'Start Server', description: 'Can start the server.' },
-    { id: 'server.stop', label: 'Stop/Restart', description: 'Can stop and restart the server.' },
-    { id: 'server.console', label: 'Access Console', description: 'Can view console output and send commands.' },
+    { id: 'server.stop', label: 'Stop Server', description: 'Can stop the server.' },
+    { id: 'server.restart', label: 'Restart Server', description: 'Can restart the server.' },
+    { id: 'server.console.read', label: 'View Console', description: 'Can view console/logs.' },
+    { id: 'server.console.write', label: 'Send Commands', description: 'Can send commands to the console.' },
     { id: 'server.files.read', label: 'View Files', description: 'Can browse file manager.' },
     { id: 'server.files.write', label: 'Edit Files', description: 'Can upload, delete, and edit files.' },
+    { id: 'server.players.manage', label: 'Manage Players', description: 'Can kick/ban players.' },
+    { id: 'server.backups.manage', label: 'Manage Backups', description: 'Can create/restore/delete backups.' },
     { id: 'server.settings', label: 'Manage Settings', description: 'Can change server configuration.' },
 ];
 
