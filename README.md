@@ -2,18 +2,21 @@
 
 # CraftCommand
 
-**Professional Minecraft server management platform focused on local and team hosting.**
+**Professional Minecraft server management platform focused on local-first and team hosting.**
 
 ![version](https://img.shields.io/badge/version-v1.5.0--unstable-orange)
+![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![license](https://img.shields.io/badge/license-MIT-blue.svg)
 
-> [!WARNING]
-> **Version 1.5.0 is currently UNSTABLE.** Use with caution in production environments.
-> ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-> ![license](https://img.shields.io/badge/license-MIT-blue.svg)
+> ⚠️ **Version 1.5.0 is currently UNSTABLE**  
+> This release introduces major architectural changes (permissions, HTTPS, remote access foundations).
+> Do not use in production without backups.
 
-A robust, self-hosted control panel designed for security, performance, and scalability. Built with **React 19** and **Node.js**, featuring **Granular RBAC**, **Audit Logging**, and **Secure Connectivity Options**.
+A self-hosted Minecraft control panel designed to **prevent mistakes**, **explain problems**, and **scale safely from solo use to small teams**.
 
-[Features](#features) • [Quick Start](#quick-start) • [Security](#security) • [Documentation](#documentation)
+Built with **React 19** and **Node.js**, featuring **granular permissions**, **audit logging**, and **secure, guided connectivity options**.
+
+[Features](#features) • [Quick Start](#quick-start) • [Security Model](#security-model) • [Documentation](#documentation)
 
 </div>
 
@@ -21,125 +24,132 @@ A robust, self-hosted control panel designed for security, performance, and scal
 
 ## Features
 
-### Core Management
+### Core Server Management
+- **Real-time Console** — Low-latency WebSocket terminal with ANSI color and command history
+- **Smart Monitoring** — Live CPU / RAM / TPS tracking with crash detection
+- **File Manager** — IDE-like editor with syntax highlighting and safety checks
+- **Server Architect** — Guided setup for Paper, Purpur, Fabric, Forge, NeoForge, and Modpacks
+- **Automated Backups** — Scheduled snapshots with retention policies
 
-- **Real-time Console**: Low-latency WebSocket terminal with command history and ANSI color support.
-- **Smart Monitoring**: Live resource tracking (CPU/RAM/TPS) and automatic crash detection.
-- **File Manager**: Integrated IDE-like editor with syntax highlighting for configuration files.
-- **Server Architect**: Automated deployment wizard for Paper, Purpur, Fabric, Forge, and Modpacks.
-- **Automated Backups**: Configurable retention policies and scheduled snapshots.
+---
 
-### Multi-User & Access Control
+### Multi-User & Permissions
+- **Role-Based Access Control (RBAC)** — Owner / Admin / Manager / Viewer
+- **Per-Server ACLs** — Fine-grained permissions per server instance
+- **Deny-Wins Authorization** — Explicit denies always override role grants
+- **Audit Logging** — Append-only logs for logins, commands, file edits, and lifecycle actions
 
-- **Role-Based Access Control (RBAC)**: Pre-defined roles (Owner, Admin, Manager, Viewer) with distinct privilege levels.
-- **Per-Server Permissions**: Fine-grained access control lists (ACLs) for specific server instances.
-- **Secure Authentication**: JWT-based session management with automatic token rotation.
-- **Audit Logging**: Immutable record of all system actions, login attempts, and configuration changes.
+---
 
-### Connectivity & Network
+### Connectivity & Remote Access
+- **Local-First by Default** — Binds to `127.0.0.1` unless explicitly changed
+- **Remote Access (Opt-in / Beta)**  
+  Guided setup for:
+  - VPN-based access (recommended, no port forwarding)
+  - Reverse proxy with domain (Caddy / Nginx)
+  - Direct binding with port forwarding (advanced)
+- **HTTPS Support (Advanced)**  
+  - Native HTTPS (user-provided certificates)
+  - Reverse-proxy HTTPS (recommended)
+  - ⚠️ HTTPS encrypts traffic but does NOT automatically expose the panel
 
-- **Remote Access (Beta)**: Securely expose servers via VPN, Reverse Proxy, or Direct Binding with a guided configuration wizard.
-- **Bind Management**: Strict `127.0.0.1` default binding with opt-in `0.0.0.0` exposure.
-- **HTTPS Support (Advanced)**: Optional native SSL support or reverse-proxy setup for secure access.
+---
 
-### Advanced Architecture
-
-- **SQLite Storage**: Reliable local database option for multi-user setups (v1.4.3+).
-- **Redesigned Global Settings**: More compact and professional UI (v1.5.0).
-- **Diagnostics Engine**: Automated heuristic analysis of server logs to identify common issues (16+ rules).
-- **Startup Protection**: Resource locking to prevent data corruption during concurrent operations.
-- **Resource Control**: CPU priority management and JVM optimization flags (Aikar's Flags).
+### Stability & Safety
+- **Startup Protection** — Prevents port conflicts and unsafe launches
+- **Config Verification Gate** — Detects mismatches before starting servers
+- **Emergency Remote-Access Disable** — One-click local killswitch
+- **Diagnostics Engine** — Automated analysis of common Minecraft server issues
+- **Resource Controls** — JVM tuning (Aikar flags), CPU priority management
 
 ---
 
 ## Quick Start
 
-### Prerequisites
-
+### Requirements
 - **Node.js 18+**
-- **Operating System**: Windows 10+, macOS 10.15+, or Ubuntu 20.04+
+- **Windows 10+**, **macOS 10.15+**, or **Linux (Ubuntu 20.04+)**
 
-### Installation via Launcher (Windows)
+---
 
-The included batch launcher handles dependency resolution and environment verification automatically.
+### Windows (Recommended)
+CraftCommand includes a guided launcher — **no commands required**.
 
 1. Run `run_locally.bat`
-2. Select **[1] Start (Auto-Setup)**
+2. Choose **[1] Start (Auto-Setup)**
+3. The dashboard opens automatically in your browser
 
-### Manual Installation (Linux/macOS)
+The launcher also provides:
+- HTTPS setup
+- Remote access setup
+- Repair / recovery options
+- Emergency remote-access disable
 
-```bash
+---
+
+### Linux / macOS (Manual)
 git clone https://github.com/Extroos/craftCommand.git
 cd craftcommand
 npm install
 cd backend && npm install && cd ..
 cd frontend && npm install && cd ..
 npm run start:all
-```
 
-Access the dashboard at `http://localhost:3000`.
+### Access
+Open the dashboard at:  
+**http://localhost:3000**
 
-### Default Credentials
+---
 
-- **Email**: `admin@craftcommand.io`
-- **Password**: `admin`
+### Default Credentials (First Run Only)
+- **Email:** `admin@craftcommand.io`
+- **Password:** `admin`
 
-> **Note**: You will be forced to change these credentials immediately upon first login.
+You will be **required to change these credentials immediately** after the first login.
 
 ---
 
 ## Security Model
 
-CraftCommand adheres to a "Secure by Default" philosophy.
+CraftCommand follows a **Secure by Default, Explicit by Choice** philosophy.
 
-1.  **Network Isolation**: The backend binds strictly to `localhost` by default. Remote access requires explicit administrative enablement.
-2.  **Authentication**: All sensitive endpoints require a valid JWT. Passwords are hashed using Bcrypt (Cost 10).
-3.  **Authorization**: A "Deny-Wins" permission logic ensures strict enforcement of Access Control Lists.
-4.  **Emergency Killswitch**: Local launcher option to instantly disable remote access and reset bindings.
+- **Network Isolation** — Local-only binding by default.
+- **Explicit Exposure** — Remote access requires admin approval and clear warnings.
+- **Authentication** — JWT-based sessions with bcrypt-hashed passwords.
+- **Authorization** — Centralized permission enforcement across REST and WebSockets.
+- **Auditability** — All sensitive actions are logged.
+- **Emergency Control** — Local launcher can instantly disable remote access.
+
+CraftCommand is designed to **make unsafe setups difficult, not easy**.
 
 ---
 
 ## Documentation
 
-### User Roles
-
-| Role        | Scope  | Description                                                                    |
-| :---------- | :----- | :----------------------------------------------------------------------------- |
-| **OWNER**   | System | Full access to all servers, user management, and system settings.              |
-| **ADMIN**   | System | Can create servers and manage users, but cannot modify root system config.     |
-| **MANAGER** | Server | Can start/stop servers, access console, and edit files for assigned instances. |
-| **VIEWER**  | Server | Read-only access to console output and status metrics.                         |
-
-### Project Structure
-
-```text
-craftcommand/
-├── backend/                 # Node.js API & WebSocket Server
-│   ├── src/services/        # Business Logic & Singletons
-│   ├── src/routes/          # REST API Endpoints
-│   └── src/storage/         # JSON/SQLite Repositories
-├── frontend/                # React 19 Single Page Application
-│   ├── src/components/      # UI Components
-│   └── src/context/         # Global State Management
-├── shared/                  # TypeScript Type Definitions
-└── docs/                    # Technical Documentation
-```
-
-### Supported Server Software
-
-- **Paper / Purpur** (Recommended for performance)
-- **Fabric / Forge / NeoForge** (Modding capability)
-- **Vanilla / Spigot**
-- **Modpacks** (Modrinth API Integration)
+- **`docs/https.md`** — HTTPS and reverse proxy setup  
+- **`docs/remote-access.md`** — VPN, domain, and port-forwarding guidance  
+- **`SECURITY.md`** — Threat model and security guarantees  
+- **`reports/`** — Internal audit and stabilization reports  
 
 ---
 
-## Technologies
+## User Roles Overview
 
-- **Frontend**: React 19, Vite, TailwindCSS, TypeScript
-- **Backend**: Node.js, Express, Socket.IO, SQLite
-- **Security**: JSON Web Tokens (JWT), Bcrypt, Helmet
-- **System**: SystemInformation, Child Process management
+| Role    | Scope  | Capabilities |
+|--------|--------|--------------|
+| Owner  | System | Full control |
+| Admin  | System | Manage users and servers |
+| Manager| Server | Operate assigned servers |
+| Viewer | Server | Read-only access |
+
+---
+
+## Technology Stack
+
+- **Frontend:** React 19, Vite, TailwindCSS, TypeScript  
+- **Backend:** Node.js, Express, Socket.IO  
+- **Storage:** SQLite / JSON (local-first)  
+- **Security:** JWT, Bcrypt, Helmet  
 
 ---
 
