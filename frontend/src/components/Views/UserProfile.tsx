@@ -229,14 +229,26 @@ const UserProfileView: React.FC = () => {
             addToast('error', 'Not Linked', 'Please link your Minecraft account first.');
             return;
         }
-        const helmUrl = `https://minotar.net/helm/${user.minecraftIgn}/128.png`;
+        
+        const isSynced = user.avatarUrl?.includes('minotar.net');
         setIsSaving(true);
+        
         try {
-            await updateUser({ avatarUrl: helmUrl });
-            setAvatarInput(helmUrl);
-            addToast('success', 'Skin Synced', 'Your avatar is now synced with your Minecraft skin face.');
+            if (isSynced) {
+                // Revert to system default (based on username)
+                const defaultAvatar = `https://mc-heads.net/avatar/${user.username}/64`;
+                await updateUser({ avatarUrl: defaultAvatar });
+                setAvatarInput(defaultAvatar);
+                addToast('info', 'Sync Disabled', 'Reverted to default system avatar.');
+            } else {
+                // Sync with high-quality face (helm included)
+                const helmUrl = `https://minotar.net/helm/${user.minecraftIgn}/128.png`;
+                await updateUser({ avatarUrl: helmUrl });
+                setAvatarInput(helmUrl);
+                addToast('success', 'Skin Synced', 'Dashboard avatar synced with Minecraft skin.');
+            }
         } catch (e) {
-            addToast('error', 'Failed', 'Could not sync skin.');
+            addToast('error', 'Failed', 'Could not update sync state.');
         } finally {
             setIsSaving(false);
         }
