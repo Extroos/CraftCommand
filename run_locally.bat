@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-title CraftCommand - Server Manager v1.5.0-unstable (UNSTABLE)
+title CraftCommand - Server Manager v1.6.2 (STABLE)
 color 0B
 
 :: Hardening: Verify Critical Directories exist

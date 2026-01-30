@@ -72,7 +72,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
             <div className="max-w-4xl w-full relative z-10">
                 <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                     <div className="flex items-center gap-5">
-                        <img src="/brand-icon.png" className="w-20 h-20 object-contain drop-shadow-sm" alt="CraftCommand" />
+                        <img src="/website-icon.png" className="w-20 h-20 object-contain drop-shadow-sm" alt="CraftCommand" />
                         <div className="space-y-1">
                             <h1 className="text-2xl font-bold tracking-tight text-foreground">Instance Manager</h1>
                             <p className="text-muted-foreground text-sm">Select a deployment to interface with.</p>

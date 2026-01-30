@@ -567,11 +567,19 @@ class ApiService {
     
     // --- Audit Logs ---
     
-    async getAuditLogs(limit?: number, action?: string, userId?: string): Promise<any[]> {
+    async getAuditLogs(options: { 
+        limit?: number, 
+        offset?: number, 
+        action?: string, 
+        userId?: string, 
+        search?: string 
+    } = {}): Promise<{ logs: any[], total: number }> {
         const params = new URLSearchParams();
-        if (limit) params.append('limit', limit.toString());
-        if (action) params.append('action', action);
-        if (userId) params.append('userId', userId);
+        if (options.limit) params.append('limit', options.limit.toString());
+        if (options.offset) params.append('offset', options.offset.toString());
+        if (options.action) params.append('action', options.action);
+        if (options.userId) params.append('userId', options.userId);
+        if (options.search) params.append('search', options.search);
 
         const token = localStorage.getItem('cc_token');
         const headers: HeadersInit = {
@@ -582,6 +590,10 @@ class ApiService {
         }
 
         const res = await fetch(`${API_URL}/system/audit?${params.toString()}`, { headers });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to fetch audit logs');
+        }
         return res.json();
     }
 

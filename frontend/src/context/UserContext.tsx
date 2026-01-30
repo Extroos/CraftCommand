@@ -19,6 +19,7 @@ type UserContextType = {
     login: (email: string, password: string) => Promise<boolean>;
     logout: () => void;
     updatePreferences: (prefs: Partial<UserProfile['preferences']>) => void;
+    updateUser: (updates: Partial<UserProfile>) => Promise<void>;
     refreshUser: () => Promise<void>;
 };
 
@@ -128,6 +129,23 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
     };
 
+    const updateUser = async (updates: Partial<UserProfile>) => {
+        if (!user || !token) return;
+
+        // Optimistic update
+        const previousUser = { ...user };
+        setUser({ ...user, ...updates });
+
+        try {
+            const updated = await API.updateUser(updates, token);
+            setUser(updated); // Final sync
+        } catch (e) {
+            console.error("Failed to update user:", e);
+            setUser(previousUser); // Rollback
+            throw e;
+        }
+    };
+
     const refreshUser = async () => {
         if (!token) return;
         try {
@@ -170,6 +188,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         logout,
         updatePreferences,
+        updateUser,
         refreshUser
     };
 

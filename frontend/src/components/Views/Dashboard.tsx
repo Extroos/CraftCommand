@@ -158,6 +158,38 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     // Get current stats from global context
     const stats = allStats[serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.00", pid: 0 };
 
+    const status = server.status;
+    const isOnline = status === ServerStatus.ONLINE;
+
+    // SMOOTH UPTIME INTERPOLATION
+    const [displayUptime, setDisplayUptime] = useState(stats.uptime);
+
+    // Sync from global stats when they arrive (every 3s)
+    useEffect(() => {
+        // Only sync if the gap is significant (to prevent backward jumps)
+        // or if it's the first sync/reset
+        if (Math.abs(displayUptime - stats.uptime) > 2 || stats.uptime === 0) {
+             setDisplayUptime(stats.uptime);
+        }
+    }, [stats.uptime]);
+
+    // Local High-Frequency Ticker (1hz)
+    useEffect(() => {
+        const isProcessActive = stats.isRealOnline || status === ServerStatus.ONLINE || status === ServerStatus.STARTING;
+        const reducedMotion = user?.preferences?.reducedMotion ?? false;
+
+        if (!isProcessActive || reducedMotion) {
+            if (displayUptime !== stats.uptime) setDisplayUptime(stats.uptime);
+            return;
+        }
+
+        const timer = setInterval(() => {
+            setDisplayUptime(prev => prev + 1);
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [status, stats.isRealOnline, user?.preferences?.reducedMotion, stats.uptime]);
+
     useEffect(() => {
         if (server) {
             const conflict = servers.some(other => other.id !== server.id && other.port === server.port && (other.status === 'ONLINE' || other.status === 'STARTING'));
@@ -259,9 +291,6 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
         </div>
     );
 
-    const status = server.status;
-    const isOnline = status === ServerStatus.ONLINE;
-    
     // Calculations
     const ramMax = server.ram * 1024;
     const tps = stats.tps; 
@@ -615,7 +644,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                         )}
                     </div>
                     <div className="mt-4">
-                        <div className="text-4xl font-bold text-foreground tracking-tight tabular-nums">{formatUptime(stats.uptime)}</div>
+                        <div className="text-4xl font-bold text-foreground tracking-tight tabular-nums">{formatUptime(displayUptime)}</div>
                         <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-widest font-medium">Session Duration</p>
                     </div>
                 </div>
@@ -638,8 +667,9 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                     </div>
                     <div className="w-full h-1 bg-muted rounded-full overflow-hidden mt-auto">
                         <motion.div 
-                            className={`h-full transition-all duration-700 ${Number(tps) > 18 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                            className={`h-full ${Number(tps) > 18 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
                             animate={{ width: `${(Number(tps)/20)*100}%` }}
+                            transition={user?.preferences?.reducedMotion ? { duration: 0 } : { duration: 0.7 }}
                         />
                     </div>
                 </div>

@@ -102,14 +102,45 @@
   /* Global utilities can go here if needed */
 }
 
-/* Reduced Motion Override */
+/* Reduced Motion Master Override */
+body.reduce-motion {
+  --noise-opacity: 0 !important;
+}
+
 body.reduce-motion *,
 body.reduce-motion *::before,
 body.reduce-motion *::after {
+  /* 1. Kill all CSS Animations */
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
+  
+  /* 2. Kill all CSS Transitions */
+  transition: none !important;
+  
+  /* 3. Disable specific motion-heavy interactions */
   scroll-behavior: auto !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* 4. Neutralize Hover Scaling/Sliding (Tailwind classes) */
+body.reduce-motion .hover\:scale-101:hover,
+body.reduce-motion .hover\:scale-102:hover,
+body.reduce-motion .hover\:scale-105:hover,
+body.reduce-motion .hover\:scale-110:hover,
+body.reduce-motion .hover\:-translate-y-1:hover,
+body.reduce-motion .hover\:translate-x-1:hover {
+  transform: none !important;
+}
+
+/* 5. Special handling for loading and status states */
+body.reduce-motion .animate-spin,
+body.reduce-motion .animate-pulse,
+body.reduce-motion .animate-bounce {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
 }
 
 /* Noise texture */
@@ -124,4 +155,5 @@ body::before {
   pointer-events: none;
   z-index: 9999;
   mix-blend-mode: overlay;
+  opacity: var(--noise-opacity, 1);
 }

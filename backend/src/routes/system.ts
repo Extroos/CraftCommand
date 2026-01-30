@@ -131,9 +131,16 @@ router.post('/remote-access/enable', verifyToken, requirePermission('system.remo
 
 // Audit Log
 router.get('/audit', verifyToken, requireRole(['OWNER', 'ADMIN']), (req, res) => {
-    const { limit } = req.query;
-    const logs = auditService.getLogs(limit ? parseInt(limit as string) : 100);
-    res.json(logs);
+    const { limit, offset, action, userId, resourceId, search } = req.query;
+    const result = auditService.getLogs({
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
+        action: action as string,
+        userId: userId as string,
+        resourceId: resourceId as string,
+        search: search as string
+    });
+    res.json(result);
 });
 
 // Disable Remote Access

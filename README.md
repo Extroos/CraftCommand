@@ -4,7 +4,7 @@
 
 **Professional Minecraft server management platform focused on local-first and team hosting.**
 
-![version](https://img.shields.io/badge/version-v1.6.0--stable-emerald)
+![version](https://img.shields.io/badge/version-v1.6.2--stable-emerald)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-blue.svg)
 

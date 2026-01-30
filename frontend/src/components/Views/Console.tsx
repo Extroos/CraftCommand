@@ -76,8 +76,9 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
     // Smart Auto-Scroll
     useLayoutEffect(() => {
         if (isPaused || userHasScrolledUp) return;
-        endRef.current?.scrollIntoView({ behavior: 'instant' });
-    }, [logs, isPaused, userHasScrolledUp]);
+        const reducedMotion = user?.preferences?.reducedMotion ?? false;
+        endRef.current?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'instant' }); 
+    }, [logs, isPaused, userHasScrolledUp, user?.preferences?.reducedMotion]);
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -87,7 +88,8 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
 
     const scrollToBottom = () => {
         setUserHasScrolledUp(false);
-        endRef.current?.scrollIntoView({ behavior: 'smooth' });
+        const reducedMotion = user?.preferences?.reducedMotion ?? false;
+        endRef.current?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth' });
     };
 
 
@@ -108,7 +110,8 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
 
         setCommand('');
         setUserHasScrolledUp(false);
-        setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+        const reducedMotion = user?.preferences?.reducedMotion ?? false;
+        setTimeout(() => endRef.current?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth' }), 50);
     };
 
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {

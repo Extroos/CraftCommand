@@ -182,7 +182,7 @@ const Header: React.FC<HeaderProps> = ({
                             <ChevronLeft size={20} />
                         </motion.button>
                         <div className="hidden sm:block">
-                            <img src="/brand-icon.png" alt="CraftCommand Logo" className="w-10 h-10 object-contain" />
+                            <img src="/website-icon.png" alt="CraftCommand Logo" className="w-12 h-12 object-contain" />
                         </div>
                         <div className="flex flex-col">
                             <span className="text-sm font-bold tracking-tight text-foreground leading-none">CraftCommand</span>

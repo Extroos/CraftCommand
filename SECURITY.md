@@ -23,9 +23,9 @@ Security is taken seriously in CraftCommand. If you discover a security vulnerab
 3. I'll do my best to respond as quickly as possible and work on a fix.
 4. Once patched, you'll be publicly credited for the discovery (unless you prefer to remain anonymous).
 
-## Security Architecture (v1.6.0 Stable)
+## Security Architecture (v1.6.2 Stable)
 
-CraftCommand v1.6.0 introduces several critical security hardening measures:
+CraftCommand v1.6.2 introduces several critical security hardening measures:
 
 - **Hardened RBAC**: Roles (Owner, Admin, Manager, Viewer) are strictly enforced at both the API and UI levels. Non-privileged roles are prevented from viewing or triggering background updates and file mutations.
 - **Zero-Config SSL**: Built-in logic for automatic self-signed certificate generation ensure that local exposures are protected by HTTPS even in development/private environments.

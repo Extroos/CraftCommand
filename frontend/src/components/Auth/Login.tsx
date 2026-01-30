@@ -48,9 +48,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                     <div className="relative mb-4 group cursor-default">
                         <div className="absolute inset-0 bg-emerald-500/10 rounded-full opacity-0 group-hover:opacity-20 transition-opacity duration-700"></div>
                         <img 
-                            src="/brand-icon.png" 
+                            src="/website-icon.png" 
                             alt="CraftCommand" 
-                            className="w-16 h-16 object-contain relative z-10 drop-shadow-2xl hover:scale-105 transition-transform duration-500 ease-out" 
+                            className="w-40 h-40 object-contain relative z-10 drop-shadow-2xl hover:scale-105 transition-transform duration-500 ease-out" 
                         />
                     </div>
                     

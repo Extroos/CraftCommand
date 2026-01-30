@@ -7,7 +7,7 @@ import { useToast } from '../UI/Toast';
 import { 
     User, Lock, Palette, Bell, Key, Eye, EyeOff, Save, Loader2, 
     Mail, Check, AlertTriangle, Code, RefreshCw, Copy, Gamepad2, Link,
-    Terminal, Monitor, BellRing, Type, Volume2
+    Terminal, Monitor, BellRing, Type, Volume2, Disc
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useUser } from '../../context/UserContext';
@@ -163,7 +163,7 @@ const SystemUpdatePreferences = ({ theme, user, onUpdate }: any) => {
 
 const UserProfileView: React.FC = () => {
     // Replace local state with global context state
-    const { user, isLoading, updatePreferences, theme } = useUser();
+    const { user, isLoading, updateUser, updatePreferences, theme } = useUser();
     const [activeTab, setActiveTab] = useState<'ACCOUNT' | 'PERSONALIZATION' | 'NOTIFICATIONS' | 'MINECRAFT' | 'API' | 'SYSTEM'>('ACCOUNT');
     const { addToast } = useToast();
     
@@ -171,6 +171,7 @@ const UserProfileView: React.FC = () => {
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showPassword, setShowPassword] = useState(false);
     const [ignInput, setIgnInput] = useState(user?.minecraftIgn || '');
+    const [avatarInput, setAvatarInput] = useState(user?.avatarUrl || '');
     const [isSaving, setIsSaving] = useState(false);
 
     const handlePasswordChange = async () => {
@@ -197,14 +198,48 @@ const UserProfileView: React.FC = () => {
         }
     };
 
-    const handleLinkMinecraft = () => {
+    const handleLinkMinecraft = async () => {
+        if (!ignInput) return;
         setIsSaving(true);
-        setTimeout(() => {
-            if (!ignInput) return;
-            // API.updateUser({ minecraftIgn: ignInput });
-            addToast('success', 'Account Linked', `Simulated link for: ${ignInput}`);
+        try {
+            await updateUser({ minecraftIgn: ignInput });
+            addToast('success', 'Account Linked', `Successfully linked to: ${ignInput}`);
+        } catch (e) {
+            addToast('error', 'Failed', 'Could not link account.');
+        } finally {
             setIsSaving(false);
-        }, 1000);
+        }
+    };
+
+    const handleAvatarUpdate = async () => {
+        if (!avatarInput) return;
+        setIsSaving(true);
+        try {
+            await updateUser({ avatarUrl: avatarInput });
+            addToast('success', 'Avatar Updated', 'Your profile picture has been changed.');
+        } catch (e) {
+            addToast('error', 'Failed', 'Could not update avatar.');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSyncMinecraftSkin = async () => {
+        if (!user?.minecraftIgn) {
+            addToast('error', 'Not Linked', 'Please link your Minecraft account first.');
+            return;
+        }
+        const helmUrl = `https://minotar.net/helm/${user.minecraftIgn}/128.png`;
+        setIsSaving(true);
+        try {
+            await updateUser({ avatarUrl: helmUrl });
+            setAvatarInput(helmUrl);
+            addToast('success', 'Skin Synced', 'Your avatar is now synced with your Minecraft skin face.');
+        } catch (e) {
+            addToast('error', 'Failed', 'Could not sync skin.');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
 
@@ -384,6 +419,51 @@ const UserProfileView: React.FC = () => {
                                             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                                             Update Password
                                         </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Avatar Settings */}
+                            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+                                <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                    <Disc size={18} className={theme.text} /> Profile Picture
+                                </h2>
+                                <div className="space-y-4 max-w-md">
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-16 h-16 rounded-xl border border-border overflow-hidden bg-secondary flex items-center justify-center shrink-0">
+                                            {user.avatarUrl ? (
+                                                <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <User size={32} className="text-muted-foreground opacity-20" />
+                                            )}
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium">Avatar Preview</p>
+                                            <p className="text-xs text-muted-foreground">This is how you appear to others.</p>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-medium text-muted-foreground uppercase">Image URL (HTTPS)</label>
+                                        <div className="flex gap-2 mt-1.5">
+                                            <input 
+                                                type="text" 
+                                                placeholder="https://example.com/avatar.png"
+                                                value={avatarInput}
+                                                onChange={(e) => setAvatarInput(e.target.value)}
+                                                className="flex-1 bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                            />
+                                            <button 
+                                                onClick={handleAvatarUpdate}
+                                                disabled={isSaving || !avatarInput}
+                                                className={`px-4 text-foreground rounded-lg transition-colors disabled:opacity-50 ${theme.bg} hover:opacity-90 flex items-center justify-center`}
+                                            >
+                                                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                                            </button>
+                                        </div>
+                                        <p className="text-[10px] text-muted-foreground mt-2 italic">
+                                            Supports Gravatar, Discord, or any direct image link.
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -600,10 +680,16 @@ const UserProfileView: React.FC = () => {
                                                     <Check size={16} className={theme.text} />
                                                     <span>Automatically OP me on my servers</span>
                                                 </div>
-                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                                    <Check size={16} className={theme.text} />
+                                                <button 
+                                                    onClick={handleSyncMinecraftSkin}
+                                                    disabled={isSaving || !user.minecraftIgn}
+                                                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group"
+                                                >
+                                                    <div className={`w-4 h-4 rounded border border-border flex items-center justify-center transition-colors ${user.avatarUrl?.includes('mc-heads.net') ? theme.bg + ' border-transparent' : 'bg-transparent'}`}>
+                                                        {user.avatarUrl?.includes('mc-heads.net') && <Check size={12} className="text-white" />}
+                                                    </div>
                                                     <span>Use my skin as my dashboard avatar</span>
-                                                </div>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>

@@ -1,5 +1,5 @@
 {
-  "version": "1.6.0",
+  "version": "1.6.2",
   "title": "Professional Multi-User & RBAC Stable",
   "notes": [
     "Complete Multi-User support with secure authentication",
@@ -7,6 +7,7 @@
     "Professional UI Density: Redesigned Dashboard & Global Settings",
     "Zero-Config HTTPS support with intelligent SSL management",
     "Fixed Viewer-role security leaks and misleading notifications",
+    "Enhanced Account Linking and Avatar customization logic",
     "Optimized 60FPS animations and technical UI elements"
   ]
 }

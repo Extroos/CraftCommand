@@ -247,25 +247,28 @@ class ProcessManager extends EventEmitter {
         // 1. Check active process map first
         let startTime = this.startTimes.get(id);
         
-        // 2. Fallback to server config (for persistence across restarts)
+        // 2. Resolve Status
+        const status = this.statusCache.get(id);
+        const isProcessActive = this.processes.has(id);
+        const isOnline = status && (status.online || status.status === 'ONLINE' || status.status === 'STARTING');
+
+        // 3. Fallback to server config (for persistence across restarts)
         if (!startTime) {
             const { getServer } = require('./ServerService');
             const server = getServer(id);
             if (server && server.startTime) startTime = server.startTime;
         }
 
+        // 4. Guard: If we are in STARTING/ONLINE, but no startTime exists yet, 
+        // return 0 (correct), but don't reset to 0 if we HAVE a startTime but the cache says offline.
         if (!startTime) return 0;
         
-        // 3. Validation: If it's not in the process map, it MUST be online in the status cache (for adopted processes)
-        // Otherwise, it's a ghost timer.
-        const status = this.statusCache.get(id);
-        const isProcessActive = this.processes.has(id);
-        const isAdoptedOnline = status && status.online;
-
-        if (!isProcessActive && !isAdoptedOnline) {
+        // 5. Validation: If it's not in the process map AND not online in cache, it's dead.
+        if (!isProcessActive && !isOnline) {
             return 0;
         }
 
+        // Return current duration
         return Math.floor((Date.now() - startTime) / 1000);
     }
 

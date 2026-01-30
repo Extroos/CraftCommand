@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.2] - 2026-01-30 - Profile Customization & Account Linking Stable
+
+### Added
+
+- **Account Linking**: Dynamic Minecraft account verification and linking to user profiles.
+- **Profile Picture Customization**: Manual avatar URL support and one-click high-quality Minecraft skin sync (helm/overlay included).
+- **Reduced Motion Support**: Global preference to disable heavy animations and high-frequency UI tickers for improved accessibility.
+
+### Changed
+
+- **UI Polish**: Refined individual server cards and navigation density for a more professional look.
+- **Header Dynamics**: Real-time avatar and status synchronization across all dashboard components.
+
+### Fixed
+
+- **Login Lockouts**: Improved rate-limiting feedback and session recovery.
+- **Navigation Flickers**: Resolved state inconsistency during rapid tab switching.
+
 ## [1.6.0] - 2026-01-30 - Professional Multi-User & RBAC Stable
 
 ### Added

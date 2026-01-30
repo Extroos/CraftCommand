@@ -171,6 +171,36 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     // Get current stats from global context
     const stats = allStats[serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.00", pid: 0 };
 
+    const status = server.status;
+    const isOnline = status === ServerStatus.ONLINE;
+
+    // SMOOTH UPTIME INTERPOLATION
+    const [displayUptime, setDisplayUptime] = useState(stats.uptime);
+
+    // Sync from global stats when they arrive (every 3s)
+    useEffect(() => {
+        if (Math.abs(displayUptime - stats.uptime) > 2 || stats.uptime === 0) {
+             setDisplayUptime(stats.uptime);
+        }
+    }, [stats.uptime]);
+
+    // Local High-Frequency Ticker (1hz)
+    useEffect(() => {
+        const isProcessActive = stats.isRealOnline || status === ServerStatus.ONLINE || status === ServerStatus.STARTING;
+        const reducedMotion = user?.preferences?.reducedMotion ?? false;
+
+        if (!isProcessActive || reducedMotion) {
+            if (displayUptime !== stats.uptime) setDisplayUptime(stats.uptime);
+            return;
+        }
+
+        const timer = setInterval(() => {
+            setDisplayUptime(prev => prev + 1);
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [status, stats.isRealOnline, user?.preferences?.reducedMotion, stats.uptime]);
+
     useEffect(() => {
         if (server) {
             const conflict = servers.some(other => other.id !== server.id && other.port === server.port && (other.status === 'ONLINE' || other.status === 'STARTING'));
@@ -272,9 +302,6 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
         </div>
     );
 
-    const status = server.status;
-    const isOnline = status === ServerStatus.ONLINE;
-    
     // Calculations
     const ramMax = server.ram * 1024;
     const tps = stats.tps; 
@@ -640,7 +667,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                         {isOnline && <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></div>}
                     </div>
                     <div className="z-10">
-                        <div className="text-3xl font-mono font-bold text-foreground tracking-tight">{formatUptime(stats.uptime)}</div>
+                        <div className="text-3xl font-mono font-bold text-foreground tracking-tight">{formatUptime(displayUptime)}</div>
                         <div className="text-[10px] text-muted-foreground font-mono mt-1">H : M : S</div>
                     </div>
                     {/* Background Grid */}

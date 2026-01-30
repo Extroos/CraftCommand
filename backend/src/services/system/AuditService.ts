@@ -23,8 +23,8 @@ export class AuditService {
         await auditRepository.add(entry);
     }
 
-    public getLogs(limit: number = 100, filterAction?: string): AuditLog[] {
-        return auditRepository.getLogs(limit, filterAction);
+    public getLogs(options: any = {}): { logs: AuditLog[], total: number } {
+        return auditRepository.getLogs(options);
     }
 
 
