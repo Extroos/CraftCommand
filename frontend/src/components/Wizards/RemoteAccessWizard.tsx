@@ -138,7 +138,7 @@ export const RemoteAccessWizard: React.FC<Props> = ({ onClose }) => {
                                         key={m.id}
                                         className={`block p-3 rounded border cursor-pointer transition-colors ${
                                             method === m.id 
-                                                ? 'border-primary bg-primary/5' 
+                                                ? 'border-primary bg-secondary' 
                                                 : 'border-border hover:border-border/60'
                                         }`}
                                     >

@@ -12,6 +12,7 @@ import { useToast } from '../UI/Toast';
 
 
 import { API } from '../../services/api';
+import { useUser } from '../../context/UserContext';
 
 
 interface FileManagerProps {
@@ -23,6 +24,8 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const [fileSystem, setFileSystem] = useState<FileNode[]>([]);
     const [currentPath, setCurrentPath] = useState<string[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const { user } = useUser();
+    const canManage = user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'size' | 'modified', direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
     const [isDragging, setIsDragging] = useState(false);
@@ -42,42 +45,67 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
         return () => { mountedRef.current = false; };
     }, []);
 
-    // API Fetching
-    useEffect(() => {
-        const fetchFiles = async () => {
-            try {
-                const pathStr = currentPath.length > 0 ? currentPath.join('/') : '.';
-                const files = await API.getFiles(serverId, pathStr);
+    const fetchFiles = async () => {
+        try {
+            const pathStr = currentPath.length > 0 ? currentPath.join('/') : '.';
+            const files = await API.getFiles(serverId, pathStr);
+            
+            // Transform API response to FileNode
+            const nodes: FileNode[] = files.map((f: any) => {
+                const isConfig = f.name.endsWith('.json') || f.name.endsWith('.yml') || f.name.endsWith('.properties') || f.name.endsWith('.conf');
+                const isCode = f.name.endsWith('.js') || f.name.endsWith('.ts') || f.name.endsWith('.py') || f.name.endsWith('.sh');
                 
-                // Transform API response to FileNode
-                const nodes: FileNode[] = files.map((f: any) => ({
-                    id: f.path, // Use path as ID
+                return {
+                    id: f.path,
                     name: f.name,
-                    type: f.isDirectory ? 'folder' : (f.name.endsWith('.jar') ? 'archive' : 'file'),
+                    type: f.isDirectory ? 'folder' : (f.name.endsWith('.jar') || f.name.endsWith('.zip') ? 'archive' : (isConfig ? 'config' : (isCode ? 'code' : 'file'))),
                     size: f.isDirectory ? '-' : (f.size > 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${(f.size / 1024).toFixed(1)} KB`),
                     modified: f.modified || 'Unknown', 
                     path: f.path,
                     isDirectory: f.isDirectory,
+                    isProtected: f.isProtected || false,
                     children: f.isDirectory ? [] : undefined 
-                }));
-                setFileSystem(nodes);
-            } catch (e) {
-                console.error(e);
-                addToast('error', 'File Error', 'Failed to load files.');
-            }
-        };
+                };
+            });
+            setFileSystem(nodes);
+        } catch (e) {
+            console.error(e);
+            addToast('error', 'File Error', 'Failed to load files.');
+        }
+    };
+
+    // API Fetching
+    useEffect(() => {
         fetchFiles();
     }, [serverId, currentPath]);
 
     // Derived State (Flattened, since we fetch per folder now)
     const currentFiles = useMemo(() => {
-        let files = fileSystem; // fileSystem now contains only current folder items
+        let files = fileSystem;
         if (searchTerm) {
             files = files.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
         }
         return [...files].sort((a, b) => {
+            // Folders always at top
+            if (a.isDirectory && !b.isDirectory) return -1;
+            if (!a.isDirectory && b.isDirectory) return 1;
+            
             const aVal = a[sortConfig.key];
             const bVal = b[sortConfig.key];
+
+            if (sortConfig.key === 'size') {
+                const parseSize = (s: string) => {
+                    if (s === '-') return -1;
+                    const val = parseFloat(s);
+                    if (s.includes('MB')) return val * 1024;
+                    if (s.includes('GB')) return val * 1024 * 1024;
+                    return val;
+                };
+                const sA = parseSize(aVal as string);
+                const sB = parseSize(bVal as string);
+                return sortConfig.direction === 'asc' ? sA - sB : sB - sA;
+            }
+
             if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
@@ -128,21 +156,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             
             addToast('success', `${newItemModal.type === 'folder' ? 'Folder' : 'File'} Created`, newItemModal.value);
             setNewItemModal({ type: null, value: '' });
-            
-            // Reload files
-            const pathStr = currentPath.length > 0 ? currentPath.join('/') : '.';
-            const files = await API.getFiles(serverId, pathStr);
-            const nodes: FileNode[] = files.map((f: any) => ({
-                id: f.path,
-                name: f.name,
-                type: f.isDirectory ? 'folder' : (f.name.endsWith('.jar') ? 'archive' : 'file'),
-                size: f.isDirectory ? '-' : (f.size > 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${(f.size / 1024).toFixed(1)} KB`),
-                modified: f.modified || 'Just now',
-                path: f.path,
-                isDirectory: f.isDirectory,
-                children: f.isDirectory ? [] : undefined 
-            }));
-            setFileSystem(nodes);
+            fetchFiles();
 
         } catch (e) {
             addToast('error', 'Creation Failed', 'Failed to create item on disk.');
@@ -160,21 +174,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             
             addToast('success', 'Items Deleted', `Removed ${targets.size} files/folders.`);
             setSelectedIds(new Set());
-            
-            // Reload files
-            const pathStr = currentPath.length > 0 ? currentPath.join('/') : '.';
-            const files = await API.getFiles(serverId, pathStr);
-            const nodes: FileNode[] = files.map((f: any) => ({
-                id: f.path,
-                name: f.name,
-                type: f.isDirectory ? 'folder' : (f.name.endsWith('.jar') ? 'archive' : 'file'),
-                size: f.isDirectory ? '-' : (f.size > 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${(f.size / 1024).toFixed(1)} KB`),
-                modified: f.modified || 'Just now',
-                path: f.path,
-                isDirectory: f.isDirectory,
-                children: f.isDirectory ? [] : undefined 
-            }));
-            setFileSystem(nodes);
+            fetchFiles();
             
         } catch (e) {
             addToast('error', 'Delete Failed', 'Failed to remove items from disk.');
@@ -183,10 +183,9 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
 
     const handleExtract = async (filePath: string, fileName: string) => {
         try {
-            const { API } = await import('../../services/api');
             await API.extractFile(serverId, filePath);
             addToast('success', 'Extraction Complete', `${fileName} has been extracted.`);
-            setTimeout(() => window.location.reload(), 1000);
+            fetchFiles();
         } catch (e) {
             addToast('error', 'Extraction Failed', 'Failed to extract ZIP file.');
         }
@@ -195,6 +194,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
 
 
     const processUpload = async (file: File) => {
+        if (!canManage) return;
         const fileSize = file.size > 1024 * 1024 
             ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` 
             : `${(file.size / 1024).toFixed(1)} KB`;
@@ -203,16 +203,15 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
         
         try {
             // Actually upload the file
-            const { API } = await import('../../services/api');
             await API.uploadFile(serverId, file);
             
             setUploadProgress({ visible: true, progress: 100, filename: file.name });
             addToast('success', 'Upload Complete', `${file.name} uploaded successfully.`);
             
-            // Refresh file list after a short delay
-            setTimeout(() => {
+            // Refresh file list without page refresh
+            setTimeout(async () => {
                 setUploadProgress({ visible: false, progress: 0, filename: '' });
-                window.location.reload();
+                fetchFiles();
             }, 1000);
         } catch (e) {
             setUploadProgress({ visible: false, progress: 0, filename: '' });
@@ -230,6 +229,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
+        if (!canManage) return;
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             processUpload(e.dataTransfer.files[0]);
         }
@@ -238,11 +238,9 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const handleSaveFile = async () => {
         if (!editorFile) return;
         try {
-            const { API } = await import('../../services/api');
             await API.saveFileContent(serverId, editorFile.node.path, editorFile.content);
             addToast('success', 'File Saved', editorFile.node.name);
             setEditorFile(null);
-            // Optional: refresh file list if name changed or something, but usually just close editor
         } catch (e) {
             addToast('error', 'Save Failed', 'Failed to save file content.');
         }
@@ -255,36 +253,37 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             case 'folder': return <Folder className="text-blue-400 fill-blue-400/20" size={20} />;
             case 'archive': return <Archive className="text-amber-500" size={20} />;
             case 'config': return <FileCode className="text-emerald-400" size={20} />;
-            default: return <File className="text-muted-foreground" size={20} />;
+            case 'code': return <FileCode className="text-blue-500" size={20} />;
+            default: return <File className="text-muted-foreground/60" size={20} />;
         }
     };
 
     return (
         <div 
-            className="h-[calc(100vh-120px)] flex flex-col gap-4 animate-fade-in relative"
+            className="flex flex-col gap-4 h-[calc(100vh-120px)] relative"
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
         >
             {/* Header Toolbar */}
             <div className="bg-card border border-border rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
-                <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar">
+                <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto no-scrollbar py-0.5">
                     <button 
                         onClick={() => { setCurrentPath([]); setSelectedIds(new Set()); }}
-                        className={`flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-secondary/50 transition-colors ${currentPath.length === 0 ? 'text-primary font-bold' : 'text-muted-foreground'}`}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-secondary transition-colors shrink-0 ${currentPath.length === 0 ? 'bg-secondary text-primary font-bold' : 'text-muted-foreground'}`}
                     >
                         <Home size={16} />
-                        <span className="text-sm">root</span>
+                        <span className="text-xs font-bold tracking-tight">ROOT</span>
                     </button>
                     {currentPath.map((folder, index) => (
                         <div key={folder} className="flex items-center gap-1 shrink-0">
-                            <ChevronRight size={14} className="text-muted-foreground/40" />
+                            <ChevronRight size={14} className="text-muted-foreground/30" />
                             <button 
                                 onClick={() => {
                                     setCurrentPath(currentPath.slice(0, index + 1));
                                     setSelectedIds(new Set());
                                 }}
-                                className={`text-sm px-2 py-1 rounded-md hover:bg-secondary/50 transition-colors ${index === currentPath.length - 1 ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
+                                className={`text-xs px-3 py-2 rounded-lg hover:bg-secondary transition-colors font-medium ${index === currentPath.length - 1 ? 'text-foreground' : 'text-muted-foreground'}`}
                             >
                                 {folder}
                             </button>
@@ -304,21 +303,25 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                         />
                     </div>
                     <div className="flex gap-2 shrink-0">
-                        <button onClick={() => setNewItemModal({ type: 'file', value: '' })} className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg border border-transparent hover:border-border transition-all" title="New File">
-                            <FilePlus size={18} />
-                        </button>
-                        <button onClick={() => setNewItemModal({ type: 'folder', value: '' })} className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg border border-transparent hover:border-border transition-all" title="New Folder">
-                            <FolderPlus size={18} />
-                        </button>
-                        <input 
-                            type="file" 
-                            ref={fileInputRef} 
-                            className="hidden" 
-                            onChange={handleFileSelect} 
-                        />
-                        <button onClick={() => fileInputRef.current?.click()} className="px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 shadow-sm">
-                            <UploadCloud size={16} /> <span>Upload</span>
-                        </button>
+                        {canManage && (
+                            <>
+                                <button onClick={() => setNewItemModal({ type: 'file', value: '' })} className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg border border-transparent hover:border-border transition-all" title="New File">
+                                    <FilePlus size={18} />
+                                </button>
+                                <button onClick={() => setNewItemModal({ type: 'folder', value: '' })} className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg border border-transparent hover:border-border transition-all" title="New Folder">
+                                    <FolderPlus size={18} />
+                                </button>
+                                <input 
+                                    type="file" 
+                                    ref={fileInputRef} 
+                                    className="hidden" 
+                                    onChange={handleFileSelect} 
+                                />
+                                <button onClick={() => fileInputRef.current?.click()} className="px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 shadow-sm">
+                                    <UploadCloud size={16} /> <span>Upload</span>
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
@@ -327,7 +330,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             <div className="flex-1 bg-card border border-border rounded-xl overflow-hidden shadow-sm relative flex flex-col">
                 <div className="overflow-auto flex-1">
                     <table className="w-full text-sm text-left border-collapse">
-                        <thead className="bg-muted/30 text-xs uppercase text-muted-foreground font-semibold sticky top-0 backdrop-blur-sm z-10">
+                        <thead className="bg-muted text-xs uppercase text-muted-foreground font-semibold sticky top-0 z-10 border-b border-border">
                             <tr>
                                 <th className="px-4 py-3 w-10 border-b border-border">
                                     <input 
@@ -358,11 +361,15 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                         <tbody className="divide-y divide-border/50">
                             {currentPath.length > 0 && (
                                 <tr 
-                                    className="hover:bg-muted/30 transition-colors cursor-pointer"
+                                    className="hover:bg-muted/40 transition-colors cursor-pointer group"
                                     onClick={handleUp}
                                 >
-                                    <td className="px-4 py-3 text-center border-l-2 border-transparent"><CornerUpLeft size={16} className="text-muted-foreground/50 mx-auto" /></td>
-                                    <td className="px-4 py-3 font-medium text-muted-foreground" colSpan={4}>..</td>
+                                    <td className="px-4 py-3 text-center border-l-2 border-transparent">
+                                        <div className="w-4 h-4 rounded-full border border-muted-foreground/20 flex items-center justify-center group-hover:border-primary/40 transition-colors">
+                                            <CornerUpLeft size={10} className="text-muted-foreground/40 group-hover:text-primary transition-colors" />
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground/60 group-hover:text-primary transition-colors" colSpan={4}>.. (Parent Directory)</td>
                                 </tr>
                             )}
                             
@@ -406,7 +413,6 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                                         handleNavigate(file.name);
                                                     } else {
                                                         try {
-                                                            const { API } = await import('../../services/api');
                                                             const content = await API.getFileContent(serverId, file.path);
                                                             setEditorFile({ node: file, content });
                                                         } catch (e) {
@@ -433,7 +439,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                                 <button className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Download">
                                                     <Download size={14} />
                                                 </button>
-                                                {file.name.endsWith('.zip') && (
+                                                {file.name.endsWith('.zip') && canManage && (
                                                     <button 
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -448,16 +454,18 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                                         <Archive size={14} />
                                                     </button>
                                                 )}
-                                                <button 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDelete(new Set([file.id]));
-                                                    }}
-                                                    disabled={file.isProtected}
-                                                    className={`p-1.5 rounded transition-colors ${file.isProtected ? 'text-muted-foreground/30 cursor-not-allowed' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'}`} title="Delete"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
+                                                {canManage && (
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDelete(new Set([file.id]));
+                                                        }}
+                                                        disabled={file.isProtected}
+                                                        className={`p-1.5 rounded transition-colors ${file.isProtected ? 'text-muted-foreground/30 cursor-not-allowed' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'}`} title="Delete"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -469,7 +477,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
 
                 {/* Drag Overlay */}
                 {isDragging && (
-                    <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center border-2 border-dashed border-primary m-4 rounded-xl animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
+                    <div className="absolute inset-0 bg-background z-50 flex flex-col items-center justify-center border-2 border-dashed border-primary m-4 rounded-xl animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
                         <UploadCloud size={64} className="text-primary animate-bounce" />
                         <h3 className="text-xl font-bold mt-4">Drop files to upload</h3>
                         <p className="text-muted-foreground">Files will be added to /{currentPath.join('/')}</p>
@@ -489,12 +497,14 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                          <button className="p-2 hover:bg-background/20 rounded-full transition-colors" title="Download">
                             <Download size={18} />
                         </button>
-                         <button 
-                            onClick={() => handleDelete()}
-                            className="p-2 hover:bg-red-500 hover:text-white rounded-full transition-colors" title="Delete"
-                        >
-                            <Trash2 size={18} />
-                        </button>
+                         {canManage && (
+                             <button 
+                                onClick={() => handleDelete()}
+                                className="p-2 hover:bg-red-500 hover:text-white rounded-full transition-colors" title="Delete"
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                         )}
                     </div>
                     <div className="h-4 w-[1px] bg-background/20"></div>
                     <button onClick={() => setSelectedIds(new Set())}>
@@ -505,7 +515,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
 
             {/* Editor Modal */}
             {editorFile && (
-                <div className="fixed inset-0 bg-background/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
                     <div className="bg-[#0d0d0d] border border-border shadow-2xl rounded-xl w-full max-w-6xl h-[90vh] flex flex-col animate-in zoom-in-95 duration-200 ring-1 ring-border/50">
                         <div className="flex items-center justify-between p-4 border-b border-border bg-[#09090b]">
                             <div className="flex items-center gap-3">
@@ -516,12 +526,14 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <button 
-                                    onClick={handleSaveFile}
-                                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors shadow-lg shadow-primary/10"
-                                >
-                                    <Save size={16} /> Save Content
-                                </button>
+                                {canManage && (
+                                    <button 
+                                        onClick={handleSaveFile}
+                                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors shadow-lg shadow-primary/10"
+                                    >
+                                        <Save size={16} /> Save Content
+                                    </button>
+                                )}
                                 <button 
                                     onClick={() => setEditorFile(null)}
                                     className="p-2 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-lg transition-colors"
@@ -579,7 +591,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
 
             {/* Create Item Modal */}
             {newItemModal.type && (
-                <div className="fixed inset-0 bg-background/50 backdrop-blur-sm z-50 flex items-center justify-center">
+                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
                     <div className="bg-card border border-border p-6 rounded-xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
                         <h3 className="text-lg font-bold mb-4">Create New {newItemModal.type === 'folder' ? 'Folder' : 'File'}</h3>
                         <input 

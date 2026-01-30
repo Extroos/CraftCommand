@@ -8,7 +8,7 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
     private db: Database.Database;
     private tableName: string;
 
-    constructor(fileName: string, tableName: string = 'store') {
+    constructor(fileName: string, tableName: string = 'store', private migrationJsonPath?: string) {
         const dbPath = path.join(process.cwd(), 'data', fileName);
         fs.ensureDirSync(path.dirname(dbPath));
         this.db = new Database(dbPath);
@@ -25,13 +25,13 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
             )
         `);
 
-        // Auto-Migration: If DB is empty, try to load from existing servers.json
+        // Auto-Migration: If DB is empty and migration path is provided, try to load from existing JSON
         const count = this.db.prepare(`SELECT COUNT(*) as count FROM ${this.tableName}`).get() as { count: number };
-        if (count.count === 0) {
-            const jsonPath = path.join(process.cwd(), 'data', 'servers.json');
+        if (count.count === 0 && this.migrationJsonPath) {
+            const jsonPath = path.join(process.cwd(), 'data', this.migrationJsonPath);
             if (fs.existsSync(jsonPath)) {
                 try {
-                    console.log('[SqliteProvider] Migrating data from servers.json...');
+                    console.log(`[SqliteProvider] Migrating data from ${this.migrationJsonPath}...`);
                     const jsonData = fs.readJSONSync(jsonPath);
                     if (Array.isArray(jsonData)) {
                         const insert = this.db.prepare(`INSERT INTO ${this.tableName} (id, data) VALUES (?, ?)`);
@@ -39,10 +39,10 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
                             for (const item of items) insert.run(item.id, JSON.stringify(item));
                         });
                         tx(jsonData);
-                        console.log(`[SqliteProvider] Migrated ${jsonData.length} items from JSON.`);
+                        console.log(`[SqliteProvider] Migrated ${jsonData.length} items from ${this.migrationJsonPath}.`);
                     }
                 } catch (e) {
-                    console.error('[SqliteProvider] Migration failed:', e);
+                    console.error(`[SqliteProvider] Migration from ${this.migrationJsonPath} failed:`, e);
                 }
             }
         }

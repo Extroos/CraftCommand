@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-01-30 - Professional Multi-User & RBAC Stable
+
+### Added
+
+- **Multi-User Stability**: Verified and consolidated multi-user support with flawless role-based synchronization.
+- **Granular RBAC**: Hardened security across all modules, ensuring restricted roles (Viewer/Manager) cannot trigger unauthorized actions.
+- **Zero-Config SSL**: Automatic self-signed certificate generation for secure local hosting.
+- **Pro-Grade Dashboard**: High-density 60FPS UI with advanced sparklines and compact management cards.
+
+### Changed
+
+- **UI Polish**: Global refinement of padding, card sizes, and animations for a classic, professional aesthetic.
+- **Performance**: Optimized frontend rendering and state synchronization for 60FPS excellence.
+
+### Fixed
+
+- **RBAC Security Leaks**: Eliminated 403 Forbidden errors for non-admin roles on background update checks and File Manager mutations.
+- **Logout Flow**: Resolved synchronization issues where users were occasionally stuck during sign-out.
+- **API Reliability**: Standardized response validation across all server and system endpoints.
+
 ## [1.5.0-unstable] - 2026-01-30 - UI Redesign & Security Fixes
 
 ### Added

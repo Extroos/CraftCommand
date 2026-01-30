@@ -1,12 +1,120 @@
 
 import React, { useState, useEffect } from 'react';
-import { Server, Save, Terminal, Lock, Unlock, Folder, Play, Clock, Shield, Globe, Cpu, RotateCcw, Gamepad2, Swords, Ghost, Feather, ScrollText, AlertTriangle, AlertCircle, Fingerprint, Network, ShieldAlert, Key, Zap, ArrowRightLeft, Activity, ChevronDown } from 'lucide-react';
+import { Server, Save, Terminal, Lock, Unlock, Folder, Play, Clock, Shield, Globe, Cpu, RotateCcw, Gamepad2, Swords, Ghost, Feather, ScrollText, AlertTriangle, AlertCircle, Fingerprint, Network, ShieldAlert, Key, Zap, ArrowRightLeft, Activity, ChevronDown, Check, Download, ExternalLink, Bot, X, Info, Plus, Minus } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { API } from '../../services/api';
 import { useToast } from '../UI/Toast';
 import { useServers } from '../../context/ServerContext';
 
 import { SecurityConfig } from '@shared/types';
+
+interface InputFieldProps {
+    label: string;
+    propKey: string;
+    config: any;
+    errors: Record<string, string>;
+    handleChange: (key: string, value: any) => void;
+    type?: string;
+    placeholder?: string;
+    mono?: boolean;
+    note?: string;
+    suffix?: string;
+}
+
+const InputField: React.FC<InputFieldProps> = ({ 
+    label, propKey, config, errors, handleChange, 
+    type = 'text', placeholder = '', mono = false, note = '', suffix = ''
+}) => {
+    const isNumber = type === 'number';
+    
+    // Recursive property access for nested config (e.g. advancedFlags.socketBuffer)
+    const getVal = (obj: any, path: string): any => {
+        return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+    };
+
+    const setVal = (path: string, val: any) => {
+        const parts = path.split('.');
+        if (parts.length === 1) {
+            handleChange(path, val);
+        } else {
+            // Special handling for advancedFlags
+            if (parts[0] === 'advancedFlags') {
+                const newFlags = { ...config.advancedFlags, [parts[1]]: val };
+                handleChange('advancedFlags', newFlags);
+            }
+            // Add other nested objects here if needed
+        }
+    };
+
+    const currentVal = getVal(config, propKey);
+
+    const increment = () => {
+        const val = parseInt(currentVal || 0, 10);
+        setVal(propKey, val + 1);
+    };
+
+    const decrement = () => {
+        const val = parseInt(currentVal || 0, 10);
+        setVal(propKey, Math.max(0, val - 1));
+    };
+
+    return (
+        <div className="space-y-1.5 group">
+            <label className="text-[10px] uppercase font-bold text-muted-foreground group-hover:text-foreground transition-colors flex justify-between items-center h-4 tracking-wider">
+                {label}
+                {errors[propKey] && <span className="text-rose-500 normal-case flex items-center gap-1 text-[10px] font-medium"><AlertCircle size={10} /> {errors[propKey]}</span>}
+            </label>
+            <div className={`relative flex items-center bg-background border rounded-md transition-all group-focus-within:ring-1 group-focus-within:ring-primary/20 ${
+                errors[propKey] 
+                ? 'border-rose-500/50 focus-within:border-rose-500' 
+                : 'border-border/60 group-hover:border-primary/40 focus-within:border-primary'
+            }`}>
+                <input 
+                    type={type} 
+                    value={currentVal ?? ''}
+                    onChange={(e) => {
+                         let val = e.target.value;
+                         if (type === 'number') {
+                             const parsed = parseInt(val, 10);
+                             setVal(propKey, isNaN(parsed) ? 0 : parsed);
+                         } else {
+                             setVal(propKey, val);
+                         }
+                    }}
+                    className={`flex-1 min-w-0 bg-transparent px-2.5 py-1.5 text-[11px] outline-none ${
+                        mono || isNumber ? 'font-mono text-primary/80 tabular-nums' : 'font-semibold text-foreground'
+                    } placeholder:text-muted-foreground/30`}
+                    placeholder={placeholder}
+                />
+                
+                {suffix && (
+                    <span className="text-[9px] text-muted-foreground/40 font-bold pr-2 ml-auto pointer-events-none select-none uppercase tracking-tighter">{suffix}</span>
+                )}
+
+                {isNumber && (
+                    <div className="flex items-stretch border-l border-border/40 h-8 overflow-hidden rounded-r-md bg-muted/5">
+                        <button 
+                            type="button"
+                            onClick={decrement}
+                            className="hover:bg-rose-500/10 px-2.5 flex items-center justify-center text-muted-foreground/40 hover:text-rose-500 transition-colors cursor-pointer border-r border-border/20"
+                        >
+                            <Minus size={10} strokeWidth={3} />
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={increment}
+                            className="hover:bg-emerald-500/10 px-2.5 flex items-center justify-center text-muted-foreground/40 hover:text-emerald-500 transition-colors cursor-pointer"
+                        >
+                            <Plus size={10} strokeWidth={3} />
+                        </button>
+                    </div>
+                )}
+            </div>
+            {note && <p className="text-[9px] text-muted-foreground/50 font-medium leading-tight">{note}</p>}
+        </div>
+    );
+};
 
 interface SettingsManagerProps {
     serverId: string;
@@ -15,8 +123,16 @@ interface SettingsManagerProps {
 const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
     const [activeTab, setActiveTab] = useState<'GENERAL' | 'SECURITY' | 'ADVANCED'>('GENERAL');
     const [isDirty, setIsDirty] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const { addToast } = useToast();
+    const { servers, stats } = useServers();
+    const [showConfirm, setShowConfirm] = useState<{ 
+        open: boolean; 
+        type: 'DECOMMISSION' | 'RESET';
+        title: string;
+        description: string;
+    }>({ open: false, type: 'RESET', title: '', description: '' });
     
     // Detailed Config State
     const [config, setConfig] = useState({
@@ -69,7 +185,15 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
 
             installSpark: false,
             debugMode: false,
-            antiDdos: false
+            antiDdos: false,
+            // Pro-Grade Technical
+            gcEngine: 'G1GC',
+            socketBuffer: 32,
+            compressionThreshold: 256,
+            autoHealing: true,
+            healthCheckInterval: 30,
+            retryPattern: '10s, 30s, 1m',
+            threadPriority: 'normal'
         }
     });
 
@@ -125,7 +249,14 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
 
                     installSpark: currentServer.advancedFlags?.installSpark || false,
                     debugMode: currentServer.advancedFlags?.debugMode || false,
-                    antiDdos: currentServer.advancedFlags?.antiDdos || false
+                    antiDdos: currentServer.advancedFlags?.antiDdos || false,
+                    gcEngine: currentServer.advancedFlags?.gcEngine || 'G1GC',
+                    socketBuffer: currentServer.advancedFlags?.socketBuffer || 32,
+                    compressionThreshold: currentServer.advancedFlags?.compressionThreshold || 256,
+                    autoHealing: currentServer.advancedFlags?.autoHealing !== undefined ? currentServer.advancedFlags?.autoHealing : true,
+                    healthCheckInterval: currentServer.advancedFlags?.healthCheckInterval || 30,
+                    retryPattern: currentServer.advancedFlags?.retryPattern || '10s, 30s, 1m',
+                    threadPriority: currentServer.advancedFlags?.threadPriority || 'normal'
                 },
                 cpuPriority: currentServer.cpuPriority || 'normal' // Added
             });
@@ -236,175 +367,240 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
             includeInTotal: config.includeInTotal,
             publicStatus: config.publicStatus,
             securityConfig: config.securityConfig,
-            advancedFlags: config.advancedFlags,
+            advancedFlags: {
+                ...config.advancedFlags,
+                gcEngine: config.advancedFlags.gcEngine as any,
+                threadPriority: config.advancedFlags.threadPriority as any
+            },
             cpuPriority: config.cpuPriority as 'normal' | 'high' | 'realtime'
         };
 
-        await API.updateServer(serverId, updates);
-        updateServerConfig(serverId, updates);
-
-        setIsDirty(false);
-        addToast('success', 'Settings Saved', 'Configuration successfully updated. Restart server to apply.');
+        setIsSaving(true);
+        try {
+            await API.updateServer(serverId, updates);
+            updateServerConfig(serverId, updates);
+            setIsDirty(false);
+            addToast('success', 'Settings Saved', 'Configuration successfully updated.');
+        } catch (err) {
+            addToast('error', 'Save Failed', 'Could not update server configuration.');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    const InputField = ({ label, propKey, type = 'text', placeholder = '', mono = false, note = '' }: { label: string, propKey: keyof typeof config & string, type?: string, placeholder?: string, mono?: boolean, note?: string }) => (
-        <div className="space-y-1.5 font-sans group">
-            <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-muted))] transition-colors flex justify-between items-center h-4">
-                {label}
-                {errors[propKey] && <span className="text-rose-500 normal-case flex items-center gap-1 text-[10px]"><AlertCircle size={10} /> {errors[propKey]}</span>}
-            </label>
-            <div className="relative">
-                <input 
-                    type={type} 
-                    value={config[propKey] as string | number}
-                    onChange={(e) => {
-                         let val = e.target.value;
-                         if (type === 'number') {
-                             const parsed = parseInt(val, 10);
-                             handleChange(propKey, isNaN(parsed) ? 0 : parsed);
-                         } else {
-                             handleChange(propKey, val);
-                         }
-                    }}
-                    className={`w-full bg-background border rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-offset-0 transition-all duration-200 ${
-                        errors[propKey] 
-                        ? 'border-rose-500/50 focus:border-rose-500 focus:ring-rose-500/20' 
-                        : 'border-[rgb(var(--color-border-subtle))] group-hover:border-[rgb(var(--color-border-default))] focus:border-zinc-500 focus:ring-zinc-700/30'
-                    } ${mono ? 'font-mono text-[rgb(var(--color-fg-secondary))]' : 'font-medium text-[rgb(var(--color-fg-secondary))]'} placeholder:text-muted-foreground`}
-                    placeholder={placeholder}
-                />
-            </div>
-            {note && <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium">{note}</p>}
-        </div>
-    );
+    const handleDecommission = async () => {
+        setIsSaving(true);
+        try {
+            await API.deleteServer(serverId);
+            // Clear local context to prevent auto-recovery attempt on reload
+            localStorage.removeItem('cc_serverId');
+            window.location.href = '/'; 
+        } catch (err) {
+            addToast('error', 'Deletion Failed', 'Could not decommission server instance.');
+            setIsSaving(false);
+        }
+    };
+
+    const handleFactoryReset = async () => {
+        const defaults = {
+            serverName: 'New Minecraft Server',
+            workingDirectory: config.workingDirectory, // Keep path
+            logLocation: './logs/latest.log',
+            executable: 'server.jar',
+            javaVersion: 'Do Not Override',
+            ram: 4,
+            cpuPriority: 'normal',
+            executionCommand: 'java -Xmx4G -jar server.jar nogui',
+            stopCommand: 'stop',
+            autostartDelay: 10,
+            updateUrl: '',
+            ip: '0.0.0.0',
+            port: 25565,
+            shutdownTimeout: 60,
+            crashExitCodes: '0',
+            logRetention: 0,
+            gamemode: 'survival',
+            difficulty: 'normal',
+            maxPlayers: 20,
+            motd: 'A Minecraft Server',
+            pvp: true,
+            hardcore: false,
+            allowFlight: false,
+            spawnMonsters: true,
+            spawnAnimals: true,
+            levelSeed: '',
+            viewDistance: 10,
+            onlineMode: true,
+            autoStart: false,
+            crashDetection: true,
+            includeInTotal: true,
+            publicStatus: false,
+            securityConfig: {
+                firewallEnabled: false,
+                allowedIps: [],
+                ddosProtection: false,
+                requireOp2fa: false,
+                forceSsl: false,
+                regionLock: []
+            },
+            advancedFlags: {
+                aikarFlags: false,
+                installSpark: false,
+                debugMode: false,
+                antiDdos: false,
+                gcEngine: 'G1GC',
+                socketBuffer: 32,
+                compressionThreshold: 256,
+                autoHealing: true,
+                healthCheckInterval: 30,
+                retryPattern: '10s, 30s, 1m',
+                threadPriority: 'normal'
+            }
+        };
+
+        setIsSaving(true);
+        try {
+            await API.updateServer(serverId, {
+                ...defaults,
+                name: defaults.serverName
+            });
+            setConfig(defaults as any);
+            setIsDirty(false);
+            addToast('success', 'Factory Reset', 'Configuration has been restored to defaults.');
+        } catch (err) {
+            addToast('error', 'Reset Failed', 'Could not restore default configuration.');
+        } finally {
+            setIsSaving(false);
+            setShowConfirm({ ...showConfirm, open: false });
+        }
+    };
+
+    type TabType = 'GENERAL' | 'SECURITY' | 'ADVANCED';
 
     return (
-        <div className="space-y-6 animate-fade-in pb-10 font-sans">
-             {/* Header */}
-             <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-[rgb(var(--color-border-subtle))] pb-6">
-                <div className="flex items-center gap-4">
-                    <div className="flex p-1 bg-background rounded-lg border border-[rgb(var(--color-border-subtle))]">
+        <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-[1600px] mx-auto space-y-4 pb-12 relative"
+        >
+            {/* --- TOP HEADER BAR --- */}
+            <div className="bg-card border border-border/80 rounded-md shadow-sm">
+                <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
+                    <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-pulse"></div>
+                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Settings Engine // Core.v1.2</span>
+                    </div>
+                </div>
+
+                <div className="px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
+                    <nav className="flex items-center gap-1 bg-muted/10 p-0.5 rounded-md border border-border/40">
+                        {(['GENERAL', 'SECURITY', 'ADVANCED'] as TabType[]).map((tab) => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={`px-4 py-1.5 rounded-[4px] text-[9px] font-black uppercase tracking-widest transition-all ${
+                                    activeTab === tab 
+                                    ? 'bg-primary text-primary-foreground shadow-sm' 
+                                    : 'text-muted-foreground/60 hover:text-foreground/80 hover:bg-muted/30'
+                                }`}
+                            >
+                                {tab}
+                            </button>
+                        ))}
+                    </nav>
+
+                    <div className="flex items-center gap-2">
                         <button 
-                            onClick={() => setActiveTab('GENERAL')}
-                            className={`px-4 py-1.5 text-[10px] uppercase font-bold tracking-[0.15em] rounded-md transition-all duration-300 ${activeTab === 'GENERAL' ? 'bg-secondary text-white shadow-lg shadow-black/50 border border-[rgb(var(--color-border-default))]' : 'text-[rgb(var(--color-fg-subtle))] hover:text-[rgb(var(--color-fg-muted))] hover:bg-white/5 border border-transparent'}`}
+                            onClick={handleSave} 
+                            disabled={isSaving || !isDirty}
+                            className="bg-primary/90 text-primary-foreground px-5 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest hover:bg-primary disabled:opacity-30 disabled:grayscale transition-all shadow-sm flex items-center gap-2"
                         >
-                            General
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('SECURITY')}
-                            className={`px-4 py-1.5 text-[10px] uppercase font-bold tracking-[0.15em] rounded-md transition-all duration-300 ${activeTab === 'SECURITY' ? 'bg-secondary text-white shadow-lg shadow-black/50 border border-[rgb(var(--color-border-default))]' : 'text-[rgb(var(--color-fg-subtle))] hover:text-[rgb(var(--color-fg-muted))] hover:bg-white/5 border border-transparent'}`}
-                        >
-                            Security
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('ADVANCED')}
-                            className={`px-4 py-1.5 text-[10px] uppercase font-bold tracking-[0.15em] rounded-md transition-all duration-300 ${activeTab === 'ADVANCED' ? 'bg-secondary text-white shadow-lg shadow-black/50 border border-[rgb(var(--color-border-default))]' : 'text-[rgb(var(--color-fg-subtle))] hover:text-[rgb(var(--color-fg-muted))] hover:bg-white/5 border border-transparent'}`}
-                        >
-                            Advanced
+                            {isSaving ? <RotateCcw size={12} className="animate-spin" /> : <Save size={12} />}
+                            {isSaving ? 'Synchronizing...' : 'Commit Changes'}
                         </button>
                     </div>
                 </div>
-                
-                 <button 
-                    onClick={handleSave}
-                    disabled={!isDirty || Object.keys(errors).length > 0}
-                    className={`relative px-5 py-2 rounded-md text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 transition-all duration-300 ${
-                        isDirty && Object.keys(errors).length === 0
-                        ? 'bg-rose-500 text-white hover:bg-rose-600 shadow-[0_0_20px_-5px_rgba(244,63,94,0.5)] transform hover:-translate-y-0.5' 
-                        : 'bg-card text-[rgb(var(--color-fg-subtle))] cursor-not-allowed border border-[rgb(var(--color-border-subtle))]'
-                    }`}
-                >
-                    <Save size={12} className={isDirty ? "animate-pulse" : ""} /> Save Changes
-                    {isDirty && (
-                        <span className="absolute -bottom-6 right-0 text-[9px] text-rose-400 font-medium whitespace-nowrap animate-fade-in flex items-center gap-1">
-                            <RotateCcw size={8} /> Restart Required
-                        </span>
-                    )}
-                </button>
-             </div>
+            </div>
 
-             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
                 
                 {/* GENERAL TAB */}
                 {activeTab === 'GENERAL' && (
                     <>
-                    <div className="space-y-4 xl:col-span-2">
+                    <div className="space-y-3 xl:col-span-2">
                         {/* General Settings */}
-                        <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
                             
-                            <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[rgb(var(--color-border-subtle))]">
-                                <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                    <Server size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <Server size={14} className="text-primary/70" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">General Information</h3>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">Primary server definitions</p>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Core Instance</h3>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Identity & Network Mapping</p>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div className="md:col-span-2">
-                                    <InputField label="Server Name" propKey="serverName" placeholder="My Awesome Server" />
+                                    <InputField label="Server Name" propKey="serverName" placeholder="My Awesome Server" config={config} errors={errors} handleChange={handleChange} />
                                 </div>
                                 <div>
-                                    <InputField label="Server IP" propKey="ip" mono note="Use 0.0.0.0 to listen on all interfaces" />
+                                    <InputField label="Interface IP" propKey="ip" mono note="Bind address (0.0.0.0 for global)" config={config} errors={errors} handleChange={handleChange} />
                                 </div>
                                 <div>
-                                    <InputField label="Server Port" propKey="port" type="number" mono />
+                                    <InputField label="Service Port" propKey="port" type="number" mono config={config} errors={errors} handleChange={handleChange} />
                                 </div>
                             </div>
                         </div>
 
-                        {/* Game Mechanics (New) */}
-                        <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        {/* Game Mechanics */}
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
 
-                            <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[rgb(var(--color-border-subtle))]">
-                                <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                    <Gamepad2 size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <Gamepad2 size={14} className="text-primary/70" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Game Settings</h3>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">Gameplay rules and mechanics</p>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Gameplay Environment</h3>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Runtime Behavioral rules</p>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                                {/* Gamemode */}
-                                <div className="space-y-1.5 group/select">
-                                    <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))] group-hover/select:text-[rgb(var(--color-fg-muted))] transition-colors">Default Gamemode</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+                                <div className="space-y-1 group/select">
+                                    <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">Default Gamemode</label>
                                     <div className="relative">
                                         <select 
                                             value={config.gamemode}
                                             onChange={(e) => handleChange('gamemode', e.target.value)}
-                                            className="w-full bg-background border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-medium text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-zinc-700/50 appearance-none transition-colors hover:border-[rgb(var(--color-border-default))]"
+                                            className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
                                         >
                                             <option value="survival">Survival</option>
                                             <option value="creative">Creative</option>
                                             <option value="adventure">Adventure</option>
                                             <option value="spectator">Spectator</option>
                                         </select>
-                                        <div className="absolute right-3 top-2.5 pointer-events-none text-[rgb(var(--color-fg-subtle))] group-hover/select:text-[rgb(var(--color-fg-muted))] transition-colors">
+                                        <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
                                             <ChevronDown size={12} />
                                         </div>
                                     </div>
                                 </div>
 
                                 {/* Difficulty */}
-                                <div className="space-y-1.5 group/select">
-                                    <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))] group-hover/select:text-[rgb(var(--color-fg-muted))] transition-colors">Difficulty</label>
+                                <div className="space-y-1 group/select">
+                                    <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">Difficulty</label>
                                     <div className="relative">
                                         <select 
                                             value={config.difficulty}
                                             onChange={(e) => handleChange('difficulty', e.target.value)}
-                                            className="w-full bg-background border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-medium text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-zinc-700/50 appearance-none transition-colors hover:border-[rgb(var(--color-border-default))]"
+                                            className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
                                         >
                                             <option value="peaceful">Peaceful</option>
                                             <option value="easy">Easy</option>
                                             <option value="normal">Normal</option>
                                             <option value="hard">Hard</option>
                                         </select>
-                                        <div className="absolute right-3 top-2.5 pointer-events-none text-[rgb(var(--color-fg-subtle))] group-hover/select:text-[rgb(var(--color-fg-muted))] transition-colors">
+                                        <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
                                             <ChevronDown size={12} />
                                         </div>
                                     </div>
@@ -412,12 +608,11 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
 
                                 {/* Max Players */}
                                 <div>
-                                    <InputField label="Max Players" propKey="maxPlayers" type="number" />
+                                    <InputField label="Max Players" propKey="maxPlayers" type="number" config={config} errors={errors} handleChange={handleChange} />
                                 </div>
 
-                                {/* View Distance */}
                                 <div className="space-y-1.5 font-sans">
-                                    <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))] flex justify-between">
+                                    <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-muted-foreground flex justify-between">
                                         View Distance
                                         {errors.viewDistance && <span className="text-rose-500 normal-case flex items-center gap-1"><AlertCircle size={10} /> {errors.viewDistance}</span>}
                                     </label>
@@ -427,24 +622,23 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                             min="2" max="32" 
                                             value={config.viewDistance}
                                             onChange={(e) => handleChange('viewDistance', parseInt(e.target.value))}
-                                            className="flex-1 h-1 bg-card rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-secondary [&::-webkit-slider-thumb]:hover:bg-white [&::-webkit-slider-thumb]:transition-colors"
+                                            className="flex-1 h-1 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:transition-colors"
                                         />
-                                        <span className="font-mono text-xs w-6 text-right text-[rgb(var(--color-fg-muted))]">{config.viewDistance}</span>
+                                        <span className="font-mono text-xs w-6 text-right text-muted-foreground">{config.viewDistance}</span>
                                     </div>
                                 </div>
 
-                                {/* MOTD */}
                                 <div className="md:col-span-2 space-y-1.5 group/motd">
-                                    <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))] group-hover/motd:text-[rgb(var(--color-fg-muted))] transition-colors">MOTD</label>
+                                    <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-muted-foreground group-hover/motd:text-foreground transition-colors">MOTD</label>
                                     <div className="relative">
                                         <input 
                                             type="text" 
                                             value={config.motd}
                                             onChange={(e) => handleChange('motd', e.target.value)}
-                                            className="w-full bg-background border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-700/50 font-mono text-[rgb(var(--color-fg-secondary))] placeholder:text-muted-foreground transition-colors hover:border-[rgb(var(--color-border-default))]"
+                                            className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono text-foreground placeholder:text-muted-foreground transition-colors hover:border-muted-foreground/50"
                                             placeholder="A Minecraft Server"
                                         />
-                                        <div className="absolute right-3 top-2.5 text-muted-foreground group-hover/motd:text-[rgb(var(--color-fg-muted))] transition-colors pointer-events-none">
+                                        <div className="absolute right-3 top-2.5 text-muted-foreground">
                                             <ScrollText size={12} />
                                         </div>
                                     </div>
@@ -452,10 +646,9 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                 
                                 {/* Seed */}
                                 <div className="md:col-span-2">
-                                    <InputField label="Level Seed" propKey="levelSeed" placeholder="(Leave empty for random)" mono />
+                                    <InputField label="Level Seed" propKey="levelSeed" placeholder="(Leave empty for random)" mono config={config} errors={errors} handleChange={handleChange} />
                                 </div>
 
-                                {/* Mechanics Toggles Grid */}
                                 <div className="md:col-span-2 grid grid-cols-2 gap-3 pt-2">
                                     {[
                                         { label: 'PvP Enabled', key: 'pvp', icon: <Swords size={12} /> },
@@ -463,17 +656,17 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                         { label: 'Spawn Monsters', key: 'spawnMonsters', icon: <Ghost size={12} /> },
                                         { label: 'Hardcore Mode', key: 'hardcore', icon: <AlertTriangle size={12} /> }
                                     ].map((item) => (
-                                        <label key={item.key} className="group flex items-center justify-between p-3 rounded-md border border-[rgb(var(--color-border-subtle))] bg-card/50 hover:bg-card hover:border-[rgb(var(--color-border-default))] cursor-pointer transition-all duration-200">
+                                        <label key={item.key} className="group flex items-center justify-between p-4 rounded-xl border border-border bg-muted/30 hover:bg-muted/50 cursor-pointer transition-all duration-200">
                                             <div className="flex items-center gap-3">
-                                                <div className={`text-[rgb(var(--color-fg-subtle))] group-hover:text-[rgb(var(--color-fg-muted))] transition-colors ${config[item.key as keyof typeof config] ? 'text-[rgb(var(--color-fg-secondary))]' : ''}`}>
+                                                <div className={`text-muted-foreground group-hover:text-primary transition-colors ${config[item.key as keyof typeof config] ? 'text-primary' : ''}`}>
                                                     {item.icon}
                                                 </div>
-                                                <span className={`text-[9px] font-bold uppercase tracking-widest transition-colors ${config[item.key as keyof typeof config] ? 'text-[rgb(var(--color-fg-secondary))]' : 'text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-muted))]'}`}>{item.label}</span>
+                                                <span className={`text-[9px] font-bold uppercase tracking-widest transition-colors ${config[item.key as keyof typeof config] ? 'text-foreground' : 'text-muted-foreground'}`}>{item.label}</span>
                                             </div>
-                                            <div className={`w-3 h-3 rounded-sm border flex items-center justify-center transition-all ${
+                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
                                                 config[item.key as keyof typeof config] 
-                                                ? 'bg-secondary border-zinc-200' 
-                                                : 'bg-foreground/40 dark:bg-foreground/40 light:bg-foreground/10 border-border group-hover:border-border'
+                                                ? 'bg-primary border-primary' 
+                                                : 'bg-background border-border group-hover:border-muted-foreground/50'
                                             }`}>
                                                 <input 
                                                     type="checkbox" 
@@ -481,7 +674,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                                     onChange={(e) => handleChange(item.key, e.target.checked)}
                                                     className="sr-only"
                                                 />
-                                                {config[item.key as keyof typeof config] && <div className="w-1.5 h-1.5 bg-foreground rounded-[1px]" />}
+                                                {config[item.key as keyof typeof config] && <Check size={10} className="text-primary-foreground" />}
                                             </div>
                                         </label>
                                     ))}
@@ -490,39 +683,38 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                         </div>
                     </div>
                     {/* Sidebar for General */}
-                    <div className="space-y-4 xl:col-span-1">
+                    <div className="space-y-3 xl:col-span-1">
                         {/* Automation & Toggles */}
-                        <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
 
-                            <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[rgb(var(--color-border-subtle))]">
-                                <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                    <RotateCcw size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <RotateCcw size={14} className="text-primary/70" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Automation</h3>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">Lifecycle Management</p>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Autonomous Ops</h3>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Background logic hooks</p>
                                 </div>
                             </div>
 
-                            <div className="space-y-3">
+                            <div className="space-y-2">
                                 {[
-                                    { label: 'Server Auto Start', key: 'autoStart', icon: <Clock size={12} /> },
-                                    { label: 'Crash Detection', key: 'crashDetection', icon: <AlertTriangle size={12} /> },
-                                    { label: 'Include in total players', key: 'includeInTotal', icon: <Shield size={12} /> },
-                                    { label: 'Show On Public Status', key: 'publicStatus', icon: <Globe size={12} /> },
+                                    { label: 'Instance Auto-Boot', key: 'autoStart', icon: <Clock size={12} /> },
+                                    { label: 'Watchdog / Crash Rec.', key: 'crashDetection', icon: <AlertTriangle size={12} /> },
+                                    { label: 'Global Player Sync', key: 'includeInTotal', icon: <Shield size={12} /> },
+                                    { label: 'API Public Exposure', key: 'publicStatus', icon: <Globe size={12} /> },
                                 ].map((item) => (
-                                    <label key={item.key} className="group flex items-center justify-between p-3 rounded-md border border-[rgb(var(--color-border-subtle))] bg-card/50 hover:bg-card hover:border-[rgb(var(--color-border-default))] cursor-pointer transition-all duration-200">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`text-[rgb(var(--color-fg-subtle))] group-hover:text-[rgb(var(--color-fg-muted))] transition-colors ${config[item.key as keyof typeof config] ? 'text-[rgb(var(--color-fg-secondary))]' : ''}`}>
+                                    <label key={item.key} className="group flex items-center justify-between px-3 py-2 rounded-md border border-border/40 bg-muted/20 hover:bg-muted/40 cursor-pointer transition-all">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="text-muted-foreground/60 group-hover:text-primary transition-colors">
                                                 {item.icon}
                                             </div>
-                                            <span className={`text-[9px] font-bold uppercase tracking-widest transition-colors ${config[item.key as keyof typeof config] ? 'text-[rgb(var(--color-fg-secondary))]' : 'text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-muted))]'}`}>{item.label}</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/80 group-hover:text-foreground/80 transition-colors">{item.label}</span>
                                         </div>
-                                         <div className={`w-8 h-4 rounded-full border flex items-center p-0.5 transition-all ${
+                                         <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all ${
                                                 config[item.key as keyof typeof config] 
-                                                ? 'bg-secondary border-zinc-200 justify-end' 
-                                                : 'bg-foreground/40 dark:bg-foreground/40 light:bg-foreground/10 border-border group-hover:border-border justify-start'
+                                                ? 'bg-primary border-primary justify-end' 
+                                                : 'bg-muted border-border justify-start'
                                             }`}>
                                                 <input 
                                                     type="checkbox" 
@@ -530,7 +722,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                                     onChange={(e) => handleChange(item.key, e.target.checked)}
                                                     className="sr-only"
                                                 />
-                                                <div className={`w-2.5 h-2.5 rounded-full transition-all ${config[item.key as keyof typeof config] ? 'bg-foreground' : 'bg-muted'}`} />
+                                                <div className={`w-2 h-2 rounded-full transition-all ${config[item.key as keyof typeof config] ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
                                             </div>
                                     </label>
                                 ))}
@@ -543,55 +735,52 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                 {/* SECURITY TAB */}
                 {activeTab === 'SECURITY' && (
                     <>
-                    <div className="space-y-4 xl:col-span-2">
+                    <div className="space-y-3 xl:col-span-2">
                         {/* Firewall Panel */}
-                        <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
 
-                            <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                        <ShieldAlert size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/60">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                        <ShieldAlert size={14} className="text-rose-500/70" />
                                     </div>
                                     <div>
-                                        <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Network Firewall</h3>
-                                        <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">Control inbound traffic sources.</p>
+                                        <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">L3/L4 Firewall</h3>
+                                        <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Packet Filter logic</p>
                                     </div>
                                 </div>
-                                <label className="relative inline-flex items-center cursor-pointer group/toggle">
-                                    <input 
-                                        type="checkbox" 
-                                        className="sr-only peer" 
-                                        checked={config.securityConfig.firewallEnabled}
-                                        onChange={(e) => handleSecurityChange('firewallEnabled', e.target.checked)}
-                                    />
-                                    <div className="w-10 h-5 bg-card peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-muted after:border-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-500/20 peer-checked:after:bg-rose-500 peer-checked:after:border-rose-400 group-hover/toggle:after:scale-95 transition-all"></div>
-                                </label>
+                                <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
+                                    config.securityConfig.firewallEnabled
+                                    ? 'bg-rose-500 border-rose-500 justify-end' 
+                                    : 'bg-muted border-border justify-start'
+                                }`} onClick={() => handleSecurityChange('firewallEnabled', !config.securityConfig.firewallEnabled)}>
+                                     <div className={`w-2 h-2 rounded-full transition-all ${config.securityConfig.firewallEnabled ? 'bg-white' : 'bg-muted-foreground'}`} />
+                                </div>
                             </div>
 
-                            <div className={`space-y-4 transition-all duration-300 ${!config.securityConfig.firewallEnabled ? 'opacity-50 pointer-events-none blur-[1px]' : 'opacity-100 blur-0'}`}>
-                                <div className="bg-card/30 border border-[rgb(var(--color-border-subtle))] rounded-lg p-5">
-                                    <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] mb-4 flex items-center gap-2 text-[rgb(var(--color-fg-muted))]"><Network size={12} /> Whitelisted IPs</h4>
-                                    <div className="flex gap-2 mb-4">
+                            <div className={`space-y-4 transition-all duration-300 ${!config.securityConfig.firewallEnabled ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100'}`}>
+                                <div className="bg-muted/10 border border-border/40 rounded-md p-3">
+                                    <h4 className="text-[9px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 text-foreground/70"><Network size={12} className="text-primary/70" /> ACL: Source Address Whitelist</h4>
+                                    <div className="flex gap-2 mb-3">
                                         <input 
                                             type="text" 
                                             value={newIp}
                                             onChange={(e) => setNewIp(e.target.value)}
-                                            placeholder="192.168.1.1" 
-                                            className="flex-1 bg-background border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-zinc-700/50 transition-colors hover:border-[rgb(var(--color-border-default))] placeholder:text-muted-foreground"
+                                            placeholder="0.0.0.0" 
+                                            className="flex-1 bg-background border border-border/60 rounded-md px-2.5 py-1.5 text-[11px] font-mono text-primary/80 focus:outline-none focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground/20"
                                         />
-                                        <button onClick={handleAddIp} className="bg-primary text-black px-4 rounded-md text-[9px] font-bold uppercase tracking-widest hover:bg-secondary transition-colors shadow-[0_0_10px_-3px_rgba(255,255,255,0.2)]">Add IP</button>
+                                        <button onClick={handleAddIp} className="bg-primary/90 text-primary-foreground px-3 rounded-md text-[9px] font-black uppercase tracking-widest hover:bg-primary transition-all">Add Hook</button>
                                     </div>
                                     
-                                    <div className="flex flex-wrap gap-2">
+                                    <div className="flex flex-wrap gap-1.5">
                                         {config.securityConfig.allowedIps.map((ip) => (
-                                            <div key={ip} className="bg-emerald-500/5 border border-emerald-500/10 text-emerald-500/80 px-2.5 py-1 rounded-md text-[10px] font-mono flex items-center gap-2 group/ip hover:bg-emerald-500/10 hover:border-emerald-500/20 transition-colors">
+                                            <div key={ip} className="bg-primary/5 border border-primary/20 text-primary/80 px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-2 group/ip hover:bg-primary/10 transition-colors">
                                                 {ip}
-                                                <button onClick={() => handleRemoveIp(ip)} className="hover:text-emerald-400 opacity-50 group-hover/ip:opacity-100 transition-opacity"><RotateCcw className="rotate-45" size={10} /></button>
+                                                <button onClick={() => handleRemoveIp(ip)} className="hover:text-primary transition-opacity"><RotateCcw className="rotate-45" size={10} /></button>
                                             </div>
                                         ))}
                                         {config.securityConfig.allowedIps.length === 0 && (
-                                            <span className="text-[10px] text-muted-foreground italic font-mono flex items-center gap-2"><AlertTriangle size={10}/> No IPs whitelisted. All traffic allowed.</span>
+                                            <span className="text-[9px] text-muted-foreground/40 font-mono flex items-center gap-2 uppercase font-bold tracking-tighter"><AlertTriangle size={10}/> No Policy defined (ANY/ANY)</span>
                                         )}
                                     </div>
                                 </div>
@@ -599,146 +788,116 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                         </div>
 
                         {/* Access Control */}
-                        <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
                             
-                            <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[rgb(var(--color-border-subtle))]">
-                                <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                    <Key size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <Key size={14} className="text-primary/70" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Access Control</h3>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">Authentication & Permissions</p>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Access Control</h3>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Auth Policy Enforcement</p>
                                 </div>
                             </div>
                             
-                            <div className="space-y-3">
-                                <label className="group flex items-center justify-between p-3 border border-[rgb(var(--color-border-subtle))] rounded-md bg-card/50 hover:bg-card hover:border-[rgb(var(--color-border-default))] cursor-pointer transition-all duration-200">
-                                    <div className="flex gap-3 items-center">
-                                        <div className="text-[rgb(var(--color-fg-subtle))] group-hover:text-[rgb(var(--color-fg-muted))] transition-colors">
-                                            <Fingerprint size={14} />
+                            <div className="space-y-2">
+                                {[
+                                    { label: 'Multifactor Auth (2FA)', key: 'requireOp2fa', icon: <Fingerprint size={12} /> },
+                                    { label: 'Enforce SSL/TLS Layer', key: 'forceSsl', icon: <Lock size={12} /> },
+                                ].map((item) => (
+                                    <label key={item.key} className="group flex items-center justify-between px-3 py-2 rounded-md border border-border/40 bg-muted/20 hover:bg-muted/40 cursor-pointer transition-all">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="text-muted-foreground/60 group-hover:text-primary transition-colors">
+                                                {item.icon}
+                                            </div>
+                                            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/80 group-hover:text-foreground/80 transition-colors">{item.label}</span>
                                         </div>
-                                        <div>
-                                            <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-secondary))] transition-colors">Require 2FA for Operators</h4>
-                                        </div>
-                                    </div>
-                                    <div className={`w-8 h-4 rounded-full border flex items-center p-0.5 transition-all ${
-                                        config.securityConfig.requireOp2fa
-                                        ? 'bg-secondary border-zinc-200 justify-end' 
-                                        : 'bg-foreground/40 dark:bg-foreground/40 light:bg-foreground/10 border-border group-hover:border-border justify-start'
-                                    }`}>
-                                        <input 
-                                            type="checkbox" 
-                                            checked={config.securityConfig.requireOp2fa}
-                                            onChange={(e) => handleSecurityChange('requireOp2fa', e.target.checked)}
-                                            className="sr-only"
-                                        />
-                                        <div className={`w-2.5 h-2.5 rounded-full transition-all ${config.securityConfig.requireOp2fa ? 'bg-foreground' : 'bg-muted'}`} />
-                                    </div>
-                                </label>
+                                         <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all ${
+                                                config.securityConfig[item.key as keyof typeof config.securityConfig] 
+                                                ? 'bg-primary border-primary justify-end' 
+                                                : 'bg-muted border-border justify-start'
+                                            }`}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={config.securityConfig[item.key as keyof typeof config.securityConfig] as boolean}
+                                                    onChange={(e) => handleSecurityChange(item.key as any, e.target.checked)}
+                                                    className="sr-only"
+                                                />
+                                                <div className={`w-2 h-2 rounded-full transition-all ${config.securityConfig[item.key as keyof typeof config.securityConfig] ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
+                                            </div>
+                                    </label>
+                                ))}
 
-                                <label className="group flex items-center justify-between p-3 border border-[rgb(var(--color-border-subtle))] rounded-md bg-card/50 hover:bg-card hover:border-[rgb(var(--color-border-default))] cursor-pointer transition-all duration-200">
-                                    <div className="flex gap-3 items-center">
-                                        <div className="text-[rgb(var(--color-fg-subtle))] group-hover:text-[rgb(var(--color-fg-muted))] transition-colors">
-                                            <Lock size={14} />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-secondary))] transition-colors">Force SSL / Secure Profile</h4>
-                                        </div>
-                                    </div>
-                                    <div className={`w-8 h-4 rounded-full border flex items-center p-0.5 transition-all ${
-                                        config.securityConfig.forceSsl
-                                        ? 'bg-secondary border-zinc-200 justify-end' 
-                                        : 'bg-foreground/40 dark:bg-foreground/40 light:bg-foreground/10 border-border group-hover:border-border justify-start'
-                                    }`}>
-                                         <input 
-                                            type="checkbox" 
-                                            checked={config.securityConfig.forceSsl}
-                                            onChange={(e) => handleSecurityChange('forceSsl', e.target.checked)}
-                                            className="sr-only"
-                                        />
-                                        <div className={`w-2.5 h-2.5 rounded-full transition-all ${config.securityConfig.forceSsl ? 'bg-foreground' : 'bg-muted'}`} />
-                                    </div>
-                                </label>
-
-                                <label className={`group flex items-center justify-between p-3 border rounded-md cursor-pointer transition-all duration-300 mt-4 ${
+                                <label className={`group flex items-center justify-between px-3 py-2 rounded-md border transition-all mt-2 ${
                                     !config.onlineMode
-                                    ? 'bg-rose-500/5 hover:bg-rose-500/10 border-rose-500/20'
-                                    : 'bg-card/30 hover:bg-card/50 border-[rgb(var(--color-border-subtle))]'
+                                    ? 'bg-rose-500/5 border-rose-500/20'
+                                    : 'bg-muted/20 border-border/40'
                                 }`}>
-                                    <div className="flex gap-3 items-center">
-                                        <div className={`p-1.5 rounded-md transition-colors ${!config.onlineMode ? 'bg-rose-500/10 text-rose-500' : 'bg-secondary text-[rgb(var(--color-fg-muted))]'}`}>
-                                            <Unlock size={14} />
+                                    <div className="flex gap-2.5 items-center">
+                                        <div className={`p-1 rounded-md transition-colors ${!config.onlineMode ? 'bg-rose-500/10 text-rose-500' : 'bg-muted/40 text-muted-foreground/60'}`}>
+                                            <Unlock size={12} />
                                         </div>
                                         <div>
-                                            <h4 className={`text-[9px] font-bold uppercase tracking-[0.2em] transition-colors ${!config.onlineMode ? 'text-rose-400' : 'text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-muted))]'}`}>Crack Server (Offline Mode)</h4>
-                                            <p className={`text-[9px] leading-snug font-medium transition-colors ${!config.onlineMode ? 'text-rose-500/60' : 'text-muted-foreground'}`}>Disable official account authentication.</p>
+                                            <h4 className={`text-[9px] font-black uppercase tracking-wider ${!config.onlineMode ? 'text-rose-400' : 'text-muted-foreground/80'}`}>Bypass MD5 Auth</h4>
+                                            <p className="text-[7px] font-bold text-muted-foreground/40 uppercase tracking-tighter">OFFLINE_MODE_UNSECURE</p>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col items-center gap-1">
-                                         <input 
-                                            type="checkbox" 
-                                            checked={!config.onlineMode}
-                                            onChange={(e) => handleChange('onlineMode', !e.target.checked)}
-                                            className={`h-4 w-4 rounded border cursor-pointer focus:ring-0 appearance-none transition-all ${
-                                                !config.onlineMode 
-                                                ? 'bg-rose-500 border-rose-600 shadow-[0_0_10px_-2px_rgba(244,63,94,0.5)]' 
-                                                : 'bg-foreground border-border'
-                                            }`}
-                                        />
-                                        <span className={`text-[8px] font-black uppercase tracking-wider ${!config.onlineMode ? 'text-rose-500' : 'text-muted-foreground'}`}>Unlocked</span>
+                                    <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
+                                        !config.onlineMode
+                                        ? 'bg-rose-500 border-rose-500 justify-end shadow-[0_0_8px_rgba(244,63,94,0.3)]' 
+                                        : 'bg-muted border-border justify-start'
+                                    }`} onClick={() => handleChange('onlineMode', !config.onlineMode)}>
+                                         <div className={`w-2 h-2 rounded-full transition-all ${!config.onlineMode ? 'bg-white' : 'bg-muted-foreground'}`} />
                                     </div>
                                 </label>
                             </div>
                         </div>
                     </div>
 
-                    <div className="space-y-4 xl:col-span-1">
-                        {/* Threat Mitigation */}
-                        <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div className="space-y-3 xl:col-span-1">
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
 
-                            <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[rgb(var(--color-border-subtle))]">
-                                <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                    <Shield size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <Shield size={14} className="text-primary/70" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Threat Mitigation</h3>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">DDoS & Geo-blocking</p>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Threat Mitigation</h3>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Edge Protection Stack</p>
                                 </div>
                             </div>
                             
-                            <div className="space-y-5">
-                                <div className={`p-4 rounded-lg border transition-all duration-300 ${
+                            <div className="space-y-4">
+                                <div className={`p-3 rounded-md border transition-all duration-300 ${
                                     config.securityConfig.ddosProtection 
-                                    ? 'bg-card/80 border-[rgb(var(--color-border-default))] shadow-lg' 
-                                    : 'bg-card/30 border-[rgb(var(--color-border-subtle))]'
+                                    ? 'bg-primary/5 border-primary/20' 
+                                    : 'bg-muted/20 border-border/40'
                                 }`}>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <label className={`text-[9px] font-bold uppercase tracking-widest transition-colors ${
-                                            config.securityConfig.ddosProtection ? 'text-[rgb(var(--color-fg-secondary))]' : 'text-[rgb(var(--color-fg-subtle))]'
+                                    <div className="flex justify-between items-center mb-1.5">
+                                        <label className={`text-[9px] font-black uppercase tracking-widest ${
+                                            config.securityConfig.ddosProtection ? 'text-primary' : 'text-muted-foreground/60'
                                         }`}>DDoS Mitigation</label>
-                                        <div className={`w-8 h-4 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
+                                        <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
                                             config.securityConfig.ddosProtection
-                                            ? 'bg-secondary border-zinc-200 justify-end' 
-                                            : 'bg-foreground/40 dark:bg-foreground/40 light:bg-foreground/10 border-border justify-start'
+                                            ? 'bg-primary border-primary justify-end' 
+                                            : 'bg-muted border-border justify-start'
                                         }`} onClick={() => handleSecurityChange('ddosProtection', !config.securityConfig.ddosProtection)}>
-                                             <div className={`w-2.5 h-2.5 rounded-full transition-all ${config.securityConfig.ddosProtection ? 'bg-foreground' : 'bg-muted'}`} />
+                                             <div className={`w-2 h-2 rounded-full transition-all ${config.securityConfig.ddosProtection ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
                                         </div>
                                     </div>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] leading-relaxed">Enables aggressive packet filtering and connection throttling.</p>
+                                    <p className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-tighter leading-tight">Stateful Packet Inspection (SPI) & Throttling</p>
                                 </div>
 
-                                <div className="space-y-1.5 group/select">
-                                    <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-muted))] group-hover/select:text-[rgb(var(--color-fg-muted))] transition-colors block">Region Lock</label>
+                                <div className="space-y-1 group/select">
+                                    <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground group-hover/select:text-foreground">Geographic Lock</label>
                                     <div className="relative">
-                                        <select className="w-full bg-background border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-zinc-700/50 hover:border-[rgb(var(--color-border-default))] appearance-none transition-colors">
-                                            <option value="">Global (No Restrictions)</option>
-                                            <option value="US">North America Only</option>
-                                            <option value="EU">Europe Only</option>
-                                            <option value="ASIA">Asia Only</option>
+                                        <select className="w-full bg-background border border-border/60 rounded-md px-2.5 py-1.5 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors">
+                                            <option value="">Status: Global (OPEN)</option>
+                                            <option value="US">Region: North America</option>
+                                            <option value="EU">Region: Europe</option>
+                                            <option value="ASIA">Region: Asia</option>
                                         </select>
-                                        <div className="absolute right-3 top-2.5 pointer-events-none text-[rgb(var(--color-fg-subtle))] group-hover/select:text-[rgb(var(--color-fg-muted))] transition-colors">
+                                        <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/40">
                                             <ChevronDown size={12} />
                                         </div>
                                     </div>
@@ -747,14 +906,21 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                         </div>
 
                         {/* Integrity */}
-                        <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-6 relative overflow-hidden group">
-                             <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                            <h3 className="font-bold uppercase tracking-[0.2em] text-blue-400 text-[10px] mb-3 flex items-center gap-2">
-                                <Activity size={12} /> System Integrity
-                            </h3>
-                            <p className="text-[10px] text-blue-400/60 mb-5 leading-relaxed font-medium">Core files (server.jar, eula.txt) are automatically write-protected.</p>
-                            <button className="w-full py-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-md text-[9px] font-bold uppercase tracking-widest hover:bg-blue-500/20 hover:text-blue-300 transition-all shadow-[0_0_15px_-5px_rgba(59,130,246,0.3)]">
-                                Verify File Hash
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
+
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <Activity size={14} className="text-primary/70" />
+                                </div>
+                                <div>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">System Integrity</h3>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">FIM: File Integrity Monitoring</p>
+                                </div>
+                            </div>
+                            
+                            <p className="text-[9px] font-bold text-muted-foreground/60 mb-4 leading-relaxed uppercase tracking-tight">Core assets (server.jar, eula.txt) are under kernel-level write-protection.</p>
+                            <button className="w-full py-1.5 bg-primary/5 text-primary/80 border border-primary/20 rounded-md text-[9px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all">
+                                Perform MD5/SHA2 Validation
                             </button>
                         </div>
                     </div>
@@ -764,112 +930,129 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                 {/* ADVANCED TAB */}
                 {activeTab === 'ADVANCED' && (
                     <>
-                    <div className="space-y-4 xl:col-span-2">
+                    <div className="space-y-3 xl:col-span-2">
                         {/* Paths & Environment */}
-                        <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
 
-                            <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[rgb(var(--color-border-subtle))]">
-                                <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                    <Folder size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <Folder size={14} className="text-primary/70" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Paths & Environment</h3>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">File system mapping</p>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Path Registry</h3>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">System I/O Mapping</p>
                                 </div>
                             </div>
                             
-                            <div className="space-y-5">
+                            <div className="space-y-4">
                                 <div>
-                                    <div className="flex justify-between">
-                                        <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-muted))] mb-1.5 block">Server Working Directory</label>
-                                        <Lock size={10} className="text-[rgb(var(--color-fg-subtle))]" />
+                                    <div className="flex justify-between items-center mb-1">
+                                        <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Working Directory</label>
+                                        <Lock size={10} className="text-muted-foreground/30" />
                                     </div>
                                     <div className="relative group/path">
                                         <input 
                                             type="text" 
                                             readOnly
                                             value={config.workingDirectory}
-                                            className="w-full bg-card/50 border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-mono text-[rgb(var(--color-fg-muted))] focus:outline-none cursor-not-allowed select-all transition-colors group-hover/path:bg-card group-hover/path:text-[rgb(var(--color-fg-muted))]"
+                                            className="w-full bg-muted/20 border border-border/40 rounded-md px-2.5 py-1.5 text-[10px] font-mono text-muted-foreground/70 focus:outline-none cursor-not-allowed select-all"
                                         />
                                     </div>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] mt-1 font-medium">Absolute host path. managed by system.</p>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                    <div>
-                                        <InputField label="Server Executable" propKey="executable" mono note="Relative to working directory" />
-                                    </div>
-                                    <div>
-                                        <InputField label="Server Log Location" propKey="logLocation" mono />
-                                    </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <InputField label="Binary File" propKey="executable" mono note="Primary executable JAR/SH" config={config} errors={errors} handleChange={handleChange} />
+                                    <InputField label="Log Trace" propKey="logLocation" mono config={config} errors={errors} handleChange={handleChange} />
                                 </div>
                             </div>
                         </div>
 
                          {/* Java & Memory */}
-                        <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
 
-                            <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[rgb(var(--color-border-subtle))]">
-                                <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                    <Cpu size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <Cpu size={14} className="text-primary/70" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Java & Memory</h3>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">Runtime Configuration</p>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Runtime Engine</h3>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">JVM Execution Optimization</p>
                                 </div>
                             </div>
 
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                                    <div className="space-y-1.5 group/select">
-                                        <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))] group-hover/select:text-[rgb(var(--color-fg-muted))] transition-colors">Java Version Override</label>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div className="space-y-1 group/select">
+                                        <label className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground group-hover/select:text-foreground">JVM Architecture</label>
                                         <div className="relative">
                                             <select 
                                                 value={config.javaVersion}
                                                 onChange={(e) => handleChange('javaVersion', e.target.value)}
-                                                className="w-full bg-background border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-medium text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-zinc-700/50 appearance-none transition-colors hover:border-[rgb(var(--color-border-default))]"
+                                                className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
                                             >
-                                                <option value="Do Not Override">Do Not Override</option>
-                                                <option value="Java 17">Java 17 (Temurin)</option>
-                                                <option value="Java 21">Java 21 (Temurin)</option>
+                                                <option value="Java 21">Java 21 (LTS)</option>
+                                                <option value="Java 17">Java 17 (Recommended)</option>
+                                                <option value="Java 11">Java 11</option>
                                                 <option value="Java 8">Java 8 (Legacy)</option>
                                             </select>
-                                            <div className="absolute right-3 top-2.5 pointer-events-none text-[rgb(var(--color-fg-subtle))] group-hover/select:text-[rgb(var(--color-fg-muted))] transition-colors">
+                                            <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
                                                 <ChevronDown size={12} />
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="space-y-1.5 font-sans">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))]">Server RAM Allocation</label>
-                                            <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">{config.ram} GB</span>
+
+                                    <div className="space-y-1 group/select">
+                                        <label className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground group-hover/select:text-foreground">GC Engine</label>
+                                        <div className="relative">
+                                            <select 
+                                                value={config.advancedFlags.gcEngine}
+                                                onChange={(e) => {
+                                                    const newFlags = { ...config.advancedFlags, gcEngine: e.target.value };
+                                                    setConfig({ ...config, advancedFlags: newFlags });
+                                                    setIsDirty(true);
+                                                }}
+                                                className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-mono font-semibold text-primary/80 focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
+                                            >
+                                                <option value="G1GC">G1GC (Balanced)</option>
+                                                <option value="ZGC">ZGC (Low Latency)</option>
+                                                <option value="Shenandoah">Shenandoah (Ultra-Low)</option>
+                                                <option value="Parallel">Parallel (High Throughput)</option>
+                                            </select>
+                                            <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
+                                                <ChevronDown size={12} />
+                                            </div>
                                         </div>
-                                        <div className="relative flex items-center gap-3 h-[34px] px-1">
+                                    </div>
+
+                                    <div className="md:col-span-2 space-y-1">
+                                        <div className="flex justify-between items-center h-4">
+                                            <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground">Memory Heap Limit</label>
+                                            <span className="text-[9px] font-mono font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded border border-primary/20">{config.ram}.0 GB</span>
+                                        </div>
+                                        <div className="relative flex items-center h-6">
                                             <input 
                                                 type="range" 
                                                 min="1" 
-                                                max="32" 
+                                                max="64" 
                                                 step="1"
                                                 value={config.ram}
                                                 onChange={(e) => handleChange('ram', parseInt(e.target.value))}
-                                                className="flex-1 h-1 bg-card rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:hover:bg-emerald-400 [&::-webkit-slider-thumb]:transition-colors"
+                                                className="w-full h-1 bg-muted/40 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-primary-foreground/30 [&::-webkit-slider-thumb]:hover:scale-110 [&::-webkit-slider-thumb]:transition-all"
                                             />
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="space-y-1.5 group/cmd">
-                                    <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))] group-hover/cmd:text-[rgb(var(--color-fg-muted))] transition-colors">Server Execution Command</label>
+                                <div className="space-y-1 group/cmd">
+                                    <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/cmd:text-foreground">Override Start Sequence</label>
                                     <div className="relative">
                                         <textarea 
                                             value={config.executionCommand}
                                             onChange={(e) => handleChange('executionCommand', e.target.value)}
-                                            className="w-full h-24 bg-background border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-[10px] font-mono text-[rgb(var(--color-fg-muted))] focus:outline-none focus:ring-1 focus:ring-zinc-700/50 resize-none leading-relaxed transition-colors hover:border-[rgb(var(--color-border-default))] placeholder:text-muted-foreground"
+                                            className="w-full h-20 bg-muted/10 border border-border/60 rounded-md px-2.5 py-2 text-[10px] font-mono text-primary/70 focus:outline-none focus:border-primary focus:bg-muted/5 transition-all resize-none leading-relaxed"
                                             placeholder="java -Xmx4G -jar server.jar nogui"
                                         />
-                                        <div className="absolute right-3 bottom-3 text-muted-foreground pointer-events-none group-hover/cmd:text-[rgb(var(--color-fg-subtle))] transition-colors">
+                                        <div className="absolute right-3 bottom-3 text-muted-foreground/30 pointer-events-none">
                                             <Terminal size={14} />
                                         </div>
                                     </div>
@@ -878,126 +1061,286 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                         </div>
                     </div>
                     
-                    <div className="space-y-4 xl:col-span-1">
+                    <div className="space-y-3 xl:col-span-1">
                         {/* Process Management */}
-                        <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
 
-                            <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[rgb(var(--color-border-subtle))]">
-                                <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                    <Play size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <Play size={14} className="text-primary/70" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Process Control</h3>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">Startup & Shutdown</p>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Process Lifecycle</h3>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Startup & Termination Stack</p>
                                 </div>
                             </div>
 
                             <div className="space-y-4">
-                                <div>
-                                    <InputField label="Graceful Stop Command" propKey="stopCommand" mono placeholder="stop" />
-                                </div>
+                                <InputField label="Stop Sequence" propKey="stopCommand" mono placeholder="stop" config={config} errors={errors} handleChange={handleChange} />
 
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1.5 group/input">
-                                        <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))] group-hover/input:text-[rgb(var(--color-fg-muted))] transition-colors">Start Delay</label>
-                                        <div className="relative">
-                                            <input 
-                                                type="number" 
-                                                value={config.autostartDelay}
-                                                onChange={(e) => handleChange('autostartDelay', parseInt(e.target.value))}
-                                                className="w-full bg-background border border-[rgb(var(--color-border-subtle))] rounded-md pl-3 pr-6 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-700/50 font-medium text-[rgb(var(--color-fg-secondary))] transition-colors hover:border-[rgb(var(--color-border-default))]"
-                                            />
-                                            <span className="absolute right-2 top-2 text-[10px] text-[rgb(var(--color-fg-subtle))] font-bold">s</span>
+                                    <InputField label="Boot Delay" propKey="autostartDelay" type="number" suffix="ms" config={config} errors={errors} handleChange={handleChange} />
+                                    <InputField label="SIGTERM Grace" propKey="shutdownTimeout" type="number" suffix="s" config={config} errors={errors} handleChange={handleChange} />
+                                </div>
+
+                                <div className="p-3 rounded-md bg-primary/5 border border-primary/10">
+                                    <div className="flex justify-between items-center mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <RotateCcw size={12} className="text-primary/70" />
+                                            <label className="text-[9px] font-bold uppercase tracking-widest text-primary/80">Auto-Healing Logic</label>
+                                        </div>
+                                        <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
+                                            config.advancedFlags.autoHealing
+                                            ? 'bg-primary border-primary justify-end' 
+                                            : 'bg-muted border-border justify-start'
+                                        }`} onClick={() => {
+                                            const newFlags = { ...config.advancedFlags, autoHealing: !config.advancedFlags.autoHealing };
+                                            setConfig({ ...config, advancedFlags: newFlags });
+                                            setIsDirty(true);
+                                        }}>
+                                             <div className={`w-2 h-2 rounded-full transition-all ${config.advancedFlags.autoHealing ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
                                         </div>
                                     </div>
-                                    <div className="space-y-1.5 group/input">
-                                        <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-[rgb(var(--color-fg-muted))] group-hover/input:text-[rgb(var(--color-fg-muted))] transition-colors">Kill Timeout</label>
-                                        <div className="relative">
-                                            <input 
-                                                type="number" 
-                                                value={config.shutdownTimeout}
-                                                onChange={(e) => handleChange('shutdownTimeout', parseInt(e.target.value))}
-                                                className="w-full bg-background border border-[rgb(var(--color-border-subtle))] rounded-md pl-3 pr-6 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-700/50 font-medium text-[rgb(var(--color-fg-secondary))] transition-colors hover:border-[rgb(var(--color-border-default))]"
-                                            />
-                                            <span className="absolute right-2 top-2 text-[10px] text-[rgb(var(--color-fg-subtle))] font-bold">s</span>
-                                        </div>
+                                    <div className="grid grid-cols-2 gap-2 mt-2">
+                                        <InputField label="Check Int." propKey="advancedFlags.healthCheckInterval" type="number" suffix="s" config={config} errors={errors} handleChange={handleChange} />
+                                        <InputField label="Retry Pattern" propKey="advancedFlags.retryPattern" placeholder="10s, 30s..." config={config} errors={errors} handleChange={handleChange} />
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                         {/* Network & Optimization (New) */}
-                         <div className="bg-background/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                          {/* Network & Optimization */}
+                        <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
 
-                            <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[rgb(var(--color-border-subtle))]">
-                                <div className="p-2 rounded-md bg-card border border-[rgb(var(--color-border-subtle))] shadow-inner">
-                                    <Network size={14} className="text-[rgb(var(--color-fg-muted))]" />
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                    <Network size={14} className="text-primary/70" />
                                 </div>
-                                <div>
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Optimization</h3>
-                                    <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-medium tracking-wide">Performance Tuning</p>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                               {[
-                                    { label: 'Aikar\'s Flags (Performance)', key: 'aikarFlags', icon: <Zap size={12} className="text-amber-500" /> },
-                                    { label: 'Spark Profiler', key: 'installSpark', icon: <Activity size={12} className="text-purple-500" /> },
-                                ].map((item) => (
-                                    <label key={item.key} className="group flex items-center justify-between p-3 rounded-md border border-[rgb(var(--color-border-subtle))] bg-card/50 hover:bg-card hover:border-[rgb(var(--color-border-default))] cursor-pointer transition-all duration-200">
-                                        <div className="flex items-center gap-2.5">
-                                            {item.icon}
-                                            <span className="text-[9px] uppercase font-bold tracking-wider text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-secondary))] transition-colors">{item.label}</span>
-                                        </div>
-                                         <div className={`w-8 h-4 rounded-full border flex items-center p-0.5 transition-all ${
-                                                config.advancedFlags?.[item.key] 
-                                                ? 'bg-secondary border-zinc-200 justify-end' 
-                                                : 'bg-foreground/40 dark:bg-foreground/40 light:bg-foreground/10 border-border group-hover:border-border justify-start'
-                                            }`}>
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={config.advancedFlags?.[item.key] || false}
-                                                    onChange={(e) => {
-                                                        const newFlags = { ...config.advancedFlags, [item.key]: e.target.checked };
-                                                        setConfig({ ...config, advancedFlags: newFlags });
-                                                        setIsDirty(true);
-                                                    }}
-                                                    className="sr-only"
-                                                />
-                                                <div className={`w-2.5 h-2.5 rounded-full transition-all ${config.advancedFlags?.[item.key] ? 'bg-foreground' : 'bg-muted'}`} />
+                                <div className="flex-1">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Network Fabric</h3>
+                                        {/* Status Badge */}
+                                        {servers.find(s => s.id === serverId)?.status === 'ONLINE' && (
+                                            <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                                                <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                                                <span className="text-[8px] font-black text-emerald-500 uppercase">Live Engine Active</span>
                                             </div>
-                                    </label>
-                                ))}
+                                        )}
+                                    </div>
+                                    <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Throughput & Latency Tuning</p>
+                                </div>
                             </div>
+
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                <InputField 
+                                    label="Socket Buffer" 
+                                    propKey="advancedFlags.socketBuffer" 
+                                    type="number" 
+                                    suffix="kb" 
+                                    config={config} 
+                                    errors={errors} 
+                                    handleChange={handleChange} 
+                                    note="Optimizes high-traffic flow"
+                                />
+                                <InputField 
+                                    label="Compress Thresh." 
+                                    propKey="advancedFlags.compressionThreshold" 
+                                    type="number" 
+                                    suffix="b" 
+                                    config={config} 
+                                    errors={errors} 
+                                    handleChange={handleChange} 
+                                    note="Packet compression limit"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                {[
+                                     { label: 'Aikar\'s Flags (Adaptive)', key: 'aikarFlags', icon: <Zap size={10} className="text-amber-500" />, desc: 'G1GC Optimization Suite', requires: 'G1GC' },
+                                     { label: 'Spark Trace Engine', key: 'installSpark', icon: <Activity size={10} className="text-purple-500" />, desc: 'Real-time Profiler Plugin' },
+                                     { label: 'GraalVM Native JIT', key: 'useGraalVM', icon: <Cpu size={10} className="text-emerald-500" />, desc: 'Advanced Bytecode Compiler' },
+                                 ].map((item) => {
+                                     const isRunning = servers.find(s => s.id === serverId)?.status === 'ONLINE';
+                                     const activeStats = (stats as any)?.[serverId];
+                                     const cl = activeStats?.commandLine || '';
+                                     
+                                     const isActiveOnProcess = 
+                                         item.key === 'aikarFlags' ? cl.includes('using.aikars.flags=true') :
+                                         item.key === 'useGraalVM' ? cl.includes('UseJVMCICompiler') :
+                                         item.key === 'installSpark' ? true : // Hard to verify without API call
+                                         false;
+
+                                     // Check top-level inputs if they are in the command line too
+                                     const isSocketBufferVerified = isRunning && config.advancedFlags.socketBuffer > 0 && 
+                                         cl.includes(`-Dnetwork.socket.sendBuffer=${config.advancedFlags.socketBuffer}`);
+
+                                     const isDisabled = item.requires && config.advancedFlags.gcEngine !== item.requires;
+
+                                     return (
+                                         <div key={item.key} className="space-y-1">
+                                             <label className={`group flex items-center justify-between px-3 py-2 rounded-md border transition-all ${
+                                                 isDisabled ? 'opacity-40 cursor-not-allowed bg-muted/10 border-border/20' : 'bg-muted/20 border-border/40 hover:bg-muted/40 cursor-pointer'
+                                             }`}>
+                                                 <div className="flex items-center gap-2">
+                                                     {item.icon}
+                                                     <div>
+                                                         <div className="flex items-center gap-2">
+                                                            <span className="text-[9px] uppercase font-black tracking-wider text-muted-foreground group-hover:text-foreground/80 transition-colors">{item.label}</span>
+                                                            {isRunning && isActiveOnProcess && (
+                                                                <div className="group/v relative">
+                                                                    <span className="text-[7px] font-black bg-emerald-500/20 text-emerald-600 px-1 rounded uppercase tracking-tighter cursor-help">Verified</span>
+                                                                    <div className="absolute top-full left-0 mt-1 w-24 p-1.5 bg-emerald-600 text-white text-[7px] font-black uppercase tracking-tighter rounded shadow-xl invisible group-hover/v:visible z-[110]">
+                                                                        Live JVM Hook Active
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                         </div>
+                                                         <p className="text-[7px] font-bold text-muted-foreground/40 uppercase tracking-tight">{item.desc}</p>
+                                                     </div>
+                                                 </div>
+                                                  <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all ${
+                                                         config.advancedFlags?.[item.key] 
+                                                         ? 'bg-primary border-primary justify-end' 
+                                                         : 'bg-muted border-border justify-start'
+                                                     } ${isDisabled ? 'pointer-events-none' : ''}`}>
+                                                         <input 
+                                                             type="checkbox" 
+                                                             disabled={isDisabled}
+                                                             checked={config.advancedFlags?.[item.key] || false}
+                                                             onChange={(e) => {
+                                                                 const newFlags = { ...config.advancedFlags, [item.key]: e.target.checked };
+                                                                 setConfig({ ...config, advancedFlags: newFlags });
+                                                                 setIsDirty(true);
+                                                             }}
+                                                             className="sr-only"
+                                                         />
+                                                         <div className={`w-2 h-2 rounded-full transition-all ${config.advancedFlags?.[item.key] ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
+                                                  </div>
+                                             </label>
+                                             {isDisabled && (
+                                                 <p className="text-[7px] font-black text-rose-500/60 uppercase tracking-widest pl-1">Requires GC Engine: {item.requires}</p>
+                                             )}
+                                         </div>
+                                     );
+                                 })}
+                            </div>
+
+                            {isDirty && (
+                                <div className="mt-4 p-2 rounded bg-amber-500/10 border border-amber-500/20 flex items-center gap-2">
+                                    <AlertTriangle size={12} className="text-amber-500" />
+                                    <span className="text-[8px] font-black text-amber-600 uppercase tracking-tighter">System Restart Required for JVM Changes</span>
+                                </div>
+                            )}
                         </div>
 
                          {/* Danger Zone */}
-                        <div className="bg-rose-950/10 border border-rose-900/20 rounded-xl p-6 relative overflow-hidden group">
-                             <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-rose-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-2 bg-rose-500/10 rounded-md border border-rose-500/20">
+                         <div className="bg-rose-500/[0.03] border border-rose-500/30 rounded-md p-4 relative overflow-hidden group shadow-sm transition-all hover:border-rose-500/50">
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-rose-500/20">
+                                <div className="p-1.5 rounded-md bg-rose-500/10 border border-rose-500/20 shadow-inner group-hover:bg-rose-500/20 transition-colors">
                                     <AlertTriangle className="text-rose-500" size={14} />
                                 </div>
-                                <h3 className="font-bold text-xs uppercase tracking-[0.2em] text-rose-500">Danger Zone</h3>
+                                <div>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-rose-500">Prune & Purge</h3>
+                                    <p className="text-[8px] text-rose-500/60 font-bold uppercase tracking-tight opacity-60">High-risk destructive operations</p>
+                                </div>
                             </div>
-                            <div className="space-y-4 pl-1">
-                                <div className="flex flex-col gap-3">
-                                    <div>
-                                        <h4 className="font-bold text-[10px] uppercase tracking-widest text-[rgb(var(--color-fg-secondary))] mb-1">Reinstall Server</h4>
-                                        <p className="text-[9px] text-rose-500/60 font-medium">This action is irreversible. All data will be lost.</p>
-                                    </div>
-                                    <button className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 px-4 py-2 rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all shadow-[0_0_0_0_rgba(244,63,94,0)] hover:shadow-[0_0_15px_-3px_rgba(244,63,94,0.4)]">
-                                        Reinstall Server
+                            <div className="space-y-3">
+                                <div className="flex flex-col gap-2">
+                                    <button 
+                                        onClick={() => setShowConfirm({
+                                            open: true,
+                                            type: 'RESET',
+                                            title: 'Factory Reset Instance',
+                                            description: 'This will revert all configuration settings to their default values. This action cannot be undone once committed.'
+                                        })}
+                                        className="w-full flex items-center justify-between p-3 rounded-md border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 transition-all group/btn"
+                                    >
+                                        <div className="flex items-center gap-2.5">
+                                            <RotateCcw size={14} className="text-rose-500/70 group-hover/btn:rotate-180 transition-transform duration-500" />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-rose-500/80">Factory Reset Stack</span>
+                                        </div>
+                                        <ArrowRightLeft size={12} className="text-rose-500/30" />
+                                    </button>
+
+                                    <button 
+                                        onClick={() => setShowConfirm({
+                                            open: true,
+                                            type: 'DECOMMISSION',
+                                            title: 'Decommission Instance',
+                                            description: 'CRITICAL: This will permanently delete the server record and all associated files from the disk. This action is irreversible.'
+                                        })}
+                                        className="w-full flex items-center justify-between p-3 rounded-md border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 transition-all group/btn"
+                                    >
+                                        <div className="flex items-center gap-2.5">
+                                            <AlertTriangle size={14} className="text-rose-500" />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-rose-500">Decommission Instance</span>
+                                        </div>
+                                        <Zap size={12} className="text-rose-500 animate-pulse" />
                                     </button>
                                 </div>
                             </div>
                         </div>
+
+                        {/* Confirm Modal */}
+                        <AnimatePresence>
+                            {showConfirm.open && (
+                                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
+                                    <motion.div 
+                                        initial={{ scale: 0.95, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0.95, opacity: 0 }}
+                                        className="bg-card border border-border rounded-lg overflow-hidden max-w-md w-full shadow-xl"
+                                    >
+                                        <div className="h-10 bg-muted/30 border-b border-border flex items-center px-4 justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_5px_rgba(244,63,94,0.5)]"></div>
+                                                <span className="text-[10px] font-bold text-foreground uppercase tracking-wider">{showConfirm.title}</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => setShowConfirm({ ...showConfirm, open: false })}
+                                                className="text-muted-foreground hover:text-foreground transition-colors"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+
+                                        <div className="p-6">
+                                            <div className="flex gap-4 items-start mb-6">
+                                                <div className="p-3 bg-rose-500/10 rounded border border-rose-500/20 shrink-0">
+                                                    <AlertTriangle size={24} className="text-rose-500" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-foreground mb-1">Authorization Required</h4>
+                                                    <p className="text-[11px] font-medium text-muted-foreground leading-relaxed">
+                                                        {showConfirm.description}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex justify-end gap-2 pt-2 border-t border-border/40">
+                                                <button 
+                                                    onClick={() => setShowConfirm({ ...showConfirm, open: false })}
+                                                    className="px-4 py-1.5 rounded text-[11px] font-bold bg-muted hover:bg-muted/80 transition-colors text-foreground"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button 
+                                                    onClick={showConfirm.type === 'DECOMMISSION' ? handleDecommission : handleFactoryReset}
+                                                    className="px-4 py-1.5 rounded text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white transition-colors shadow-sm"
+                                                >
+                                                    {showConfirm.type === 'DECOMMISSION' ? 'Decommission Instance' : 'Execute Reset'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                </div>
+                            )}
+                        </AnimatePresence>
                     </div>
                     </>
                 )}
             </div>
-        </div>
+        </motion.div>
     );
 };
 

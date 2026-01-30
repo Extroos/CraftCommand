@@ -16,7 +16,7 @@ export class ServerRepository implements StorageProvider<ServerConfig> {
 
         if (useSqlite) {
             console.log('[ServerRepository] Using SQLite Storage');
-            this.provider = new SqliteProvider<ServerConfig>('servers.db', 'servers');
+            this.provider = new SqliteProvider<ServerConfig>('servers.db', 'servers', 'servers.json');
         } else {
             console.log('[ServerRepository] Using JSON Storage');
             this.provider = new GenericJsonProvider<ServerConfig>('servers.json');

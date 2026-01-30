@@ -19,7 +19,7 @@ import multer from 'multer';
 import net from 'net';
 
 // Configure Multer (Generic storage, destination handled in route or moved after)
-import { verifyToken, requirePermission, requireRole } from '../middleware/authMiddleware';
+import { verifyToken, requirePermission, requireRole, optionalVerifyToken } from '../middleware/authMiddleware';
 
 const upload = multer({ dest: path.join(path.dirname(DATA_PATHS.SERVERS_ROOT), 'temp_uploads') });
 
@@ -201,10 +201,17 @@ router.get('/:id/query', async (req, res) => {
 // --- Routes ---
 
 // List Servers
-router.get('/', (req, res) => {
+router.get('/', optionalVerifyToken, (req, res) => {
+    const user = (req as any).user;
     const servers = getServers();
+    
+    // Filter by publicStatus if not authenticated
+    const visibleServers = user 
+        ? servers 
+        : servers.filter((s: any) => s.publicStatus === true);
+
     // Enhance with status
-    const enhanced = servers.map((s: any) => {
+    const enhanced = visibleServers.map((s: any) => {
         const isRunning = processManager.isRunning(s.id);
         const cached = processManager.getCachedStatus(s.id);
         return {

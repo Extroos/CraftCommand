@@ -13,43 +13,47 @@ import { processManager } from './services/servers/ProcessManager';
 import { fileWatcherService } from './services/files/FileWatcherService';
 import { discordService } from './services/integrations/DiscordService';
 import { systemSettingsService } from './services/system/SystemSettingsService';
+import { autoHealingService } from './services/servers/AutoHealingService';
 import os from 'os';
+
+import { sslUtils } from './utils/ssl';
 
 const app = express();
 const settings = systemSettingsService.getSettings();
 let httpServer: any;
 let protocol = 'http';
+let sslStatus: 'VALID' | 'SELF_SIGNED' | 'NONE' = 'NONE';
 
-if (settings.app.https?.enabled) {
-    try {
-        const key = fs.readFileSync(settings.app.https.keyPath);
-        const cert = fs.readFileSync(settings.app.https.certPath);
-        httpServer = https.createServer({ 
-            key, 
-            cert, 
-            passphrase: settings.app.https.passphrase 
-        }, app);
-        protocol = 'https';
-        logger.info('SECURE MODE: HTTPS Enabled.');
-    } catch (e: any) {
-        logger.error(`HTTPS Failed to start: ${e.message}`);
-        logger.warn('Falling back to HTTP.');
+const initHttpServer = async () => {
+    if (settings.app.https?.enabled) {
+        try {
+            const { certPath, keyPath, isSelfSigned } = await sslUtils.getOrCreateCertificates(
+                settings.app.https.certPath,
+                settings.app.https.keyPath
+            );
+            
+            const key = fs.readFileSync(keyPath);
+            const cert = fs.readFileSync(certPath);
+            
+            httpServer = https.createServer({ 
+                key, 
+                cert, 
+                passphrase: settings.app.https.passphrase 
+            }, app);
+            
+            protocol = 'https';
+            sslStatus = isSelfSigned ? 'SELF_SIGNED' : 'VALID';
+            logger.info(`SECURE MODE: HTTPS Enabled (${sslStatus}).`);
+        } catch (e: any) {
+            logger.error(`HTTPS Failed to start: ${e.message}`);
+            logger.warn('Falling back to HTTP.');
+            httpServer = createServer(app);
+            sslStatus = 'NONE';
+        }
+    } else {
         httpServer = createServer(app);
     }
-} else {
-    httpServer = createServer(app);
-}
-
-const io = new Server(httpServer, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
-});
-
-app.use(cors());
-app.use(express.json());
-
-// Routes & Socket
-setupRoutes(app);
-setupSocket(io);
+};
 
 import { remoteAccessService } from './services/system/RemoteAccessService';
 
@@ -57,16 +61,8 @@ const PORT = 3001;
 const BIND_IP = remoteAccessService.getBindAddress();
 
 const startup = async () => {
-    logger.info('Starting migrations');
-    logger.info('There is nothing to migrate');
-    logger.info('Checking for reset secret flag');
-    logger.info('No flag found. Secrets are staying');
-    logger.info('Checking for remote changes to config.json');
-    logger.info('Remote change complete.');
-    logger.info('Initializing all servers defined');
-
-    logger.info('Starting migrations');
-    logger.info('There is nothing to migrate');
+    logger.info('Starting migrations...');
+    logger.info('Initializing system components...');
 
     try {
         const servers = getServers();
@@ -78,7 +74,7 @@ const startup = async () => {
             // 1. Start File Watcher
             fileWatcherService.watchServer(server.id, server.workingDirectory);
 
-            // 2. Auto-Start Logic
+            // 2. Auto-Start Logic (startDelay is handled internally by StartupManager)
             if (server.autoStart) {
                 startServer(server.id).catch(err => {
                     logger.error(`[AutoStart] Failed to boot ${server.name}: ${err.message}`);
@@ -89,11 +85,12 @@ const startup = async () => {
         logger.warn(`Initial server load failed: ${e.message}`);
     }
 
-    // 3. Initialize Global Integrations
+    // Initialize Integrations & Auto-Healing
     try {
         await discordService.initialize();
+        autoHealingService.initialize();
     } catch (e: any) {
-        logger.error(`Failed to initialize Discord: ${e.message}`);
+        logger.error(`Service initialization failed: ${e.message}`);
     }
 
     logger.info(`${protocol}://${BIND_IP}:${PORT} is up and ready for connections.`);
@@ -105,7 +102,6 @@ const startup = async () => {
         const nets = os.networkInterfaces();
         let ip = '127.0.0.1';
 
-        // Find External IPv4
         for (const name of Object.keys(nets)) {
             for (const net of nets[name] || []) {
                 if (net.family === 'IPv4' && !net.internal) {
@@ -121,25 +117,48 @@ const startup = async () => {
         console.log(` Mode:    ${method?.toUpperCase() || 'UNKNOWN'}`);
         if (method === 'vpn' || method === 'direct') {
              console.log(` Connect: ${protocol}://${ip}:${PORT}`);
-             console.log(` (Share this URL with your friends)`);
         } else if (method === 'proxy') {
-             console.log(` Status:  Waiting for Proxy Tunnel...`);
-             console.log(` Local:   ${protocol}://${ip}:${PORT} (For you)`);
-             console.log(` Action:  Point your Proxy to Port ${PORT} (Backend) or 3000 (Frontend)`);
+             console.log(` Local:   ${protocol}://${ip}:${PORT}`);
+             console.log(` Action:  Point your Proxy to Port ${PORT}`);
         }
         console.log('==================================================\n');
-    } else {
-        console.log('\n[Info] Remote Access: Disabled (Localhost Only)\n');
     }
 
     logger.info('Server Init Complete: Listening For Connections!');
-    
 };
 
-httpServer.listen(PORT, BIND_IP, async () => {
-    try {
-        await startup();
-    } catch (e: any) {
-        logger.error(`CRITICAL: Backend startup failed: ${e.message}`);
-    }
-});
+const startMain = async () => {
+    await initHttpServer();
+
+    const io = new Server(httpServer, {
+        cors: { origin: "*", methods: ["GET", "POST"] }
+    });
+
+    app.use(cors());
+    app.use(express.json());
+
+    // --- Added: System Health/Status Endpoint ---
+    app.get('/api/system/status', (req, res) => {
+        res.json({
+            protocol,
+            sslStatus,
+            port: PORT,
+            uptime: process.uptime(),
+            platform: process.platform,
+            arch: process.arch
+        });
+    });
+
+    setupRoutes(app);
+    setupSocket(io);
+
+    httpServer.listen(PORT, BIND_IP, async () => {
+        try {
+            await startup();
+        } catch (e: any) {
+            logger.error(`CRITICAL: Backend startup failed: ${e.message}`);
+        }
+    });
+};
+
+startMain();

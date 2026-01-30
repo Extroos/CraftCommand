@@ -179,92 +179,15 @@ export const startServer = async (id: string, force: boolean = false) => {
     acquireLock(id, 'START');
 
     try {
-
-        const { port, workingDirectory, javaVersion, ram, executable, advancedFlags } = server;
-
-        // 0. Safety Checks (Skip if forced)
-        if (!force) {
-            await safetyService.validateServer(server);
-        }
-
-        // S2: Stabilization - Enforce Config Sync before start
-        // This prevents the "Dashboard says 25565, server.properties says 25577" bug
-        logger.info(`[ServerService] Verifying config sync for ${id}...`);
-        import('./ServerConfigService').then(async ({ serverConfigService }) => {
-            const report = await serverConfigService.verifyConfig(server);
-            if (!report.synchronized) {
-                logger.warn(`[ServerService] Config mismatch detected. enforcing DB source of truth.`);
-                await serverConfigService.enforceConfig(server);
-            }
-        });
+        logger.info(`[ServerService] Orchestrating startup for ${server.name} via StartupManager...`);
         
-        // 1. Check if port is in use (by an external process)
-        const isPortInUse = await new Promise((resolve) => {
-            const socket = new net.Socket();
-            socket.setTimeout(200);
-            socket.on('connect', () => { socket.destroy(); resolve(true); });
-            socket.on('error', () => { socket.destroy(); resolve(false); });
-            socket.on('timeout', () => { socket.destroy(); resolve(false); });
-            socket.connect(port, '127.0.0.1');
-        });
-
-        if (isPortInUse) {
-            const cleaned = await processManager.findAndKillGhostProcess(port, workingDirectory);
-            if (!cleaned) {
-                throw new Error(`Port ${port} is already in use by another application. Please verify no orphaned Java processes are running.`);
-            }
-            // Wait a moment for OS to release port
-            await new Promise(r => setTimeout(r, 1000));
-        }
-
-        // 2. Resolve Java
-        const javaPath = await javaManager.ensureJava(javaVersion || 'Java 17');
-        const jarFile = executable || 'server.jar';
-        
-        // 3. Build Command
-        const isWin = process.platform === 'win32';
-        let cmd = '';
-
-        if (isWin) {
-            let priorityFlag = '/NORMAL';
-            if (server.cpuPriority === 'high') priorityFlag = '/HIGH';
-            if (server.cpuPriority === 'realtime') priorityFlag = '/REALTIME';
-
-            if (jarFile.endsWith('.bat')) {
-                cmd = `start /B ${priorityFlag} "MinecraftServer" cmd /c "${path.join(workingDirectory, jarFile)}" nogui`;
-            } else {
-                // JVM Flags
-                let flags = `-Xmx${ram}G`;
-                if (advancedFlags?.aikarFlags) {
-                    flags += " -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1";
-                }
-                const javaCmd = `"${javaPath}" ${flags} -jar ${jarFile} nogui`;
-                cmd = `start /B ${priorityFlag} "MinecraftServer" ${javaCmd}`;
-            }
-        } else {
-            // Linux / Unix Logic
-            let nicePrefix = '';
-            if (server.cpuPriority === 'high') nicePrefix = 'nice -n -5 '; 
-            if (server.cpuPriority === 'realtime') nicePrefix = 'nice -n -10 '; // Require root/cap_sys_nice usually
-
-            if (jarFile.endsWith('.sh')) {
-                 cmd = `${nicePrefix}"${path.join(workingDirectory, jarFile)}"`;
-            } else {
-                let flags = `-Xmx${ram}G`;
-                 if (advancedFlags?.aikarFlags) {
-                    flags += " -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1";
-                }
-                cmd = `${nicePrefix}"${javaPath}" ${flags} -jar ${jarFile} nogui`;
-            }
-        }
-        
-        logger.success(`[Server:${id}] Booting ${server.name}...`);
-        
-        processManager.startServer(id, cmd, workingDirectory);
+        await startupManager.startServer(server, (updatedServer) => {
+            serverRepository.update(updatedServer.id, updatedServer);
+        }, force);
 
         return { success: true };
     } catch (e: any) {
-        logger.error(`[Server:${id}] Failed to start: ${e.message}`);
+        logger.error(`[Server:${id}] Startup Manager failed: ${e.message}`);
         throw e;
     } finally {
         releaseLock(id);

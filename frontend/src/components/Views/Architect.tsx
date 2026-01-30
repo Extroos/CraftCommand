@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { ServerTemplate } from '@shared/types';
 import ReactMarkdown from 'react-markdown';
 import { Package, Cpu, LayoutDashboard, Zap, ChevronRight, Info, HelpCircle, Rocket, Bot } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const GUIDES = {
     deployment: {
@@ -231,76 +232,96 @@ const Architect: React.FC = () => {
     const [selectedGuide, setSelectedGuide] = useState<keyof typeof GUIDES>('deployment');
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-120px)] animate-fade-in">
-            {/* Sidebar */}
-            <div className="lg:col-span-1 flex flex-col gap-4">
-                <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-border bg-muted/20">
-                        <h2 className="font-semibold text-sm tracking-tight flex items-center gap-2">
-                            <HelpCircle size={16} className="text-primary" />
-                            Knowledge Base
-                        </h2>
-                    </div>
-                    <nav className="p-2 space-y-1">
-                        {(Object.entries(GUIDES) as [keyof typeof GUIDES, typeof GUIDES[keyof typeof GUIDES]][]).map(([key, guide]) => (
-                            <button
-                                key={key}
-                                onClick={() => setSelectedGuide(key)}
-                                className={`w-full flex items-start gap-3 p-3 rounded-lg text-sm transition-all duration-200 text-left group ${
-                                    selectedGuide === key 
-                                    ? 'bg-secondary text-foreground shadow-sm ring-1 ring-border/50' 
-                                    : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
-                                }`}
-                            >
-                                <div className={`mt-0.5 transition-colors ${selectedGuide === key ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
-                                    {guide.icon}
-                                </div>
-                                <div>
-                                    <span className="font-medium block">{guide.title}</span>
-                                    <span className="text-xs text-muted-foreground line-clamp-1 opacity-80 leading-snug mt-0.5">{guide.description}</span>
-                                </div>
-                            </button>
-                        ))}
-                    </nav>
-                </div>
-                
-                <div className="rounded-xl border border-blue-900/40 bg-blue-950/20 p-4 shadow-inner">
-                    <div className="flex gap-3 items-start">
-                        <Info size={18} className="text-blue-400 mt-0.5 shrink-0" />
-                        <div>
-                            <h3 className="text-sm font-medium text-blue-100 mb-1">Pro Tip</h3>
-                            <p className="text-xs text-blue-200/70 leading-relaxed">
-                                Always create a <strong>Backup</strong> before changing server versions or installing large modpacks to prevent data loss.
-                            </p>
+        <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-[1600px] mx-auto space-y-6 pb-12 relative"
+        >
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+                {/* Sidebar */}
+                <div className="lg:col-span-1 space-y-4">
+                    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-border bg-muted/30">
+                            <h2 className="font-bold text-xs uppercase tracking-widest flex items-center gap-2 text-muted-foreground">
+                                <HelpCircle size={14} className="text-primary" />
+                                Knowledge Base
+                            </h2>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Content Area */}
-            <div className="lg:col-span-3 rounded-xl border border-border bg-card text-card-foreground shadow-sm flex flex-col overflow-hidden relative">
-                {/* Dynamic Content Fade Wrapper */}
-                <div key={selectedGuide} className="flex flex-col h-full animate-fade-in">
-                    <div className="border-b border-border px-8 py-6 bg-muted/10 sticky top-0 backdrop-blur-sm z-10">
-                        <div className="flex items-center gap-2 text-muted-foreground text-xs mb-3 font-medium uppercase tracking-wider">
-                            <span>Wiki</span>
-                            <ChevronRight size={12} />
-                            <span>Guides</span>
-                            <ChevronRight size={12} />
-                            <span className="text-foreground">{GUIDES[selectedGuide].title}</span>
-                        </div>
-                        <h1 className="text-3xl font-bold tracking-tight text-foreground">{GUIDES[selectedGuide].title}</h1>
-                        <p className="text-muted-foreground mt-2 text-lg">{GUIDES[selectedGuide].description}</p>
+                        <nav className="p-2 space-y-1">
+                            {(Object.entries(GUIDES) as [keyof typeof GUIDES, typeof GUIDES[keyof typeof GUIDES]][]).map(([key, guide]) => (
+                                <button
+                                    key={key}
+                                    onClick={() => setSelectedGuide(key)}
+                                    className={`w-full flex items-start gap-3 p-3 rounded-lg text-sm transition-all text-left group ${
+                                        selectedGuide === key 
+                                        ? 'bg-secondary text-foreground shadow-sm' 
+                                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                    }`}
+                                >
+                                    <div className={`mt-0.5 transition-colors ${selectedGuide === key ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                                        {guide.icon}
+                                    </div>
+                                    <div>
+                                        <span className={`font-bold block text-xs tracking-tight ${selectedGuide === key ? 'text-foreground' : 'text-muted-foreground'}`}>{guide.title}</span>
+                                        <span className="text-[10px] text-muted-foreground line-clamp-1 opacity-70 leading-snug mt-0.5 font-medium uppercase tracking-tight">{guide.description}</span>
+                                    </div>
+                                </button>
+                            ))}
+                        </nav>
                     </div>
                     
-                    <div className="flex-1 overflow-y-auto p-8 bg-background/50">
-                        <div className="markdown-body max-w-4xl">
-                            <ReactMarkdown>{GUIDES[selectedGuide].content}</ReactMarkdown>
+                    <div className="bg-card border border-border rounded-xl p-5 shadow-sm shadow-primary/5">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <Zap size={14} className="text-primary" />
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Architect Pro Tip</span>
+                            </div>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed font-medium">
+                            High-performance instances require <strong>NVMe storage</strong> and <strong>Aikar's Flags</strong> for optimal Garbage Collection cycles. 
+                        </p>
+                        <div className="mt-4 pt-4 border-t border-border/50">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-tighter">Heuristic Check</span>
+                                <span className="text-[9px] font-bold text-emerald-600 uppercase">PASS</span>
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                {/* Content Area */}
+                <div className="lg:col-span-3 min-h-[600px] flex flex-col">
+                    <AnimatePresence mode="wait">
+                        <motion.div 
+                            key={selectedGuide}
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ duration: 0.2 }}
+                            className="rounded-xl border border-border bg-card text-card-foreground shadow-sm flex flex-col overflow-hidden h-full"
+                        >
+                            <div className="border-b border-border px-8 py-8 bg-muted/20">
+                                <div className="flex items-center gap-2 text-muted-foreground text-[10px] mb-4 font-bold uppercase tracking-widest opacity-60">
+                                    <span>Library</span>
+                                    <ChevronRight size={10} />
+                                    <span>Guides</span>
+                                    <ChevronRight size={10} />
+                                    <span className="text-primary">{GUIDES[selectedGuide].title}</span>
+                                </div>
+                                <h2 className="text-3xl font-bold tracking-tight text-foreground">{GUIDES[selectedGuide].title}</h2>
+                                <p className="text-muted-foreground mt-2 text-base font-medium opacity-80">{GUIDES[selectedGuide].description}</p>
+                            </div>
+                            
+                            <div className="flex-1 p-8 overflow-y-auto">
+                                <div className="markdown-body max-w-4xl custom-markdown">
+                                    <ReactMarkdown>{GUIDES[selectedGuide].content}</ReactMarkdown>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </AnimatePresence>
+                </div>
             </div>
-        </div>
+        </motion.div>
     );
 };
 

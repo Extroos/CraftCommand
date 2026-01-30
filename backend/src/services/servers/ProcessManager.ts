@@ -201,6 +201,18 @@ class ProcessManager extends EventEmitter {
             console.log(`[ProcessManager] Stopping server ${id}`);
             this.stoppingServers.add(id);
             server.process.stdin?.write("stop\n");
+
+            // KILL TIMEOUT (Pro-Grade Monitoring)
+            const { getServer } = require('./ServerService');
+            const config = getServer(id);
+            const timeout = config?.advancedFlags?.killTimeout || 30000; // Default 30s
+
+            setTimeout(() => {
+                if (this.processes.has(id) && this.stoppingServers.has(id)) {
+                    console.warn(`[ProcessManager] ${id} failed to stop gracefully in ${timeout}ms. Sending SIGKILL.`);
+                    this.killServer(id);
+                }
+            }, timeout);
         }
     }
 
@@ -360,11 +372,12 @@ class ProcessManager extends EventEmitter {
                 return {
                     cpu: target.cpu,
                     memory: memoryMB, // MB
-                    pid: target.pid
+                    pid: target.pid,
+                    commandLine: `${target.command} ${target.params}`.trim()
                 };
             }
 
-            return { cpu: 0, memory: 0, pid: 0 };
+            return { cpu: 0, memory: 0, pid: 0, commandLine: '' };
         } catch (e) {
             console.error(`Failed to get stats for server ${id}`, e);
             return { cpu: 0, memory: 0 };

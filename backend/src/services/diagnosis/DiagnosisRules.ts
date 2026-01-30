@@ -3,6 +3,7 @@ import { DiagnosisRule, DiagnosisResult, SystemStats } from './DiagnosisService'
 import { ServerConfig } from '../../../../shared/types';
 import { ConfigReader } from '../../utils/ConfigReader';
 import { EnvironmentProbe } from '../../utils/EnvironmentProbe';
+import { serverConfigService } from '../servers/ServerConfigService';
 import path from 'path';
 
 export const EulaRule: DiagnosisRule = {
@@ -15,10 +16,11 @@ export const EulaRule: DiagnosisRule = {
     ],
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats): Promise<DiagnosisResult | null> => {
         const hasLog = logs.some(l => l.includes('agree to the EULA'));
-        if (!hasLog) return null;
-
+        
+        // Universal Check: Logs OR Direct Filesystem check
         const isAgreed = await ConfigReader.checkEula(server.workingDirectory);
-        if (!isAgreed) {
+        
+        if (hasLog || !isAgreed) {
             return {
                 id: `eula-${server.id}-${Date.now()}`,
                 ruleId: 'eula_check',
@@ -47,23 +49,32 @@ export const PortConflictRule: DiagnosisRule = {
         /BindException/i
     ],
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats): Promise<DiagnosisResult | null> => {
-        // Double check log presence to be sure
+        // Universal Check: Logs OR Direct Network check
         const hasError = logs.some(l => /FAILED TO BIND|Address already in use|BindException/i.test(l));
-        if (!hasError) return null;
+        
+        let isPortBusy = false;
+        if (logs.length === 0) {
+            // Pre-flight check
+            const { startupManager } = require('../servers/StartupManager');
+            isPortBusy = await startupManager.checkPort(server.port);
+        }
 
-        return {
-            id: `port-${server.id}-${Date.now()}`,
-            ruleId: 'port_binding',
-            severity: 'CRITICAL',
-            title: 'Port Conflict Detected',
-            explanation: `The server failed to start because port ${server.port} is already being used by another program (or another instance of this server).`,
-            recommendation: 'Change the server port in Settings or stop the other application using this port.',
-            action: {
-                type: 'UPDATE_CONFIG',
-                payload: { serverId: server.id, key: 'port-auto-fix' } // Placeholder for frontend auto-fix
-            },
-            timestamp: Date.now()
-        };
+        if (hasError || isPortBusy) {
+            return {
+                id: `port-${server.id}-${Date.now()}`,
+                ruleId: 'port_binding',
+                severity: 'CRITICAL',
+                title: 'Port Conflict Detected',
+                explanation: `The server port ${server.port} is already being used by another program.`,
+                recommendation: 'Change the server port in Settings or stop the other application using this port.',
+                action: {
+                    type: 'UPDATE_CONFIG',
+                    payload: { serverId: server.id, key: 'port-auto-fix' } // Placeholder for frontend auto-fix
+                },
+                timestamp: Date.now()
+            };
+        }
+        return null;
     }
 };
 
@@ -151,21 +162,20 @@ export const MissingJarRule: DiagnosisRule = {
         /Error: Unable to access jarfile/i
     ],
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats): Promise<DiagnosisResult | null> => {
-        // Check logs first
+        // Universal Check: Logs OR Direct Filesystem check
         const logMatch = logs.some(l => /Unable to access jarfile/i.test(l));
         
-        // Also check file system directly
-        const exec = server.executable || 'server.jar';
-        const jarPath = path.isAbsolute(exec) ? exec : path.join(server.workingDirectory, exec);
+        const execFile = server.executable || 'server.jar';
+        const jarPath = path.isAbsolute(execFile) ? execFile : path.join(server.workingDirectory, execFile);
         const exists = await fs.pathExists(jarPath);
-
+ 
         if (logMatch || !exists) {
             return {
                 id: `missing-jar-${server.id}-${Date.now()}`,
                 ruleId: 'missing_jar',
                 severity: 'CRITICAL',
                 title: 'Server Executable Missing',
-                explanation: `The server file '${exec}' could not be found or accessed.`,
+                explanation: `The server file '${execFile}' could not be found or accessed.`,
                 recommendation: 'Ensure the server JAR file exists in the server directory or update your settings to point to the correct file.',
                 action: {
                     type: 'UPDATE_CONFIG',
@@ -456,9 +466,37 @@ export const NetworkOfflineRule: DiagnosisRule = {
     }
 };
 
+export const ConfigSyncRule: DiagnosisRule = {
+    id: 'config_sync',
+    name: 'Configuration Out of Sync',
+    description: 'Checks if server.properties matches the configured settings in the dashboard',
+    triggers: [], // Run periodically/manually
+    analyze: async (server: ServerConfig, logs: string[], env: SystemStats): Promise<DiagnosisResult | null> => {
+        const sync = await serverConfigService.verifyConfig(server);
+        if (!sync.synchronized && sync.mismatches.length > 0) {
+            const mismatchList = sync.mismatches.map(m => `${m.setting} (${m.diskValue} vs ${m.dbValue})`).join(', ');
+            return {
+                id: `sync-${server.id}-${Date.now()}`,
+                ruleId: 'config_sync',
+                severity: sync.mismatches.some(m => m.severity === 'high') ? 'CRITICAL' : 'WARNING',
+                title: 'Configuration Mismatch',
+                explanation: `The following settings in server.properties do not match the dashboard: ${mismatchList}`,
+                recommendation: 'Synchronize your configuration to ensure the server starts with the correct settings.',
+                action: {
+                    type: 'UPDATE_CONFIG',
+                    payload: { serverId: server.id, sync: true } // Trigger enforcement
+                },
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
 export const CoreRules = [
     EulaRule, PortConflictRule, JavaVersionRule, MemoryRule, 
     MissingJarRule, BadConfigRule, PermissionRule, InvalidIpRule,
     DependencyMissingRule, DuplicateModRule, MixinConflictRule, TickingEntityRule,
-    WatchdogRule, WorldCorruptionRule, AikarsFlagsRule, NetworkOfflineRule
+    WatchdogRule, WorldCorruptionRule, AikarsFlagsRule, NetworkOfflineRule,
+    ConfigSyncRule
 ];

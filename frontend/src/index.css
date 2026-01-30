@@ -7,24 +7,24 @@
   :root {
     /* LIGHT MODE (Default) - "Perfect for Eyes" */
     --background: 240 4.8% 95.9%; /* Zinc 100 - Soft Light Gray #f4f4f5 */
-    --foreground: 240 10% 3.9%;   /* Zinc 950 - Soft Black #09090b */
-    
-    --card: 0 0% 100%;            /* Pure White card pops against gray bg */
+    --foreground: 240 10% 3.9%; /* Zinc 950 - Soft Black #09090b */
+
+    --card: 0 0% 100%; /* Pure White card pops against gray bg */
     --card-foreground: 240 10% 3.9%;
-    
+
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    
-    --primary: 240 5.9% 10%;      /* Zinc 900 for primary actions */
+
+    --primary: 240 5.9% 10%; /* Zinc 900 for primary actions */
     --primary-foreground: 0 0% 98%;
-    
-    --secondary: 240 5.9% 90%;    /* Slightly darker gray for secondary inputs */
+
+    --secondary: 240 5.9% 90%; /* Slightly darker gray for secondary inputs */
     --secondary-foreground: 240 5.9% 10%;
-    
-    --muted: 240 4.8% 90%;        /* Muted elements */
+
+    --muted: 240 4.8% 90%; /* Muted elements */
     --muted-foreground: 240 3.8% 46.1%;
-    
-    --accent: 240 4.8% 90%;       /* Hover states */
+
+    --accent: 240 4.8% 90%; /* Hover states */
     --accent-foreground: 240 5.9% 10%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
@@ -33,18 +33,18 @@
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
   }
- 
+
   .dark {
     /* DARK MODE */
-    --background: 240 6% 6%;      /* #0f0f11 */
-    --foreground: 240 5% 90%;     /* #e4e4e7 */
+    --background: 240 6% 6%; /* #0f0f11 */
+    --foreground: 240 5% 90%; /* #e4e4e7 */
     --card: 240 6% 7%;
     --card-foreground: 240 5% 90%;
     --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
     --primary: 0 0% 98%;
     --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 4% 12%;      /* #1c1c1e */
+    --secondary: 240 4% 12%; /* #1c1c1e */
     --secondary-foreground: 0 0% 98%;
     --muted: 240 4% 16%;
     --muted-foreground: 240 5% 60%;
@@ -56,19 +56,50 @@
     --input: 240 4% 16%;
     --ring: 240 4.9% 83.9%;
   }
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.2);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+    background-clip: content-box;
+  }
+
+  /* Firefox Support */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
+  }
+
+  /* Hide number input arrows (spinners) */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield; /* Firefox */
+    appearance: none; /* Standard */
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 @layer utilities {
-  .glass-panel {
-    background: rgba(15, 15, 17, 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .text-glow {
-    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
-  }
+  /* Global utilities can go here if needed */
 }
 
 /* Reduced Motion Override */

@@ -151,13 +151,41 @@ export class StartupManager {
         env['Path'] = `${javaBin}${separator}${currentPath}`;
 
         // Construct JVM Arguments
-        const AIKAR_FLAGS = "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=true -Daikars.new.flags=true";
+        const AIKAR_FLAGS = "-XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=true -Daikars.new.flags=true";
         
         let jvmArgs = `-Xmx${server.ram}G`;
-        
-        if (server.advancedFlags?.aikarFlags) {
-            console.log(`[StartupManager] Injecting Aikar's Flags for ${server.name}`);
-            jvmArgs += ` ${AIKAR_FLAGS}`;
+
+        // 1. GC Engine Selection
+        const gcEngine = server.advancedFlags?.gcEngine || 'G1GC';
+        if (gcEngine === 'ZGC') {
+            jvmArgs += " -XX:+UseZGC -XX:+ZGenerational";
+        } else if (gcEngine === 'Shenandoah') {
+            jvmArgs += " -XX:+UseShenandoahGC -XX:+UnlockExperimentalVMOptions";
+        } else if (gcEngine === 'Parallel') {
+            jvmArgs += " -XX:+UseParallelGC";
+        } else {
+            // Default: G1GC
+            jvmArgs += " -XX:+UseG1GC";
+            if (server.advancedFlags?.aikarFlags) {
+                console.log(`[StartupManager] Injecting Aikar's Optimization Suite for ${server.name}`);
+                jvmArgs += ` ${AIKAR_FLAGS}`;
+            }
+        }
+
+        // 2. Network Fabric Tuning
+        if (server.advancedFlags?.socketBuffer) {
+            const bufferSize = server.advancedFlags.socketBuffer;
+            jvmArgs += ` -Dnetwork.socket.sendBuffer=${bufferSize} -Dnetwork.socket.receiveBuffer=${bufferSize} -Dsun.net.maxDatagramSockets=${bufferSize / 1024}`;
+        }
+
+        // 3. GraalVM Native JIT Optimization
+        if (server.advancedFlags?.useGraalVM) {
+            jvmArgs += " -XX:+UnlockExperimentalVMOptions -XX:+EnableJVMCI -XX:+UseJVMCICompiler";
+        }
+
+        // 4. Thread Priority Policy
+        if (server.advancedFlags?.threadPriority === 'ultra') {
+            jvmArgs += " -XX:+UseCriticalJavaThreadPriority -XX:ThreadPriorityPolicy=1";
         }
         
         
@@ -249,8 +277,20 @@ export class StartupManager {
                     } else {
                         content += `\n${portStr}`;
                     }
-                    await fs.writeFile(propsPath, content);
                 }
+
+                // 2. NETWORK COMPRESSION THRESHOLD SYNC
+                if (server.advancedFlags?.compressionThreshold !== undefined) {
+                    const threshold = server.advancedFlags.compressionThreshold;
+                    const thresholdStr = `network-compression-threshold=${threshold}`;
+                    if (content.match(/^network-compression-threshold\s*=/m)) {
+                        content = content.replace(/^network-compression-threshold\s*=.*$/m, thresholdStr);
+                    } else {
+                        content += `\n${thresholdStr}`;
+                    }
+                }
+
+                await fs.writeFile(propsPath, content);
             }
 
         } catch (err) {

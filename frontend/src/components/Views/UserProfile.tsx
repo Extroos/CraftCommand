@@ -230,7 +230,7 @@ const UserProfileView: React.FC = () => {
     // Guard: If user context is still loading, show loading spinner
     if (isLoading) {
         return (
-            <div className="max-w-5xl mx-auto py-8 animate-fade-in">
+            <div className="max-w-5xl mx-auto py-8">
                 <div className="flex items-center justify-center py-20">
                     <div className="text-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
@@ -244,7 +244,7 @@ const UserProfileView: React.FC = () => {
     // Guard: If user is null even after loading, show error
     if (!user) {
         return (
-            <div className="max-w-5xl mx-auto py-8 animate-fade-in">
+            <div className="max-w-5xl mx-auto py-8">
                 <div className="flex items-center justify-center py-20">
                     <div className="text-center">
                         <p className="text-rose-500 font-semibold mb-2">Authentication Required</p>
@@ -256,7 +256,7 @@ const UserProfileView: React.FC = () => {
     }
 
     return (
-        <div className="max-w-5xl mx-auto py-8 animate-fade-in pb-20">
+        <div className="max-w-5xl mx-auto py-8 pb-20">
             
             {/* Header */}
             <div className="flex flex-col md:flex-row items-center gap-6 mb-10">
@@ -559,7 +559,7 @@ const UserProfileView: React.FC = () => {
                                         ) : (
                                             <User size={48} className="text-muted-foreground opacity-20" />
                                         )}
-                                        <div className="absolute bottom-0 inset-x-0 bg-background/80 backdrop-blur-sm py-1 text-center text-[10px] font-mono text-muted-foreground">
+                                        <div className="absolute bottom-0 inset-x-0 bg-black/60 py-1 text-center text-[10px] font-mono text-muted-foreground">
                                             PREVIEW
                                         </div>
                                     </div>

@@ -32,15 +32,15 @@ const ProConfig: React.FC<ProConfigProps> = ({
             exit={{ opacity: 0, y: 10 }}
             className="grid grid-cols-1 lg:grid-cols-12 gap-6"
         >
-            <div className="lg:col-span-8 space-y-4">
-                <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-2xl p-6">
+            <div className="lg:col-span-8 space-y-3">
+                <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-lg p-4">
                     {renderSoftwareStep()}
                 </div>
-                <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-2xl p-6">
+                <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-lg p-4">
                     {renderDetailsStep()}
                 </div>
-                <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-2xl p-6">
-                    <div className="flex items-center gap-2 mb-4">
+                <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
                         <Zap size={14} className="text-emerald-500" />
                         <h3 className="text-[10px] font-black uppercase tracking-widest text-[rgb(var(--color-fg-muted))]">Advanced Parameters</h3>
                     </div>
@@ -50,7 +50,7 @@ const ProConfig: React.FC<ProConfigProps> = ({
                                 { id: 'installSpark', label: "Spark Profiler", desc: "Real-time Diagnostics" },
                                 { id: 'onlineMode', label: "Official Auth", desc: "Enable Minecraft Account verification" }
                             ].map(flag => (
-                            <label key={flag.id} className={`flex flex-col gap-1 p-3 bg-black/20 border border-[rgb(var(--color-border-subtle))] rounded-xl cursor-pointer hover:border-[rgb(var(--color-border-default))] transition-all ${flag.id === 'onlineMode' && !formData.onlineMode ? 'border-rose-500/30 bg-rose-500/5' : ''}`}>
+                            <label key={flag.id} className={`flex flex-col gap-1 p-2 bg-black/20 border border-[rgb(var(--color-border-subtle))] rounded-lg cursor-pointer hover:border-[rgb(var(--color-border-default))] transition-all ${flag.id === 'onlineMode' && !formData.onlineMode ? 'border-rose-500/30 bg-rose-500/5' : ''}`}>
                                 <div className="flex items-center gap-3">
                                     <input 
                                         type="checkbox" 

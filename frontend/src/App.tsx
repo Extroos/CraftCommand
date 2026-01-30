@@ -31,7 +31,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ServerProvider, useServers } from './context/ServerContext';
 
 const AppContent: React.FC = () => {
-    const { user, isAuthenticated, isLoading: authLoading } = useUser();
+    const { user, isAuthenticated, logout: authLogout, isLoading: authLoading } = useUser();
     const { servers, currentServer, setCurrentServerById, isLoading: serversLoading } = useServers();
     
     // Initialize State - ALWAYS start at LOGIN for fresh console starts
@@ -79,6 +79,12 @@ const AppContent: React.FC = () => {
         setAppState('SERVER_SELECTION');
     };
 
+    const handleBackToServerList = () => {
+        setCurrentServerById(null);
+        localStorage.removeItem('cc_serverId');
+        setAppState('SERVER_SELECTION');
+    };
+
     const handleSelectServer = (server: ServerConfig) => {
         setCurrentServerById(server.id);
         localStorage.setItem('cc_serverId', server.id);
@@ -91,6 +97,8 @@ const AppContent: React.FC = () => {
     };
 
     const handleLogout = () => {
+        authLogout(); // Call UserContext logout to clear token & state
+        setCurrentServerById(null); // Clear server state on logout
         localStorage.removeItem('cc_serverId');
         localStorage.removeItem('cc_appState');
         setAppState('LOGIN');
@@ -134,6 +142,10 @@ const AppContent: React.FC = () => {
                     onSelectServer={handleSelectServer} 
                     onCreateNew={() => setAppState('CREATE_SERVER')} 
                     onLogout={handleLogout}
+                    onNavigateProfile={() => setAppState('USER_PROFILE')}
+                    onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
+                    onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
+                    onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
                 />
             );
         }
@@ -153,12 +165,13 @@ const AppContent: React.FC = () => {
                      <Header 
                         activeTab={activeTab} 
                         setActiveTab={setActiveTab} 
-                        onBackToServerList={() => setAppState('SERVER_SELECTION')}
+                        onBackToServerList={handleBackToServerList}
                         onLogout={handleLogout}
                         onNavigateProfile={() => setAppState('USER_PROFILE')}
                         onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
                         onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
                         onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
+                        currentServer={currentServer}
                     />
                     <main className="flex-1 px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto py-8">
                         <UsersPage />
@@ -173,11 +186,12 @@ const AppContent: React.FC = () => {
                      <Header 
                         activeTab={activeTab} 
                         setActiveTab={setActiveTab} 
-                        onBackToServerList={() => setAppState('SERVER_SELECTION')}
+                        onBackToServerList={handleBackToServerList}
                         onLogout={handleLogout}
                         onNavigateProfile={() => setAppState('USER_PROFILE')}
                         onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
                         onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
+                        currentServer={currentServer}
                     />
                     <main className="flex-1 px-4 sm:px-6 lg:px-8 w-full">
                         <UserProfileView />
@@ -192,12 +206,13 @@ const AppContent: React.FC = () => {
                      <Header 
                         activeTab={activeTab} 
                         setActiveTab={setActiveTab} 
-                        onBackToServerList={() => setAppState('SERVER_SELECTION')}
+                        onBackToServerList={handleBackToServerList}
                         onLogout={handleLogout}
                         onNavigateProfile={() => setAppState('USER_PROFILE')}
                         onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
                         onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
                         onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
+                        currentServer={currentServer}
                     />
                     <main className="flex-1 px-4 sm:px-6 lg:px-8 w-full py-8">
                         <GlobalSettingsView />
@@ -212,12 +227,13 @@ const AppContent: React.FC = () => {
                      <Header 
                         activeTab={activeTab} 
                         setActiveTab={setActiveTab} 
-                        onBackToServerList={() => setAppState('SERVER_SELECTION')}
+                        onBackToServerList={handleBackToServerList}
                         onLogout={handleLogout}
                         onNavigateProfile={() => setAppState('USER_PROFILE')}
                         onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
                         onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
                         onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
+                        currentServer={currentServer}
                     />
                     <main className="flex-1 px-4 sm:px-6 lg:px-8 w-full py-8">
                         <AuditLog />
@@ -231,12 +247,13 @@ const AppContent: React.FC = () => {
                 <Header 
                     activeTab={activeTab} 
                     setActiveTab={setActiveTab} 
-                    onBackToServerList={() => setAppState('SERVER_SELECTION')}
+                    onBackToServerList={handleBackToServerList}
                     onLogout={handleLogout}
                     onNavigateProfile={() => setAppState('USER_PROFILE')}
                     onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
                     onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
                     onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
+                    currentServer={currentServer}
                 />
                 
                 <main className="flex-1 py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">

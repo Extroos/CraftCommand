@@ -79,6 +79,16 @@ export interface ServerAdvancedFlags {
     useGraalVM?: boolean;
     antiDdos?: boolean;
     debugMode?: boolean;
+    // Pro-Grade Technical
+    gcEngine?: 'G1GC' | 'ZGC' | 'Shenandoah' | 'Parallel';
+    socketBuffer?: number;
+    compressionThreshold?: number;
+    autoHealing?: boolean;
+    healthCheckInterval?: number;
+    retryPattern?: string;
+    threadPriority?: 'low' | 'normal' | 'high' | 'ultra';
+    startDelay?: number;
+    killTimeout?: number;
 }
 
 export interface ServerConfig {

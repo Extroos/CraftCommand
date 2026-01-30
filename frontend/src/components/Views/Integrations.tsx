@@ -169,8 +169,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
     const renderWebhookTab = () => (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full font-sans">
             <div className="space-y-6">
-                <div className="bg-[#09090b]/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                     <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
                     <div className="flex items-center justify-between mb-6 border-b border-[rgb(var(--color-border-subtle))] pb-4">
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-[#5865F2]/10 text-[#5865F2] rounded-md border border-[#5865F2]/20 shadow-inner">
@@ -235,8 +234,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                     </div>
                 </div>
 
-                <div className="bg-[#09090b]/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                     <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
                     <div className="flex items-center gap-2 mb-5 pb-3 border-b border-[rgb(var(--color-border-subtle))]">
                         <Zap size={14} className="text-amber-500" />
                         <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Event Triggers</h3>
@@ -323,8 +321,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full font-sans animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="space-y-6">
                 {/* Connection Status Card */}
-                <div className="bg-[#09090b]/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                    <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
                     <div className="p-1 absolute top-0 left-0 w-full bg-gradient-to-r from-[#5865F2] to-[#5865F2]/0 opacity-20" />
                     
                     <div className="flex items-center justify-between mb-6 relative">
@@ -417,8 +414,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                     </div>
                 </div>
 
-                <div className="bg-[#09090b]/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                     <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
                     <div className="flex items-center gap-2 border-b border-[rgb(var(--color-border-subtle))] pb-4 mb-6">
                         <Lock size={14} className="text-[#5865F2]" />
                         <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Authentication</h3>
@@ -508,8 +504,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
             </div>
 
             <div className="space-y-6">
-                <div className="bg-[#09090b]/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                     <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
                     <div className="flex items-center gap-2 border-b border-[rgb(var(--color-border-subtle))] pb-4 mb-6">
                         <Shield size={14} className="text-emerald-500" />
                         <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[rgb(var(--color-fg-secondary))]">Permissions & Security</h3>
@@ -545,8 +540,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                 </div>
 
                 {/* Command Quick Reference */}
-                <div className="bg-[#09090b]/40 backdrop-blur-sm border border-[rgb(var(--color-border-subtle))] rounded-xl p-6 relative overflow-hidden group">
-                     <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
                     <div className="absolute top-0 right-0 p-8 opacity-[0.02] pointer-events-none">
                         <Terminal size={120} />
                     </div>
@@ -623,7 +617,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
     };
 
     return (
-        <div className="h-[calc(100vh-140px)] flex flex-col gap-6 animate-fade-in font-sans">
+        <div className="h-[calc(100vh-140px)] flex flex-col gap-6 font-sans">
              <div className="flex items-center gap-1.5 p-1 bg-[#09090b] rounded-lg border border-[rgb(var(--color-border-subtle))] w-fit">
                 <button 
                     onClick={() => setActiveTab('webhooks')}

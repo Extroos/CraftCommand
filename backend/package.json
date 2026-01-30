@@ -1,6 +1,6 @@
 {
   "name": "craftcommand-backend",
-  "version": "1.5.0-unstable",
+  "version": "1.6.0",
   "author": "Extroos",
   "description": "Backend service for CraftCommand",
   "main": "src/server.ts",
@@ -31,6 +31,7 @@
     "jsonwebtoken": "^9.0.3",
     "minecraft-server-util": "^5.4.4",
     "multer": "^2.0.2",
+    "selfsigned": "^2.4.1",
     "socket.io": "^4.7.4",
     "systeminformation": "^5.21.22"
   },

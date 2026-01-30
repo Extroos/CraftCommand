@@ -1,11 +1,12 @@
 {
-  "version": "1.5.0-unstable",
-  "title": "Compact UI & Security Hardening (Unstable)",
+  "version": "1.6.0",
+  "title": "Professional Multi-User & RBAC Stable",
   "notes": [
-    "Redesigned Global Settings for better density",
-    "Fixed Host Mode authentication bypass bug",
-    "Added missing System Audit API endpoint",
-    "Implemented Remote Access Disable features",
-    "Responsive 3-column dashboard layout"
+    "Complete Multi-User support with secure authentication",
+    "Advanced Role-Based Access Control (RBAC) across all modules",
+    "Professional UI Density: Redesigned Dashboard & Global Settings",
+    "Zero-Config HTTPS support with intelligent SSL management",
+    "Fixed Viewer-role security leaks and misleading notifications",
+    "Optimized 60FPS animations and technical UI elements"
   ]
 }

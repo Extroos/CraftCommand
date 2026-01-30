@@ -100,6 +100,10 @@ class ApiService {
         const res = await fetch(`${API_URL}/servers/${id}/files?path=${encodeURIComponent(path)}`, {
             headers: this.getAuthHeader()
         });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to list files');
+        }
         return res.json();
     }
     
@@ -161,7 +165,7 @@ class ApiService {
     
     async deleteFiles(id: string, paths: string[]): Promise<void> {
 
-        await fetch(`${API_URL}/servers/${id}/files`, {
+        const res = await fetch(`${API_URL}/servers/${id}/files`, {
             method: 'DELETE',
             headers: { 
                 'Content-Type': 'application/json',
@@ -169,21 +173,31 @@ class ApiService {
             },
             body: JSON.stringify({ paths })
         });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to delete files');
+        }
     }
 
     async uploadFile(id: string, file: File): Promise<void> {
         const formData = new FormData();
         formData.append('file', file);
         
-        await fetch(`${API_URL}/servers/${id}/files/upload`, {
+        const res = await fetch(`${API_URL}/servers/${id}/files/upload`, {
             method: 'POST',
             headers: this.getAuthHeader(),
             body: formData
         });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to upload file');
+        }
     }
 
     async extractFile(id: string, filePath: string): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/files/extract`, {
+        const res = await fetch(`${API_URL}/servers/${id}/files/extract`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -191,6 +205,11 @@ class ApiService {
             },
             body: JSON.stringify({ filePath })
         });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to extract file');
+        }
     }
 
     async fileExists(id: string, path: string): Promise<boolean> {
@@ -221,7 +240,7 @@ class ApiService {
     }
 
     async saveFileContent(id: string, path: string, content: string): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/files/content`, {
+        const res = await fetch(`${API_URL}/servers/${id}/files/content`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -229,10 +248,15 @@ class ApiService {
             },
             body: JSON.stringify({ path, content })
         });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to save file content');
+        }
     }
 
     async createFolder(id: string, path: string): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/files/folder`, {
+        const res = await fetch(`${API_URL}/servers/${id}/files/folder`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -240,6 +264,11 @@ class ApiService {
             },
             body: JSON.stringify({ path })
         });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to create folder');
+        }
     }
 
     // --- Backups ---
@@ -618,6 +647,13 @@ class ApiService {
             const err = await res.json();
             throw new Error(err.error || 'Failed to disable remote access');
         }
+    }
+
+    async getSystemStatus(): Promise<{ protocol: string, sslStatus: string, port: number, uptime: number }> {
+        const res = await fetch(`${API_URL}/system/status`, {
+            headers: this.getAuthHeader()
+        });
+        return res.json();
     }
 }
 

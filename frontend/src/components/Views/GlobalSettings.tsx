@@ -14,11 +14,22 @@ const GlobalSettingsView: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [showWizard, setShowWizard] = useState(false);
+    const [systemStatus, setSystemStatus] = useState<{ protocol: string, sslStatus: string } | null>(null);
     const { addToast } = useToast();
 
     useEffect(() => {
         loadSettings();
+        fetchSystemStatus();
     }, []);
+
+    const fetchSystemStatus = async () => {
+        try {
+            const data = await API.getSystemStatus();
+            setSystemStatus(data);
+        } catch (e) {
+            console.warn('Failed to fetch system status:', e);
+        }
+    };
 
     const loadSettings = async () => {
         try {
@@ -210,14 +221,14 @@ const GlobalSettingsView: React.FC = () => {
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div className="bg-secondary/20 rounded-lg p-4 border border-border/30">
+                                <div className="bg-secondary rounded-lg p-4 border border-border/30">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Shield size={14} className="text-emerald-500" />
                                         <span className="font-medium text-sm">Safest: VPN</span>
                                     </div>
                                     <p className="text-xs text-muted-foreground">Encrypted private connection via Tailscale/ZeroTier. No ports needed.</p>
                                 </div>
-                                <div className="bg-secondary/20 rounded-lg p-4 border border-border/30">
+                                <div className="bg-secondary rounded-lg p-4 border border-border/30">
                                     <div className="flex items-center gap-2 mb-1">
                                         <Monitor size={14} className="text-blue-500" />
                                         <span className="font-medium text-sm">Easiest: Playit.gg</span>
@@ -241,7 +252,7 @@ const GlobalSettingsView: React.FC = () => {
                                         {settings.app.remoteAccess.method === 'vpn' && (
                                             <div className="space-y-2">
                                                 <p className="text-sm text-emerald-700"><strong>VPN Mode:</strong> Friends connect using your VPN IP.</p>
-                                                <div className="bg-background/50 rounded p-3">
+                                                <div className="bg-background rounded p-3">
                                                     <p className="text-xs text-muted-foreground mb-1">Share with friends:</p>
                                                     <code className="text-xs bg-secondary px-2 py-1 rounded">Your VPN IP (e.g., 192.168.x.x)</code>
                                                 </div>
@@ -251,7 +262,7 @@ const GlobalSettingsView: React.FC = () => {
                                         {settings.app.remoteAccess.method === 'proxy' && (
                                             <div className="space-y-2">
                                                 <p className="text-sm text-emerald-700"><strong>Playit.gg Proxy:</strong> Server tunneled through Playit network.</p>
-                                                <div className="bg-background/50 rounded p-3">
+                                                <div className="bg-background rounded p-3">
                                                     <p className="text-xs text-muted-foreground mb-1">Find public link in:</p>
                                                     <ul className="text-xs space-y-1 ml-4 list-disc text-emerald-700">
                                                         <li>"CraftCommand Tunnel" window</li>
@@ -264,7 +275,7 @@ const GlobalSettingsView: React.FC = () => {
                                         {settings.app.remoteAccess.method === 'cloudflare' && (
                                             <div className="space-y-2">
                                                 <p className="text-sm text-emerald-700"><strong>Cloudflare Quick Share:</strong> Fast dashboard link.</p>
-                                                <div className="bg-background/50 rounded p-3">
+                                                <div className="bg-background rounded p-3">
                                                     <p className="text-xs text-muted-foreground mb-1">Find link in:</p>
                                                     <ul className="text-xs space-y-1 ml-4 list-disc text-emerald-700">
                                                         <li>"Cloudflare Website Share" window</li>
@@ -276,7 +287,7 @@ const GlobalSettingsView: React.FC = () => {
                                         {settings.app.remoteAccess.method === 'direct' && (
                                             <div className="space-y-2">
                                                 <p className="text-sm text-emerald-700"><strong>Direct:</strong> Port forwarding via router.</p>
-                                                <div className="bg-background/50 rounded p-3">
+                                                <div className="bg-background rounded p-3">
                                                     <p className="text-xs text-muted-foreground mb-1">Share with friends:</p>
                                                     <code className="text-xs bg-secondary px-2 py-1 rounded">
                                                         {settings.app.remoteAccess.externalIP || 'Detecting...'}
@@ -399,9 +410,11 @@ const GlobalSettingsView: React.FC = () => {
                                         })}
                                     />
                                 </div>
-                                <div className="col-span-1 md:col-span-2 p-3 bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded-lg text-xs flex gap-2">
-                                    <AlertTriangle size={16} className="shrink-0" />
-                                    <p>Ensure the backend process has read permissions for these files. Incorrect paths will cause a fallback to HTTP.</p>
+                                <div className="col-span-1 md:col-span-2 p-3 bg-blue-500/10 border border-blue-500/20 text-blue-600 rounded-lg text-xs flex gap-2">
+                                    <Monitor size={16} className="shrink-0" />
+                                    <p>
+                                        <strong>Note:</strong> Enabling HTTPS requires a system restart to bind the secure listener. Fallback to HTTP occurs on certificate errors.
+                                    </p>
                                 </div>
                             </div>
                         )}
@@ -459,9 +472,39 @@ const GlobalSettingsView: React.FC = () => {
         <div className="max-w-6xl mx-auto space-y-4 h-[calc(100vh-8rem)] flex flex-col">
             <div className="flex items-center justify-between shrink-0">
                 <div>
-                     <h1 className="text-2xl font-bold tracking-tight mb-1">System Administration</h1>
+                     <div className="flex items-center gap-3 mb-1">
+                        <h1 className="text-2xl font-bold tracking-tight">System Administration</h1>
+                        {systemStatus && (
+                            <div className="flex gap-2">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                    systemStatus.protocol === 'https' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                                }`}>
+                                    {systemStatus.protocol}
+                                </span>
+                                {systemStatus.sslStatus !== 'NONE' && (
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                        systemStatus.sslStatus === 'VALID' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' : 'bg-violet-500/10 text-violet-500 border border-violet-500/20'
+                                    }`}>
+                                        {systemStatus.sslStatus.replace('_', ' ')}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                     </div>
                      <p className="text-sm text-muted-foreground">Manage global settings, security, and view audit logs.</p>
                 </div>
+                {systemStatus && window.location.protocol !== systemStatus.protocol && (
+                    <div className="flex bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 gap-3 animate-in fade-in slide-in-from-top-2">
+                        <AlertTriangle className="text-amber-500 shrink-0" size={20} />
+                        <div>
+                            <p className="text-sm font-semibold text-amber-600">Protocol Mismatch Detected</p>
+                            <p className="text-xs text-amber-600/80">
+                                Your browser is using <strong>{window.location.protocol.replace(':', '').toUpperCase()}</strong> but the backend is running <strong>{systemStatus.protocol.toUpperCase()}</strong>. 
+                                {systemStatus.protocol === 'https' && " You may need to trust the self-signed certificate by visiting the backend URL directly."}
+                            </p>
+                        </div>
+                    </div>
+                )}
                 {activeTab === 'SETTINGS' && (
                     <button
                         onClick={handleSave}

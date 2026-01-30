@@ -55,9 +55,9 @@ const AuditLog: React.FC = () => {
     };
 
     return (
-        <div className="space-y-4 h-full flex flex-col">
+        <div className="h-[calc(100vh-140px)] flex flex-col gap-6 font-sans">
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 bg-secondary/50 p-1 rounded-lg border border-border/50">
+                <div className="flex items-center gap-2 bg-secondary p-1 rounded-lg border border-border">
                     <Search size={16} className="ml-2 text-muted-foreground" />
                     <select 
                         className="bg-transparent border-none text-sm focus:ring-0 cursor-pointer"
@@ -75,10 +75,10 @@ const AuditLog: React.FC = () => {
                 <button onClick={loadLogs} className="text-xs text-muted-foreground hover:text-foreground">Refresh</button>
             </div>
 
-            <div className="bg-card border border-border rounded-xl overflow-hidden flex-1 shadow-sm">
+            <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
                 <div className="overflow-x-auto h-full">
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-secondary/30 text-xs uppercase text-muted-foreground font-medium sticky top-0 backdrop-blur-md">
+                        <thead className="bg-muted text-xs uppercase text-muted-foreground font-medium sticky top-0 border-b border-border">
                             <tr>
                                 <th className="px-4 py-3">Time</th>
                                 <th className="px-4 py-3">User</th>

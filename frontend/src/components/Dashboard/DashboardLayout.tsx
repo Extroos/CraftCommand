@@ -88,9 +88,11 @@ const Sparkline: React.FC<{ data: number[], color: string, height?: number, max?
 };
 
 import { useServers } from '../../context/ServerContext';
+import { useUser } from '../../context/UserContext';
 
 const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     const { servers, stats: allStats, logs } = useServers();
+    const { user } = useUser();
     const server = servers.find(s => s.id === serverId);
     
     const [hasConflict, setHasConflict] = useState(false);
@@ -145,6 +147,8 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
 
     useEffect(() => {
         const check = async () => {
+            if (user?.role !== 'OWNER' && user?.role !== 'ADMIN') return;
+
             try {
                 const info = await API.checkUpdates();
                 if (info.available && info.latestVersion !== dismissedVersion) {
@@ -155,7 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
             }
         };
         check();
-    }, [dismissedVersion]);
+    }, [dismissedVersion, user?.role]);
 
     const handleDismissUpdate = () => {
         if (!updateInfo) return;

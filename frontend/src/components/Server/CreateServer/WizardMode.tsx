@@ -62,7 +62,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
             className="max-w-4xl mx-auto"
         >
             {/* Steps Indicator */}
-            <div className="flex justify-center mb-8 gap-3">
+            <div className="flex justify-center mb-6 gap-2">
                 {['software', 'details', 'review'].map((s, i) => {
                     const steps = ['software', 'details', 'review'];
                     const currentIdx = steps.indexOf(step);
@@ -81,18 +81,18 @@ const WizardMode: React.FC<WizardModeProps> = ({
                 })}
             </div>
 
-            <div className="bg-[#121214]/80 border border-[rgb(var(--color-border-subtle))] rounded-2xl p-6 md:p-10 shadow-2xl backdrop-blur-sm">
+            <div className="bg-[#121214]/80 border border-[rgb(var(--color-border-subtle))] rounded-lg p-5 md:p-8 shadow-2xl backdrop-blur-sm">
                 
                 {/* STEP 1: SOFTWARE SELECTION */}
                 {step === 'software' && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="space-y-8"
+                        className="space-y-6"
                     >
                         <div className="text-center space-y-2">
-                            <h2 className="text-2xl font-black text-white uppercase tracking-tight">Select Software</h2>
-                            <p className="text-sm text-muted-foreground">Choose the core technology for your server.</p>
+                            <h2 className="text-lg font-black text-white uppercase tracking-tight">Select Software</h2>
+                            <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest opacity-60">Provisioning Protocol</p>
                         </div>
 
                         {/* Game Servers Grid */}
@@ -103,13 +103,13 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                     <button
                                         key={t.id}
                                         onClick={() => handleTemplateSelect(t)}
-                                        className={`group relative flex flex-col items-center p-6 gap-4 rounded-xl border transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${
+                                        className={`group relative flex flex-col items-center p-4 gap-3 rounded-lg border transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${
                                             formData.templateId === t.id
                                             ? 'bg-primary/10 border-primary ring-1 ring-primary/50'
                                             : 'bg-card border-border hover:bg-input hover:border-primary/30'
                                         }`}
                                     >
-                                        <div className="w-16 h-16 relative">
+                                        <div className="w-12 h-12 relative">
                                             <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
                                             <img 
                                                 src={getIconPath(t.type)} 
@@ -139,17 +139,17 @@ const WizardMode: React.FC<WizardModeProps> = ({
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                     >
-                         <div className="text-center space-y-2 mb-8">
+                         <div className="text-center space-y-1 mb-6">
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold mb-2">
                                 {formData.software} {formData.version}
                             </div>
-                            <h2 className="text-2xl font-black text-white uppercase tracking-tight">Configuration</h2>
-                            <p className="text-sm text-muted-foreground">Configure your instance hardware and settings.</p>
+                            <h2 className="text-lg font-black text-white uppercase tracking-tight">Configuration</h2>
+                            <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest opacity-60">Hardware Allocation</p>
                         </div>
                         
                         {renderDetailsStep()}
 
-                        <div className="flex justify-between items-center pt-8 border-t border-[rgb(var(--color-border-subtle))] mt-8">
+                        <div className="flex justify-between items-center pt-6 border-t border-[rgb(var(--color-border-subtle))] mt-6">
                             <button 
                                 onClick={() => setStep('software')} 
                                 className="text-muted-foreground hover:text-white text-xs font-bold uppercase tracking-wider transition-colors"
@@ -173,9 +173,9 @@ const WizardMode: React.FC<WizardModeProps> = ({
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                     >
-                        <div className="text-center space-y-2 mb-8">
-                            <h2 className="text-2xl font-black text-white uppercase tracking-tight">Ready to Deploy?</h2>
-                            <p className="text-sm text-muted-foreground">Double check your configuration before starting.</p>
+                        <div className="text-center space-y-1 mb-6">
+                            <h2 className="text-lg font-black text-white uppercase tracking-tight">Ready to Deploy?</h2>
+                            <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest opacity-60">Final Validation</p>
                         </div>
 
                         {renderReviewStep()}

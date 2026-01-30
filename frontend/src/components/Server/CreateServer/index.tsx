@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Check, Box, Cpu, Layers, Loader2, HardDrive, Shield, Zap, Globe, Lock, Leaf, FileCode, Hammer, Package, Sparkles, MonitorPlay, ChevronRight, Info, Settings2, Activity, Terminal, AlertTriangle, Command } from 'lucide-react';
+import { ArrowLeft, Check, Box, Cpu, Layers, Loader2, HardDrive, Shield, Zap, Globe, Lock, Leaf, FileCode, Hammer, Package, Sparkles, MonitorPlay, ChevronRight, Info, Settings2, Activity, Terminal, AlertTriangle, Command, Plus, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API } from '../../../services/api';
 import { useServers } from '../../../context/ServerContext';
@@ -228,7 +228,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         onClick={() => {
                             setFormData({ ...formData, software: sw.id, templateId: undefined });
                         }}
-                        className={`group relative p-4 rounded-xl border text-left transition-all ${
+                        className={`group relative p-3 rounded-lg border text-left transition-all ${
                             formData.software === sw.id 
                             ? 'border-primary bg-primary/5 ring-1 ring-primary/20' 
                             : 'border-[rgb(var(--color-border-subtle))] bg-input/50'
@@ -259,7 +259,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     <motion.div 
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="mt-4 p-4 border border-[rgb(var(--color-border-subtle))] rounded-xl bg-input/40"
+                    className="mt-3 p-3 border border-[rgb(var(--color-border-subtle))] rounded-lg bg-input/40"
                     >
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -290,7 +290,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
         <motion.div 
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
+            className="space-y-4"
         >
             <div className="flex items-center gap-2 mb-1">
                 {/* Only show header in Pro mode detail renderer, Wizard handles it differently */}
@@ -307,7 +307,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
 
             
                 /* Regular Game Server Config */
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-4">
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Server Name</label>
@@ -349,28 +349,86 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         </div>
 
 
-                        {/* Java Version Selector with smart warning */}
-                         <div className="space-y-1.5 mt-4">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex justify-between">
-                                <span>Java Runtime</span>
-                                {showJavaWarning && <span className="text-amber-500 flex items-center gap-1"><AlertTriangle size={10} /> Not Recommended</span>}
-                            </label>
-                            <select 
-                                value={formData.javaVersion}
-                                onChange={e => setFormData({...formData, javaVersion: e.target.value as any})}
-                                className={`w-full bg-input border rounded-lg py-2 px-3 outline-none text-sm font-medium cursor-pointer appearance-none transition-colors ${showJavaWarning ? 'border-amber-500/50 text-amber-200' : 'border-[rgb(var(--color-border-subtle))] text-white'}`}
-                            >
-                                <option value="Java 21">Java 21 (Recommended for 1.21+)</option>
-                                <option value="Java 17">Java 17 (Recommended for 1.18+)</option>
-                                <option value="Java 11">Java 11 (Legacy)</option>
-                                <option value="Java 8">Java 8 (Legacy 1.12)</option>
-                            </select>
-                            {showJavaWarning && (
-                                <p className="text-[10px] text-amber-500/80 leading-tight">
-                                    Warning: Minecraft {formData.version} usually requires {recommendedJava}.
-                                </p>
-                            )}
-                        </div>
+                         {/* Java Version Selector with smart warning */}
+                          <div className="space-y-1.5 mt-4">
+                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex justify-between">
+                                 <span>Java Runtime</span>
+                                 {showJavaWarning && <span className="text-amber-500 flex items-center gap-1"><AlertTriangle size={10} /> Not Recommended</span>}
+                             </label>
+                             <select 
+                                 value={formData.javaVersion}
+                                 onChange={e => setFormData({...formData, javaVersion: e.target.value as any})}
+                                 className={`w-full bg-input border rounded-lg py-2 px-3 outline-none text-sm font-medium cursor-pointer appearance-none transition-colors ${showJavaWarning ? 'border-amber-500/50 text-amber-200' : 'border-[rgb(var(--color-border-subtle))] text-white'}`}
+                             >
+                                 <option value="Java 21">Java 21 (Recommended for 1.21+)</option>
+                                 <option value="Java 17">Java 17 (Recommended for 1.18+)</option>
+                                 <option value="Java 11">Java 11 (Legacy)</option>
+                                 <option value="Java 8">Java 8 (Legacy 1.12)</option>
+                             </select>
+                             {showJavaWarning && (
+                                 <p className="text-[10px] text-amber-500/80 leading-tight">
+                                     Warning: Minecraft {formData.version} usually requires {recommendedJava}.
+                                 </p>
+                             )}
+                         </div>
+
+                         <div className="grid grid-cols-2 gap-3 mt-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Service Port</label>
+                                <div className="flex items-center bg-input border border-[rgb(var(--color-border-subtle))] rounded-lg overflow-hidden focus-within:border-primary/50 transition-colors">
+                                    <input 
+                                        type="number"
+                                        value={formData.port}
+                                        onChange={e => setFormData({...formData, port: parseInt(e.target.value) || 0})}
+                                        className="flex-1 min-w-0 bg-transparent px-3 py-2 text-sm text-white font-mono outline-none"
+                                    />
+                                    <div className="flex items-stretch border-l border-white/5 h-9 bg-white/5">
+                                        <button 
+                                            type="button"
+                                            onClick={() => setFormData({...formData, port: Math.max(1, formData.port - 1)})}
+                                            className="px-2 hover:bg-rose-500/10 text-muted-foreground/40 hover:text-rose-500 transition-colors border-r border-white/5"
+                                        >
+                                            <Minus size={12} strokeWidth={3} />
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setFormData({...formData, port: Math.min(65535, formData.port + 1)})}
+                                            className="px-2 hover:bg-emerald-500/10 text-muted-foreground/40 hover:text-emerald-500 transition-colors"
+                                        >
+                                            <Plus size={12} strokeWidth={3} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Max Players</label>
+                                <div className="flex items-center bg-input border border-[rgb(var(--color-border-subtle))] rounded-lg overflow-hidden focus-within:border-primary/50 transition-colors">
+                                    <input 
+                                        type="number"
+                                        value={formData.maxPlayers}
+                                        onChange={e => setFormData({...formData, maxPlayers: parseInt(e.target.value) || 0})}
+                                        className="flex-1 min-w-0 bg-transparent px-3 py-2 text-sm text-white font-mono outline-none"
+                                    />
+                                    <div className="flex items-stretch border-l border-white/5 h-9 bg-white/5">
+                                        <button 
+                                            type="button"
+                                            onClick={() => setFormData({...formData, maxPlayers: Math.max(1, formData.maxPlayers - 1)})}
+                                            className="px-2 hover:bg-rose-500/10 text-muted-foreground/40 hover:text-rose-500 transition-colors border-r border-white/5"
+                                        >
+                                            <Minus size={12} strokeWidth={3} />
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setFormData({...formData, maxPlayers: Math.min(1000, formData.maxPlayers + 1)})}
+                                            className="px-2 hover:bg-emerald-500/10 text-muted-foreground/40 hover:text-emerald-500 transition-colors"
+                                        >
+                                            <Plus size={12} strokeWidth={3} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                         </div>
 
                         {/* Advanced Options (Folder Name & specific builds) */}
                         <div className="pt-2">
@@ -432,7 +490,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     </div>
 
                     <div className="space-y-4">
-                        <div className="space-y-3 p-4 bg-input/50 border border-[rgb(var(--color-border-subtle))] rounded-xl">
+                        <div className="space-y-2 p-3 bg-input/50 border border-[rgb(var(--color-border-subtle))] rounded-lg">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex justify-between items-center">
                                     <span>Memory</span>
                                     <span className="text-primary font-mono text-xs">{formData.ram} GB</span>
@@ -482,7 +540,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
 
                         {/* Modpack Browser */}
                         {formData.software === 'Modpack' && !formData.templateId && (
-                            <div className="bg-input border border-[rgb(var(--color-border-subtle))] p-1 rounded-xl">
+                            <div className="bg-input border border-[rgb(var(--color-border-subtle))] p-1 rounded-lg">
                                 <ModpackBrowser onSelect={(p) => {
                                     setSelectedModpack(p);
                                     setFormData({...formData, name: p.title, modpackUrl: `modrinth:${p.id}`});
@@ -494,8 +552,8 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
 
             
             {/* CPU Priority & Advanced Resource Config */}
-            <div className="mt-4 space-y-2">
-                <div className="bg-input/30 border border-[rgb(var(--color-border-subtle))] rounded-xl p-1.5 flex items-center justify-between gap-4">
+            <div className="mt-3 space-y-1.5">
+                <div className="bg-input/30 border border-[rgb(var(--color-border-subtle))] rounded-lg p-1 flex items-center justify-between gap-4">
                     <div className="px-2 flex items-center gap-3">
                         <div className="p-1.5 bg-white/5 rounded-md text-muted-foreground">
                             <Activity size={14} />
@@ -553,7 +611,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
             animate={{ opacity: 1, scale: 1 }}
             className="space-y-4"
         >
-            <div className="bg-[#121214] border border-[rgb(var(--color-border-subtle))] rounded-2xl p-6 shadow-xl relative overflow-hidden">
+            <div className="bg-[#121214] border border-[rgb(var(--color-border-subtle))] rounded-lg p-5 shadow-xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-10">
                     <Terminal size={100} />
                 </div>
@@ -565,7 +623,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     <h3 className="text-sm font-bold uppercase tracking-wider text-white">Review & Deploy</h3>
                 </div>
 
-                <div className="bg-black/20 border border-[rgb(var(--color-border-subtle))] rounded-xl p-4 space-y-3 text-xs mb-6 relative z-10 font-mono">
+                <div className="bg-black/20 border border-[rgb(var(--color-border-subtle))] rounded-lg p-4 space-y-2 text-xs mb-5 relative z-10 font-mono">
                     <div className="flex justify-between items-center">
                         <span className="text-[rgb(var(--color-fg-muted))] font-medium">Instance</span>
                         <span className="font-bold text-[rgb(var(--color-fg-secondary))]">{formData.name}</span>
@@ -637,7 +695,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                 <motion.div 
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pt-2"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 pt-2"
                 >
                     <div className="flex items-center gap-3">
                         <button 

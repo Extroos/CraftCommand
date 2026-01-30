@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -12,9 +13,22 @@ export default defineConfig(({ mode }) => {
         allowedHosts: true, // Allow external tunnels (Cloudflare/Playit)
         proxy: {
             '/api': {
-                target: 'http://127.0.0.1:3001',
+                target: (() => {
+                    try {
+                        const settingsPath = path.resolve(__dirname, '../backend/data/settings.json');
+                        if (fs.existsSync(settingsPath)) {
+                            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+                            if (settings.app.https?.enabled) {
+                                return 'https://127.0.0.1:3001';
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Vite proxy failed to read settings.json, falling back to HTTP.');
+                    }
+                    return 'http://127.0.0.1:3001';
+                })(),
                 changeOrigin: true,
-                secure: false,
+                secure: false, // Essential for self-signed development certs
             }
         }
       },
