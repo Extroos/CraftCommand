@@ -30,7 +30,7 @@ Built with **React 19** and **Node.js**, featuring **granular permissions**, **a
 - **File Manager** — IDE-like editor with syntax highlighting and safety checks
 - **Server Architect** — Guided setup for Paper, Purpur, Fabric, Forge, NeoForge, and Modpacks
 - **Automated Backups** — Scheduled snapshots with retention policies
-
+- **⚠️Velocity Proxy** Temporarily disabled due to stability issues. It will be reimplemented in a future update.
 ---
 
 ### Multi-User & Permissions
