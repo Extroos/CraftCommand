@@ -1,3 +1,6 @@
+import path from 'path';
+import dotenv from 'dotenv';
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
@@ -57,7 +60,7 @@ const initHttpServer = async () => {
 
 import { remoteAccessService } from './services/system/RemoteAccessService';
 
-const PORT = 3001;
+const PORT = process.env.BACKEND_PORT ? parseInt(process.env.BACKEND_PORT) : 3001;
 const BIND_IP = remoteAccessService.getBindAddress();
 
 const startup = async () => {

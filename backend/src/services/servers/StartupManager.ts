@@ -53,14 +53,57 @@ export class StartupManager {
         // Enforce Properties for Backend Servers (Trust No One)
         await this.enforceBackendProperties(server);
 
-        const { cmd, cwd, env } = await this.buildStartCommand(server, javaPath);
-
-
-
-
-
+        const { cmd, cwd, env } = await this.buildStartCommand(server, javaPath, server.executionEngine || 'native');
+        
         // 5. Launch
-        processManager.startServer(id, cmd, cwd, env);
+        let dockerImage = server.dockerImage;
+        const autoImage = this.getDockerImageForJava(server.javaVersion);
+
+        // Smart Override: If no image set, OR if it's one of our common defaults/stale settings, 
+        // use the auto-mapped image to prevent Java version mismatches.
+        if (!dockerImage || dockerImage === 'openjdk:17-slim' || dockerImage === 'openjdk:21-slim' || dockerImage === 'eclipse-temurin:17-jre') {
+            dockerImage = autoImage;
+        }
+
+        console.log(`[StartupManager:${id}] Selected Docker image: ${dockerImage} (Source: ${dockerImage === autoImage ? 'Auto-Mapper/Default' : 'Manual Override'})`);
+        
+        // PERSISTENT DEBUG TRACE
+        try {
+            fs.writeFileSync(path.join(process.cwd(), 'data', 'last_docker_start.json'), JSON.stringify({
+                timestamp: new Date().toISOString(),
+                id,
+                dockerImage,
+                javaVersion: server.javaVersion,
+                autoImage
+            }, null, 2));
+        } catch (e) {}
+
+        processManager.startServer(id, cmd, cwd, { 
+            ...env, 
+            executionEngine: server.executionEngine,
+            dockerImage,
+            SERVER_PORT: server.port
+        });
+    }
+
+    private getDockerImageForJava(version: string): string {
+        if (!version) return 'eclipse-temurin:21-jre'; // Modern high default
+        
+        const match = version.match(/\d+/);
+        if (match) {
+            const num = parseInt(match[0]);
+            
+            // Map to standard Temurin LTS/Supported versions
+            if (num <= 8) return 'eclipse-temurin:8-jre';
+            if (num <= 11) return 'eclipse-temurin:11-jre';
+            if (num <= 17) return 'eclipse-temurin:17-jre';
+            
+            // For 21 and any future versions (22, 23, etc.)
+            // Paper 1.20.5+ requires Java 21+, so we treat 21 as the smart baseline for new jars
+            return `eclipse-temurin:${num}-jre`;
+        }
+        
+        return 'eclipse-temurin:21-jre';
     }
 
     private async checkPort(port: number): Promise<boolean> {
@@ -137,10 +180,13 @@ export class StartupManager {
         }
     }
 
-    private async buildStartCommand(server: any, javaPath: string): Promise<{ cmd: string, cwd: string, env: NodeJS.ProcessEnv }> {
+    private async buildStartCommand(server: any, javaPath: string, engine: 'native' | 'docker' = 'native'): Promise<{ cmd: string, cwd: string, env: NodeJS.ProcessEnv }> {
         const cwd = server.workingDirectory;
         const jarFile = server.executable || 'server.jar';
         const isWin = process.platform === 'win32';
+        
+        // Use generic java for Docker, absolute for Native
+        const actualJava = engine === 'docker' ? 'java' : `"${javaPath}"`;
 
         // Prepend Java Bin to PATH (Keep this as backup)
         const javaBin = path.dirname(javaPath);
@@ -228,7 +274,7 @@ export class StartupManager {
                     const forgeArgs = match[1].replace('%*', '').trim(); // Remove %* placeholder
                     console.log(`[StartupManager] Parsed Forge run.bat args: ${forgeArgs}`);
                     
-                    cmd = `${runPrefix}"${javaPath}" ${jvmArgs} ${forgeArgs} nogui`;
+                    cmd = `${runPrefix}${actualJava} ${jvmArgs} ${forgeArgs} nogui`;
                     
                 } else {
                     console.log('[StartupManager] Could not parse run.bat args, falling back to execution via cmd.');
@@ -253,7 +299,7 @@ export class StartupManager {
              cmd = `${runPrefix}sh "${path.join(cwd, jarFile)}" ${jvmArgs} nogui`;
         } else {
             // Standard JAR
-            cmd = `${runPrefix}"${javaPath}" ${jvmArgs} -jar "${jarFile}" nogui`;
+            cmd = `${runPrefix}${actualJava} ${jvmArgs} -jar "${jarFile}" nogui`;
         }
 
         return { cmd, cwd, env };

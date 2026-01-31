@@ -4,11 +4,11 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
+    const env = loadEnv(mode, path.resolve(__dirname, '..'), '');
     return {
       server: {
 
-        port: 3000,
+        port: parseInt(env.FRONTEND_PORT || env.PORT) || 3000,
         host: '0.0.0.0',
         allowedHosts: true, // Allow external tunnels (Cloudflare/Playit)
         proxy: {
@@ -19,13 +19,13 @@ export default defineConfig(({ mode }) => {
                         if (fs.existsSync(settingsPath)) {
                             const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
                             if (settings.app.https?.enabled) {
-                                return 'https://127.0.0.1:3001';
+                                return `https://127.0.0.1:${env.BACKEND_PORT || 3001}`;
                             }
                         }
                     } catch (e) {
                         console.warn('Vite proxy failed to read settings.json, falling back to HTTP.');
                     }
-                    return 'http://127.0.0.1:3001';
+                    return `http://127.0.0.1:${env.BACKEND_PORT || 3001}`;
                 })(),
                 changeOrigin: true,
                 secure: false, // Essential for self-signed development certs
