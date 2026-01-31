@@ -153,4 +153,18 @@ router.post('/remote-access/disable', verifyToken, requirePermission('system.rem
     }
 });
 
+// Docker Status Check
+import { exec } from 'child_process';
+import util from 'util';
+const execAsync = util.promisify(exec);
+
+router.get('/docker/status', verifyToken, async (req, res) => {
+    try {
+        const { stdout } = await execAsync('docker info --format "{{.ServerVersion}}"');
+        res.json({ online: true, version: stdout.trim() });
+    } catch (e: any) {
+        res.json({ online: false, error: 'Docker Daemon not reachable' });
+    }
+});
+
 export default router;

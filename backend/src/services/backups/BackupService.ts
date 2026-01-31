@@ -134,9 +134,9 @@ export class BackupService extends EventEmitter {
             
             this.emit('status', 'Restore complete');
 
-        } catch (e) {
-            console.error('RESTORE FAILED, ROLLING BACK', e);
-            this.emit('status', 'CRITICAL ERROR: Restoring from safety snapshot...');
+        } catch (e: any) {
+            console.error(`[BackupService] RESTORE FAILED for ${serverId} (${backupId}):`, e);
+            this.emit('status', `CRITICAL: Restore failed (${e.message}). Rolling back...`);
             
             // 4. Rollback: Restore files from temp safety folder
             try {

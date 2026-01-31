@@ -1,7 +1,7 @@
 {
-  "name": "craftcommand-root",
+  "name": "craft-commands-root",
   "private": true,
-  "version": "1.6.2",
+  "version": "1.7.0",
   "author": "Extroos",
   "type": "module",
   "scripts": {

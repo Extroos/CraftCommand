@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Server, Save, Terminal, Lock, Unlock, Folder, Play, Clock, Shield, Globe, Cpu, RotateCcw, Gamepad2, Swords, Ghost, Feather, ScrollText, AlertTriangle, AlertCircle, Fingerprint, Network, ShieldAlert, Key, Zap, ArrowRightLeft, Activity, ChevronDown, Check, Download, ExternalLink, Bot, X, Info, Plus, Minus } from 'lucide-react';
+import { Server, Save, Terminal, Lock, Unlock, Folder, Play, Clock, Shield, Globe, Cpu, RotateCcw, Gamepad2, Swords, Ghost, Feather, ScrollText, AlertTriangle, AlertCircle, Fingerprint, Network, ShieldAlert, Key, Zap, ArrowRightLeft, Activity, ChevronDown, Check, Download, ExternalLink, Bot, X, Info, Plus, Minus, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { API } from '../../services/api';
@@ -134,6 +134,9 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
         description: string;
     }>({ open: false, type: 'RESET', title: '', description: '' });
     
+    const [dockerStatus, setDockerStatus] = useState<{ online: boolean; version?: string; checking: boolean }>({ online: false, checking: false });
+    const [globalSettings, setGlobalSettings] = useState<any>(null);
+    
     // Detailed Config State
     const [config, setConfig] = useState({
         serverName: '',
@@ -152,6 +155,8 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
         shutdownTimeout: 60,
         crashExitCodes: '0',
         logRetention: 0,
+        executionEngine: 'native' as 'native' | 'docker',
+        dockerImage: '',
         // Game Settings
         gamemode: 'survival',
         difficulty: 'normal',
@@ -258,10 +263,32 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                     retryPattern: currentServer.advancedFlags?.retryPattern || '10s, 30s, 1m',
                     threadPriority: currentServer.advancedFlags?.threadPriority || 'normal'
                 },
-                cpuPriority: currentServer.cpuPriority || 'normal' // Added
+                cpuPriority: currentServer.cpuPriority || 'normal',
+                executionEngine: currentServer.executionEngine || 'native',
+                dockerImage: currentServer.dockerImage || ''
             });
         }
     }, [currentServer?.id]);
+
+    useEffect(() => {
+        API.getGlobalSettings().then(setGlobalSettings).catch(console.error);
+    }, []);
+
+    const checkDocker = async () => {
+        setDockerStatus(prev => ({ ...prev, checking: true }));
+        try {
+            const status = await API.getDockerStatus();
+            setDockerStatus({ ...status, checking: false });
+            if (status.online) {
+                addToast('success', 'Docker Online', `Connected to Docker v${status.version}`);
+            } else {
+                addToast('warning', 'Docker Offline', 'The Docker Daemon is not responding.');
+            }
+        } catch (e) {
+            setDockerStatus({ online: false, checking: false });
+            addToast('error', 'Check Failed', 'Failed to communicate with the backend for Docker status.');
+        }
+    };
 
 
     const validate = (key: string, value: any): string | null => {
@@ -372,7 +399,9 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                 gcEngine: config.advancedFlags.gcEngine as any,
                 threadPriority: config.advancedFlags.threadPriority as any
             },
-            cpuPriority: config.cpuPriority as 'normal' | 'high' | 'realtime'
+            cpuPriority: config.cpuPriority as 'normal' | 'high' | 'realtime',
+            executionEngine: config.executionEngine,
+            dockerImage: config.dockerImage
         };
 
         setIsSaving(true);
@@ -1059,6 +1088,89 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Orchestration & Virtualization */}
+                        {globalSettings?.app?.dockerEnabled && (
+                            <div className="bg-card border border-border/80 rounded-md p-4 relative group shadow-sm transition-all hover:border-primary/30">
+                                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                                    <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                                        <Database size={14} className="text-primary/70" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground/90">Orchestration & Virtualization</h3>
+                                        <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Containerized Runtime Engine</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="space-y-1 group/select">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <label className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground group-hover/select:text-foreground">Execution Engine</label>
+                                            {servers.find(s => s.id === serverId)?.status !== 'OFFLINE' && (
+                                                <div className="flex items-center gap-1 text-[8px] font-black text-rose-500 uppercase">
+                                                    <Lock size={8} /> Active Lock
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="relative">
+                                            <select 
+                                                value={config.executionEngine}
+                                                disabled={servers.find(s => s.id === serverId)?.status !== 'OFFLINE'}
+                                                onChange={(e) => handleChange('executionEngine', e.target.value)}
+                                                className={`w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40 ${
+                                                    servers.find(s => s.id === serverId)?.status !== 'OFFLINE' ? 'opacity-50 cursor-not-allowed bg-muted/20' : ''
+                                                }`}
+                                            >
+                                                <option value="native">Native (Local Process)</option>
+                                                <option value="docker">Docker (Containerized)</option>
+                                            </select>
+                                            <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
+                                                <ChevronDown size={12} />
+                                            </div>
+                                        </div>
+                                        {servers.find(s => s.id === serverId)?.status !== 'OFFLINE' && (
+                                            <p className="text-[7px] font-bold text-rose-400/60 uppercase tracking-tighter mt-1">Shutdown instance to reconfigure orchestration layer</p>
+                                        )}
+                                    </div>
+
+                                    {config.executionEngine === 'docker' && (
+                                        <div className="space-y-3 p-3 rounded-lg bg-primary/5 border border-primary/10 animate-in fade-in slide-in-from-top-2">
+                                            <InputField 
+                                                label="Docker Image" 
+                                                propKey="dockerImage" 
+                                                placeholder="eclipse-temurin:17-jre" 
+                                                note="Image to pull for this server instance" 
+                                                config={config} 
+                                                errors={errors} 
+                                                handleChange={handleChange} 
+                                            />
+                                            
+                                            <div className="flex items-center justify-between pt-2 border-t border-primary/10">
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${dockerStatus.online ? 'bg-emerald-500' : 'bg-rose-500'} ${dockerStatus.checking ? 'animate-pulse' : ''}`} />
+                                                    <span className={`text-[8px] font-bold uppercase tracking-widest ${dockerStatus.online ? 'text-emerald-500/80' : 'text-rose-500/80'}`}>
+                                                        {dockerStatus.checking ? 'Checking Daemon...' : dockerStatus.online ? `Docker ${dockerStatus.version || 'Active'}` : 'Daemon Unreachable'}
+                                                    </span>
+                                                </div>
+                                                <button 
+                                                    onClick={checkDocker}
+                                                    disabled={dockerStatus.checking}
+                                                    className="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded text-[9px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 border border-primary/20"
+                                                >
+                                                    <RotateCcw size={10} className={dockerStatus.checking ? 'animate-spin' : ''} />
+                                                    Run Diagnostic
+                                                </button>
+                                            </div>
+                                            {!dockerStatus.online && !dockerStatus.checking && (
+                                                <p className="text-[7px] font-bold text-rose-400/60 uppercase tracking-tighter bg-rose-500/5 p-1.5 rounded border border-rose-500/10">
+                                                    Ensure Docker Desktop is running. Native fallback will trigger if Docker remains unreachable.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                     
                     <div className="space-y-3 xl:col-span-1">

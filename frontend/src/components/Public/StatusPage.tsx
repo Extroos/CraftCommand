@@ -191,7 +191,7 @@ const StatusPage: React.FC<StatusPageProps> = ({ onNavigateLogin }) => {
                         <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center font-bold text-black shadow-[0_0_15px_rgba(16,185,129,0.3)]">
                             <Activity size={18} />
                         </div>
-                        <span className="font-bold tracking-tight text-lg">CraftCommand <span className="text-emerald-500">Status</span></span>
+                        <span className="font-bold tracking-tight text-lg">Craft Commands <span className="text-emerald-500">Status</span></span>
                     </div>
                     <button 
                         onClick={onNavigateLogin}
@@ -220,7 +220,7 @@ const StatusPage: React.FC<StatusPageProps> = ({ onNavigateLogin }) => {
                                     Network <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">Telemetry</span>
                                 </h1>
                                 <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-                                    Real-time operational status, player metrics, and connection details for the CraftCommand gaming infrastructure.
+                                    Real-time operational status, player metrics, and connection details for the Craft Commands gaming infrastructure.
                                 </p>
                             </div>
                             
@@ -264,7 +264,7 @@ const StatusPage: React.FC<StatusPageProps> = ({ onNavigateLogin }) => {
             <footer className="max-w-6xl mx-auto px-6 py-12 text-center relative z-10 border-t border-[rgb(var(--color-border-subtle))]">
                 <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm mb-3">
                     <ShieldCheck size={16} className="text-emerald-500" />
-                    <span>Secure Infrastructure verified by CraftCommand Shield</span>
+                    <span>Secure Infrastructure verified by Craft Commands Shield</span>
                 </div>
                 <p className="text-xs text-muted-foreground/40 font-mono mt-2 uppercase tracking-widest">
                     MIT License &copy; 2026 Extroos • Auto-refresh active (2s)

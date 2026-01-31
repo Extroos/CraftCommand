@@ -1,10 +1,10 @@
 # Remote Access Guide
 
-CraftCommand is secure by default (localhost only). To play with friends, you must explicitly enable **"Remote Access Mode"** in Settings.
+Craft Commands is secure by default (localhost only). To play with friends, you must explicitly enable **"Remote Access Mode"** in Settings.
 
 ## 🛑 Safety First (Read This)
 
-Exposing your server to the internet carries risks. Before enabling Remote Access, CraftCommand forces you to:
+Exposing your server to the internet carries risks. Before enabling Remote Access, Craft Commands forces you to:
 
 1.  **Rate Limit**: Prevent bots from guessing passwords.
 2.  **Lockout Policy**: After 5 failed attempts, IP addresses are banned for 1 hour.

@@ -76,19 +76,15 @@ export const optionalVerifyToken = (req: Request, res: Response, next: NextFunct
 export const requirePermission = (permission: Permission) => {
     return (req: Request, res: Response, next: NextFunction) => {
         const user = (req as any).user;
-        const serverId = req.params.id; // Assuming server routes use :id
+        const serverId = req.params.id || req.params.serverId || (req.query.serverId as string);
 
         if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
-        if (!permissionService.can(user, 'server.console.write', serverId) && permission === 'server.console.write') { // Example logic, but actually we want generic
-             // We need to inject AuditService safely or generic log
-        }
-        
         if (!permissionService.can(user, permission, serverId)) {
              import('../services/system/AuditService').then(({ auditService }) => {
                 auditService.log(user.id, 'PERMISSION_DENIED', serverId || 'system', { permission, method: req.method, path: req.path }, req.ip, user.email);
             });
-            return res.status(403).json({ error: 'Forbidden' });
+            return res.status(403).json({ error: 'Forbidden: Insufficient Permissions' });
         }
 
         next();

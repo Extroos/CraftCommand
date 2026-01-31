@@ -37,7 +37,7 @@ export const sslUtils = {
         logger.info('[SSL] Generating self-signed certificates for Zero-Config HTTPS...');
         fs.ensureDirSync(SSL_DIR);
 
-        const attrs = [{ name: 'commonName', value: 'craftcommand.local' }];
+        const attrs = [{ name: 'commonName', value: 'craft-commands.local' }];
         const pems = selfsigned.generate(attrs, { days: 365 });
 
         fs.writeFileSync(certPath, pems.cert);

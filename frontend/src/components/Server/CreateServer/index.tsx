@@ -539,7 +539,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         )}
 
                         {/* Modpack Browser */}
-                        {formData.software === 'Modpack' && !formData.templateId && (
+                        {formData.software === 'Modpack' && (
                             <div className="bg-input border border-[rgb(var(--color-border-subtle))] p-1 rounded-lg">
                                 <ModpackBrowser onSelect={(p) => {
                                     setSelectedModpack(p);

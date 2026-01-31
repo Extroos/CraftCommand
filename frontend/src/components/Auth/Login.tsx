@@ -49,7 +49,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                         <div className="absolute inset-0 bg-emerald-500/10 rounded-full opacity-0 group-hover:opacity-20 transition-opacity duration-700"></div>
                         <img 
                             src="/website-icon.png" 
-                            alt="CraftCommand" 
+                            alt="Craft Commands" 
                             className="w-40 h-40 object-contain relative z-10 drop-shadow-2xl hover:scale-105 transition-transform duration-500 ease-out" 
                         />
                     </div>
@@ -75,7 +75,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     className="w-full bg-[rgb(var(--color-bg-input))] border border-[rgb(var(--color-border-default))] rounded-lg py-2 pl-11 pr-4 text-sm font-bold text-[rgb(var(--color-fg-primary))] placeholder:text-[rgb(var(--color-fg-subtle))] focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all duration-300 shadow-inner"
-                                    placeholder="admin@craftcommand.io"
+                                    placeholder="admin@craftcommands.io"
                                 />
                             </div>
                         </div>
@@ -150,7 +150,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                     rel="noopener noreferrer"
                     className="text-center opacity-20 text-[9px] font-mono tracking-[0.3em] uppercase mix-blend-screen hover:opacity-100 hover:text-primary transition-all cursor-pointer"
                 >
-                    CraftCommand &copy; 2026
+                    Craft Commands &copy; 2026
                 </a>
             </div>
         </div>

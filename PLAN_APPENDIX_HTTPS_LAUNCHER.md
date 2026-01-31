@@ -42,7 +42,7 @@ A multi-step modal or page:
     - **VPN** (Recommended): Shows Tailscale/ZeroTier guide.
     - **Proxy** (Standard): Checks Caddy status.
     - **Direct** (Advanced): Checks Port Forwarding.
-3.  **Verification**: Pings the server from an external API (e.g., `api.craftcommand.com/ping`) to verify visibility.
+3.  **Verification**: Pings the server from an external API (e.g., `api.craft-commands.com/ping`) to verify visibility.
 
 ## 4. Integration Flow
 

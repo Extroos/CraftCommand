@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-title CraftCommand - Server Manager v1.6.2 (STABLE)
+title Craft Commands - Server Manager v1.7.0 (STABLE)
 color 0B
 
 :: Hardening: Verify Critical Directories exist
@@ -88,7 +88,7 @@ if "%r_choice%"=="2" (
     call node scripts/install-proxy.js
     echo.
     echo [Proxy Setup] Launching Tunnel Agent...
-    start "CraftCommand Tunnel (Do Not Close)" "proxy\playit.exe"
+    start "Craft Commands Tunnel (Do Not Close)" "proxy\playit.exe"
     goto POST_REMOTE_CONFIG
 )
 if "%r_choice%"=="3" (

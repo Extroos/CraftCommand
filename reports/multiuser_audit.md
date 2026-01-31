@@ -2,7 +2,7 @@
 
 ## 1. System Overview
 
-CraftCommand uses a Node.js/Express backend with Socket.IO for real-time communication.
+Craft Commands uses a Node.js/Express backend with Socket.IO for real-time communication.
 
 - **Language**: TypeScript
 - **Storage**: JSON Files (default) or SQLite (optional) via Repository pattern.

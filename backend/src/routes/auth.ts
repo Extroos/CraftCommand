@@ -36,16 +36,11 @@ router.get('/me', verifyToken, (req, res) => {
 router.patch('/me', verifyToken, (req, res) => {
     const user = (req as any).user;
     try {
-        // Prevent role hacking
-        if (req.body.role && user.role !== 'OWNER') {
-            delete req.body.role;
-        }
-        
-        const updated = authService.updateUser(user.id, req.body);
-        auditService.log(user.id, 'USER_UPDATE', user.id, { changes: Object.keys(req.body) });
+        const updated = authService.updateUser(user.id, req.body, user);
+        auditService.log(user.id, 'USER_UPDATE', user.id, { changes: Object.keys(req.body) }, req.ip, user.email);
         res.json(updated);
     } catch (e: any) {
-        res.status(500).json({ error: e.message });
+        res.status(403).json({ error: e.message });
     }
 });
 
@@ -56,44 +51,40 @@ router.get('/users', verifyToken, requirePermission('users.manage'), (req, res) 
 
 // Admin: Create User
 router.post('/users', verifyToken, requirePermission('users.manage'), async (req, res) => {
+    const actor = (req as any).user;
     try {
         const { password, ...data } = req.body;
-        const newUser = await authService.createUser(data, password);
-        auditService.log((req as any).user.id, 'USER_CREATE', newUser.id, { email: newUser.email, role: newUser.role });
+        const newUser = await authService.createUser(data, password, actor);
+        auditService.log(actor.id, 'USER_CREATE', newUser.id, { email: newUser.email, role: newUser.role }, req.ip, actor.email);
         res.json(newUser);
     } catch (e: any) {
-        res.status(500).json({ error: e.message });
+        res.status(403).json({ error: e.message });
     }
 });
 
 // Admin: Update User
 router.patch('/users/:id', verifyToken, requirePermission('users.manage'), (req, res) => {
     const { id } = req.params;
+    const actor = (req as any).user;
     try {
-        // Prevent role hacking (Only Owner can make other Owners)
-        // Ideally we need more granular checks, but for now:
-        const actor = (req as any).user;
-        if (req.body.role === 'OWNER' && actor.role !== 'OWNER') {
-             return res.status(403).json({ error: 'Only Owners can promote to Owner' });
-        }
-
-        const updated = authService.updateUser(id, req.body);
-        auditService.log(actor.id, 'USER_UPDATE', id, { changes: Object.keys(req.body) });
+        const updated = authService.updateUser(id, req.body, actor);
+        auditService.log(actor.id, 'USER_UPDATE', id, { changes: Object.keys(req.body) }, req.ip, actor.email);
         res.json(updated);
     } catch (e: any) {
-        res.status(500).json({ error: e.message });
+        res.status(403).json({ error: e.message });
     }
 });
 
 // Admin: Delete User
 router.delete('/users/:id', verifyToken, requirePermission('users.manage'), (req, res) => {
     const { id } = req.params;
+    const actor = (req as any).user;
     try {
-        authService.deleteUser(id);
-        auditService.log((req as any).user.id, 'USER_DELETE', id);
+        authService.deleteUser(id, actor);
+        auditService.log(actor.id, 'USER_DELETE', id, undefined, req.ip, actor.email);
         res.json({ success: true });
     } catch (e: any) {
-        res.status(500).json({ error: e.message });
+        res.status(403).json({ error: e.message });
     }
 });
 

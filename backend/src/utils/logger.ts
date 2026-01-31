@@ -11,7 +11,7 @@ class Logger {
     }
 
     private format(level: string, message: string) {
-        return `[+] CraftCommand: ${this.getTimestamp()} - ${level}: ${message}`;
+        return `[+] Craft Commands: ${this.getTimestamp()} - ${level}: ${message}`;
     }
 
     info(message: string) {

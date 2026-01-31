@@ -1,13 +1,14 @@
 {
-  "version": "1.6.2",
-  "title": "Professional Multi-User & RBAC Stable",
+  "version": "1.7.0",
+  "title": "Craft Commands",
   "notes": [
-    "Complete Multi-User support with secure authentication",
-    "Advanced Role-Based Access Control (RBAC) across all modules",
-    "Professional UI Density: Redesigned Dashboard & Global Settings",
+    "Granular Permissions: 3-state control (Inherited, Grant, Deny) with explicit overrides",
+    "Global System Rights: Staff management for Users, Provisioning, and System settings",
+    "Custom Role Names: Personalized aliases for staff roles (e.g., 'Head Admin', 'Moderator')",
+    "Hardened Security: Reinforced hierarchical guards for global and identity modifications",
+    "Explicit Lifecycle Access: Dedicated 'server.create' and 'server.delete' permission nodes",
     "Zero-Config HTTPS support with intelligent SSL management",
-    "Fixed Viewer-role security leaks and misleading notifications",
-    "Enhanced Account Linking and Avatar customization logic",
-    "Optimized 60FPS animations and technical UI elements"
+    "Hybrid Orchestration: Dual-engine support for Native processes and Docker containers",
+    "Proactive Stability: Automated port protection and ghost process ghost-purging"
   ]
 }

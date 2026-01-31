@@ -11,6 +11,7 @@ import { RemoteAccessWizard } from '../Wizards/RemoteAccessWizard';
 
 const GlobalSettingsView: React.FC = () => {
     const [settings, setSettings] = useState<GlobalSettingsType | null>(null);
+    const [initialSettings, setInitialSettings] = useState<GlobalSettingsType | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [showWizard, setShowWizard] = useState(false);
@@ -35,6 +36,7 @@ const GlobalSettingsView: React.FC = () => {
         try {
             const data = await API.getGlobalSettings();
             setSettings(data);
+            setInitialSettings(JSON.parse(JSON.stringify(data))); // Deep clone for comparison
         } catch (e) {
             console.error(e);
             addToast('error', 'Settings', 'Failed to load system settings');
@@ -43,12 +45,32 @@ const GlobalSettingsView: React.FC = () => {
         }
     };
 
+    const hasInfraChanges = () => {
+        if (!settings || !initialSettings) return false;
+        return (
+            settings.app.dockerEnabled !== initialSettings.app.dockerEnabled ||
+            settings.app.https?.enabled !== initialSettings.app.https?.enabled ||
+            settings.app.storageProvider !== initialSettings.app.storageProvider
+        );
+    };
+
     const handleSave = async () => {
         if (!settings) return;
+        const rebootRequired = hasInfraChanges();
+        
         setIsSaving(true);
         try {
             await API.updateGlobalSettings(settings);
-            addToast('success', 'Settings', 'System configuration updated');
+            
+            if (rebootRequired) {
+                addToast('success', 'System', 'Infrastructure updated. Refreshing application...');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                addToast('success', 'Settings', 'System configuration updated');
+                setInitialSettings(JSON.parse(JSON.stringify(settings)));
+            }
         } catch (e) {
             addToast('error', 'Settings', 'Failed to save changes');
         } finally {
@@ -105,7 +127,7 @@ const GlobalSettingsView: React.FC = () => {
                         </div>
                         <div>
                             <h3 className="font-semibold text-base">Operational Mode</h3>
-                            <p className="text-xs text-muted-foreground">Define how CraftCommand operates this instance.</p>
+                            <p className="text-xs text-muted-foreground">Define how Craft Commands operates this instance.</p>
                         </div>
                     </div>
 
@@ -128,6 +150,39 @@ const GlobalSettingsView: React.FC = () => {
                                 <span
                                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
                                         settings.app.hostMode ? 'translate-x-5' : 'translate-x-0'
+                                    }`}
+                                />
+                            </button>
+                        </div>
+
+                        {/* Docker Support Toggle */}
+                        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
+                            <div>
+                                <div className="font-medium text-sm flex items-center gap-2">
+                                    Docker Engine Support <Database size={12} className="text-blue-500" />
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5 max-w-[280px]">
+                                    Enable experimental Docker container execution. Requires Docker Daemon to be running on the host machine.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    if (user?.role !== 'OWNER') {
+                                        addToast('error', 'Permissions', 'Only the System Owner can toggle Docker support');
+                                        return;
+                                    }
+                                    setSettings({
+                                        ...settings,
+                                        app: { ...settings.app, dockerEnabled: !settings.app.dockerEnabled }
+                                    });
+                                }}
+                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                    settings.app.dockerEnabled ? 'bg-primary' : 'bg-input'
+                                }`}
+                            >
+                                <span
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
+                                        settings.app.dockerEnabled ? 'translate-x-5' : 'translate-x-0'
                                     }`}
                                 />
                             </button>
@@ -265,7 +320,7 @@ const GlobalSettingsView: React.FC = () => {
                                                 <div className="bg-background rounded p-3">
                                                     <p className="text-xs text-muted-foreground mb-1">Find public link in:</p>
                                                     <ul className="text-xs space-y-1 ml-4 list-disc text-emerald-700">
-                                                        <li>"CraftCommand Tunnel" window</li>
+                                                        <li>"Craft Commands Tunnel" window</li>
                                                         <li>Backend console</li>
                                                     </ul>
                                                 </div>
@@ -429,7 +484,7 @@ const GlobalSettingsView: React.FC = () => {
                         </div>
                         <div>
                             <h3 className="font-semibold text-base">Data Storage</h3>
-                            <p className="text-xs text-muted-foreground">Configure how CraftCommand persists server data.</p>
+                            <p className="text-xs text-muted-foreground">Configure how Craft Commands persists server data.</p>
                         </div>
                     </div>
 
@@ -493,7 +548,7 @@ const GlobalSettingsView: React.FC = () => {
                      </div>
                      <p className="text-sm text-muted-foreground">Manage global settings, security, and view audit logs.</p>
                 </div>
-                {systemStatus && window.location.protocol !== systemStatus.protocol && (
+                {systemStatus && window.location.protocol.replace(':', '') !== systemStatus.protocol && (
                     <div className="flex bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 gap-3 animate-in fade-in slide-in-from-top-2">
                         <AlertTriangle className="text-amber-500 shrink-0" size={20} />
                         <div>
@@ -506,14 +561,25 @@ const GlobalSettingsView: React.FC = () => {
                     </div>
                 )}
                 {activeTab === 'SETTINGS' && (
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-                    >
-                        <Save size={18} />
-                        {isSaving ? 'Saving...' : 'Save Changes'}
-                    </button>
+                    <div className="flex items-center gap-3">
+                        {hasInfraChanges() && (
+                            <motion.div 
+                                initial={{ opacity: 0, x: 10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                className="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded text-[10px] font-bold uppercase tracking-wider"
+                            >
+                                <AlertTriangle size={12} /> Restart Required
+                            </motion.div>
+                        )}
+                        <button
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                        >
+                            <Save size={18} />
+                            {isSaving ? 'Saving...' : 'Save Changes'}
+                        </button>
+                    </div>
                 )}
             </div>
 

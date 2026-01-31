@@ -29,6 +29,7 @@ export interface SystemSettings {
             certPath: string;
             passphrase?: string;
         };
+        dockerEnabled?: boolean;
     };
 }
 
@@ -57,7 +58,8 @@ class SystemSettingsService {
                         autoUpdate: true,
                         hostMode: true, // Default to Host Mode for now
                         remoteAccess: { enabled: false },
-                        https: { enabled: false, keyPath: '', certPath: '' }
+                        https: { enabled: false, keyPath: '', certPath: '' },
+                        dockerEnabled: false
                     }
                 };
                 fs.writeJSONSync(SETTINGS_FILE, defaultSettings, { spaces: 4 });
@@ -65,8 +67,9 @@ class SystemSettingsService {
             }
             const loaded = fs.readJSONSync(SETTINGS_FILE);
             // Ensure hostMode exists if migrating
-            if (loaded.app && loaded.app.hostMode === undefined) {
-                loaded.app.hostMode = true;
+            if (loaded.app) {
+                if (loaded.app.hostMode === undefined) loaded.app.hostMode = true;
+                if (loaded.app.dockerEnabled === undefined) loaded.app.dockerEnabled = false;
             }
             return loaded;
         } catch (e) {
@@ -83,6 +86,7 @@ class SystemSettingsService {
     }
 
     updateSettings(updates: any): SystemSettings {
+        console.log('[SystemSettingsService] Updating settings with:', JSON.stringify(updates, null, 2));
         if (updates.discordBot) {
             this.settings.discordBot = { ...this.settings.discordBot, ...updates.discordBot };
         }
@@ -96,6 +100,8 @@ class SystemSettingsService {
                 (this.settings as any)[key] = updates[key];
             }
         });
+        
+        console.log('[SystemSettingsService] New settings state:', JSON.stringify(this.settings, null, 2));
 
         try {
             fs.writeJSONSync(SETTINGS_FILE, this.settings, { spaces: 4 });

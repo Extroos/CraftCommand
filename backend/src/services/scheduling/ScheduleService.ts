@@ -116,12 +116,11 @@ export class ScheduleService extends EventEmitter {
                 await this.logExecution(serverId, task.name, true, "Server restart triggered (Shutdown initiated)");
             } else {
                 // Console Command
-                const process = processManager.getProcess(serverId);
-                if (process) {
-                    process.stdin?.write(task.command + "\n");
+                if (processManager.isRunning(serverId)) {
+                    await processManager.sendCommand(serverId, task.command);
                     await this.logExecution(serverId, task.name, true, `Executed: ${task.command}`);
                 } else {
-                     await this.logExecution(serverId, task.name, false, "Server not running");
+                    await this.logExecution(serverId, task.name, false, "Server not running");
                 }
             }
         } catch (e: any) {

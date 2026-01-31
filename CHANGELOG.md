@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-01-31 - Granular Permissions & Global Overrides Stable
+
+### Added
+
+- **Granular Permission Engine**: Complete overhaul of the access control system. Supports 3-state nodes (Inherit, Allow, Deny) for fine-grained control over every feature.
+- **Global System Rights**: New section in Access Control to manage system-wide permissions (Staff Management, Server Provisioning, System Config) independent of specific servers.
+- **Explicit Lifecycle Permissions**: Introduced `server.create` and `server.delete` as distinct permission nodes, replacing hardcoded role checks.
+- **Custom Role Aliases**: Support for personalized role names (e.g., 'Head Moderator', 'Junior Admin') that persist across the UI.
+
+### Changed
+
+- **Security Hardening**: Reinforced hierarchical guards in `AuthService` to prevent Admins from modifying Global permissions or elevating their own authority.
+- **UI Density**: Refined "Access Control" dashboard into a dual-layered view (Global System vs. Project Specific).
+- **Versioning**: Synchronized project version to 1.7.0 across all subsystems and launcher.
+
+### Fixed
+
+- **Permission Masking**: Resolved issues where server-specific "Deny" overrides were accidentally bypassed by global role defaults.
+
 ## [1.6.2] - 2026-01-30 - Profile Customization & Account Linking Stable
 
 ### Added

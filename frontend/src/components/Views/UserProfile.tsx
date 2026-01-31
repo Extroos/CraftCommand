@@ -363,7 +363,7 @@ const UserProfileView: React.FC = () => {
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                             
                             {/* Security Alert */}
-                            {user.email === 'admin@craftcommand.io' && (
+                            {user.email === 'admin@craftcommands.io' && (
                                 <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex gap-3 items-start">
                                     <AlertTriangle className="text-amber-500 shrink-0" size={20} />
                                     <div>
@@ -718,7 +718,7 @@ const UserProfileView: React.FC = () => {
                                     <Key size={18} className={theme.text} /> API Access
                                 </h2>
                                 <p className="text-sm text-muted-foreground mb-6">
-                                    Use this key to authenticate with the CraftCommand REST API for CI/CD pipelines or external monitoring scripts.
+                                    Use this key to authenticate with the Craft Commands REST API for CI/CD pipelines or external monitoring scripts.
                                 </p>
 
                                 <div className="bg-background border border-border rounded-lg p-4 flex items-center justify-between gap-4 mb-4">
@@ -784,11 +784,11 @@ const UserProfileView: React.FC = () => {
                             </div>
                              <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-sm">
-                                    <Lock size={16} className={user.email === 'admin@craftcommand.io' ? "text-amber-500" : theme.text} />
+                                    <Lock size={16} className={user.email === 'admin@craftcommands.io' ? "text-amber-500" : theme.text} />
                                     Password Strength
                                 </div>
-                                <span className={`text-xs font-medium ${user.email === 'admin@craftcommand.io' ? "text-amber-500" : theme.text}`}>
-                                    {user.email === 'admin@craftcommand.io' ? 'Weak' : 'Strong'}
+                                <span className={`text-xs font-medium ${user.email === 'admin@craftcommands.io' ? "text-amber-500" : theme.text}`}>
+                                    {user.email === 'admin@craftcommands.io' ? 'Weak' : 'Strong'}
                                 </span>
                             </div>
                         </div>

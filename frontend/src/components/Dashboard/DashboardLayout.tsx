@@ -108,7 +108,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     
     // Update Logic
     const [updateInfo, setUpdateInfo] = useState<any>(null);
-    const [dismissedVersion, setDismissedVersion] = useState(() => localStorage.getItem('craftcommand_dismissed_update'));
+    const [dismissedVersion, setDismissedVersion] = useState(() => localStorage.getItem('craft_commands_dismissed_update'));
 
     // Diagnosis State
     const [diagnosisResult, setDiagnosisResult] = useState<any>(null);
@@ -163,7 +163,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
 
     const handleDismissUpdate = () => {
         if (!updateInfo) return;
-        localStorage.setItem('craftcommand_dismissed_update', updateInfo.latestVersion);
+        localStorage.setItem('craft_commands_dismissed_update', updateInfo.latestVersion);
         setDismissedVersion(updateInfo.latestVersion);
         setUpdateInfo(null);
     };
@@ -333,7 +333,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                                 <div>
                                     <h3 className="text-sm font-bold text-foreground">Update Available: v{updateInfo.latestVersion}</h3>
                                     <p className="text-xs text-muted-foreground">
-                                        {updateInfo.title || 'A new version of CraftCommand is available.'}
+                                        {updateInfo.title || 'A new version of Craft Commands is available.'}
                                     </p>
                                 </div>
                             </div>

@@ -1,10 +1,14 @@
 <div align="center">
 
+<<<<<<< HEAD
 # Craft-Commands
+=======
+# Craft Commands
+>>>>>>> 58b27fd (chore: Sync project updates, documentation, and metadata)
 
 **Professional Minecraft server management platform focused on local-first and team hosting.**
 
-![version](https://img.shields.io/badge/version-v1.6.2--stable-emerald)
+![version](https://img.shields.io/badge/version-v1.7.0--stable-emerald)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-blue.svg)
 
@@ -16,47 +20,31 @@ Built with **React 19** and **Node.js**, featuring **granular permissions**, **a
 
 </div>
 
+## Why Craft Commands? 🚀
+
+Craft Commands is built to bridge the gap between simple local launchers and complex enterprise panels. It follows a **Secure by Default, Explicit by Choice** philosophy, ensuring your server environment remains stable, isolated, and accessible only when you want it to be.
+
 ---
 
 ## Features
 
-### Core Server Management
+### 🎮 For Everyone (The Smooth Experience)
 
-- **Real-time Console** — Low-latency WebSocket terminal with ANSI color and command history
-- **Smart Monitoring** — Live CPU / RAM / TPS tracking with crash detection
-- **File Manager** — IDE-like editor with syntax highlighting and safety checks
-- **Server Architect** — Guided setup for Paper, Purpur, Fabric, Forge, NeoForge, and Modpacks
-- **Automated Backups** — Scheduled snapshots with retention policies
-- **⚠️Velocity Proxy** Temporarily disabled due to stability issues. It will be reimplemented in a future update.
+- **Hybrid Orchestration (NEW)** — Run servers as local processes or isolated Docker containers with a single toggle.
+- **The "Arty" Dashboard** — High-density, 60-FPS interface designed for clarity and speed. No clutter, just control.
+- **Smart Monitoring** — Live CPU, RAM, and TPS tracking with automated crash detection and auto-restart.
+- **One-Click modpacks** — Guided setup for Paper, Purpur, Fabric, Forge, NeoForge, and major Modpacks.
+- **Zero-Config HTTPS** — Secure your panel with native SSL management handled entirely by our guided launcher.
+- **File Manager IDE** — Edit configurations, logs, and properties with syntax highlighting and instant saving.
 
----
+### 🛠️ For Developers & Power Users (The Engineering Edge)
 
-### Multi-User & Access Control
-
-- **Role-Based Access Control (RBAC)**: Comprehensive system (Owner, Admin, Manager, Viewer) with hardened enforcement.
-- **Per-Server Permissions**: Fine-grained access control lists (ACLs) for specific server instances.
-- **Secure Authentication**: JWT-based session management with robust token handling and 1.6.0 stable synchronization.
-- **Audit Logging**: Immutable record of all system actions, login attempts, and configuration changes.
-
----
-
-### Connectivity & Remote Access
-
-- **Local-First by Default**: Binds to `127.0.0.1` unless explicitly changed.
-- **Remote Access (Beta)**: Securely expose servers via VPN, Reverse Proxy, or Direct Binding with a guided configuration wizard.
-- **Bind Management**: Strict `127.0.0.1` default binding with opt-in `0.0.0.0` exposure.
-- **HTTPS Support (Advanced)**: Optional native SSL support or reverse-proxy setup for secure access.
-
----
-
-### Advanced Architecture & Stability
-
-- **SQLite Storage**: Reliable local database option for multi-user setups (Stable).
-- **Pro-Grade Dashboard**: High-density 60FPS UI with compact controls and advanced resource visualization (v1.6.0).
-- **Diagnostics Engine**: Automated heuristic analysis of server logs to identify common issues (16+ rules).
-- **Startup Protection**: Resource locking to prevent data corruption during concurrent operations.
-- **Resource Control**: CPU priority management and JVM optimization flags (Aikar's Flags).
-- **Emergency Killswitch**: One-click local launcher options to instantly disable remote access.
+- **3-State Permissions** — Granular Access Control Lists (Grant, Deny, Inherit) for every server and system node.
+- **Port Protection Engine** — Proactive ghost-process purging. No more "Port already in use" errors during engine switches.
+- **Automated Heuristics** — A diagnostic engine that analyzes logs in real-time to solve 90% of common startup failures.
+- **Runner Abstraction** — Pluggable architecture supporting Native and Docker runners with shared lifecycle events.
+- **Audit Ledger** — Immutable logging of every system action, from login attempts to hierarchy violations.
+- **Aikar's Optimizations** — Built-in suite for JVM tuning, GC selection (ZGC/G1GC), and thread priority management.
 
 ---
 
@@ -71,7 +59,7 @@ Built with **React 19** and **Node.js**, featuring **granular permissions**, **a
 
 ### Windows (Recommended)
 
-CraftCommand includes a guided launcher — **no commands required**.
+Craft Commands includes a guided launcher — **no commands required**.
 
 1. Run `run_locally.bat`
 2. Choose **[1] Start (Auto-Setup)**
@@ -89,8 +77,8 @@ The launcher also provides:
 ### Linux / macOS (Manual)
 
 ```bash
-git clone https://github.com/Extroos/craftCommand.git
-cd craftcommand
+git clone https://github.com/Extroos/craft-commands.git
+cd craft-commands
 npm install
 cd backend && npm install && cd ..
 cd frontend && npm install && cd ..
@@ -106,54 +94,33 @@ Open the dashboard at:
 
 ### Default Credentials (First Run Only)
 
-- **Email:** `admin@craftcommand.io`
+- **Email:** `admin@craftcommands.io`
 - **Password:** `admin`
 
 You will be **required to change these credentials immediately** after the first login.
 
 ---
 
-## Security Model
+## Security Model 🛡️
 
-CraftCommand follows a **Secure by Default, Explicit by Choice** philosophy.
+Craft Commands follows a **Secure by Default, Explicit by Choice** philosophy.
 
-- **Network Isolation** — Local-only binding by default.
-- **Explicit Exposure** — Remote access requires admin approval and clear warnings.
-- **Authentication** — JWT-based sessions with bcrypt-hashed passwords.
-- **Authorization** — Centralized permission enforcement across REST and WebSockets.
-- **Auditability** — All sensitive actions are logged.
-- **Emergency Control** — Local launcher can instantly disable remote access.
-
-CraftCommand is designed to **make unsafe setups difficult, not easy**.
+- **Network Isolation** — Local-only binding by default (`127.0.0.1`).
+- **Explicit Exposure** — Remote access requires owner-level approval and guided configuration.
+- **Hierarchy Guard** — Strict role-based isolation (Owner > Admin > Manager). Users cannot modify anyone at or above their own level.
+- **Token Hardening** — JWT-based sessions with industry-standard bcrypt hashing for all credentials.
+- **Atomic Operations** — Resource locking prevents data corruption during simultaneous server modifications.
+- **Emergency Killswitch** — Instant local launcher options to sever all external connections.
 
 ---
 
-## Documentation
+## Technical Architecture ⚙️
 
-- **`docs/https.md`** — HTTPS and reverse proxy setup
-- **`docs/remote-access.md`** — VPN, domain, and port-forwarding guidance
-- **`SECURITY.md`** — Threat model and security guarantees
-- **`reports/`** — Internal audit and stabilization reports
-
----
-
-## User Roles Overview
-
-| Role    | Scope  | Capabilities             |
-| ------- | ------ | ------------------------ |
-| Owner   | System | Full control             |
-| Admin   | System | Manage users and servers |
-| Manager | Server | Operate assigned servers |
-| Viewer  | Server | Read-only access         |
-
----
-
-## Technology Stack
-
-- **Frontend:** React 19, Vite, TailwindCSS, TypeScript
-- **Backend:** Node.js, Express, Socket.IO
-- **Storage:** SQLite / JSON (local-first)
-- **Security:** JWT, Bcrypt, Helmet
+- **Frontend:** React 19 (Latest), Vite, TailwindCSS, Framer Motion (60FPS animations)
+- **Backend:** Node.js (CommonJS), Express, Socket.IO (Real-time streams)
+- **Orchestration:** Native Process Spawning & Docker Engine Integration
+- **Storage:** Hybrid SQLite (for teams) and JSON (for solo portability)
+- **Security:** Helmet, Rate-Limiting, JWT, Hierarchy Middleware
 
 ---
 

@@ -1,4 +1,4 @@
-// CraftCommand Management App
+// Craft Commands Management App
 import React, { useState } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import Header from './components/Layout/Header';
@@ -299,7 +299,7 @@ const AppContent: React.FC = () => {
                 <footer className="py-6 border-t border-border/40 mt-auto">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center text-[10px] font-mono tracking-wider text-muted-foreground/40 uppercase">
                         <div className="flex items-center gap-2">
-                            CraftCommand Management Protocol v1.6.2
+                            Craft Commands Management Protocol v1.7.0
                         </div>
                         <div>Licensed under MIT &copy; 2026 Extroos</div>
                     </div>

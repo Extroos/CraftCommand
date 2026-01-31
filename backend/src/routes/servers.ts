@@ -277,7 +277,7 @@ import { validateFolderName } from '../utils/validation';
 
 // ... (in the route)
 
-router.post('/', requireRole(['OWNER', 'ADMIN']), async (req, res) => {
+router.post('/', requirePermission('server.create'), async (req, res) => {
     const config = req.body;
     const id = `local-${Date.now()}`;
     
@@ -407,7 +407,7 @@ router.post('/:id/stop', requirePermission('server.stop'), (req, res) => {
 });
 
 // Delete Server
-router.delete('/:id', requireRole(['OWNER', 'ADMIN']), async (req, res) => {
+router.delete('/:id', requirePermission('server.delete'), async (req, res) => {
     const { id } = req.params;
     const server = getServer(id);
     
@@ -920,8 +920,15 @@ router.post('/:id/backups/:backupId/restore', async (req, res) => {
     try {
         // Stop server if running
         if (processManager.isRunning(id)) {
+            console.log(`[Backups] Stopping server ${id} for restoration...`);
             processManager.stopServer(id);
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for stop
+            const stopped = await processManager.waitForClose(id, 30000); // Wait up to 30s
+            
+            if (!stopped) {
+                console.warn(`[Backups] Server ${id} did not stop gracefully. Force killing to proceed with restore.`);
+                processManager.killServer(id);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Short breather after kill
+            }
         }
 
         await backupService.restoreBackup(server.workingDirectory, id, backupId);

@@ -126,6 +126,13 @@ class ApiService {
         return res.json();
     }
 
+    async getDockerStatus(): Promise<{ online: boolean, version?: string, error?: string }> {
+        const res = await fetch(`${API_URL}/system/docker/status`, {
+            headers: this.getAuthHeader()
+        });
+        return res.json();
+    }
+
     async getServerStatus(id: string): Promise<any> {
         const res = await fetch(`${API_URL}/servers/${id}/query`, {
             headers: this.getAuthHeader()

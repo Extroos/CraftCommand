@@ -8,11 +8,14 @@ import { userRepository } from '../../storage/UserRepository';
 
 export class AuthService {
     
+    private readonly ROLE_HIERARCHY: Record<UserRole, number> = {
+        'OWNER': 3,
+        'ADMIN': 2,
+        'MANAGER': 1,
+        'VIEWER': 0
+    };
+
     constructor() {
-        // Migration logic could be moved or kept here, but for now assuming Migration is done or handled by Repo (Repo doesn't do migration though)
-        // Let's keep strict repo usage.
-        // If we really need migration checks, they should be a separate utility or run once.
-        // For simplicity in this refactor, we'll assume standard users.json exists via Repository load.
         this.ensureAdminExists();
         
         // Trigger Migration (Phase 5)
@@ -34,7 +37,7 @@ export class AuthService {
         const passwordHash = bcrypt.hashSync('admin', 10);
         const admin: UserProfile = {
             id: '00000000-0000-0000-0000-000000000000',
-            email: process.env.ADMIN_EMAIL || 'admin@craftcommand.io',
+            email: process.env.ADMIN_EMAIL || 'admin@craftcommands.io',
             username: 'Administrator',
             role: 'OWNER',
             passwordHash,
@@ -64,6 +67,19 @@ export class AuthService {
         return userRepository.findOwner() || userRepository.findAll()[0];
     }
 
+    public canManage(actorRole: UserRole, targetRole: UserRole): boolean {
+        return this.ROLE_HIERARCHY[actorRole] > this.ROLE_HIERARCHY[targetRole] || (actorRole === 'OWNER' && targetRole === 'OWNER');
+    }
+
+    private validateEmail(email: string) {
+        const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!regex.test(email)) throw new Error('Invalid email format');
+    }
+
+    private validatePassword(password: string) {
+        if (password.length < 8) throw new Error('Password must be at least 8 characters long');
+    }
+
     async login(email: string, pass: string): Promise<{ user: UserProfile, token: string } | null> {
         const user = userRepository.findByEmail(email);
         if (!user || !user.passwordHash) return null;
@@ -88,7 +104,24 @@ export class AuthService {
         return { user: safeUser as UserProfile, token };
     }
 
-    async createUser(data: Partial<UserProfile>, password: string): Promise<UserProfile> {
+    async createUser(data: Partial<UserProfile>, password: string, actor?: UserProfile): Promise<UserProfile> {
+        this.validateEmail(data.email!);
+        this.validatePassword(password);
+
+        const targetRole = data.role || 'VIEWER';
+
+        if (actor) {
+            // Role Elevation Guard: Prevent non-OWNERs from creating OWNERs
+            if (actor.role !== 'OWNER' && targetRole === 'OWNER') {
+                throw new Error('Only Owners can create Owner accounts');
+            }
+
+            // Hierarchy Check: Cannot create a user with a role >= your own (except OWNERs)
+            if (actor.role !== 'OWNER' && this.ROLE_HIERARCHY[targetRole] >= this.ROLE_HIERARCHY[actor.role]) {
+                throw new Error(`Hierarchy violation: ${actor.role} cannot create ${targetRole} accounts`);
+            }
+        }
+
         if (userRepository.findByEmail(data.email!)) {
              throw new Error('User already exists');
         }
@@ -99,6 +132,7 @@ export class AuthService {
             email: data.email!,
             username: data.username!,
             role: data.role || 'VIEWER',
+            customRoleName: data.customRoleName,
             preferences: {
                 accentColor: 'emerald',
                 reducedMotion: false,
@@ -107,7 +141,7 @@ export class AuthService {
             },
             passwordHash,
             avatarUrl: `https://mc-heads.net/avatar/${data.username}/64`,
-            permissions: data.permissions || {}
+            serverAcl: {}
         };
 
         userRepository.create(newUser);
@@ -116,9 +150,52 @@ export class AuthService {
         return safeUser as UserProfile;
     }
 
-    updateUser(id: string, updates: Partial<UserProfile>) {
+    updateUser(id: string, updates: any, actor?: UserProfile) {
         const current = userRepository.findById(id);
         if (!current) throw new Error('User not found');
+
+        // Security: If an actor is provided, check if they can manage the target
+        if (actor) {
+            const isSelf = actor.id === current.id;
+            const hasHierarchyPower = this.canManage(actor.role, current.role);
+            
+            if (!hasHierarchyPower && !isSelf) {
+                throw new Error(`Hierarchy violation: ${actor.role} cannot modify ${current.role}`);
+            }
+
+            // Role Elevation Guard: Prevent non-OWNERs from ever promoting anyone (including self) to OWNER
+            if (updates.role && updates.role !== current.role) {
+                if (actor.role !== 'OWNER' && updates.role === 'OWNER') {
+                    throw new Error('Only Owners can promote to Owner');
+                }
+                
+                if (isSelf && actor.role !== 'OWNER') {
+                    throw new Error('You cannot change your own role');
+                }
+
+                // Generic hierarchy check for role changes: cannot promote someone to a role >= your own (except OWNERs)
+                if (actor.role !== 'OWNER' && this.ROLE_HIERARCHY[updates.role] >= this.ROLE_HIERARCHY[actor.role]) {
+                    throw new Error(`Hierarchy violation: ${actor.role} cannot promote users to ${updates.role}`);
+                }
+            }
+
+            // --- Scoped Management (Admin managing Manager/Viewer) ---
+            if (actor.role === 'ADMIN' && (current.role === 'MANAGER' || current.role === 'VIEWER')) {
+                // Admins can ONLY change serverAcl (except global) and basic preferences.
+                // Block core identity changes.
+                const forbiddenFields = ['email', 'password', 'passwordHash', 'role', 'username', 'customRoleName'];
+                const illegalChanges = Object.keys(updates).filter(key => forbiddenFields.includes(key));
+                
+                if (illegalChanges.length > 0) {
+                    throw new Error(`Limited Access: Admins cannot modify ${illegalChanges.join(', ')} for other users.`);
+                }
+
+                // Block modification of 'global' ACL scope by non-owners
+                if (updates.serverAcl && updates.serverAcl.global) {
+                    throw new Error('Limited Access: Only the Owner can manage Global System Permissions.');
+                }
+            }
+        }
 
         // Prevent downgrading the last Owner
         if (current.role === 'OWNER' && updates.role && updates.role !== 'OWNER') {
@@ -126,20 +203,54 @@ export class AuthService {
              if (ownerCount <= 1) throw new Error('Cannot remove the last Owner');
         }
 
-        if (updates.username && !updates.avatarUrl) {
-            updates.avatarUrl = `https://mc-heads.net/avatar/${updates.username}/64`;
+        // --- Deep Merge Logic for Persistence Sync (Prevents overwriting whole ACLs) ---
+        const finalUpdates = { ...updates };
+
+        // 1. Merge serverAcl instead of replacing
+        if (updates.serverAcl) {
+            finalUpdates.serverAcl = {
+                ...(current.serverAcl || {}),
+                ...updates.serverAcl
+            };
         }
 
-        const updated = userRepository.update(id, updates);
-        if (!updated) throw new Error('User not found'); // Should accept above check
+        // 2. Merge preferences instead of replacing
+        if (updates.preferences) {
+            finalUpdates.preferences = {
+                ...current.preferences,
+                ...updates.preferences,
+                notifications: {
+                    ...current.preferences.notifications,
+                    ...(updates.preferences.notifications || {})
+                },
+                terminal: {
+                    ...current.preferences.terminal,
+                    ...(updates.preferences.terminal || {})
+                }
+            };
+        }
+
+        if (finalUpdates.username && !finalUpdates.avatarUrl) {
+            finalUpdates.avatarUrl = `https://mc-heads.net/avatar/${finalUpdates.username}/64`;
+        }
+
+        const updated = userRepository.update(id, finalUpdates);
+        if (!updated) throw new Error('User update failed');
         
         const { passwordHash, ...safeUser } = updated;
         return safeUser;
     }
 
-    deleteUser(id: string) {
+    deleteUser(id: string, actor?: UserProfile) {
         const user = userRepository.findById(id);
         if (!user) throw new Error('User not found');
+
+        if (actor) {
+            if (!this.canManage(actor.role, user.role)) {
+                throw new Error(`Hierarchy violation: ${actor.role} cannot delete ${user.role}`);
+            }
+        }
+
         if (user.role === 'OWNER') throw new Error('Cannot delete Owner. Demote first.');
 
         userRepository.delete(id);

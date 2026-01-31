@@ -182,10 +182,10 @@ const Header: React.FC<HeaderProps> = ({
                             <ChevronLeft size={20} />
                         </motion.button>
                         <div className="hidden sm:block">
-                            <img src="/website-icon.png" alt="CraftCommand Logo" className="w-12 h-12 object-contain" />
+                            <img src="/website-icon.png" alt="Craft Commands Logo" className="w-12 h-12 object-contain" />
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-sm font-bold tracking-tight text-foreground leading-none">CraftCommand</span>
+                            <span className="text-sm font-bold tracking-tight text-foreground leading-none">Craft Commands</span>
                             {currentServer ? (
                                 <motion.div 
                                     initial={{ opacity: 0, x: -5 }}

@@ -49,7 +49,7 @@ export const RemoteAccessWizard: React.FC<Props> = ({ onClose }) => {
             desc: 'One-click tunnel. No port forwarding required.',
             steps: [
                 'Playit.gg tunnel created automatically',
-                'Public link appears in "CraftCommand Tunnel" window',
+                'Public link appears in "Craft Commands Tunnel" window',
                 'Share that link with friends'
             ]
         },

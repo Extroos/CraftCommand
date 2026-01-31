@@ -15,6 +15,8 @@ export type Permission =
     | 'server.settings'
     | 'server.players.manage'
     | 'server.backups.manage'
+    | 'server.create'
+    | 'server.delete'
     | 'users.manage'
     | 'system.remote_access.manage';
 
@@ -47,6 +49,7 @@ export interface UserProfile {
     permissions?: Partial<Record<string, Permission[]>>; // Deprecated: Migration target
     serverAcl?: Record<string, { allow: Permission[], deny: Permission[] }>; // Phase 5 ACL
     avatarUrl?: string;
+    customRoleName?: string; // Phase 6: Flexible Role Labels
     preferences: {
         accentColor: string;
         reducedMotion: boolean;
@@ -135,6 +138,8 @@ export interface ServerConfig {
     crashDetection?: boolean;
     includeInTotal?: boolean;
     publicStatus?: boolean;
+    executionEngine?: 'native' | 'docker';
+    dockerImage?: string;
 }
 
 // --- Frontend Specific Types ---
@@ -178,6 +183,7 @@ export interface GlobalSettings {
             method?: 'vpn' | 'proxy' | 'direct' | 'cloudflare';
             externalIP?: string;
         };
+        dockerEnabled?: boolean;
     };
     discordBot?: DiscordBotConfig;
 }

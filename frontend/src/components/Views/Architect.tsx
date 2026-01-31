@@ -13,7 +13,7 @@ const GUIDES = {
         content: `
 # Running This For Real: What's Next?
 
-You are currently viewing the **CraftCommand Web Interface**. To turn this into a fully functional server manager that runs actual Minecraft instances on your machine or a VPS, specific infrastructure is required.
+You are currently viewing the **Craft Commands Web Interface**. To turn this into a fully functional server manager that runs actual Minecraft instances on your machine or a VPS, specific infrastructure is required.
 
 ## 1. The "Backend" Problem
 Browsers cannot directly launch \`java -jar server.jar\` on your computer due to security sandboxing.
@@ -21,7 +21,7 @@ Browsers cannot directly launch \`java -jar server.jar\` on your computer due to
 *   **For Remote Hosting:** You need a dedicated backend service (written in Node.js, Go, or Rust) running on the server that listens for commands from this dashboard.
 
 ## 2. Do I need Docker?
-Professional hosting panels (like Pterodactyl) use **Docker**, and it is highly recommended for CraftCommand too.
+Professional hosting panels (like Pterodactyl) use **Docker**, and it is highly recommended for Craft Commands too.
 *   **Why?** Docker isolates the server. If a malicious plugin tries to delete files, it can only see inside its container, not your entire Windows/Linux PC.
 *   **Requirement:** To run the full backend version of this app, you would need **Docker Desktop** installed.
 
@@ -198,9 +198,9 @@ Copy the unique identifiers needed for CraftCommand to impersonate your bot.
 ## Step 4: The Handshake (Making the Bot Online)
 Many users ask: *Do I need to keep the Discord app open?* 
 *   **The Answer:** No. The bot goes online when **CraftCommand** establishes a bridge to Discord using your secret token.
-*   **Action:** Open the **Integrations** tab in your CraftCommand dashboard. 
+*   **Action:** Open the **Integrations** tab in your Craft Commands dashboard. 
 *   **Paste:** Enter your **Token** and **Client ID** into the Bot Authentication card.
-*   **Update:** Click **"Update Bot Instance"**. The CraftCommand backend will now handle the lifecycle and connection automatically.
+*   **Update:** Click **"Update Bot Instance"**. The Craft Commands backend will now handle the lifecycle and connection automatically.
 
 ## Step 5: Authorization & Invitation
 Generate a secure link to invite the bot to your primary guild.
@@ -222,7 +222,7 @@ Your bot now supports advanced infrastructure commands with multi-stage feedback
 *   **Embedded Telemetry:** Commands like \`/status\` and \`/list\` now return high-fidelity embeds with real-time RAM, TPS, and player metadata.
 
 ## FAQ
-*   **Q: Does it cost money?** No, creating and hosting a Discord bot via CraftCommand is completely free.
+*   **Q: Does it cost money?** No, creating and hosting a Discord bot via Craft Commands is completely free.
 *   **Q: Why doesn't it reply?** Ensure "Message Content Intent" is enabled in the portal and you have clicked **"Sync Cmds"**.
 `
     }

@@ -1,6 +1,6 @@
 {
-  "name": "craftcommand-backend",
-  "version": "1.6.2",
+  "name": "craft-commands-backend",
+  "version": "1.7.0",
   "author": "Extroos",
   "description": "Backend service for CraftCommand",
   "main": "src/server.ts",

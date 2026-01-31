@@ -1,6 +1,6 @@
-# Contributing to CraftCommand
+# Contributing to Craft Commands
 
-Thank you for your interest in contributing to CraftCommand!
+Thank you for your interest in contributing to Craft Commands!
 
 ## Getting Started
 

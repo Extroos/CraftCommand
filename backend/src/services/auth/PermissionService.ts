@@ -7,13 +7,15 @@ class PermissionService {
         'OWNER': [
             'server.view', 'server.start', 'server.stop', 'server.restart',
             'server.console.read', 'server.console.write', 'server.files.read', 'server.files.write', 
-            'server.settings', 'server.players.manage', 'server.backups.manage', 'users.manage',
+            'server.settings', 'server.players.manage', 'server.backups.manage', 
+            'server.create', 'server.delete', 'users.manage',
             'system.remote_access.manage'
         ],
         'ADMIN': [
             'server.view', 'server.start', 'server.stop', 'server.restart',
             'server.console.read', 'server.console.write', 'server.files.read', 'server.files.write', 
-            'server.settings', 'server.players.manage', 'server.backups.manage', 'users.manage'
+            'server.settings', 'server.players.manage', 'server.backups.manage', 
+            'server.create', 'server.delete', 'users.manage'
         ],
         'MANAGER': [
             'server.view', 'server.start', 'server.stop', 'server.restart',
@@ -26,14 +28,9 @@ class PermissionService {
     };
 
     /**
-     * Check if a user has a specific permission for a server
-     * @param user User Profile
-     * @param action Permission to check
-     * @param serverId Target Server ID
-     */
-    /**
-     * Check if a user has a specific permission for a server
+     * Check if a user has a specific permission.
      * Logic: Role Base -> ACL Allow -> ACL Deny (Deny wins)
+     * Supports per-server scope or 'global' scope.
      */
     can(user: UserProfile, action: Permission, serverId?: string): boolean {
         // 1. Owner can do anything (Hard override)
@@ -47,23 +44,23 @@ class PermissionService {
             hasPermission = true;
         }
 
-        // 3. Per-Server ACL Overrides
-        if (serverId && user.serverAcl && user.serverAcl[serverId]) {
-            const acl = user.serverAcl[serverId];
+        // 3. ACL Overrides (Global or Server-Specific)
+        const targetScope = serverId || 'global';
+        if (user.serverAcl && user.serverAcl[targetScope]) {
+            const acl = user.serverAcl[targetScope];
             
-            // Allow (Additive)
+            // Allow override
             if (acl.allow.includes(action)) {
                 hasPermission = true;
             }
 
-            // Deny (Subtractive - Wins)
+            // Deny override (Wins)
             if (acl.deny.includes(action)) {
-                hasPermission = false;
+                return false; 
             }
         }
         
-        // Backward Compatibility (Phase 5 Transition)
-        // If no serverAcl but old permissions array exists (and logic didn't already enable it via Role)
+        // Backward Compatibility (Deprecated)
         if (!hasPermission && serverId && user.permissions && user.permissions[serverId]) {
             if (user.permissions[serverId].includes(action)) {
                 hasPermission = true;
