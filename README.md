@@ -1,7 +1,5 @@
 <div align="center">
 
-# Craft-Commands
-=======
 # Craft Commands
 
 **Professional Minecraft server management platform focused on local-first and team hosting.**
