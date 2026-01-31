@@ -1,10 +1,8 @@
 <div align="center">
 
-<<<<<<< HEAD
 # Craft-Commands
 =======
 # Craft Commands
->>>>>>> 58b27fd (chore: Sync project updates, documentation, and metadata)
 
 **Professional Minecraft server management platform focused on local-first and team hosting.**
 
