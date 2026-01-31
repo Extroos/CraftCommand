@@ -30,12 +30,12 @@ backend/dist
 *.sln
 
 # Runtime Data
-minecraft_servers/
-server_jars/
-backups/
-backend/data/
-data/
-backend/minecraft_servers/
+/minecraft_servers/
+/server_jars/
+/backups/
+/backend/data/
+/data/
+/backend/minecraft_servers/
 **/**/runtimes/
 proxy/cloudflared.exe
 proxy/playit.exe
@@ -51,8 +51,6 @@ backend/secrets.json
 crash-reports/
 
 # Misc
-.env
-.env.*
 .DS_Store
 Thumbs.db
 
