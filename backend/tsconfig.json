@@ -11,6 +11,6 @@
       "@features/*": ["src/features/*"]
     }
   },
-  "include": ["src/**/*", "../shared/**/*"],
+  "include": ["src/**/*", "scripts/**/*", "../shared/**/*"],
   "exclude": ["node_modules"]
 }

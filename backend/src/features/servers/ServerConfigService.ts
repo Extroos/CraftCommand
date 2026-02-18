@@ -68,6 +68,68 @@ export class ServerConfigService {
                     severity: 'medium'
                 });
             }
+
+            // 3. Max Players Check
+            const diskMaxPlayers = parseInt(props['max-players'] || '20');
+            if (server.maxPlayers !== undefined && diskMaxPlayers !== server.maxPlayers) {
+                report.mismatches.push({
+                    setting: 'maxPlayers',
+                    diskValue: diskMaxPlayers,
+                    dbValue: server.maxPlayers,
+                    severity: 'low'
+                });
+            }
+
+            // 4. MOTD / Server Name Check
+            const diskMotd = props['motd'] || '';
+            const isBedrock = server.software === 'Bedrock';
+            
+            if (server.motd !== undefined && diskMotd !== server.motd) {
+                report.mismatches.push({
+                    setting: 'motd',
+                    diskValue: diskMotd,
+                    dbValue: server.motd,
+                    severity: 'low'
+                });
+            }
+
+            // Bedrock Specific: server-name should also match motd
+            if (isBedrock && server.motd !== undefined) {
+                const diskServerName = props['server-name'] || '';
+                if (diskServerName !== server.motd) {
+                    report.mismatches.push({
+                        setting: 'server-name',
+                        diskValue: diskServerName,
+                        dbValue: server.motd,
+                        severity: 'low'
+                    });
+                }
+            }
+
+            // 5. Difficulty Check
+            const diskDifficulty = props['difficulty'] || 'easy';
+            if (server.difficulty !== undefined && diskDifficulty !== server.difficulty) {
+                report.mismatches.push({
+                    setting: 'difficulty',
+                    diskValue: diskDifficulty,
+                    dbValue: server.difficulty,
+                    severity: 'low'
+                });
+            }
+
+            // 6. Bedrock PortV6 Check
+            if (isBedrock) {
+                const diskPortV6 = parseInt(props['server-portv6'] || '0');
+                const targetPortV6 = server.port + 1;
+                if (diskPortV6 !== targetPortV6) {
+                    report.mismatches.push({
+                        setting: 'portV6',
+                        diskValue: diskPortV6,
+                        dbValue: targetPortV6,
+                        severity: 'medium'
+                    });
+                }
+            }
         }
 
         if (report.mismatches.length > 0) {
@@ -123,6 +185,54 @@ export class ServerConfigService {
                 modified = true;
             } else {
                 content += `\nonline-mode=${server.onlineMode}`;
+                modified = true;
+            }
+        }
+
+        // update max-players
+        if (server.maxPlayers !== undefined) {
+            const maxPlayersRegex = /^max-players=.*/m;
+            if (content.match(maxPlayersRegex)) {
+                content = content.replace(maxPlayersRegex, `max-players=${server.maxPlayers}`);
+                modified = true;
+            } else {
+                content += `\nmax-players=${server.maxPlayers}`;
+                modified = true;
+            }
+        }
+
+        // update motd / server-name
+        if (server.motd !== undefined) {
+            const motdRegex = /^motd=.*/m;
+            if (content.match(motdRegex)) {
+                content = content.replace(motdRegex, `motd=${server.motd}`);
+                modified = true;
+            } else {
+                content += `\nmotd=${server.motd}`;
+                modified = true;
+            }
+
+            // Bedrock Specific: Also sync server-name
+            if (server.software === 'Bedrock') {
+                const serverNameRegex = /^server-name=.*/m;
+                if (content.match(serverNameRegex)) {
+                    content = content.replace(serverNameRegex, `server-name=${server.motd}`);
+                    modified = true;
+                } else {
+                    content += `\nserver-name=${server.motd}`;
+                    modified = true;
+                }
+            }
+        }
+
+        // update difficulty
+        if (server.difficulty !== undefined) {
+            const diffRegex = /^difficulty=.*/m;
+            if (content.match(diffRegex)) {
+                content = content.replace(diffRegex, `difficulty=${server.difficulty}`);
+                modified = true;
+            } else {
+                content += `\ndifficulty=${server.difficulty}`;
                 modified = true;
             }
         }

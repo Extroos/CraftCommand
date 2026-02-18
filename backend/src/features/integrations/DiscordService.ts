@@ -16,7 +16,7 @@ import { processManager } from '../processes/ProcessManager';
 import { backupService } from '../backups/BackupService';
 import { logger } from '../../utils/logger';
 
-class DiscordService {
+export class DiscordService {
     private client: Client | null = null;
     private initialized = false;
     private connecting = false;
@@ -467,6 +467,15 @@ class DiscordService {
                 await interaction.reply({ content: '❌ An error occurred while executing the command.', ephemeral: true });
             }
         }
+    }
+
+    async shutdown() {
+        if (this.client) {
+            logger.info('[Discord] Destroying client...');
+            await this.client.destroy();
+            this.client = null;
+        }
+        this.cleanupListeners();
     }
 }
 

@@ -5,7 +5,8 @@ import { getServerCapabilities } from '@shared/utils/CapabilityUtils';
 import { 
     LayoutDashboard, TerminalSquare, BookOpenCheck, Command, ChevronLeft, 
     FolderOpen, Users, Package, ArchiveRestore, CalendarClock, Settings, 
-    ChevronDown, Layers, ServerCog, LogOut, Webhook, User, Shield, Bell, Check, Trash2, X, Activity
+    ChevronDown, Layers, ServerCog, LogOut, Webhook, User, Shield, Bell, Check, Trash2, X, Activity, Map as MapIcon,
+    ExternalLink
 } from 'lucide-react';
 import { TabView, UserProfile, ServerConfig } from '@shared/types';
 
@@ -37,6 +38,7 @@ import { useUser } from '@features/auth/context/UserContext';
 import { useServers } from '@features/servers/context/ServerContext';
 import { useNotifications } from '@features/system/context/NotificationContext';
 import { useSystem } from '@features/system/context/SystemContext';
+import { usePermissions } from '@features/auth/hooks/usePermissions';
 
 const formatDistanceToNow = (timestamp: number | string, options?: { addSuffix?: boolean }) => {
     const date = new Date(timestamp);
@@ -70,6 +72,7 @@ const Header: React.FC<HeaderProps> = ({
     const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
     const { user, theme } = useUser();
     const { hostMode, settings } = useSystem();
+    const { can } = usePermissions();
     
     // Derived Global Status
     const syncServers = Array.isArray(servers) ? servers.filter(s => s.includeInTotal !== false) : [];
@@ -107,9 +110,11 @@ const Header: React.FC<HeaderProps> = ({
         currentServer ? getServerCapabilities(currentServer.software) : null
     , [currentServer?.software]);
 
-    // Filtered Navigation: Only show server-specific items if a server is selected
     const navigation: NavItem[] = useMemo(() => {
         if (!currentServer || !capabilities) return [];
+
+        const isVelocity = currentServer.software === 'Velocity';
+        const serverId = currentServer.id;
 
         const nav: NavItem[] = [
             { 
@@ -118,29 +123,39 @@ const Header: React.FC<HeaderProps> = ({
                 icon: <LayoutDashboard size={16} />, 
                 type: 'link' 
             },
-            { 
+            ...(isVelocity && can('server.proxy.manage', serverId) ? [{ 
+                id: 'NETWORK', 
+                label: 'Proxy Network', 
+                icon: <Webhook size={16} />, 
+                type: 'link' 
+            }] as NavItem[] : []),
+            ...(can('server.console.read', serverId) ? [{ 
                 id: 'CONSOLE', 
                 label: 'Terminal', 
                 icon: <TerminalSquare size={16} />, 
                 type: 'link' 
-            },
-            { 
+            }] as NavItem[] : []),
+            ...(can('server.files.read', serverId) ? [{ 
                 id: 'FILES', 
                 label: 'Files', 
                 icon: <FolderOpen size={16} />, 
                 type: 'link' 
-            },
+            }] as NavItem[] : []),
             {
-                label: 'Manage',
+                label: isVelocity ? 'Network' : 'Manage',
                 icon: <Layers size={16} />,
                 type: 'dropdown',
                 children: [
-                    { id: 'PLAYERS', label: 'Players', icon: <Users size={16} /> },
-                    ...(capabilities.supportsPlugins ? [{ id: 'PLUGINS', label: 'Plugins', icon: <Package size={16} /> }] : []),
-                    { id: 'SCHEDULES', label: 'Schedules', icon: <CalendarClock size={16} /> },
-                    { id: 'BACKUPS', label: 'Backups', icon: <ArchiveRestore size={16} /> },
-                    { id: 'INTEGRATIONS', label: 'Integrations', icon: <Webhook size={16} /> },
-                    { id: 'ACCESS', label: 'Access Control', icon: <Shield size={16} /> },
+                    ...(!isVelocity ? [
+                        ...(can('server.players.manage', serverId) ? [{ id: 'PLAYERS', label: 'Players', icon: <Users size={16} /> }] : []),
+                        ...(can('server.schedules.manage', serverId) ? [{ id: 'SCHEDULES', label: 'Schedules', icon: <CalendarClock size={16} /> }] : []),
+                        ...(can('server.backups.manage', serverId) ? [{ id: 'BACKUPS', label: 'Backups', icon: <ArchiveRestore size={16} /> }] : [])
+                    ] : []),
+                    ...(capabilities.supportsPlugins && !isVelocity && can('server.plugins.view', serverId) ? [{ id: 'PLUGINS', label: 'Plugins', icon: <Package size={16} /> }] : []),
+                    ...(capabilities.supportsMap && can('server.map.view', serverId) ? [{ id: 'MAP', label: 'Server Map', icon: <MapIcon size={16} /> }] : []),
+                    ...(can('server.integrations.manage', serverId) ? [{ id: 'INTEGRATIONS', label: 'Integrations', icon: <Webhook size={16} /> }] : []),
+                    // Access Control requires high level server manage permission
+                    ...(can('server.settings', serverId) ? [{ id: 'ACCESS', label: 'Access Control', icon: <Shield size={16} /> }] : []),
                 ] as { id: TabView; label: string; icon: React.ReactNode }[]
             },
             {
@@ -148,13 +163,15 @@ const Header: React.FC<HeaderProps> = ({
                 icon: <ServerCog size={16} />,
                 type: 'dropdown',
                 children: [
-                    { id: 'SETTINGS', label: 'Settings', icon: <Settings size={16} /> },
-                    ...(capabilities.supportsJava ? [{ id: 'ARCHITECT', label: 'Architect', icon: <BookOpenCheck size={16} /> }] : []),
+                    ...(can('server.settings', serverId) ? [{ id: 'SETTINGS', label: 'Settings', icon: <Settings size={16} /> }] : []),
+                    ...(capabilities.supportsJava && !isVelocity && can('server.files.write', serverId) ? [{ id: 'ARCHITECT', label: 'Architect', icon: <BookOpenCheck size={16} /> }] : []),
                 ] as { id: TabView; label: string; icon: React.ReactNode }[]
             }
         ];
-        return nav;
-    }, [currentServer, capabilities]);
+
+        // Clean up empty dropdowns
+        return nav.filter(item => item.type === 'link' || (item.children && item.children.length > 0));
+    }, [currentServer, capabilities, can]);
 
 
     const handleNavClick = (item: NavItem) => {
@@ -214,7 +231,7 @@ const Header: React.FC<HeaderProps> = ({
     };
 
     return (
-        <header className={`fixed top-0 left-0 w-full border-b border-border z-[100] transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism' : 'bg-card shadow-sm'}`}>
+        <header className={`fixed top-0 left-0 w-full border-b border-border z-[100] ${user?.preferences.visualQuality ? 'glass-morphism !overflow-visible' : 'bg-card shadow-sm'} !rounded-none`}>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex h-16 items-center justify-between">
                     {/* Brand Area */}
@@ -400,6 +417,34 @@ const Header: React.FC<HeaderProps> = ({
                                                                     <p className="text-[10px] text-muted-foreground/60 mt-1.5 font-mono">
                                                                         {formatDistanceToNow(notification.createdAt, { addSuffix: true })}
                                                                     </p>
+                                                                    {notification.link && notification.actionLabel && (
+                                                                        notification.link.startsWith('/') ? (
+                                                                             <button 
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    if (notification.link === '/settings/system' && onNavigateGlobalSettings) {
+                                                                                        onNavigateGlobalSettings();
+                                                                                        setNotificationDropdown(false);
+                                                                                    }
+                                                                                }}
+                                                                                className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 transition-colors self-start"
+                                                                            >
+                                                                                {notification.actionLabel}
+                                                                                <Settings size={10} />
+                                                                            </button>
+                                                                        ) : (
+                                                                            <a 
+                                                                                href={notification.link}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 transition-colors self-start"
+                                                                            >
+                                                                                {notification.actionLabel}
+                                                                                <ExternalLink size={10} />
+                                                                            </a>
+                                                                        )
+                                                                    )}
                                                                 </div>
                                                                 <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                     {!notification.read && (
@@ -433,7 +478,7 @@ const Header: React.FC<HeaderProps> = ({
                         </div>
                         
                         {/* Users Button (Admin Only & Host Mode ONLY) */}
-                        {onNavigateUsers && hostMode && (user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                        {onNavigateUsers && hostMode && can('users.manage') && (
                              <button 
                                 onClick={onNavigateUsers}
                                 className="hidden lg:flex p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
@@ -487,8 +532,8 @@ const Header: React.FC<HeaderProps> = ({
                                             <User size={16} /> User Profile
                                         </button>
                                         
-                                        {/* Global Settings (Owner Only) */}
-                                        {onNavigateGlobalSettings && user?.role === 'OWNER' && (
+                                        {/* Global Settings (Owner/Admin) */}
+                                        {onNavigateGlobalSettings && can('system.settings.manage') && (
                                             <button 
                                                 onClick={() => {
                                                     onNavigateGlobalSettings();
@@ -501,7 +546,7 @@ const Header: React.FC<HeaderProps> = ({
                                         )}
 
                                         {/* Users Management (Owner/Admin & Host Mode ONLY) */}
-                                        {onNavigateUsers && hostMode && (user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                                        {onNavigateUsers && hostMode && can('users.manage') && (
                                             <button 
                                                 onClick={() => {
                                                     onNavigateUsers();
@@ -514,7 +559,7 @@ const Header: React.FC<HeaderProps> = ({
                                         )}
 
                                         {/* Audit Log (Owner/Admin) */}
-                                        {onNavigateAuditLog && (user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                                        {onNavigateAuditLog && can('system.audit.view') && (
                                             <button 
                                                 onClick={() => {
                                                     onNavigateAuditLog();
@@ -527,7 +572,7 @@ const Header: React.FC<HeaderProps> = ({
                                         )}
 
                                         {/* Global Operations (Monitoring) */}
-                                        {onNavigateOperations && settings?.app?.distributedNodes?.enabled && (user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                                        {onNavigateOperations && settings?.app?.distributedNodes?.enabled && can('system.nodes.manage') && (
                                             <button 
                                                 onClick={() => {
                                                     onNavigateOperations();

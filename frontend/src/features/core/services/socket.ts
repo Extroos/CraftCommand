@@ -74,6 +74,11 @@ class SocketService {
         this.socket.on('player:leave', callback);
         return () => this.socket.off('player:leave', callback);
     }
+
+    onPlayerActivity(callback: (data: { serverId: string, activity: any }) => void) {
+        this.socket.on('player:activity', callback);
+        return () => this.socket.off('player:activity', callback);
+    }
     
     // Legacy off methods - now safely doing nothing or we can remove them
     offLog() { /* deprecated */ }

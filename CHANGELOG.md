@@ -2,16 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.10.1] - 2026-02-14 - Domain & Stability Expansion
+## [1.11.0] - 2026-02-18 - Network Fabric & Systems Integrity
 
 ### Added
 
-- **Stable Share Wizard**: A new, user-friendly multi-step setup flow for configuring Dynamic DNS (DDNS) with real-time verification and automated propagation checks.
-- **Built-in DuckDNS Support**: Native integration for DuckDNS, enabling direct IP synchronization signals from the panel without requiring an external update client.
-- **System Diagnosis Core (v2)**: Overhauled the diagnostic engine with specialized rules for Java, Bedrock, and Plugins, providing proactive crash analysis and one-click "Auto-Fix" suggestions.
-- **Deep Stability Audit**: Integrated a comprehensive diagnostic suite into `run_locally.bat` that checks system resources, dependency integrity, and backend data health.
-- **Full-Stack Avatar Uploads**: Interactive profile picture configuration with automated backend storage and real-time dashboard sync.
-- **Minecraft Server Icon Restoration**: Integrated a standardized 64x64 PNG branding system with automated deployment across all managed servers.
+- **Native Velocity Support**: Full-stack integration for the high-performance Velocity proxy server, including automated installation, a dedicated dashboard, and specialized lifecycle management.
+- **Proxy Network Architecture**: A sophisticated backend synchronization engine that automatically manages forwarding secrets (`modern`, `legacy`, `bungeeguard`) and linked backend server links.
+- **Dedicated Velocity Dashboard**: A professional, neutral-aesthetic command center for proxies, featuring real-time network health diagnostics and optimized metric visualization.
+- **One-Click Multi-Version Support**: Integrated ViaVersion Suite (ViaVersion, ViaBackwards, ViaRewind) specifically for proxies to handle multi-version client connections seamlessly.
+- **Global Style Engine**: Comprehensive support for user-defined backgrounds with persistence across the entire panel (Dashboard, Settings, Profile, etc.).
+- **Smart Resource Engine**: Backend services for CPU affinity/process limits (`ProcessLimiter`), auto-scaling memory (`MemoryScalerService`), and load capacity simulation (`LoadSimulatorService`).
+- **Self-Managed Network Fabric**: Traffic balancing, network templates (`NetworkTemplateService`), and automated port/firewall management across distributed nodes.
+- **Templates & Marketplace Expansion**: Mod bundles (`ModBundleService`), pre-tuned config presets (`ConfigPresetsService`), and disk quota enforcement via `HostingOSService`.
+- **One-Click Global Access**: Automated Cloudflare Tunnel provisioning and zero-config remote access orchestration.
+- **Hosting OS Mode**: Dedicated service layer for bare-metal server management with resource isolation and disk quotas.
+- **ModpackBrowser Multi-Source Search**: Extended `ModpackService` to search both mods and modpacks in parallel via Modrinth, with deduplication and graceful error handling.
+- **Mod/Modpack Type Filtering**: Frontend toggle chips for filtering by content type (All, Mods, Modpacks) and loader (Fabric, Forge, NeoForge, Quilt) with auto-detection from server software.
+- **Cross-Play Ecosystem**: Native Geyser/Floodgate integration for unified Bedrock/Java gameplay with automated UDP port orchestration and real-time connectivity diagnostics.
+- **Secure Systems Integrity Engine**: A production-grade update architecture featuring atomic state transitions, automated backup/recovery pathways, and data preservation locks.
+- **Cryptographic Lifecycle Security**: Industry-standard Ed25519 signature verification and SHA256 hashing for all system updates, ensuring end-to-end supply chain security.
+- **Advanced Update Diagnostics**: Intelligent monitoring rules to identify and mitigate signature mismatches, installation failures, or database migration drifts.
+- **Distributed Protocol Guardians**: Automated compatibility checks that prevent system-wide updates if connected nodes or proxies require manual intervention.
+- **Intelligent Lifecycle Alerts**: Real-time administrative notifications for system improvements with deep-linking to the refined maintenance dashboard.
+
+### Improved
+
+- **Process Lifecycle Hardening**: Engineered a robust "Stopping" state bridge in the backend to prevent accidental server restarts and "ghost" process hang-ups during manual shutdowns.
+- **Intelligent Creation Flow**: Redesigned the "Create Server" wizard with a dedicated Velocity path, software-aware defaults (RAM, Java versions), and real-time validation.
+- **SettingsManager Velocity Context**: The settings UI now dynamically hides irrelevant gameplay environments (Gamemode, Difficulty) for proxies and reveals specialized "Proxy Dynamics" controls.
+- **Professional UI Aesthetic**: Standardized premium glassmorphism and magazine-style hero layouts across the new Velocity components and updated the Proxy Network manager.
+- **Real-Time Status Synchronization**: Improved `ServerContext` polling and implemented "Heartbeat Recovery" to ensure UI state consistency during rapid interaction sequences.
+- **CreateServer Type Safety**: Added `'Do Not Override'` to the `javaVersion` union, removed dead wizard steps (`category`, `marketing`), and replaced unsafe `as any` casts with proper typed assertions.
+- **CreateServer Code Cleanup**: Removed ~30 unused imports across `index.tsx`, `ProConfig.tsx`, and `WizardMode.tsx`, deleted dead `getRecommendedJava` wrapper and duplicate `canCreate` access-denied guard (20 lines of dead code).
+- **ModpackBrowser UX**: Added error handling with retry button, result counts, mod vs modpack badges, improved empty states with search suggestions, and formatted download counts.
+- **Platform Launcher Redesign**: Rebuilt `run_locally.bat` with auto-sized console (`mode con cols=80 lines=42`), compact FIGlet ASCII banner, grouped menu categories (Operations/Diagnostics/Advanced), and consistent section layout.
+- **Update UX Refinement**: Re-engineered the System Update UI into an adaptive, embedded component that integrates seamlessly into Global Settings without layout clutter.
+- **Atomic Swap Robustness**: Hardened the PowerShell-based update applicator to handle complex directory merges and state transitions.
+- **Launcher FIGlet Banner**: Replaced unescaped characters in the ASCII banner for 100% reliability across terminal environments.
+- **Update Intelligence**: Targeted notifications (Admins/Owners only) and exponential backoff for network resilience.
+- **Cross-Play UX**: Real-time status feedback and "one-click" toggle for Floodgate authentication.
+
+### Fixed & Patched
+
+- **Stopping/Restart Loop**: Fixed a critical race condition where the Panel's self-healing logic would erroneously restart a server that was intentionally being shut down.
+- **Software Version Registry Sync**: Resolved protocol metadata conflicts for Minecraft 1.21.11, ensuring the internal registry remains stable during proxy handshakes.
+- **Forwarding Secret Automation**: Patched a configuration drift issue where Paper backends would fail to verify player details due to missing or stale proxy secrets.
+- **Wizard Status Persistence**: Resolved a state-leak bug in the creation flow that would occasionally preserve irrelevant software templates between distinct setup attempts.
+- **Modpack Route Type Param**: Updated `/api/modpacks/search` to accept a `type` query parameter (`all`, `mod`, `modpack`) with backward-compatible defaults.
+- **Ed25519 Crypto Verification**: Fixed a critical bug in `UpdateVerifier` where incorrect digest algorithms caused signature validation failures in Node.js.
+- **Update Path Nesting**: Resolved a directory recursion issue where update files were incorrectly nested during the application phase.
+- **Notification Action Linking**: Fixed button-less update alerts; all update notifications now correctly route to the maintenance dashboard.
+
+- **Stable Share Wizard**: A new, professional multi-step flow for configuring Dynamic DNS (DDNS) with real-time verification and automated propagation checks.
+- **Native DuckDNS Integration**: Direct IP synchronization directly from the panel, eliminating the need for external background update software.
+- **Intelligent Resource Guardians**: Real-time pre-flight checks for JVM compatibility and hardware-limit RAM allocation to prevent system-wide instability.
+- **System Diagnosis Core (v2)**: Overhauled diagnostic engine that identifies common Minecraft errors (EULA, Java, Plugins) and offers one-click "Auto-Fix" solutions.
+- **Minecraft Server Icon Restoration**: Automated 64x64 PNG branding system that ensures every server instance projects your professional identity on the Minecraft server list.
+- **Zero-Latency Networking Cache**: Persistent back-end storage for networking diagnostics, ensuring immediate UI loads even during high-latency DNS lookups.
+- **Full-Stack Avatar Uploads**: Integrated profile picture management with automated backend optimization and real-time dashboard synchronization.
+- **Documentation Overhaul**: Comprehensive cleanup of the technical library, merging redundant policies (Security, Contributing), reorganizing the folder structure into logical categories (Networking, Support), and significantly expanding the Architecture and Testing references.
 
 ### Improved
 

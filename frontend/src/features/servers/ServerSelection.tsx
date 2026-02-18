@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getErrorHelp } from '@core/settings/ErrorHelpMap';
-import { Plus, Server, Hash, Cpu, ArrowRight, HardDrive, LogOut, Trash2, AlertTriangle, Stethoscope, Zap, Loader2, FileInput, Network, Activity, Database } from 'lucide-react';
+import { Plus, Server, Hash, Cpu, ArrowRight, HardDrive, LogOut, Trash2, AlertTriangle, Stethoscope, Zap, Loader2, FileInput, Network, Activity, Database, RotateCw } from 'lucide-react';
 import { ServerConfig, ServerStatus } from '@shared/types';
 
 import { API } from '@core/services/api';
@@ -23,6 +23,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Settings, User as UserIcon, Shield, Users as UsersIcon } from 'lucide-react';
 import { useServers } from '@features/servers/context/ServerContext';
 import { useSystem } from '@features/system/context/SystemContext';
+import { ProgressOverlay } from '../ui/ProgressOverlay';
 
 
 const ServerSelection: React.FC<ServerSelectionProps> = ({ 
@@ -30,7 +31,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
     onNavigateProfile, onNavigateUsers, onNavigateGlobalSettings, onNavigateAuditLog,
     onNavigateOperations
 }) => {
-    const { servers, refreshServers, installProgress } = useServers();
+    const { servers, refreshServers, installProgress, stats } = useServers();
     const { user } = useUser();
     const { nodes, settings } = useSystem();
     const [userDropdown, setUserDropdown] = useState(false);
@@ -86,8 +87,12 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
     };
 
 
+    const cachedBg = localStorage.getItem('cc_backgrounds');
+    const hasBg = cachedBg ? JSON.parse(cachedBg).global || JSON.parse(cachedBg).serverSelection : false;
+    const bgClass = hasBg ? 'bg-transparent-if-bg' : 'bg-background';
+
     return (
-        <div className={`min-h-screen flex items-center justify-center p-6 relative overflow-hidden ${user?.preferences.visualQuality ? 'quality-animate-in' : ''}`}>
+        <div className={`min-h-screen flex items-center justify-center p-6 relative overflow-y-auto ${bgClass} ${user?.preferences.visualQuality ? 'quality-animate-in' : ''}`}>
             
             {/* Minimal Background Decoration */}
             <div className="hidden dark:block absolute top-0 left-0 w-full h-full bg-zinc-950/20 pointer-events-none"></div>
@@ -268,18 +273,24 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                             <div className="flex items-center gap-6">
                                 {/* Icon / Status */}
                                 <div className="relative">
-                                        <div className={`w-12 h-12 rounded-md flex items-center justify-center border ${
+                                        <div className={`w-12 h-12 rounded-md flex items-center justify-center border transition-all ${
                                             installProgress[server.id] ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500 animate-pulse' :
-                                            server.status === ServerStatus.ONLINE ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                                            (server.status === ServerStatus.ONLINE || stats[server.id]?.isRealOnline) ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
                                             server.status === ServerStatus.OFFLINE ? 'bg-secondary border-border text-muted-foreground' :
                                             server.status === ServerStatus.INSTALLING ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' :
                                             'bg-amber-500/10 border-amber-500/20 text-amber-500'
                                         }`}>
-                                            {installProgress[server.id] ? <Loader2 size={24} className="animate-spin" /> : <Server size={24} />}
+                                            {installProgress[server.id] ? <Loader2 size={24} className="animate-spin" /> : 
+                                             (server.status === ServerStatus.STARTING || server.status === ServerStatus.STOPPING || server.status === ServerStatus.RESTARTING) ? 
+                                             <RotateCw size={24} className="animate-spin text-amber-500" /> : 
+                                             <Server size={24} />}
                                         </div>
                                     
-                                    {server.status === ServerStatus.ONLINE && (
-                                        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background bg-emerald-500"></div>
+                                    {(server.status === ServerStatus.ONLINE || stats[server.id]?.isRealOnline) && (
+                                        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                                    )}
+                                    {(server.status === ServerStatus.STARTING || server.status === ServerStatus.STOPPING || server.status === ServerStatus.RESTARTING) && (
+                                        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background bg-amber-500 animate-pulse"></div>
                                     )}
                                 </div>
 
@@ -289,7 +300,12 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                         <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{server.name}</h3>
                                         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 font-mono">
                                             {installProgress[server.id] ? (
-                                                <span className="text-indigo-400 font-bold animate-pulse">{installProgress[server.id].message}</span>
+                                                <ProgressOverlay 
+                                                    isVisible={true}
+                                                    variant="compact"
+                                                    percent={installProgress[server.id].percent}
+                                                    message={installProgress[server.id].message}
+                                                />
                                             ) : (
                                                 <span>{server.id}</span>
                                             )}

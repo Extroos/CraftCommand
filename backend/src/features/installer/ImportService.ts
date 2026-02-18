@@ -25,6 +25,18 @@ class ImportService {
             throw new Error(`Path is not a directory: ${normalizedPath}`);
         }
 
+        // 1.1 Path Safety: Prevent importing system directories
+        const restricted = [
+            process.cwd(),
+            path.join(process.cwd(), 'backend'),
+            path.join(process.cwd(), 'frontend'),
+            path.join(process.cwd(), 'data'),
+            path.join(process.cwd(), 'node_modules')
+        ];
+        if (restricted.some(r => normalizedPath === r || normalizedPath.startsWith(path.join(r, path.sep)))) {
+             throw new Error('Safety Protection: You cannot import a panel system directory as a server instance.');
+        }
+
         // 2. Prevent Overlap: Check if any existing server uses this path
         const existing = getServers();
         const conflict = existing.find(s => path.resolve(s.workingDirectory) === normalizedPath);
@@ -207,14 +219,26 @@ class ImportService {
         let executable = 'server.jar';
         let port = 25565;
         let isModded = false;
+        let pterodactylDetected = lowerFiles.includes('egg-server.json') || lowerFiles.includes('.pterodactyl');
 
         // 1. Detect Software & Executable
-        if (lowerFiles.includes('paper.jar') || lowerFiles.some(f => f.includes('paper-'))) {
+        if (lowerFiles.includes('bedrock_server.exe') || lowerFiles.includes('bedrock_server')) {
+            software = 'Bedrock';
+            executable = files.find(f => f.toLowerCase() === 'bedrock_server.exe' || f.toLowerCase() === 'bedrock_server') || 'bedrock_server';
+            port = 19132;
+        } else if (lowerFiles.includes('velocity.jar') || lowerFiles.some(f => f.includes('velocity-'))) {
+            software = 'Velocity';
+            executable = files.find(f => f.toLowerCase().includes('velocity') && f.endsWith('.jar')) || 'velocity.jar';
+            port = 25577;
+        } else if (lowerFiles.includes('paper.jar') || lowerFiles.some(f => f.includes('paper-'))) {
             software = 'Paper';
             executable = files.find(f => f.toLowerCase().includes('paper') && f.endsWith('.jar')) || 'paper.jar';
         } else if (lowerFiles.includes('spigot.jar') || lowerFiles.some(f => f.includes('spigot-'))) {
             software = 'Spigot';
             executable = files.find(f => f.toLowerCase().includes('spigot') && f.endsWith('.jar')) || 'spigot.jar';
+        } else if (lowerFiles.includes('purpur.jar') || lowerFiles.some(f => f.includes('purpur-'))) {
+            software = 'Purpur';
+            executable = files.find(f => f.toLowerCase().includes('purpur') && f.endsWith('.jar')) || 'purpur.jar';
         } else if (lowerFiles.some(f => f.includes('forge-')) || lowerFiles.includes('mods')) {
             software = 'Forge';
             isModded = true;
@@ -225,30 +249,35 @@ class ImportService {
             executable = files.find(f => f.toLowerCase().includes('fabric-server') && f.endsWith('.jar')) || 'fabric-server-launch.jar';
         }
 
-        // 2. Detect Version from filename
+        // 2. Detect Version from filename or manifest
         const versionMatch = executable.match(/(\d+\.\d+(\.\d+)?)/);
         if (versionMatch) {
             version = versionMatch[1];
         }
 
-        // 3. Port from props string
+        // 3. Detailed Property Extraction
         if (serverProperties) {
-            const portMatch = serverProperties.match(/server-port=(\d+)/);
-            if (portMatch) {
-                port = parseInt(portMatch[1]);
+            const portMatch = serverProperties.match(/^server-port\s*=\s*(\d+)/m);
+            if (portMatch) port = parseInt(portMatch[1]);
+
+            // Track if online-mode is disabled (useful for migration warnings)
+            const onlineMatch = serverProperties.match(/^online-mode\s*=\s*(\w+)/m);
+            if (onlineMatch && onlineMatch[1] === 'false') {
+                // Potential cracked or proxy-backend server
             }
         }
 
         // 4. Heuristic for RAM & Java Version
-        let ram = 2; // Default
+        let ram = 2; 
         let javaVersion: any = 'Java 17';
 
-        if (isModded) {
-            ram = 4; // Modded usually needs more
-        }
+        if (isModded) ram = 4;
+        if (software === 'Velocity' || software === 'Bedrock') ram = 1;
 
-        if (version) {
+        if (software !== 'Bedrock' && version !== 'Unknown') {
             javaVersion = javaManager.getRecommendedJavaVersion(version);
+        } else if (software === 'Bedrock') {
+            javaVersion = 'Java 17'; // Placeholder for type safety, runner will skip
         }
 
         return {
@@ -259,8 +288,8 @@ class ImportService {
             ram,
             javaVersion,
             isModded,
-            suggestions: [],
-            pterodactylDetected: false
+            suggestions: pterodactylDetected ? ['Pterodactyl migration markers detected. Files will be managed locally.'] : [],
+            pterodactylDetected
         };
     }
     /**

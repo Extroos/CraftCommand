@@ -1,25 +1,7 @@
 // --- Shared / Backend Types ---
 import { NetworkConfig } from './network';
-
-export type UserRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'VIEWER';
-
-export type Permission = 
-    | 'server.view'
-    | 'server.start'
-    | 'server.stop'
-    | 'server.restart'
-    | 'server.console.read'
-    | 'server.console.write'
-    | 'server.files.read'
-    | 'server.files.write'
-    | 'server.settings'
-    | 'server.settings.write'
-    | 'server.players.manage'
-    | 'server.backups.manage'
-    | 'server.create'
-    | 'server.delete'
-    | 'users.manage'
-    | 'system.remote_access.manage';
+import { UserRole, Permission } from '../constants/roles';
+export type { UserRole, Permission };
 
 export interface ResourceConfig {
     cpuPriority: 'normal' | 'high' | 'realtime';
@@ -29,7 +11,7 @@ export interface ResourceConfig {
 export interface ServerTemplate {
     id: string;
     name: string;
-    type: 'Paper' | 'Fabric' | 'Forge' | 'NeoForge' | 'Modpack' | 'Vanilla' | 'Spigot' | 'Bedrock';
+    type: 'Paper' | 'Fabric' | 'Forge' | 'NeoForge' | 'Modpack' | 'Vanilla' | 'Spigot' | 'Bedrock' | 'Velocity' | 'Folia';
     version: string; // Minecraft version
     build?: string; // Specific build/loader version
     icon?: string;
@@ -48,6 +30,7 @@ export interface BackgroundSettings {
 }
 
 export interface CustomBackgrounds {
+    global?: BackgroundSettings;
     login?: BackgroundSettings;
     serverSelection?: BackgroundSettings;
     dashboard?: BackgroundSettings;
@@ -64,6 +47,10 @@ export interface CustomBackgrounds {
     users?: BackgroundSettings;
     globalSettings?: BackgroundSettings;
     auditLog?: BackgroundSettings;
+    status?: BackgroundSettings;
+    operations?: BackgroundSettings;
+    profile?: BackgroundSettings;
+    network?: BackgroundSettings;
 }
 
 export interface UserProfile {
@@ -104,6 +91,14 @@ export interface UserProfile {
     minecraftIgn?: string;
     apiKey?: string;
     password?: string; // For updates only
+    
+    // Phase 64: 2FA Completion
+    twoFactorEnabled?: boolean;
+    twoFactorSecretEncrypted?: string;
+    twoFactorVerifiedAt?: number;
+    twoFactorBackupCodesHashed?: string[];
+    twoFactorPendingSecretEncrypted?: string;
+    twoFactorPendingCreatedAt?: number;
 }
 
 export interface ServerAdvancedFlags {
@@ -134,7 +129,7 @@ export interface ServerConfig {
     folderName?: string; // Optional custom folder name
     loaderBuild?: string; // Specific build version
     version: string; // Minecraft Version
-    software: 'Paper' | 'Spigot' | 'Forge' | 'Fabric' | 'Vanilla' | 'Purpur' | 'Bedrock';
+    software: 'Paper' | 'Spigot' | 'Forge' | 'Fabric' | 'Vanilla' | 'Purpur' | 'Bedrock' | 'Velocity' | 'Folia';
     isExternal?: boolean; // If true, files are owned by user, not panel
     port: number;
     ram: number; // GB
@@ -183,11 +178,20 @@ export interface ServerConfig {
     needsRestart?: boolean; // Track if plugin/config changes require a reboot
     collabSettings?: CollabSettings; // Per-server collaboration role gates
     network?: NetworkConfig;
+    linkedProxyId?: string; // Explicit tracker for parent proxy (Velocity)
+    lastSyncTime?: number;  // Last Unix timestamp for configuration enforcement
+    crossPlay?: {
+        enabled: boolean;
+        bedrockPort: number;      // Default 19132
+        geyserMode: 'plugin' | 'standalone';
+        topology: 'standalone' | 'velocity';
+        installedAt?: number;     // Timestamp of initial setup
+    };
 }
 
 // --- Frontend Specific Types ---
 
-export type TabView = 'DASHBOARD' | 'CONSOLE' | 'FILES' | 'PLUGINS' | 'SCHEDULES' | 'BACKUPS' | 'PLAYERS' | 'ACCESS' | 'SETTINGS' | 'ARCHITECT' | 'INTEGRATIONS';
+export type TabView = 'DASHBOARD' | 'CONSOLE' | 'FILES' | 'PLUGINS' | 'SCHEDULES' | 'BACKUPS' | 'PLAYERS' | 'ACCESS' | 'SETTINGS' | 'ARCHITECT' | 'INTEGRATIONS' | 'NETWORK' | 'MAP';
 
 export type AppState = 'LOGIN' | 'PUBLIC_STATUS' | 'SERVER_SELECTION' | 'CREATE_SERVER' | 'MANAGE_SERVER' | 'USER_MANAGEMENT' | 'USER_PROFILE' | 'GLOBAL_SETTINGS' | 'AUDIT_LOG' | 'GLOBAL_OPERATIONS';
 
@@ -217,6 +221,9 @@ export interface GlobalSettings {
         autoUpdate: boolean;
         theme: 'dark' | 'light' | 'system';
         storageProvider?: 'json' | 'sqlite';
+        security?: {
+            forceAdmin2FA: boolean;
+        };
         https?: {
             enabled: boolean;
             keyPath: string;
@@ -360,7 +367,8 @@ export type AuditAction =
     | 'SYSTEM_SETTINGS_UPDATE' | 'SYSTEM_CACHE_CLEAR' | 'DISCORD_RECONNECT' | 'DISCORD_SYNC'
     | 'ASSET_UPLOAD' | 'WEB_UPDATE_RUN' | 'WEB_UPDATE_ROLLBACK' | 'WEB_UPDATE_FAIL'
     | 'SERVER_IMPORT' | 'SERVER_IMPORT_UNDO' | 'AUTO_HEAL' | 'SERVER_HEAL'
-    | 'SERVER_ICON_UPDATE';
+    | 'SERVER_ICON_UPDATE'
+    | 'AUTH_2FA_ENABLE' | 'AUTH_2FA_DISABLE' | 'AUTH_2FA_SUCCESS' | 'AUTH_2FA_FAIL' | 'AUTH_2FA_RECOVERY_USE';
 
 export interface AuditLog {
     id: string;
@@ -374,7 +382,7 @@ export interface AuditLog {
 }
 
 export interface ImportAnalysis {
-    software: 'Paper' | 'Spigot' | 'Forge' | 'Fabric' | 'Vanilla' | 'Purpur' | 'Bedrock';
+    software: 'Paper' | 'Spigot' | 'Forge' | 'Fabric' | 'Vanilla' | 'Purpur' | 'Bedrock' | 'Velocity' | 'Folia';
     version: string;
     executable: string;
     port: number;
@@ -398,7 +406,7 @@ export interface DiagnosisResult {
     explanation: string;
     recommendation: string;
     action?: {
-        type: 'UPDATE_CONFIG' | 'SWITCH_JAVA' | 'AGREE_EULA' | 'INSTALL_DEPENDENCY' | 'REPAIR_PROPERTIES' | 'CLEANUP_TELEMETRY' | 'OPTIMIZE_ARGUMENTS' | 'PURGE_GHOST' | 'RESOLVE_PORT_CONFLICT' | 'REMOVE_DUPLICATE_PLUGIN' | 'CREATE_PLUGIN_FOLDER' | 'TAKE_HEAP_SNAPSHOT' | 'RESTORE_DATA_BACKUP' | 'REINSTALL_BEDROCK';
+        type: 'UPDATE_CONFIG' | 'SWITCH_JAVA' | 'AGREE_EULA' | 'INSTALL_DEPENDENCY' | 'REPAIR_PROPERTIES' | 'CLEANUP_TELEMETRY' | 'OPTIMIZE_ARGUMENTS' | 'PURGE_GHOST' | 'RESOLVE_PORT_CONFLICT' | 'REMOVE_DUPLICATE_PLUGIN' | 'CREATE_PLUGIN_FOLDER' | 'TAKE_HEAP_SNAPSHOT' | 'RESTORE_DATA_BACKUP' | 'REINSTALL_BEDROCK' | 'RESYNC_VELOCITY_SECRET' | 'INSTALL_JAVA' | 'TRIGGER_DDNS_UPDATE' | 'REINSTALL_GEYSER' | 'REINSTALL_FLOODGATE' | 'RESYNC_CROSSPLAY_FORWARDING' | 'REASSIGN_BEDROCK_PORT';
         payload: any;
         autoHeal?: boolean; // If true, AutoHealingService can execute this automatically
     };
@@ -427,6 +435,7 @@ export interface Notification {
     createdAt: number;
     metadata?: any;
     link?: string;
+    actionLabel?: string; // Custom label for the link button (e.g. "Install", "View")
     dismissible?: boolean; // If false, cannot be deleted by user
 }
 
@@ -444,7 +453,7 @@ export interface ConnectionStatus {
 
 // --- Plugin Marketplace Types ---
 
-export type PluginSource = 'spiget' | 'modrinth' | 'hangar' | 'manual';
+export type PluginSource = 'spiget' | 'modrinth' | 'hangar' | 'manual' | 'direct';
 export type PluginPlatform = 'bukkit' | 'spigot' | 'paper' | 'purpur' | 'forge' | 'fabric';
 
 export interface MarketplacePlugin {
@@ -627,7 +636,7 @@ export interface ServerProfile {
     name: string;
     description?: string;
     version: string; // Minecraft version
-    software: 'Paper' | 'Spigot' | 'Forge' | 'Fabric' | 'Vanilla' | 'Purpur' | 'Bedrock';
+    software: 'Paper' | 'Spigot' | 'Forge' | 'Fabric' | 'Vanilla' | 'Purpur' | 'Bedrock' | 'Velocity' | 'Folia';
     javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21';
     ram: number;
     port?: number;
@@ -662,8 +671,30 @@ export interface ServerCapabilities {
     useUdpPort: boolean;
     supportsSpark: boolean;
     supportsSchedules: boolean;
+    supportsMap: boolean;
     recommendedPort: number;
     binaryName: string; // e.g. 'bedrock_server.exe' or 'server.jar'
     termMod: string; // 'Mods' vs 'Behavior Packs'
     termPlugin: string; // 'Plugins' vs 'Add-ons'
+}
+
+export interface MapStatus {
+    installed: boolean;
+    port: number | null;
+    verified: boolean;
+    error?: string;
+    internalUrl?: string;
+}
+
+export interface ConfigMismatch {
+    setting: string;
+    diskValue: any;
+    dbValue: any;
+    severity: 'low' | 'medium' | 'high';
+}
+
+export interface SyncReport {
+    synchronized: boolean;
+    mismatches: ConfigMismatch[];
+    eulaAccepted: boolean;
 }

@@ -1,0 +1,16 @@
+# Velocity Configuration
+config-version = "2.7"
+bind = "0.0.0.0:25565"
+motd = "Verification - none"
+show-max-players = 500
+online-mode = true
+player-info-forwarding-mode = "none"
+
+[servers]
+  lobby = "127.0.0.1:25566"
+  try = ["lobby"]
+
+[forced-hosts]
+  # No forced hosts
+
+[advanced]

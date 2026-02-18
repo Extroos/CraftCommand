@@ -8,6 +8,8 @@ import {  CollabSettings, UserRole, ChatMessage, ActivityEvent  } from '@shared/
 import { serverRepository } from '../storage/ServerRepository';
 import { userRepository } from '../storage/UserRepository';
 import { systemSettingsService } from '../features/system/SystemSettingsService';
+import { javaManager } from '../features/processes/JavaManager';
+import { installerService } from '../features/installer/InstallerService';
 
 export let io: Server;
 
@@ -129,6 +131,29 @@ export const setupSocket = (socketIo: Server) => {
             console.log(`[Socket] ✗ Anonymous connection: ${socket.id}`);
             return; // Don't register handlers for anonymous sockets
         }
+        
+        // --- 3.1 Initial State Synchronization (Phase 56.3) ---
+        // Send current Java install status if active
+        if (javaManager.currentStatus) {
+            socket.emit('install:status', javaManager.currentStatus);
+        }
+        
+        // Send all active server installations
+        const activeInstalls = installerService.getActiveProgress();
+        if (Object.keys(activeInstalls).length > 0) {
+            socket.emit('install:active-all', activeInstalls);
+        }
+
+        // Handle explicit sync request
+        socket.on('sync:reconnect', () => {
+            if (javaManager.currentStatus) {
+                socket.emit('install:status', javaManager.currentStatus);
+            }
+            const active = installerService.getActiveProgress();
+            if (Object.keys(active).length > 0) {
+                socket.emit('install:active-all', active);
+            }
+        });
 
         // --- Server Room Management (Collaboration) ---
 

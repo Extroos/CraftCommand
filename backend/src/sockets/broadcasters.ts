@@ -5,14 +5,19 @@ import { javaManager } from '../features/processes/JavaManager';
 import { backupService } from '../features/backups/BackupService';
 import { fileWatcherService } from '../features/files/FileWatcherService';
 import { nodeRegistryService } from '../features/nodes/NodeRegistryService';
+import { networkFabricService } from '../features/network/NetworkFabricService';
+import { logger } from '../utils/logger';
+
+let isRegistered = false;
 
 export const registerBroadcasters = (io: Server) => {
+    if (isRegistered) {
+        logger.warn('[Broadcasters] Already registered. Skipping to prevent duplicate listeners.');
+        return;
+    }
+    isRegistered = true;
+
     // 1. Process Manager — SCOPED to server rooms
-    processManager.removeAllListeners('log');
-    processManager.removeAllListeners('status');
-    processManager.removeAllListeners('stats');
-    processManager.removeAllListeners('player:join');
-    processManager.removeAllListeners('player:leave');
 
     processManager.on('log', (data) => {
         io.to(`server:${data.id}`).emit('log', data);
@@ -36,7 +41,13 @@ export const registerBroadcasters = (io: Server) => {
     installerService.removeAllListeners('progress');
     installerService.removeAllListeners('status');
     installerService.on('progress', (data) => io.emit('install:progress', data));
-    installerService.on('status', (data) => io.emit('install:status', { message: data }));
+    installerService.on('status', (data) => {
+        io.emit('install:status', { message: data });
+        // Pipe installer status to logs for detailed feedback in ProgressOverlay
+        // If data contains a serverId (from onProgress), we use it, otherwise 'java-install'
+        const serverId = (data as any).serverId || 'java-install';
+        io.emit('log', { id: serverId, line: `[INSTALLER] ${data}` });
+    });
 
     // 3. Backup Service (Global — could be scoped later)
     backupService.removeAllListeners('progress');
@@ -67,4 +78,7 @@ export const registerBroadcasters = (io: Server) => {
     nodeRegistryService.on('status', (data: any) => {
         io.emit('node:status', data);
     });
+
+    // 7. Network Fabric (Self-managed proxy automation)
+    networkFabricService.initialize();
 };

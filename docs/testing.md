@@ -1,51 +1,54 @@
-# CraftCommand Testing Strategy & Quality Standards
+# Testing Strategy & Quality Standards
 
-This document outlines the mandatory testing procedures and success metrics for the CraftCommand project. These rules apply to every development phase and are non-negotiable.
+CraftCommand is a mission-critical tool for server administrators. To ensure zero-downtime operations and data integrity, I adhere to the following rigorous testing standards.
 
-## 🛠 Global Testing Rules
+## 🏁 The "Verify First" Rule
 
-### 1. Test-Driven Flow
-
-- **Tests First:** Add tests BEFORE shipping any code changes. No feature is considered complete without accompanying validation.
-
-### 2. Mandatory Test Classes
-
-The following test suites must be maintained and executed regularly:
-
-- **E2E Tests:** Covering the onboarding wizard, remote node starting, and reliable file transfer protocols.
-- **Chaos Testing:** Verifying system resilience against random disconnects, process kills, and power-cycle simulations.
-- **Security Regressions:** Monitoring for secret leakage, path traversal vulnerabilities, and JWT/token integrity.
-
-### 3. Preservation of Quality
-
-- **Never Delete:** Valuable tests must never be deleted. If they become legacy or slow, move them under a structured `/tests/*` directory but maintain their execution capability.
-
-### 4. Git-Based Validation
-
-Before any commit or merge, perform a manual audit:
-
-- `git status` (Check for untracked side effects)
-- `git diff` (Review logic changes line-by-line)
-- `git log --stat` (Understand the blast radius of recent changes)
+All development must follow a **Test-Driven Flow**. No feature is considered "Merge-Ready" unless it has been validated against the following layers.
 
 ---
 
-## 📊 Success Metrics
+## 1. Unit & Integration Testing
 
-We track the following KPIs to measure the health of the project:
+- **Logic Validation**: Core services (Auth, Process, Installer) must have unit tests covering success, failure, and edge-case scenarios.
+- **Repository Integrity**: Data access layer tests must verify that atomic writes succeed and that malformed data is rejected before persistence.
 
-| Metric                   | Target     | Description                                                                    |
-| :----------------------- | :--------- | :----------------------------------------------------------------------------- |
-| **First Server Started** | >95%       | Success rate of the initial server creation and boot flow.                     |
-| **Second Node Added**    | >90%       | Success rate of the multi-node enrollment wizard.                              |
-| **Support Density**      | <2 per 100 | Number of support tickets per 100 active users.                                |
-| **Recovery Success**     | 100%       | Successful auto-healing/recovery after a network disconnect.                   |
-| **Time-to-Fix**          | <5 mins    | Average time taken for a user to resolve an issue using Diagnosis suggestions. |
+## 2. End-to-End (E2E) Suites
+
+Using Playwright/Cypress, critical user journeys are automated:
+
+- **Onboarding**: Fresh installation, admin creation, and first-server deployment.
+- **Remote Enrollment**: The multi-step wizard for pairing worker nodes.
+- **File Management**: Uploading large plugins and verifying in-place flattening logic.
+
+## 3. Chaos & Resilience Testing
+
+Because Minecraft servers are prone to external failures, the following are simulated:
+
+- **Network Flapping**: Ensuring the DDNS and Telemetry layers recover silently after a disconnect.
+- **Abrupt Termination**: Killing the background worker or server process to verify state recovery and "Ghost Protection."
+- **NBT Overflows**: Stress-testing the logger and console buffer with high-velocity data.
+
+## 4. Security Regressions
+
+Mandatory checks for every stable release:
+
+- **Path Traversal Audit**: Automated scans for `../` escapes in the File Manager and API.
+- **Role Isolation**: Verifying that `Manager` accounts cannot access `Admin` settings or modify `Owner` users.
+- **Token Integrity**: Expired or malformed JWT tokens must be rejected with `401 Unauthorized`.
 
 ---
 
-## 📁 Repository Structure
+## 📊 Quality KPIs
 
-- `tests/e2e`: Playwright/Cypress end-to-end flows.
-- `tests/chaos`: Scripts for system stress and reliability testing.
-- `tests/security`: Automated scans and regression checks.
+Success is measured based on the following target metrics:
+
+| Metric                      | Target | Description                                                      |
+| :-------------------------- | :----- | :--------------------------------------------------------------- |
+| **Recovery Success**        | 100%   | Auto-healing success after unexpected backend shutdown.          |
+| **False-Positive Warnings** | <1%    | Diagnostic results where "The Doctor" suggests an incorrect fix. |
+| **Install Success Rate**    | >98%   | Successful extraction and deployment of heuristic installers.    |
+
+---
+
+_To contribute tests or report a bug, please see the [Contributing Guide](../../CONTRIBUTING.md)._

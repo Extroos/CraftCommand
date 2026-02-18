@@ -1,82 +1,136 @@
 import axios from 'axios';
 
+interface ModpackHit {
+    id: string;
+    title: string;
+    description: string;
+    author: string;
+    icon_url: string;
+    slug: string;
+    downloads: number;
+    version_id: string;
+    project_type: 'mod' | 'modpack';
+}
+
+// Maps server software to Modrinth loader categories
+const SOFTWARE_TO_LOADER: Record<string, string> = {
+    'Fabric': 'fabric',
+    'Forge': 'forge',
+    'NeoForge': 'neoforge',
+    'Quilt': 'quilt',
+    'Paper': 'paper',
+    'Purpur': 'paper',
+    'Spigot': 'spigot',
+    'Bukkit': 'bukkit',
+};
+
 class ModpackService {
     private readonly API_URL = 'https://api.modrinth.com/v2';
+    private readonly HEADERS = { 'User-Agent': 'CraftCommand/1.9.1 (contact@craftcommand.io)' };
 
-    async searchModpacks(query: string, loader: string = 'fabric', version?: string) {
+    /**
+     * Search Modrinth for a specific project type.
+     */
+    private async searchByType(
+        query: string,
+        projectType: 'mod' | 'modpack',
+        loader: string = 'fabric',
+        version?: string,
+        limit: number = 20
+    ): Promise<ModpackHit[]> {
         try {
-            // 1. Try Exact Match First (if query is simple)
-            let exactMatch = null;
-            if (query && !query.includes(' ')) {
-                try {
-                    const exactRes = await axios.get(`${this.API_URL}/project/${query.toLowerCase()}`);
-                    if ((exactRes.data as any) && (exactRes.data as any).project_type === 'modpack') {
-                        exactMatch = exactRes.data;
-                    }
-                } catch (e) { /* Ignore 404 */ }
+            const facetList: string[][] = [
+                [`project_type:${projectType}`],
+            ];
+
+            // Add loader facet — for mods/modpacks it's a category
+            if (loader) {
+                facetList.push([`categories:${loader}`]);
             }
 
-            // 2. Build Facets
-            const facetList = [
-                ["project_type:modpack"],
-                [`categories:${loader}`]
-            ];
-            
             if (version) {
                 facetList.push([`versions:${version}`]);
             }
 
-            const facets = JSON.stringify(facetList);
-
-            // 3. Perform General Search
             const response = await axios.get(`${this.API_URL}/search`, {
                 params: {
                     query,
-                    facets,
-                    limit: 20
+                    facets: JSON.stringify(facetList),
+                    limit,
+                    index: 'relevance',
                 },
-                headers: {
-                    'User-Agent': 'CraftCommand/1.0 (internal-dev)'
-                }
+                headers: this.HEADERS,
+                timeout: 10000,
             });
 
-            const hits = (response.data as any).hits.map((hit: any) => ({
+            return (response.data as any).hits.map((hit: any) => ({
                 id: hit.project_id,
                 title: hit.title,
                 description: hit.description,
-                author: hit.author,
+                author: hit.author || 'Unknown',
                 icon_url: hit.icon_url,
                 slug: hit.slug,
-                downloads: hit.downloads,
-                version_id: hit.latest_version
+                downloads: hit.downloads || 0,
+                version_id: hit.latest_version,
+                project_type: projectType,
             }));
-
-            // 4. Merge (Avoid duplicates)
-            if (exactMatch) {
-                // Transform exact match to hit format
-                const exactHit = {
-                    id: exactMatch.id,
-                    title: exactMatch.title,
-                    description: exactMatch.description,
-                    author: 'Unknown', // full project struct varies slightly
-                    icon_url: exactMatch.icon_url,
-                    slug: exactMatch.slug,
-                    downloads: exactMatch.downloads,
-                    version_id: null // would need another call, but simple search is fine
-                };
-                
-                // Unshift if not already in hits
-                if (!hits.find((h: any) => h.id === exactMatch.id)) {
-                    hits.unshift(exactHit);
-                }
-            }
-
-            return hits;
-
-        } catch (e) {
-            console.error('Modpack Search Failed', e);
-            throw e;
+        } catch (e: any) {
+            console.error(`[ModpackService] ${projectType} search failed:`, e.message);
+            return []; // Graceful fallback instead of throwing
         }
+    }
+
+    /**
+     * Search for modpacks only (legacy method, kept for backward compatibility).
+     */
+    async searchModpacks(query: string, loader: string = 'fabric', version?: string): Promise<ModpackHit[]> {
+        return this.searchByType(query, 'modpack', loader, version);
+    }
+
+    /**
+     * Search for mods only.
+     */
+    async searchMods(query: string, loader: string = 'fabric', version?: string): Promise<ModpackHit[]> {
+        return this.searchByType(query, 'mod', loader, version, 30);
+    }
+
+    /**
+     * Unified search: queries both mods and modpacks in parallel, merges and deduplicates.
+     */
+    async searchAll(query: string, loader: string = 'fabric', version?: string, type: 'all' | 'mod' | 'modpack' = 'all'): Promise<ModpackHit[]> {
+        if (!query || !query.trim()) return [];
+
+        if (type === 'mod') {
+            return this.searchMods(query, loader, version);
+        }
+        if (type === 'modpack') {
+            return this.searchModpacks(query, loader, version);
+        }
+
+        // Search both in parallel
+        const [mods, modpacks] = await Promise.all([
+            this.searchMods(query, loader, version),
+            this.searchModpacks(query, loader, version),
+        ]);
+
+        // Merge: modpacks first, then mods (natural priority)
+        const merged = [...modpacks, ...mods];
+
+        // Deduplicate by project ID
+        const seen = new Set<string>();
+        return merged.filter(hit => {
+            if (seen.has(hit.id)) return false;
+            seen.add(hit.id);
+            return true;
+        });
+    }
+
+    /**
+     * Resolve the correct loader string from server software.
+     */
+    static resolveLoader(software?: string): string {
+        if (!software) return 'fabric';
+        return SOFTWARE_TO_LOADER[software] || 'fabric';
     }
 
     async getVersionFile(projectId: string, versionId?: string) {
@@ -86,7 +140,8 @@ class ModpackService {
                 : `${this.API_URL}/project/${projectId}/version`;
             
             const response = await axios.get(url, {
-                headers: { 'User-Agent': 'CraftCommand/1.0' }
+                headers: this.HEADERS,
+                timeout: 10000,
             });
 
             // If we got an array (versions list), take the first one

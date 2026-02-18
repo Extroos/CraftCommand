@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { ScheduleTask } from '@shared/types';
-import { CalendarClock, Plus, Play, Pause, Trash2, Clock, Command, Check, X } from 'lucide-react';
+import { CalendarClock, Plus, Play, Pause, Trash2, Clock, Command, Check, X, Loader2 } from 'lucide-react';
 import { API } from '@core/services/api';
 import { useToast } from '../ui/Toast';
 import { useServers } from '@features/servers/context/ServerContext';
+import { usePermissions } from '@features/auth/hooks/usePermissions';
+import AccessDenied from '@features/auth/components/AccessDenied';
 
 interface ScheduleManagerProps {
     serverId: string;
@@ -12,9 +14,11 @@ interface ScheduleManagerProps {
 
 const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
     const { addToast } = useToast();
+    const { can } = usePermissions();
     const [history, setHistory] = useState<any[]>([]);
     const [isCreating, setIsCreating] = useState(false);
     const [newTask, setNewTask] = useState({ name: '', cron: '0 * * * *', command: '' });
+    const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
     const { schedules: globalSchedules, refreshServerData, loading } = useServers();
     const tasks = globalSchedules[serverId] || [];
 
@@ -39,9 +43,15 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
     };
 
     const toggleTask = async (id: string) => {
+        if (!can('server.schedules.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions to toggle schedules');
+            return;
+        }
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         
+        // Optimistic Toggle
+        setPendingTaskIds(prev => new Set(prev).add(id));
         const updated = { ...task, isActive: !task.isActive };
         
         try {
@@ -49,16 +59,32 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
             await refreshServerData(serverId);
         } catch (e) {
             addToast('error', 'Update Failed', 'Could not update schedule status.');
+        } finally {
+            setPendingTaskIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
     const deleteTask = async (id: string) => {
+        if (!can('server.schedules.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions to delete schedules');
+            return;
+        }
         if (confirm('Delete this schedule?')) {
+            setPendingTaskIds(prev => new Set(prev).add(id));
             try {
                 await API.deleteSchedule(serverId, id);
                 await refreshServerData(serverId);
                 addToast('success', 'Schedule Deleted', '');
             } catch (e) {
+                setPendingTaskIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(id);
+                    return next;
+                });
                 addToast('error', 'Delete Failed', 'Could not delete schedule.');
             }
         }
@@ -66,9 +92,14 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
 
     const handleCreate = async () => {
         if (!newTask.name || !newTask.command) return;
+        if (!can('server.schedules.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions to create schedules');
+            return;
+        }
         
         const task: ScheduleTask = {
             id: Date.now().toString(),
+            serverId, // Fix: Missing serverId
             name: newTask.name,
             cron: newTask.cron,
             command: newTask.command,
@@ -93,6 +124,15 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
         if (!lastRun) return null;
         return lastRun.success ? 'success' : 'error';
     };
+
+    if (!can('server.schedules.read', serverId)) {
+        return (
+            <AccessDenied 
+                title="Automation Access Restricted"
+                description="You do not have permission to view or manage automated schedules for this server. Please contact an administrator for access."
+            />
+        );
+    }
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-120px)] animate-fade-in overflow-y-auto pb-10">
@@ -141,14 +181,26 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
                                 />
                             </div>
                             <div className="flex gap-2 pt-2">
-                                <button onClick={handleCreate} className="flex-1 bg-primary text-primary-foreground py-2 rounded-lg text-xs font-medium hover:bg-primary/90">Save Task</button>
+                                <button 
+                                    onClick={handleCreate} 
+                                    disabled={!can('server.schedules.manage', serverId)}
+                                    className="flex-1 bg-primary text-primary-foreground py-2 rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+                                >
+                                    Save Task
+                                </button>
                                 <button onClick={() => setIsCreating(false)} className="flex-1 bg-secondary text-foreground py-2 rounded-lg text-xs font-medium hover:bg-secondary/80">Cancel</button>
                             </div>
                         </div>
                     ) : (
                         <button 
                             onClick={() => setIsCreating(true)}
-                            className="w-full py-3 border border-dashed border-border rounded-lg text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-secondary/20 transition-all flex items-center justify-center gap-2 text-sm font-medium"
+                            disabled={!can('server.schedules.manage', serverId)}
+                            title={!can('server.schedules.manage', serverId) ? 'Insufficient Permissions' : ''}
+                            className={`w-full py-3 border border-dashed border-border rounded-lg transition-all flex items-center justify-center gap-2 text-sm font-medium ${
+                                can('server.schedules.manage', serverId)
+                                ? 'text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-secondary/20'
+                                : 'opacity-40 cursor-not-allowed text-zinc-600'
+                            }`}
                         >
                             <Plus size={16} /> New Schedule
                         </button>
@@ -176,7 +228,12 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
                 )}
 
                 {tasks.map((task) => (
-                    <div key={task.id} className={`bg-card border ${task.isActive ? 'border-border' : 'border-border/50 opacity-70'} rounded-xl p-5 shadow-sm transition-all hover:border-primary/30 group`}>
+                    <div 
+                        key={task.id} 
+                        className={`bg-card border ${task.isActive ? 'border-border' : 'border-border/50 opacity-70'} rounded-xl p-5 shadow-sm transition-all hover:border-primary/30 group ${
+                            pendingTaskIds.has(task.id) ? 'pointer-events-none' : ''
+                        }`}
+                    >
                         <div className="flex items-start justify-between mb-4">
                             <div className="flex items-center gap-4">
                                 <div className={`p-3 rounded-lg ${task.isActive ? 'bg-secondary text-primary' : 'bg-secondary/50 text-muted-foreground'}`}>
@@ -196,14 +253,21 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
                             <div className="flex items-center gap-2">
                                 <button 
                                     onClick={() => toggleTask(task.id)}
-                                    className={`p-2 rounded-lg transition-colors ${task.isActive ? 'text-amber-500 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
-                                    title={task.isActive ? "Pause Schedule" : "Resume Schedule"}
+                                    disabled={pendingTaskIds.has(task.id) || !can('server.schedules.manage', serverId)}
+                                    className={`p-2 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${task.isActive ? 'text-amber-500 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
+                                    title={!can('server.schedules.manage', serverId) ? 'Insufficient Permissions' : (task.isActive ? "Pause Schedule" : "Resume Schedule")}
                                 >
-                                    {task.isActive ? <Pause size={16} /> : <Play size={16} />}
+                                    {pendingTaskIds.has(task.id) ? (
+                                        <Loader2 size={16} className="animate-spin" />
+                                    ) : (
+                                        task.isActive ? <Pause size={16} /> : <Play size={16} />
+                                    )}
                                 </button>
                                 <button 
                                     onClick={() => deleteTask(task.id)}
-                                    className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                                    disabled={pendingTaskIds.has(task.id) || !can('server.schedules.manage', serverId)}
+                                    className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title={!can('server.schedules.manage', serverId) ? 'Insufficient Permissions' : 'Delete Schedule'}
                                 >
                                     <Trash2 size={16} />
                                 </button>

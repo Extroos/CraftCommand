@@ -50,7 +50,7 @@ export class PlayerService {
             const history = userCache.map((p: any) => ({
                 name: p.name,
                 uuid: isBedrock ? (p.xuid || 'runtime-' + p.name) : p.uuid,
-                skinUrl: `https://mc-heads.net/avatar/${p.name}/64`,
+                skinUrl: `https://mc-heads.net/avatar/${encodeURIComponent(p.name)}/64`,
                 isOp: opNames.has((p.name || '').toLowerCase()) || p.permission === 'operator',
                 online: onlineSet.has((p.name || '').toLowerCase()),
                 lastSeen: p.expiresOn || new Date().toISOString()
@@ -62,7 +62,7 @@ export class PlayerService {
                     history.unshift({
                         name: onlineName,
                         uuid: 'runtime-' + onlineName,
-                        skinUrl: `https://mc-heads.net/avatar/${onlineName}/64`,
+                        skinUrl: `https://mc-heads.net/avatar/${encodeURIComponent(onlineName)}/64`,
                         isOp: opNames.has(onlineName.toLowerCase()),
                         online: true,
                         lastSeen: new Date().toISOString()
@@ -84,7 +84,7 @@ export class PlayerService {
             return onlineNames.map(name => ({
                 name,
                 uuid: 'runtime-' + name,
-                skinUrl: `https://mc-heads.net/avatar/${name}/64`,
+                skinUrl: `https://mc-heads.net/avatar/${encodeURIComponent(name)}/64`,
                 isOp: opNames.has(name.toLowerCase()),
                 online: true,
                 ping: 0

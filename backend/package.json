@@ -1,19 +1,20 @@
 {
   "name": "craftcommand-backend",
-  "version": "1.10.1",
+  "version": "1.11.0",
   "license": "AGPL-3.0-only",
   "author": "Extroos",
   "description": "Backend service for CraftCommand",
   "main": "src/server.ts",
   "scripts": {
-    "start": "ts-node src/server.ts",
-    "dev": "nodemon src/server.ts",
+    "start": "node -r ts-node/register -r tsconfig-paths/register src/server.ts",
+    "dev": "nodemon -r tsconfig-paths/register src/server.ts",
     "build": "tsc"
   },
   "dependencies": {
     "@types/adm-zip": "^0.5.7",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/qrcode": "^1.5.6",
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
     "axios": "^1.6.7",
@@ -32,10 +33,13 @@
     "jsonwebtoken": "^9.0.3",
     "minecraft-server-util": "^5.4.4",
     "multer": "^2.0.2",
+    "otplib": "^13.3.0",
+    "qrcode": "^1.5.4",
     "selfsigned": "^2.4.1",
     "sharp": "^0.34.5",
     "socket.io": "^4.7.4",
-    "systeminformation": "^5.21.22"
+    "systeminformation": "^5.21.22",
+    "tree-kill": "^1.2.2"
   },
   "devDependencies": {
     "@types/archiver": "^7.0.0",
@@ -49,6 +53,7 @@
     "@types/sharp": "^0.31.1",
     "nodemon": "^3.0.3",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.3.3"
   }
 }

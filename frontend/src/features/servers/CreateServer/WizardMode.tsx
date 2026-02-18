@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FormData, WizardStep } from './types';
 import { ServerTemplate, NodeInfo } from '@shared/types';
 import { useSystem } from '@features/system/context/SystemContext';
-import { ChevronRight, Layers, Settings2, Terminal, Check, Info, ArrowRight, AlertTriangle, Command, Globe, Link } from 'lucide-react';
+import { useUser } from '@features/auth/context/UserContext';
+import { Check, ArrowRight, Globe, Link } from 'lucide-react';
+import { synthesizeDefaultState } from './CreateServerUtils';
 
 interface WizardModeProps {
     formData: FormData;
@@ -33,6 +35,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
     bedrockVersions
 }) => {
     const { settings } = useSystem();
+    const { user } = useUser();
 
     const handleTemplateSelect = (t: ServerTemplate) => {
         setFormData(prev => ({
@@ -71,19 +74,19 @@ const WizardMode: React.FC<WizardModeProps> = ({
             exit={{ opacity: 0 }}
             className="max-w-4xl mx-auto"
         >
-            {/* Steps Indicator - Classic Design */}
-            <div className="flex justify-center mb-8 gap-4">
+            {/* Steps Indicator - Modern subtle design */}
+            <div className="flex justify-center mb-8 gap-3">
                 {['software', 'details', 'review'].map((s, i) => {
                     const steps = ['software', 'details', 'review'];
                     const currentIdx = steps.indexOf(step);
                     const stepIdx = steps.indexOf(s);
                     const isActive = currentIdx >= stepIdx;
                     return (
-                        <div key={s} className="flex flex-col items-center gap-2 w-32">
-                            <div className={`h-1 w-full rounded-full transition-all duration-300 ${
-                                isActive ? 'bg-primary' : 'bg-white/5'
+                        <div key={s} className="flex flex-col items-center gap-1.5 w-24">
+                            <div className={`h-1 w-full rounded-full transition-all duration-500 ${
+                                isActive ? 'bg-primary shadow-[0_0_8px_rgba(var(--primary-rgb),0.3)]' : 'bg-muted'
                             }`} />
-                            <span className={`text-[9px] font-black uppercase tracking-[0.3em] ${isActive ? 'text-white' : 'text-zinc-700'}`}>
+                            <span className={`text-[8px] font-black uppercase tracking-[0.2em] transition-colors duration-300 ${isActive ? 'text-foreground' : 'text-muted-foreground/40'}`}>
                                 {s}
                             </span>
                         </div>
@@ -91,7 +94,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
                 })}
             </div>
 
-            <div className="bg-[#0a0a0b] border border-white/5 rounded-2xl p-6 md:p-10 shadow-none">
+            <div className={`border border-border rounded-2xl p-6 md:p-10 shadow-xl transition-all duration-500 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow' : 'bg-card'}`}>
                 
                 {/* STEP 1: SOFTWARE SELECTION */}
                 {step === 'software' && (
@@ -107,7 +110,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
 
                         {/* Software & Templates Grid */}
                         <div className="space-y-4">
-                            <h3 className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em] pl-1">Choose Platform / Template</h3>
+                            <h3 className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.2em] pl-1">Primary Selection</h3>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 {/* Official Software Options (Direct Selection) */}
                                 {softwareOptions
@@ -116,12 +119,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                     <button
                                         key={sw.id}
                                         onClick={() => {
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                software: sw.id,
-                                                templateId: undefined, // Clear template when selecting raw software
-                                                version: sw.id === 'Bedrock' ? (bedrockVersions?.latest || '1.21.11.01') : prev.version
-                                            }));
+                                            setFormData(prev => synthesizeDefaultState(sw.id, prev, bedrockVersions));
                                         }}
                                         className={`group relative flex flex-col items-center p-4 gap-3 rounded-xl border transition-all duration-200 ${
                                             formData.software === sw.id && !formData.templateId

@@ -70,6 +70,12 @@ const ImportServerModal: React.FC<ImportServerModalProps> = ({ onClose, onSucces
                 executable: res.executable
             });
             
+            // Auto-fill name from folder if empty
+            if (!name && mode === 'local') {
+                const folderName = localPath.split(/[\\/]/).pop();
+                if (folderName) setName(folderName);
+            }
+            
             setStep('CONFIGURE');
             setLoading(false);
 
@@ -107,7 +113,9 @@ const ImportServerModal: React.FC<ImportServerModalProps> = ({ onClose, onSucces
         'Fabric': <Sparkles className="text-blue-400" size={16} />,
         'Spigot': <Sparkles className="text-amber-500" size={16} />,
         'Vanilla': <Server className="text-muted-foreground" size={16} />,
-        'Purpur': <Sparkles className="text-purple-400" size={16} />
+        'Purpur': <Sparkles className="text-purple-400" size={16} />,
+        'Bedrock': <Globe className="text-emerald-400" size={16} />,
+        'Velocity': <Sparkles className="text-blue-500" size={16} />
     };
 
     return (
@@ -278,6 +286,18 @@ const ImportServerModal: React.FC<ImportServerModalProps> = ({ onClose, onSucces
                                     </div>
                                 </div>
 
+                                {analysis?.pterodactylDetected && (
+                                    <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 flex items-center gap-4 animate-in fade-in slide-in-from-left-2">
+                                        <div className="p-2 bg-blue-500/10 rounded text-blue-500">
+                                            <AlertCircle size={18} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="text-xs font-bold text-blue-400">Pterodactyl Migration Detected</div>
+                                            <div className="text-[10px] text-muted-foreground">We found panel metadata. Files will be managed locally after import.</div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                                     <div className="space-y-5">
                                         <div>
@@ -323,28 +343,40 @@ const ImportServerModal: React.FC<ImportServerModalProps> = ({ onClose, onSucces
                                                 />
                                             </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 px-1">Java Runtime Environment</label>
-                                            <select 
-                                                value={config.javaVersion}
-                                                onChange={e => setConfig({...config, javaVersion: e.target.value as any})}
-                                                className="w-full bg-secondary/30 border border-border rounded-lg p-3 text-[11px] font-bold focus:ring-1 focus:ring-primary outline-none appearance-none cursor-pointer"
-                                            >
-                                                <option value="Java 8">Java 8 (Legacy)</option>
-                                                <option value="Java 11">Java 11 (Standard)</option>
-                                                <option value="Java 17">Java 17 (Recommended)</option>
-                                                <option value="Java 21">Java 21 (Latest)</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 px-1">Server Executable</label>
-                                            <input 
-                                                type="text" 
-                                                value={config.executable}
-                                                onChange={e => setConfig({...config, executable: e.target.value})}
-                                                className="w-full bg-secondary/30 border border-border rounded-lg p-3 text-xs font-mono focus:ring-1 focus:ring-primary outline-none"
-                                            />
-                                        </div>
+                                        
+                                        {config.software !== 'Bedrock' && (
+                                            <>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 px-1">Java Runtime Environment</label>
+                                                    <select 
+                                                        value={config.javaVersion}
+                                                        onChange={e => setConfig({...config, javaVersion: e.target.value as any})}
+                                                        className="w-full bg-secondary/30 border border-border rounded-lg p-3 text-[11px] font-bold focus:ring-1 focus:ring-primary outline-none appearance-none cursor-pointer"
+                                                    >
+                                                        <option value="Java 8">Java 8 (Legacy)</option>
+                                                        <option value="Java 11">Java 11 (Standard)</option>
+                                                        <option value="Java 17">Java 17 (Recommended)</option>
+                                                        <option value="Java 21">Java 21 (Latest)</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 px-1">Server Executable (JAR)</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={config.executable}
+                                                        onChange={e => setConfig({...config, executable: e.target.value})}
+                                                        className="w-full bg-secondary/30 border border-border rounded-lg p-3 text-xs font-mono focus:ring-1 focus:ring-primary outline-none"
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+                                        
+                                        {config.software === 'Bedrock' && (
+                                            <div className="bg-secondary/20 p-4 rounded-lg border border-border/50">
+                                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Native Runtime</div>
+                                                <div className="text-[11px] text-foreground font-mono">Bedrock does not require Java. Running via native binary.</div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

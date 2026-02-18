@@ -2,145 +2,210 @@
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-:: --- SMART VERSION SYNC ---
-set "CC_VERSION=v1.10.1"
+:: ============================================================================
+::  CRAFTCOMMAND — Enterprise Platform Launcher
+:: ============================================================================
+
+:: --- CONSOLE SIZE ---
+mode con cols=80 lines=42
+color 0F
+
+:: --- ANSI ESCAPE CODE SETUP ---
+for /f %%a in ('echo prompt $E ^| cmd') do set "E=%%a"
+set "R=%E%[0m"
+set "CR=%E%[91m"
+set "CG=%E%[92m"
+set "CY=%E%[93m"
+set "CC=%E%[96m"
+set "CM=%E%[95m"
+set "CW=%E%[97m"
+set "CD=%E%[90m"
+set "CB=%E%[94m"
+set "BOLD=%E%[1m"
+
+:: --- VERSION SYNC ---
+set "CC_VERSION=1.11.0"
 if exist "version.json" (
     for /f "tokens=2 delims=:," %%a in ('findstr "version" version.json') do (
         set "VERSION_VAL=%%~a"
         set "VERSION_VAL=!VERSION_VAL: =!"
-        set "CC_VERSION=v!VERSION_VAL!"
+        set "VERSION_VAL=!VERSION_VAL:"=!"
+        set "CC_VERSION=!VERSION_VAL!"
     )
 )
 
-title CraftCommand - Pro Platform Launcher !CC_VERSION! (STABLE)
-color 0B
+title CraftCommand v%CC_VERSION%
 
-:: ====================================================================================
-:: [ENVIRONMENT AUDIT]
-:: ====================================================================================
+:: --- ENVIRONMENT AUDIT ---
 if not exist "backend" (
-    echo [Fatal] 'backend' directory not found. Please run from the root folder.
+    echo.
+    echo   %CR%%BOLD% FATAL %R%  Directory 'backend' not found.
+    echo          Launch from the project root.
     pause
     exit /b 1
 )
 if not exist "frontend" (
-    echo [Fatal] 'frontend' directory not found. Please run from the root folder.
+    echo.
+    echo   %CR%%BOLD% FATAL %R%  Directory 'frontend' not found.
+    echo          Launch from the project root.
     pause
     exit /b 1
 )
 
-:: Define Color Codes (PowerShell based)
-set "CE_RED=powershell -NoProfile -Command Write-Host -ForegroundColor Red"
-set "CE_GREEN=powershell -NoProfile -Command Write-Host -ForegroundColor Green"
-set "CE_YELLOW=powershell -NoProfile -Command Write-Host -ForegroundColor Yellow"
-set "CE_CYAN=powershell -NoProfile -Command Write-Host -ForegroundColor Cyan"
-set "CE_MAGENTA=powershell -NoProfile -Command Write-Host -ForegroundColor Magenta"
-set "CE_WHITE=powershell -NoProfile -Command Write-Host -ForegroundColor White"
-set "CE_GRAY=powershell -NoProfile -Command Write-Host -ForegroundColor Gray"
-set "CE_PROMPT=powershell -NoProfile -Command Write-Host -NoNewline -ForegroundColor Cyan"
+:: --- UPDATE CHECK ---
+:: --- UPDATE CHECK ---
+if not exist "version.json" goto SKIP_UPDATE_CHECK
 
-:: ====================================================================================
-:: [SMART UPDATE & ASSET SYNC]
-:: ====================================================================================
-if exist "version.json" (
+echo.
+echo   %CD%Checking for updates...%R%
+(
+echo $wc = New-Object System.Net.WebClient
+echo $wc.Headers.Add^('User-Agent', 'CraftCommand-Launcher'^)
+echo try {
+echo     $r = $wc.DownloadString^('https://raw.githubusercontent.com/Extroos/Craft-Commands/main/version.json'^) ^| ConvertFrom-Json
+echo     $l = Get-Content 'version.json' -Raw ^| ConvertFrom-Json
+echo     if ^($r.version -ne $l.version^) {
+echo         Write-Host 'UPDATE_AVAILABLE'
+echo         Write-Host $r.version
+echo     } else {
+echo         Write-Host 'UP_TO_DATE'
+echo     }
+echo ^} catch {
+echo     Write-Host 'OFFLINE'
+echo ^}
+) > "%TEMP%\cc_check.ps1"
+
+for /f "usebackq tokens=*" %%i in ("%TEMP%\cc_check.ps1") do set "UPDATE_STATUS=%%i"
+del "%TEMP%\cc_check.ps1" >nul 2>nul
+
+if not "!UPDATE_STATUS!"=="UPDATE_AVAILABLE" goto SKIP_UPDATE_CHECK
+
+:: Check Auto-Update Setting
+set "AUTO_UPDATE=false"
+if not exist "backend\data\settings.json" goto SKIP_AUTO_CHECK
+powershell -NoProfile -Command "$s = Get-Content 'backend\data\settings.json' -Raw | ConvertFrom-Json; if ($s.app.autoUpdate -eq $true) { Write-Host 'true' } else { Write-Host 'false' }" > "%TEMP%\cc_au.txt"
+for /f "usebackq tokens=*" %%a in ("%TEMP%\cc_au.txt") do set "AUTO_UPDATE=%%a"
+del "%TEMP%\cc_au.txt" >nul 2>nul
+:SKIP_AUTO_CHECK
+
+echo.
+echo   %CY%%BOLD% UPDATE AVAILABLE %R%
+echo   %CD%New version detected on GitHub.%R%
+echo.
+
+if "!AUTO_UPDATE!"=="true" (
+    echo   %CY%Do you want to install this update? %CD%(y/n)%R%
+    set /p u_choice="  %CC%^> %R%"
+    if /i "!u_choice!"=="y" (
+        echo.
+        echo   %CG%Starting update process...%R%
+        node scripts/system-updater.cjs
+        if !errorlevel! equ 0 (
+            echo.
+            echo   %CG%%BOLD%+%R%  Update installed successfully.
+            echo   %CD%    Please restart the launcher to apply changes.%R%
+            pause
+            exit
+        ) else (
+            echo.
+            echo   %CR%%BOLD%X%R%  Update failed. See logs above.
+            pause
+        )
+    )
+) else (
+    echo   %CY%  Auto-Update is DISABLED in System Settings.%R%
+    echo   %CD%  Enable it in the dashboard to install updates.%R%
     echo.
-    %CE_GRAY% -NoNewline "  [System] "
-    %CE_WHITE% -NoNewline "Checking for updates..."
-    
-    (
-    echo $wc = New-Object System.Net.WebClient
-    echo $wc.Headers.Add^('User-Agent', 'CraftCommand-Launcher'^)
-    echo try {
-    echo     $remoteJson = $wc.DownloadString^('https://raw.githubusercontent.com/Extroos/Craft-Commands/main/version.json'^) ^| ConvertFrom-Json
-    echo     $localJson = Get-Content 'version.json' -Raw ^| ConvertFrom-Json
-    echo     if ^($remoteJson.version -ne $localJson.version^) {
-    echo         Write-Host 'UPDATE AVAILABLE' -ForegroundColor Yellow
-    echo         Write-Host ^('   Current: v' + $localJson.version^) -ForegroundColor Gray
-    echo         Write-Host ^('   Latest:  v' + $remoteJson.version^) -ForegroundColor Green
-    echo         exit 1
-    echo     } else {
-    echo         exit 0
-    echo     }
-    echo ^} catch {
-    echo     exit 0
-    echo ^}
-    ) > "%TEMP%\cc_update_check.ps1"
-    
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\cc_update_check.ps1"
-    set "EXIT_CODE=!errorlevel!"
-    del "%TEMP%\cc_update_check.ps1" >nul 2>nul
-    
-    if !EXIT_CODE! equ 1 (
-        echo.
-        %CE_YELLOW% "  ****************************************************************"
-        %CE_YELLOW% "  *                 NEW VERSION AVAILABLE!                       *"
-        %CE_YELLOW% "  ****************************************************************"
-        echo.
-        %CE_WHITE% "  Please download the latest release from GitHub to get new features."
-        echo.
-        pause
-    ) else (
-        echo   [OK]
-    )
+    pause
 )
 
-if exist "backend\data\settings.json" (
-    %CE_GRAY% -NoNewline "  [Web] "
-    %CE_WHITE% -NoNewline "Synchronizing assets..."
-    powershell -NoProfile -Command "$s = Get-Content 'backend\data\settings.json' -Raw | ConvertFrom-Json; if ($s.app.updateWeb -eq $true) { exit 1 } else { exit 0 }"
-    if !errorlevel! equ 1 (
-        node scripts/update-web-cli.js
-    ) else (
-        echo   [Skipped]
-    )
+:SKIP_UPDATE_CHECK
+
+:: --- ASSET SYNC ---
+if not exist "backend\data\settings.json" goto SKIP_ASSET_SYNC
+
+<nul set /p "=%CD%  Syncing assets... %R%"
+powershell -NoProfile -Command "$s = Get-Content 'backend\data\settings.json' -Raw | ConvertFrom-Json; if ($s.app.updateWeb -eq $true) { exit 1 } else { exit 0 }"
+if !errorlevel! equ 1 (
+    node scripts/update-web-cli.js
+) else (
+    echo %CD%Skipped.%R%
 )
 
-:: ====================================================================================
-:: [MAIN MENU INTERFACE]
-:: ====================================================================================
+:SKIP_ASSET_SYNC
+
+:: ============================================================================
+::  MAIN MENU
+:: ============================================================================
 :MENU
 cls
+
+:: --- UPDATE EXECUTION (ATOMIC SWAP) ---
+if exist "update-plan.json" (
+    echo.
+    echo   %CY%[UPDATE] Pending update found!%R%
+    echo   %CC%Executing update applicator...%R%
+    
+    powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\apply_update.ps1"
+    if !errorlevel! neq 0 (
+        echo   %CR%[ERROR] Update failed! Check console.%R%
+        pause
+    ) else (
+        echo   %CG%[SUCCESS] Update applied.%R%
+    )
+)
+
+:: --- POST-UPDATE CLEANUP ---
+if exist "update_applied.flag" (
+    echo.
+    echo   %CY%[UPDATE] Updating dependencies...%R%
+    cd backend
+    call npm install --omit=dev >nul 2>nul
+    cd ..
+    cd frontend
+    call npm install >nul 2>nul
+    cd ..
+    del "update_applied.flag"
+    echo   %CG%[SUCCESS] Dependencies updated.%R%
+    timeout /t 2 >nul
+)
+
+
+
 echo.
-echo    ______            ______   ______                              \ 
-echo   /      \          /      \ /      \                             \ 
-echo  /  $$$$$$\  ______ ^|  $$$$$$^|  $$$$$$\ ______  _____  _____   ______  _______ 
-echo  ^| $$   \$$ /      \^| $$___\$^| $$   \$$/      \^|     \^|     \ ^|      \^|       \     
-echo  ^| $$      ^|  $$$$$$^| $$    \^| $$     ^|  $$$$$$^| $$$$$^| $$$$$\ \$$$$$$^| $$$$$$$\    
-echo  ^| $$   __ ^| $$   \$^| $$$$$$$^| $$   __^| $$  ^| $^| $$ ^| $$ ^| $$ /      $^| $$  ^| $$    
-echo  ^| $$__/  \^| $$     ^| $$     ^| $$__/  ^| $$__/ $^| $$ ^| $$ ^| $$^|  $$$$$$^| $$  ^| $$    
-echo   \$$    $$^| $$     ^| $$      \$$    $$\$$    $$^| $$ ^| $$ ^| $$ \$$    $$^| $$  ^| $$    
-echo    \$$$$$$  \$$      \$$       \$$$$$$  \$$$$$$  \$$  \$$  \$$  \$$$$$$$ \$$   \$$    
-echo.
-%CE_CYAN% "  :::::::::::::::::::::::: SMART PLATFORM :::::::::::::::::::::::::"
+echo  %CC%%BOLD%   ______            ____  ______                                    __%R%
+echo  %CC%  / ____/____  ____ _/ __/ / ____/____  ____ ___  ____ ___  ____ _____  ____/ /%R%
+echo  %CC% / /   / ___/ / __ `/ /__ / /   / __ \/ __ `__ \/ __ `__ \/ __ `/ __ \/ __  / %R%
+echo  %CC%/ /___/ /    / /_/ / __/ / /___/ /_/ / / / / / / / / / / / /_/ / / / / /_/ /  %R%
+echo  %CC%\____/_/     \__,_/_/    \____/\____/_/ /_/ /_/_/ /_/ /_/\__,_/_/ /_/\__,_/   %R%
 echo.
 
-:: --- SYSTEM DASHBOARD ---
-set "LOCAL_IP=Detecting..."
+:: --- STATUS BAR ---
+set "LOCAL_IP=127.0.0.1"
 for /f "tokens=4" %%a in ('route print ^| findstr 0.0.0.0 ^| findstr /V "0.0.0.0.0"') do set "LOCAL_IP=%%a"
 
-%CE_GRAY% -NoNewline "  [STATUS] "
-%CE_GREEN% -NoNewline "ACTIVE "
-echo ^| v1.10.0 STABLE ^| IP: !LOCAL_IP!
+echo  %CD%-----------------------------------------------------------------------%R%
+echo   %BOLD%%CW%v!CC_VERSION!%R%  %CD%::%R%  %CG%READY%R%  %CD%::%R%  %CB%!LOCAL_IP!%R%  %CD%::%R%  %CM%Operator Console%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
+echo  %CD%%BOLD% OPERATIONS%R%
+echo   %BOLD%%CW%1%R%  %CG%Launch Platform%R%           %CD%Start backend ^& frontend%R%
+echo   %BOLD%%CW%2%R%  %CC%HTTPS Setup%R%               %CD%SSL/TLS via Caddy or certs%R%
+echo   %BOLD%%CW%3%R%  %CC%Remote Access%R%              %CD%VPN, Tunnel, or Direct Bind%R%
 echo.
-
-%CE_WHITE% "  [ OPERATION ]"
-echo    [1]  Launch Protocol (Run Website ^& Servers)
+echo  %CD%%BOLD% DIAGNOSTICS%R%
+echo   %BOLD%%CW%4%R%  %CY%Stability Audit%R%            %CD%Network ^& config check%R%
+echo   %BOLD%%CW%5%R%  %CY%Maintenance%R%                %CD%Flush ^& reinstall deps%R%
 echo.
-%CE_WHITE% \"  [ NETWORK AND SECURITY ]\"
-echo    [2]  Secure Direct Access (Set up HTTPS)
-echo    [3]  Remote Bridge Wizard (Share with Friends)
+echo  %CD%%BOLD% ADVANCED%R%
+echo   %BOLD%%CW%6%R%  %CM%Node Agent%R%                 %CD%Distributed worker node%R%
+echo   %BOLD%%CW%8%R%  %CR%Panic Kill%R%                 %CD%Kill all external connections%R%
 echo.
-%CE_WHITE% \"  [ MAINTENANCE AND AUDIT ]\"
-echo    [4]  Stability Audit (Check for Errors)
-echo    [5]  Maintenance Mode (Fix Broken Apps)
-echo    [6]  Launch Node Agent (Remote Worker)
+echo  %CD%-----------------------------------------------------------------------%R%
+echo   %BOLD%%CW%0%R%  %CD%Exit%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-%CE_WHITE% \"  [ EMERGENCY ]\"
-echo    [8]  Panic Control (Instantly Cut External Connections)
-echo    [7]  Terminate Session (Exit)
-echo.
-%CE_PROMPT% \"  > Select Command: \"
+<nul set /p "=  %CC%%BOLD%^> %R%"
 set /p choice=""
 
 if "%choice%"=="1" goto START
@@ -150,51 +215,51 @@ if "%choice%"=="4" goto STABILITY_CHECK
 if "%choice%"=="5" goto REINSTALL
 if "%choice%"=="6" goto AGENT_START
 if "%choice%"=="8" goto REMOTE_DISABLE
+if "%choice%"=="0" exit
 if "%choice%"=="7" exit
 goto MENU
 
-:: ====================================================================================
-:: [LAUNCH LOGIC]
-:: ====================================================================================
+:: ============================================================================
+::  LAUNCH LOGIC
+:: ============================================================================
 :START
 cls
 echo.
-%CE_CYAN% "  ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"
-echo.
-%CE_CYAN% "[SYSTEM] "
-%CE_WHITE% "Authenticating Environment..."
-echo.
-%CE_GREEN% "[Safe] "
-%CE_WHITE% "Protocols verified. Launching bridge..."
+echo  %CC%%BOLD% PLATFORM LAUNCH SEQUENCE%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
 
-:: Check Node
+:: Check Node.js
 where node >nul 2>nul
 if !errorlevel! neq 0 (
-    %CE_RED% "[Error] "
-%CE_WHITE% "Node.js is missing. Please install Node.js (v18+)."
+    echo   %CR%%BOLD%X%R%  Node.js not found. Install v18+ to continue.
+    echo.
     pause
     goto MENU
 )
 
-:: Smart Install Logic
+for /f "delims=" %%v in ('node -v') do set "NODE_V=%%v"
+echo   %CG%%BOLD%+%R%  Runtime         %CD%!NODE_V!%R%
+echo   %CG%%BOLD%+%R%  Platform        %CD%CraftCommand v!CC_VERSION!%R%
+
+:: Smart Install
 set MISSING_DEPS=0
 if not exist "node_modules" set MISSING_DEPS=1
 if not exist "backend\node_modules" set MISSING_DEPS=1
 if not exist "frontend\node_modules" set MISSING_DEPS=1
 
 if "%MISSING_DEPS%"=="1" (
-    %CE_YELLOW% "[Setup] "
-%CE_WHITE% "First time setup detected. Syncing modules..."
     echo.
-    %CE_GRAY% " [1/3] Frontend..."
+    echo   %CY%%BOLD%!%R%  First-time setup: installing dependencies
+    echo.
+    echo     %CD%[1/3]%R% Frontend
     cd frontend && call npm install >nul 2>nul && cd ..
-    %CE_GRAY% " [2/3] Backend..."
+    echo     %CD%[2/3]%R% Backend
     cd backend && call npm install >nul 2>nul && cd ..
-    %CE_GRAY% " [3/3] Root..."
+    echo     %CD%[3/3]%R% Root
     call npm install >nul 2>nul
-    %CE_GREEN% "[Success] "
-%CE_WHITE% "System synchronized."
+    echo.
+    echo   %CG%%BOLD%+%R%  Dependencies resolved
 )
 
 :: Detect Protocol
@@ -203,12 +268,6 @@ tasklist /fi "imagename eq caddy.exe" 2>nul | findstr /i "caddy.exe" >nul
 if !errorlevel! equ 0 set "B_TYPE=HTTPS (Caddy)"
 tasklist /fi "imagename eq playit.exe" 2>nul | findstr /i "playit.exe" >nul
 if !errorlevel! equ 0 set "B_TYPE=TUNNEL (Playit)"
-
-echo.
-%CE_CYAN% "----------------------------------------------------"
-%CE_WHITE% -NoNewline "  Protocol:     "
-%CE_GREEN% \"!B_TYPE!\"
-echo.
 
 set "ACC_URL=http://localhost:3000"
 if exist "backend\data\settings.json" (
@@ -219,43 +278,46 @@ if exist "backend\data\settings.json" (
         if not "!DOM_VAL!"=="" set "ACC_URL=https://!DOM_VAL!"
     )
 )
-%CE_WHITE% -NoNewline "  Access Point: "
-%CE_CYAN% "!ACC_URL!"
+
 echo.
-%CE_CYAN% "----------------------------------------------------"
+echo  %CD%-----------------------------------------------------------------------%R%
+echo   Protocol   %BOLD%%CG%!B_TYPE!%R%
+echo   Access     %BOLD%%CC%!ACC_URL!%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-%CE_MAGENTA% "[Protocol] "
-%CE_WHITE% "Streaming logs below..."
+echo   %CD%Streaming logs...%R%
 echo.
 
 call npm run start:all
 if %errorlevel% neq 0 (
     echo.
-    %CE_RED% "[Critical] "
-%CE_WHITE% "Process termination with code: %errorlevel%"
+    echo   %CR%%BOLD%X%R%  Process terminated  %CD%Exit code: %errorlevel%%R%
     pause
 )
 goto MENU
 
-:: ====================================================================================
-:: [REMOTE & NETWORK CONFIG]
-:: ====================================================================================
+:: ============================================================================
+::  REMOTE ACCESS
+:: ============================================================================
 :REMOTE_SETUP
 cls
 echo.
-%CE_CYAN% "[REMOTE BRIDGE CONFIGURATION]"
+echo  %CC%%BOLD% REMOTE ACCESS%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-echo ====================================================================================
+echo  %CD%%BOLD% CONNECTIVITY%R%
+echo   %BOLD%%CW%1%R%  %CG%Mesh VPN%R%                  %CD%Tailscale / ZeroTier%R%
+echo   %BOLD%%CW%2%R%  %CG%Zero-Config Tunnel%R%         %CD%Playit.gg%R%
+echo   %BOLD%%CW%3%R%  %CC%Web Share%R%                  %CD%Cloudflare Tunnel%R%
+echo   %BOLD%%CW%4%R%  %CC%Direct Bind%R%                %CD%Manual Port Forward%R%
 echo.
-echo    [1]  Mesh VPN (Tailscale, ZeroTier) - [Recommended]
-echo    [2]  Zero-Config Tunnel (Playit.gg) - [Automated]
-echo    [3]  Web-Only Share (Cloudflare)
-echo    [4]  Direct Port Bind (Manual Forwarding)
+echo  %CD%%BOLD% CONTROL%R%
+echo   %BOLD%%CW%5%R%  %CR%Disable All%R%                %CD%Kill remote bridges%R%
+echo   %BOLD%%CW%0%R%  %CD%Back%R%
 echo.
-echo    [5]  Decommission Bridge (Disable)
-echo    [6]  Abort (Go Back)
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-%CE_PROMPT% \"  > Select Method: \"
+<nul set /p "=  %CC%%BOLD%^> %R%"
 set /p r_choice=""
 
 if "%r_choice%"=="1" (
@@ -279,152 +341,176 @@ if "%r_choice%"=="4" (
     goto START
 )
 if "%r_choice%"=="5" goto REMOTE_DISABLE
+if "%r_choice%"=="0" goto MENU
 if "%r_choice%"=="6" goto MENU
 goto REMOTE_SETUP
 
+:: ============================================================================
+::  HTTPS CONFIGURATION
+:: ============================================================================
 :HTTPS_MENU
 cls
 echo.
-%CE_MAGENTA% "[SECURE DIRECT ACCESS]"
+echo  %CC%%BOLD% HTTPS CONFIGURATION%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-echo ====================================================================================
+echo   %BOLD%%CW%1%R%  %CG%Automated Caddy%R%            %CD%One-click HTTPS%R%
+echo   %BOLD%%CW%2%R%  %CY%Manual Certificates%R%        %CD%Bind custom PEM/CRT%R%
+echo   %BOLD%%CW%3%R%  %CR%Disable HTTPS%R%              %CD%Revert to HTTP%R%
+echo   %BOLD%%CW%0%R%  %CD%Back%R%
 echo.
-echo    [1]  Launch Automated Caddy Bridge - [Best Choice]
-echo    [2]  Decommission HTTPS Bridge (Back to HTTP)
-echo    [3]  Manual PEM/CRT Binding (Internal)
-echo    [4]  Return to Protocol
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-%CE_PROMPT% \"  > Select Option: \"
+<nul set /p "=  %CC%%BOLD%^> %R%"
 set /p h_choice=""
 
 if "%h_choice%"=="1" goto PROTOCOL_PROXY
-if "%h_choice%"=="2" (
+if "%h_choice%"=="2" goto PROTOCOL_DIRECT
+if "%h_choice%"=="3" (
     call node scripts/ops/manage-caddy.js disable
     taskkill /f /im caddy.exe >nul 2>nul
     pause
     goto MENU
 )
-if "%h_choice%"=="3" goto PROTOCOL_DIRECT
+if "%h_choice%"=="0" goto MENU
 if "%h_choice%"=="4" goto MENU
 goto HTTPS_MENU
 
 :PROTOCOL_PROXY
 cls
 echo.
-%CE_GREEN% "[Automated HTTPS Setup]"
+echo  %CC%%BOLD% AUTOMATED HTTPS%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-%CE_PROMPT% \" > Domain Name (e.g. myserver.com): \"
+<nul set /p "=  Domain %CD%(e.g. panel.example.com)%CW%: %R%"
 set /p DOMAIN=""
+echo.
 call node scripts/ops/install-caddy.js
 call node scripts/ops/manage-caddy.js setup !DOMAIN!
 taskkill /f /im caddy.exe >nul 2>nul
 start "CraftCommand - HTTPS Bridge" proxy\caddy.exe run --config proxy\Caddyfile --adapter caddyfile
+echo.
+echo   %CG%%BOLD%+%R%  HTTPS active for %CC%!DOMAIN!%R%
 pause
 goto MENU
 
 :PROTOCOL_DIRECT
 cls
 echo.
-%CE_MAGENTA% "[Manual SSL Binding]"
+echo  %CC%%BOLD% MANUAL SSL BINDING%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-%CE_PROMPT% \" > Path to Cert (.pem/.crt): \"
+<nul set /p "=  Certificate (.pem/.crt): "
 set /p CERT_PATH=""
-%CE_PROMPT% \" > Path to Private Key (.key): \"
+<nul set /p "=  Private Key (.key):      "
 set /p KEY_PATH=""
-%CE_PROMPT% \" > Key Passphrase (optional): \"
+<nul set /p "=  Passphrase (optional):   "
 set /p PASSPHRASE=""
+echo.
 call node scripts/maintenance/setup-https.js "!CERT_PATH!" "!KEY_PATH!" "!PASSPHRASE!"
 pause
 goto MENU
 
+:: ============================================================================
+::  PANIC CONTROL
+:: ============================================================================
 :REMOTE_DISABLE
 cls
 echo.
-%CE_RED% " [PANIC CONTROL - NETWORK RESET] "
+echo  %CR%%BOLD% NETWORK ISOLATION%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-%CE_GRAY% " Killing active bridges..."
+echo   Terminating external bridges...
 taskkill /f /im caddy.exe >nul 2>nul
 taskkill /f /im playit.exe >nul 2>nul
 taskkill /f /im cloudflared.exe >nul 2>nul
 echo.
-%CE_GRAY% " Updating security registry..."
+echo   Updating security registry...
 call node scripts/ops/emergency-disable-remote.js
 if %errorlevel% neq 0 (
     echo.
-    %CE_RED% " [Error] "
-    %CE_WHITE% " Failed to isolate system. Please check settings.json manually."
+    echo   %CR%%BOLD%X%R%  Isolation failed. Check settings.json.
 ) else (
     echo.
-    %CE_GREEN% " [Success] "
-    %CE_WHITE% " Isolation complete. Your dashboard is now local-only."
+    echo   %CG%%BOLD%+%R%  Network isolated. Dashboard is local-only.
 )
 timeout /t 5 >nul
 goto MENU
 
-:: ====================================================================================
-:: [DIAGNOSTICS & AGENTS]
-:: ====================================================================================
+:: ============================================================================
+::  STABILITY AUDIT
+:: ============================================================================
 :STABILITY_CHECK
 cls
 echo.
-%CE_CYAN% \" [SYSTEM STABILITY AUDIT] \"
+echo  %CY%%BOLD% STABILITY AUDIT%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-%CE_GRAY% \" This will perform a deep scan of your network protocol and local IP detection. \"
+echo   Running diagnostics...
 echo.
 npx ts-node scripts/user_verification_test.ts
 echo.
 pause
 goto MENU
 
+:: ============================================================================
+::  MAINTENANCE
+:: ============================================================================
 :REINSTALL
 cls
 echo.
-%CE_RED% \" [MAINTENANCE MODE] \"
+echo  %CY%%BOLD% MAINTENANCE MODE%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
+<nul set /p "=  Flush and reinstall all deps? %CD%(y/n)%CW%: %R%"
 set confirm=
-%CE_PROMPT% \" Confirm Flush/Reinstall? (y/n): \"
-set /p confirm=\"\"
-if /i not \"!confirm!\"==\"y\" goto MENU
+set /p confirm=""
+if /i not "!confirm!"=="y" goto MENU
 
 echo.
-%CE_YELLOW% \" [1/3] Flushing dependencies...\"
-if exist \"frontend\\node_modules\" rmdir /s /q \"frontend\\node_modules\"
-if exist \"backend\\node_modules\" rmdir /s /q \"backend\\node_modules\"
-if exist \"node_modules\" rmdir /s /q \"node_modules\"
+echo   %CD%[1/3]%R% Flushing node_modules...
+if exist "frontend\node_modules" rmdir /s /q "frontend\node_modules"
+if exist "backend\node_modules" rmdir /s /q "backend\node_modules"
+if exist "node_modules" rmdir /s /q "node_modules"
 
-echo.
-%CE_YELLOW% \" [2/3] Reinstalling Frontend...\"
+echo   %CD%[2/3]%R% Reinstalling frontend...
 cd frontend && call npm install && cd ..
 
-echo.
-%CE_YELLOW% \" [3/3] Reinstalling Backend ^& Core...\"
+echo   %CD%[3/3]%R% Reinstalling backend...
 cd backend && call npm install && cd ..
 call npm install
 
 echo.
-%CE_GREEN% \" [Success] \"
-%CE_WHITE% \" System restored and dependencies synchronized.\"
+echo   %CG%%BOLD%+%R%  Dependencies restored.
 echo.
 pause
 goto MENU
 
+:: ============================================================================
+::  NODE AGENT
+:: ============================================================================
 :AGENT_START
 cls
 echo.
-%CE_CYAN% "[NODE AGENT LAUNCHER]"
+echo  %CM%%BOLD% NODE AGENT%R%
+echo  %CD%-----------------------------------------------------------------------%R%
 echo.
-%CE_PROMPT% \" > Enter Node ID: \"
+<nul set /p "=  Node ID:     "
 set /p N_ID=""
-%CE_PROMPT% \" > Enter Node Secret: \"
+<nul set /p "=  Node Secret: "
 set /p N_SEC=""
 
 if "%N_ID%"=="" goto MENU
+
+echo.
+echo   Initializing agent...
+
 cd agent
 if not exist "dist" (
     call npm install >nul 2>nul
     call npm run build >nul 2>nul
 )
-title CraftCommand - Node Agent Worker [%N_ID:~0,8%...]
+title CraftCommand - Node Agent [%N_ID:~0,8%...]
 node dist/index.js --panel-url http://localhost:3001 --node-id %N_ID% --secret %N_SEC%
 cd ..
 goto MENU

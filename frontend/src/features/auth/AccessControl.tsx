@@ -1,53 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, Permission } from '@shared/types';
+import { UserProfile } from '@shared/types';
+import { Permission, ROLE_PERMISSIONS, ROLE_HIERARCHY, UserRole } from '@shared/constants/roles';
 import { API } from '@core/services/api';
-import { useUser } from '@features/auth/context/UserContext';
+import { usePermissions } from './hooks/usePermissions';
+import { useUser } from './context/UserContext';
 import { Shield, User, Save, Check, X } from 'lucide-react';
 import { useToast } from '../ui/Toast';
+import AccessDenied from './components/AccessDenied';
 
 interface AccessControlProps {
     serverId: string;
 }
 
-// Define Permission Sets per Role (Mirrors backend PermissionService)
-const ROLE_PERMISSIONS: Record<string, Permission[]> = {
-    'OWNER': [
-        'server.view', 'server.start', 'server.stop', 'server.restart',
-        'server.console.read', 'server.console.write', 'server.files.read', 'server.files.write', 
-        'server.settings', 'server.players.manage', 'server.backups.manage', 'users.manage',
-        'system.remote_access.manage'
-    ],
-    'ADMIN': [
-        'server.view', 'server.start', 'server.stop', 'server.restart',
-        'server.console.read', 'server.console.write', 'server.files.read', 'server.files.write', 
-        'server.settings', 'server.players.manage', 'server.backups.manage', 'users.manage'
-    ],
-    'MANAGER': [
-        'server.view', 'server.start', 'server.stop', 'server.restart',
-        'server.console.read', 'server.console.write', 'server.files.read', 'server.files.write', 
-        'server.settings', 'server.players.manage', 'server.backups.manage'
-    ],
-    'VIEWER': [
-        'server.view', 'server.console.read', 'server.files.read'
-    ]
-};
-
-const PERMISSIONS: { id: Permission; label: string; description: string }[] = [
-    { id: 'server.view', label: 'View Server', description: 'Can see the server in the list and view status.' },
-    { id: 'server.start', label: 'Start Server', description: 'Can start the server.' },
-    { id: 'server.stop', label: 'Stop Server', description: 'Can stop the server.' },
-    { id: 'server.restart', label: 'Restart Server', description: 'Can restart the server.' },
-    { id: 'server.console.read', label: 'View Console', description: 'Can view console/logs.' },
-    { id: 'server.console.write', label: 'Send Commands', description: 'Can send commands to the console.' },
-    { id: 'server.files.read', label: 'View Files', description: 'Can browse file manager.' },
-    { id: 'server.files.write', label: 'Edit Files', description: 'Can upload, delete, and edit files.' },
-    { id: 'server.players.manage', label: 'Manage Players', description: 'Can kick/ban players.' },
-    { id: 'server.backups.manage', label: 'Manage Backups', description: 'Can create/restore/delete backups.' },
-    { id: 'server.settings', label: 'Manage Settings', description: 'Can change server configuration.' },
+const PERMISSIONS: { id: Permission, label: string, category: string }[] = [
+    { id: 'server.view', label: 'View Analytics', category: 'General' },
+    { id: 'server.start', label: 'Start Server', category: 'Power' },
+    { id: 'server.stop', label: 'Stop Server', category: 'Power' },
+    { id: 'server.restart', label: 'Restart Server', category: 'Power' },
+    { id: 'server.console.read', label: 'Read Console', category: 'Terminal' },
+    { id: 'server.console.write', label: 'Send Commands', category: 'Terminal' },
+    { id: 'server.files.read', label: 'Browse Files', category: 'Storage' },
+    { id: 'server.files.write', label: 'Write Files', category: 'Storage' },
+    { id: 'server.settings', label: 'Manage Settings', category: 'Config' },
+    { id: 'server.players.manage', label: 'Manage Players', category: 'Moderation' },
+    { id: 'server.backups.manage', label: 'Manage Backups', category: 'Storage' },
 ];
 
 const AccessControl: React.FC<AccessControlProps> = ({ serverId }) => {
     const { user: currentUser, token, isLoading: userLoading } = useUser();
+    const { can } = usePermissions();
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [saving, setSaving] = useState<string | null>(null);
@@ -171,6 +152,15 @@ const AccessControl: React.FC<AccessControlProps> = ({ serverId }) => {
         { id: 'server.delete', label: 'Server Destruction' },
         { id: 'system.remote_access.manage', label: 'Remote Access / SSL' }
     ];
+
+    if (!can('users.manage') && !can('server.manage', serverId)) {
+        return (
+            <AccessDenied 
+                title="Access Control Restricted"
+                description="You do not have permission to manage users or access controls. Please contact a system owner."
+            />
+        );
+    }
 
     return (
         <div className="h-full flex flex-col space-y-6">

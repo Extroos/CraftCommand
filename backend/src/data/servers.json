@@ -1,1 +1,145 @@
-[]
+[
+  {
+    "name": "tester",
+    "software": "Paper",
+    "version": "1.21.1",
+    "port": 25565,
+    "ram": 4,
+    "nodeId": "local",
+    "cpuPriority": "normal",
+    "motd": "A Minecraft Server",
+    "maxPlayers": 20,
+    "javaVersion": "Java 21",
+    "securityConfig": {
+      "firewallEnabled": true,
+      "allowedIps": [
+        "127.0.0.1"
+      ],
+      "ddosProtection": true,
+      "requireOp2fa": false,
+      "forceSsl": false,
+      "regionLock": []
+    },
+    "onlineMode": false,
+    "advancedFlags": {
+      "aikarFlags": true,
+      "antiDdos": true,
+      "debugMode": false,
+      "installSpark": false
+    },
+    "id": "local-1771101334198",
+    "workingDirectory": "C:\\Users\\user\\Desktop\\Craft-Commands\\backend\\minecraft_servers\\local-1771101334198",
+    "executable": "server.jar",
+    "executionCommand": "java -Xmx4G -jar server.jar nogui",
+    "status": "OFFLINE",
+    "needsRestart": false,
+    "network": {
+      "hostname": "modpackalm3lm.duckdns.org",
+      "provider": "duckdns",
+      "token": "255f3d99-56f8-4eb1-92b2-070426f44465",
+      "updateEnabled": true,
+      "monitoringEnabled": true,
+      "updateInterval": 60
+    }
+  },
+  {
+    "id": "local-test-velocity-modern",
+    "name": "VELOCITY-MODERN",
+    "software": "Velocity",
+    "version": "3.3.0-SNAPSHOT",
+    "port": 25570,
+    "ram": 1,
+    "nodeId": "local",
+    "cpuPriority": "normal",
+    "motd": "HARDENED TEST: modern",
+    "maxPlayers": 100,
+    "javaVersion": "Java 21",
+    "onlineMode": false,
+    "workingDirectory": "C:\\Users\\user\\Desktop\\Craft-Commands\\backend\\minecraft_servers\\local-test-velocity-modern",
+    "executable": "velocity.jar",
+    "executionCommand": "java -Xmx1G -jar velocity.jar",
+    "status": "OFFLINE",
+    "network": {
+      "proxyConfig": {
+        "links": [],
+        "forwardingMode": "modern",
+        "secret": "panel-generated-secret-1234"
+      }
+    }
+  },
+  {
+    "id": "local-test-velocity-legacy",
+    "name": "VELOCITY-LEGACY",
+    "software": "Velocity",
+    "version": "3.3.0-SNAPSHOT",
+    "port": 25571,
+    "ram": 1,
+    "nodeId": "local",
+    "cpuPriority": "normal",
+    "motd": "HARDENED TEST: legacy",
+    "maxPlayers": 100,
+    "javaVersion": "Java 21",
+    "onlineMode": false,
+    "workingDirectory": "C:\\Users\\user\\Desktop\\Craft-Commands\\backend\\minecraft_servers\\local-test-velocity-legacy",
+    "executable": "velocity.jar",
+    "executionCommand": "java -Xmx1G -jar velocity.jar",
+    "status": "OFFLINE",
+    "network": {
+      "proxyConfig": {
+        "links": [],
+        "forwardingMode": "legacy",
+        "secret": "panel-generated-secret-1234"
+      }
+    }
+  },
+  {
+    "id": "local-test-velocity-bungeeguard",
+    "name": "VELOCITY-BUNGEEGUARD",
+    "software": "Velocity",
+    "version": "3.3.0-SNAPSHOT",
+    "port": 25572,
+    "ram": 1,
+    "nodeId": "local",
+    "cpuPriority": "normal",
+    "motd": "HARDENED TEST: bungeeguard",
+    "maxPlayers": 100,
+    "javaVersion": "Java 21",
+    "onlineMode": false,
+    "workingDirectory": "C:\\Users\\user\\Desktop\\Craft-Commands\\backend\\minecraft_servers\\local-test-velocity-bungeeguard",
+    "executable": "velocity.jar",
+    "executionCommand": "java -Xmx1G -jar velocity.jar",
+    "status": "OFFLINE",
+    "network": {
+      "proxyConfig": {
+        "links": [],
+        "forwardingMode": "bungeeguard",
+        "secret": "panel-generated-secret-1234"
+      }
+    }
+  },
+  {
+    "id": "local-test-velocity-none",
+    "name": "VELOCITY-NONE",
+    "software": "Velocity",
+    "version": "3.3.0-SNAPSHOT",
+    "port": 25573,
+    "ram": 1,
+    "nodeId": "local",
+    "cpuPriority": "normal",
+    "motd": "HARDENED TEST: none",
+    "maxPlayers": 100,
+    "javaVersion": "Java 21",
+    "onlineMode": false,
+    "workingDirectory": "C:\\Users\\user\\Desktop\\Craft-Commands\\backend\\minecraft_servers\\local-test-velocity-none",
+    "executable": "velocity.jar",
+    "executionCommand": "java -Xmx1G -jar velocity.jar",
+    "status": "OFFLINE",
+    "network": {
+      "proxyConfig": {
+        "links": [],
+        "forwardingMode": "none",
+        "secret": "panel-generated-secret-1234"
+      }
+    }
+  }
+]

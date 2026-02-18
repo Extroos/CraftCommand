@@ -11,7 +11,8 @@ import {
     InstalledPlugin,
     PluginUpdateInfo,
     PluginSource,
-    NodeInfo
+    NodeInfo,
+    SyncReport
 } from '@shared/types';
 
 const API_URL = '/api';
@@ -227,7 +228,7 @@ class ApiService {
         return res.json();
     }
 
-    async installServer(id: string, type: 'paper'|'modpack'|'vanilla'|'fabric'|'forge'|'spigot'|'neoforge'|'purpur'|'bedrock', data: any): Promise<void> {
+    async installServer(id: string, type: 'paper'|'modpack'|'vanilla'|'fabric'|'forge'|'spigot'|'neoforge'|'purpur'|'bedrock'|'velocity', data: any): Promise<void> {
         const res = await fetch(`${API_URL}/servers/${id}/install`, {
             method: 'POST',
             headers: { 
@@ -266,6 +267,72 @@ class ApiService {
         }
 
         return res.json();
+    }
+
+    // --- Proxy Networking ---
+
+    async linkServerToProxy(proxyId: string, backendId: string, alias: string): Promise<void> {
+        const res = await fetch(`${API_URL}/network/proxy/link`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                ...this.getAuthHeader()
+            },
+            body: JSON.stringify({ proxyId, backendId, alias })
+        });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to link server');
+        }
+    }
+
+    async unlinkServerFromProxy(proxyId: string, backendId: string): Promise<void> {
+        const res = await fetch(`${API_URL}/network/proxy/unlink`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                ...this.getAuthHeader()
+            },
+            body: JSON.stringify({ proxyId, backendId })
+        });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to unlink server');
+        }
+    }
+
+    async unlinkProxyByServer(serverId: string): Promise<void> {
+        const res = await fetch(`${API_URL}/network/proxy/unlink-by-server`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                ...this.getAuthHeader()
+            },
+            body: JSON.stringify({ serverId })
+        });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to unlink proxy for server');
+        }
+    }
+
+    async installViaSuite(proxyId: string): Promise<void> {
+        const res = await fetch(`${API_URL}/network/proxy/install-via-suite`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                ...this.getAuthHeader()
+            },
+            body: JSON.stringify({ proxyId })
+        });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to install Via Suite');
+        }
     }
     
     async deleteFiles(id: string, paths: string[]): Promise<void> {
@@ -538,6 +605,25 @@ class ApiService {
         });
     }
 
+    async checkConfigSync(id: string): Promise<SyncReport> {
+        const res = await fetch(`${API_URL}/servers/${id}/config/check`, {
+            headers: this.getAuthHeader()
+        });
+        if (!res.ok) throw new Error('Failed to check configuration sync');
+        return res.json();
+    }
+
+    async syncConfig(id: string): Promise<void> {
+        const res = await fetch(`${API_URL}/servers/${id}/config/sync`, {
+            method: 'POST',
+            headers: this.getAuthHeader()
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to sync configuration');
+        }
+    }
+
     // --- Players ---
 
     async getPlayers(id: string, type: string): Promise<any[]> {
@@ -645,18 +731,79 @@ class ApiService {
         return res.json();
     }
 
-    async login(email: string, password: string): Promise<{ success: boolean, user: UserProfile, token: string }> {
+    async login(email: string, password: string): Promise<{ success: boolean, user: UserProfile, token: string, twoFactorRequired?: boolean }> {
         const res = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
         });
         
-        if (res.status === 401) return { success: false, user: null as any, token: '' };
+        if (res.status === 401) return { success: false, user: null as any, token: '', twoFactorRequired: false };
         
         const data = await res.json();
-        // Backend returns: { user: UserProfile, token: string }
-        return { success: true, user: data.user, token: data.token };
+        return { 
+            success: true, 
+            user: data.user, 
+            token: data.token, 
+            twoFactorRequired: data.twoFactorRequired 
+        };
+    }
+
+    async verify2FA(code: string, token: string, isRecovery: boolean = false): Promise<{ success: boolean, token?: string, user?: UserProfile }> {
+        const res = await fetch(`${API_URL}/auth/2fa/verify`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ code, isRecovery })
+        });
+
+        if (!res.ok) return { success: false };
+        const data = await res.json();
+        return { success: true, token: data.token, user: data.user };
+    }
+
+    async start2FASetup(token: string): Promise<{ qrCode: string, secret: string }> {
+        const res = await fetch(`${API_URL}/auth/2fa/setup/start`, {
+            method: 'POST',
+            headers: { 
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!res.ok) throw new Error('Failed to start 2FA setup');
+        return res.json();
+    }
+
+    async confirm2FASetup(code: string, token: string): Promise<{ backupCodes: string[] }> {
+        const res = await fetch(`${API_URL}/auth/2fa/setup/confirm`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ code })
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to confirm 2FA setup');
+        }
+        return res.json();
+    }
+
+    async disable2FA(password: string, code: string, token: string): Promise<void> {
+        const res = await fetch(`${API_URL}/auth/2fa/disable`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ password, code })
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to disable 2FA');
+        }
     }
 
     // --- Notifications ---
@@ -924,18 +1071,32 @@ class ApiService {
         const response = await fetch('/api/settings/global', {
             method: 'PUT',
             headers: {
-                'Authorization': `Bearer ${token}`,
+                ...this.getAuthHeader(),
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(settings)
         });
-
-        if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.error || 'Failed to update global settings');
-        }
+        if (!response.ok) throw new Error('Failed to update global settings');
     }
 
+    // --- Dynmap Integration ---
+    async getMapStatus(serverId: string): Promise<{ installed: boolean; port: number | null; verified: boolean; error?: string; internalUrl?: string }> {
+        return this.get(`/api/servers/${serverId}/map/status`);
+    }
+
+    async verifyMap(serverId: string): Promise<{ verified: boolean; error?: string }> {
+        return this.post(`/api/servers/${serverId}/map/verify`, {});
+    }
+
+    async installMap(serverId: string): Promise<any> {
+        return this.post(`/api/servers/${serverId}/map/install`, {});
+    }
+
+    async renderMap(serverId: string, mode: 'update' | 'full' | 'radius' = 'update', radius?: number): Promise<{ success: boolean }> {
+        return this.post(`/api/servers/${serverId}/map/render`, { mode, radius });
+    }
+
+    // --- Remote Access ---
     async getRemoteAccessStatus(): Promise<{ enabled: boolean, method?: string, bindAddress: string }> {
         const res = await fetch(`${API_URL}/system/remote-access/status`, {
             headers: this.getAuthHeader()
@@ -1076,6 +1237,10 @@ class ApiService {
         return res.json();
     }
 
+    async getActivityHistory(serverId: string): Promise<any[]> {
+        return this.get(`/api/servers/${serverId}/activity`);
+    }
+
     async scanPlugins(serverId: string): Promise<InstalledPlugin[]> {
         const res = await fetch(`${API_URL}/plugins/servers/${serverId}/scan`, {
             headers: this.getAuthHeader()
@@ -1109,6 +1274,16 @@ class ApiService {
             body: JSON.stringify(data)
         });
         if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to enroll node'); }
+        return res.json();
+    }
+
+    async preEnrollNode(data: { name: string; mode: string }): Promise<{ id: string; secret: string; token: string }> {
+        const res = await fetch(`${API_URL}/nodes/enroll-wizard`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...this.getAuthHeader() },
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to pre-enroll node'); }
         return res.json();
     }
 
@@ -1170,6 +1345,43 @@ class ApiService {
             const err = await res.json();
             throw new Error(err.error || 'Failed to sync Discord commands');
         }
+    }
+
+    // --- Safe System Updates ---
+
+    async getUpdateStatus(): Promise<{ status: string; progress: number; currentStep?: string; error?: string; targetVersion?: string }> {
+        // Note: The route in update.routes.ts is router.get('/status') mounted at /api/system/update
+        // So the full URL is /api/system/update/status
+        return this.get('/system/update/status');
+    }
+
+    async checkSystemUpdates(force: boolean = false): Promise<any> {
+        // Route: POST /api/system/update/check
+        // Note: The generic post helper handles /api prefix.
+        // We pass { force } in body, although updated.routes.ts reads from query?
+        // Let's check update.routes.ts again.
+        // Line 135: const { force } = req.query;
+        // So I should send it as query param in URL, not body.
+        
+        // Wait, line 14: router.post('/check' ...
+        // Line 135: const { force } = req.query; 
+        // This is a mismatch in my backend code? 
+        // Usually POST uses body. But req.query works if I append query params.
+        
+        // Let's assume I fix backend or send query here.
+        // I will use query params to be safe matching the backend implementation.
+        return this.post(`/system/update/check?force=${force}`, {}); 
+    }
+
+    async downloadUpdate(version: string): Promise<any> {
+        return this.post('/system/update/download', { version });
+    }
+
+    async restartSystem(): Promise<void> {
+        // Using Generic post helper which does not await response if I don't want to?
+        // Actually post awaited response.
+        // My backend route sends response then exists.
+        await this.post('/system/update/restart', {});
     }
 }
 

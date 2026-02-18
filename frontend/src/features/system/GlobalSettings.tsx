@@ -13,6 +13,8 @@ import { useSystem } from '@features/system/context/SystemContext';
 import NodesManager from '@features/nodes/NodesManager';
 import { SelfHealingAudit } from './SelfHealingAudit';
 import { Activity, Globe } from 'lucide-react';
+import { usePermissions } from '@features/auth/hooks/usePermissions';
+import { SystemUpdateCard } from './components/SystemUpdateCard';
 
 const GlobalSettingsView: React.FC = () => {
     const [settings, setSettings] = useState<GlobalSettingsType | null>(null);
@@ -22,6 +24,7 @@ const GlobalSettingsView: React.FC = () => {
     const [showWizard, setShowWizard] = useState(false);
     const [systemStatus, setSystemStatus] = useState<{ protocol: string, sslStatus: string, localIP?: string } | null>(null);
     const { addToast } = useToast();
+    const { can } = usePermissions();
     const { refreshSettings } = useSystem();
 
     useEffect(() => {
@@ -62,6 +65,10 @@ const GlobalSettingsView: React.FC = () => {
 
     const handleSave = async () => {
         if (!settings) return;
+        if (!can('system.settings.manage')) {
+            addToast('error', 'Permissions', 'Insufficient permissions to modify system settings');
+            return;
+        }
         const rebootRequired = hasInfraChanges();
         
         setIsSaving(true);
@@ -241,6 +248,11 @@ const GlobalSettingsView: React.FC = () => {
                     </div>
 
                     <div className="space-y-3">
+                        {/* Phase 5: System Update Card */}
+                        <div className="mb-4">
+                            <SystemUpdateCard variant="embedded" />
+                        </div>
+
                         <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
                             <div>
                                 <div className="font-medium text-sm">Auto-Updates</div>
@@ -286,26 +298,10 @@ const GlobalSettingsView: React.FC = () => {
                             {/* Sentinel UI removed - automatic optimization active */}
                         </div>
 
-                        <div className="pt-2 border-t border-border/50 mt-2">
-                             <button 
-                                onClick={async () => {
-                                    try {
-                                        addToast('info', 'Updates', 'Checking for system updates...');
-                                        const res = await API.checkForUpdates(true);
-                                        if (res.available) {
-                                            addToast('success', 'Update Available', `Version v${res.latestVersion} is available!`);
-                                        } else {
-                                            addToast('success', 'Up to Date', 'You are running the latest version.');
-                                        }
-                                    } catch (e) {
-                                        addToast('error', 'Updates', 'Failed to check for updates');
-                                    }
-                                }}
-                                className="w-full flex items-center justify-center gap-2 p-2 bg-primary/5 text-primary rounded text-xs font-bold hover:bg-primary/10 transition-colors border border-primary/20"
-                             >
-                                <RefreshCw size={14} /> Check for Updates
-                             </button>
-                        </div>
+                        {/* 
+                            Web Update UI removed per user request.
+                            Updates are now handled exclusively by the launcher (run_locally.bat) on startup.
+                        */}
                         
                         <div className="p-3 bg-secondary/30 rounded border border-border/50">
                             <div className="font-medium text-sm mb-2">System Theme</div>
@@ -675,6 +671,67 @@ const GlobalSettingsView: React.FC = () => {
                         )}
                     </div>
                 </motion.div>
+                
+                {/* Security & 2FA Policy Card */}
+                <motion.div 
+                    variants={STAGGER_ITEM}
+                    className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+                >
+                     <div className="flex items-start gap-3 mb-3">
+                        <div className="p-2 bg-rose-500/10 text-rose-500 rounded">
+                            <Shield size={20} />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-base">Security & 2FA</h3>
+                            <p className="text-xs text-muted-foreground">Global security policies and authentication hardening.</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
+                            <div>
+                                <div className="font-medium text-sm flex items-center gap-2">
+                                    Enforce Admin 2FA
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5 max-w-[280px]">
+                                    Require all Administrators and Owners to have Two-Factor Authentication enabled to access the panel.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setSettings({
+                                        ...settings,
+                                        app: { 
+                                            ...settings.app, 
+                                            security: { 
+                                                ...settings.app.security,
+                                                forceAdmin2FA: !settings.app.security?.forceAdmin2FA 
+                                            } 
+                                        }
+                                    });
+                                }}
+                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                    settings.app.security?.forceAdmin2FA ? 'bg-primary' : 'bg-input'
+                                }`}
+                            >
+                                <span
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
+                                        settings.app.security?.forceAdmin2FA ? 'translate-x-5' : 'translate-x-0'
+                                    }`}
+                                />
+                            </button>
+                        </div>
+
+                        {settings.app.security?.forceAdmin2FA && (
+                            <div className="flex gap-3 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-600 rounded-lg text-xs">
+                                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                                <p>
+                                    <strong>Policy Active:</strong> Admins without 2FA will be blocked from management actions immediately after saving.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </motion.div>
             </motion.div>
     );
 
@@ -865,8 +922,9 @@ const GlobalSettingsView: React.FC = () => {
                         )}
                         <button
                             onClick={handleSave}
-                            disabled={isSaving}
-                            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                            disabled={isSaving || !can('system.settings.manage')}
+                            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={!can('system.settings.manage') ? 'Insufficient Permissions' : ''}
                         >
                             <Save size={18} />
                             {isSaving ? 'Saving...' : 'Save Changes'}
@@ -885,16 +943,18 @@ const GlobalSettingsView: React.FC = () => {
                 >
                     Configuration
                 </button>
-                <button
-                    onClick={() => setActiveTab('AUDIT')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
-                        activeTab === 'AUDIT' ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                >
-                    <Shield size={14} /> Audit Log
-                </button>
+                {can('system.audit.view') && (
+                    <button
+                        onClick={() => setActiveTab('AUDIT')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
+                            activeTab === 'AUDIT' ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <Shield size={14} /> Audit Log
+                    </button>
+                )}
 
-                {settings.app.distributedNodes?.enabled && (
+                {settings.app.distributedNodes?.enabled && can('system.nodes.manage') && (
                     <button
                         onClick={() => setActiveTab('NODES')}
                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
@@ -905,14 +965,16 @@ const GlobalSettingsView: React.FC = () => {
                     </button>
                 )}
 
-                <button
-                    onClick={() => setActiveTab('INTEGRATIONS')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
-                        activeTab === 'INTEGRATIONS' ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                >
-                    <Webhook size={14} /> Integrations
-                </button>
+                {can('system.integrations.manage') && (
+                    <button
+                        onClick={() => setActiveTab('INTEGRATIONS')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
+                            activeTab === 'INTEGRATIONS' ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <Webhook size={14} /> Integrations
+                    </button>
+                )}
 
                 <button
                     onClick={() => setActiveTab('HEALTH')}

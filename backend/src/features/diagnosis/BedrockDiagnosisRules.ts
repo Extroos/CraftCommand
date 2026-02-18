@@ -269,7 +269,7 @@ export const BedrockRules: DiagnosisRule[] = [
     BedrockPortRule,
     BedrockDependencyRule,
     BedrockVCRedistRule,
-    BedrockVersionMismatchRule,
+    // BedrockVersionMismatchRule excluded: stub that always returns null (placeholder for future impl)
     BedrockJSONCorruptionRule,
     BedrockLevelDatRule,
     BedrockWSLPathRule

@@ -11,6 +11,7 @@ import { FileSystemManager } from '../files/FileSystemManager';
 import { installerService } from '../installer/InstallerService';
 import { importService } from '../installer/ImportService';
 import { getServers, saveServer, getServer, removeServer, updateServer, diagnoseServer, startServer, stopServer } from './ServerService';
+import { serverConfigService } from './ServerConfigService';
 import { AppError } from '../../utils/AppError';
 import { auditService } from '../system/AuditService';
 import { DATA_PATHS } from '../../constants';
@@ -29,6 +30,9 @@ import { verifyToken, requirePermission, requireRole, optionalVerifyToken } from
 const upload = multer({ dest: path.join(path.dirname(DATA_PATHS.SERVERS_ROOT), 'temp_uploads') });
 
 const router = express.Router();
+import mapRouter from './map.routes';
+
+router.use('/:id/map', mapRouter);
 
 
 import { nodeRegistryService } from '../nodes/NodeRegistryService';
@@ -152,7 +156,7 @@ router.get('/:id/query', async (req, res) => {
         // Ensure status serves as the source of truth
         status: cached.status || (processManager.isRunning(id) ? 'STARTING' : 'OFFLINE'),
         uptime: processManager.getUptime(id),
-        tps: processManager.getTPS(id),
+        tps: await processManager.getTPS(id),
         maxPlayers: server.maxPlayers || 20
     };
 
@@ -252,7 +256,7 @@ router.get('/:id/query', async (req, res) => {
                     if (isPortOpen) {
                         processManager.updateCachedStatus(id, { online: true, latency: 1 });
                     } else {
-                        processManager.updateCachedStatus(id, { online: false });
+                        processManager.updateCachedStatus(id, { online: false, players: 0, playerList: [] });
                         
                         // Only mark as OFFLINE if the process is actually dead locally
                         if (!processManager.isRunning(id)) {
@@ -322,14 +326,15 @@ router.get('/:id/logs', verifyToken, requirePermission('server.console.read'), a
                 : path.join(server.workingDirectory, 'logs', 'latest.log');
              
              if (await fs.pathExists(logPath)) {
+             if (await fs.pathExists(logPath)) {
                  try {
-                     const content = await fs.readFile(logPath, 'utf8');
-                     // Split by lines and take last 200 to mimic tail
-                     const fileLogs = content.split(/\r?\n/);
-                     logs = fileLogs.slice(-200);
+                     // Optimized: Read only the tail
+                     const { LogUtils } = require('../../utils/LogUtils');
+                     logs = await LogUtils.readLastLines(logPath, 200);
                  } catch (e) {
                      console.warn(`[API] Failed to read fallback logs for ${id}:`, e);
                  }
+             }
              }
         }
     }
@@ -582,8 +587,43 @@ router.patch('/:id', requirePermission('server.settings'), async (req, res) => {
     }
 });
 
+// --- Phase 54.3: Configuration Drift Detection ---
+
+// Check Configuration Drift
+router.get('/:id/config/check', verifyToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const server = getServer(id);
+        if (!server) return res.status(404).json({ error: 'Server not found' });
+        
+        const report = await serverConfigService.verifyConfig(server);
+        res.json(report);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Force Sync Configuration to Disk
+router.post('/:id/config/sync', verifyToken, requirePermission('server.settings'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const server = getServer(id);
+        if (!server) return res.status(404).json({ error: 'Server not found' });
+        
+        await serverConfigService.enforceConfig(server);
+        
+        // Update lastSyncTime in DB
+        await updateServer(id, { lastSyncTime: Date.now() });
+        
+        res.json({ success: true, message: 'Configuration enforced on disk successfully' });
+        auditService.log((req as any).user.id, 'SERVER_UPDATE', id, { detail: 'Forced configuration sync' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Server Icon Upload
-router.post('/:id/icon', requirePermission('server.settings.write'), upload.single('file'), async (req, res) => {
+router.post('/:id/icon', requirePermission('server.settings'), upload.single('file'), async (req, res) => {
     try {
         const { id } = req.params;
         const server = getServer(id);
@@ -918,41 +958,40 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
 
     try {
         console.log(`[Installation] Request for server ${id} | Type: ${type} | Version: ${version}`);
-        console.log(`[Installation Debug] Payload:`, JSON.stringify(req.body, null, 2));
+
+        // Centralized Progress Callback
+        const onProgress = (msg: string, percent: number = -1) => {
+            if ((req as any).io) {
+                (req as any).io.emit('install:progress', {
+                    serverId: id,
+                    phase: 'installing',
+                    message: msg,
+                    percent
+                });
+            }
+        };
+
+        // Set status to INSTALLING
+        const s = getServer(id);
+        if (s) {
+            s.status = 'INSTALLING';
+            saveServer(s);
+        }
 
         if (type === 'paper') {
-            await installerService.installPaper(server.workingDirectory, version || '1.21.11', build);
+            await installerService.installPaper(id, server.workingDirectory, version || '1.21.1', build, onProgress);
         } else if (type === 'purpur') {
-             console.log(`[Installation] CONFIRMED PURPUR selected for ${id}. Using PurpurMC API.`);
-            await installerService.installPurpur(server.workingDirectory, version || '1.21.1', build);
+            await installerService.installPurpur(id, server.workingDirectory, version || '1.21.1', build, onProgress);
         } else if (type === 'vanilla') {
-            await installerService.installVanilla(server.workingDirectory, version || '1.21.11');
+            await installerService.installVanilla(id, server.workingDirectory, version || '1.21.1', onProgress);
         } else if (type === 'fabric') {
-            await installerService.installFabric(server.workingDirectory, version || '1.21.11');
+            await installerService.installFabric(id, server.workingDirectory, version || '1.21.1', onProgress);
         } else if (type === 'modpack' && url) {
-            await installerService.installModpackFromZip(server.workingDirectory, url, version);
+            await installerService.installModpackFromZip(id, server.workingDirectory, url, version, onProgress);
         } else if (type === 'forge') {
-            const s = getServer(id);
-            if (s) {
-                s.status = 'INSTALLING';
-                saveServer(s);
-            }
-
             console.log(`[Installation] Starting Async Forge Install for ${id}`);
-            // ASYNC: Do not await.
-            installerService.installForge(server.workingDirectory, version || '1.21.11', (req.body as any).localModpack, build, (msg) => {
-                // Broadcast Progress
-                if ((req as any).io) {
-                    (req as any).io.emit('install:progress', {
-                        serverId: id,
-                        phase: 'installing',
-                        message: msg,
-                        percent: -1
-                    });
-                }
-            })
+            installerService.installForge(id, server.workingDirectory, version || '1.21.1', (req.body as any).localModpack, build, onProgress)
                 .then(executable => {
-                    console.log(`[Installation] Forge Install Complete for ${id}`);
                     const s = getServer(id);
                     if (s) {
                         s.executable = executable;
@@ -962,61 +1001,61 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
                 })
                 .catch(err => {
                     console.error(`[Installation] Forge Install Failed: ${err.message}`);
+                    const s = getServer(id);
+                    if (s) {
+                        s.status = 'OFFLINE';
+                        saveServer(s);
+                    }
                 });
             
-            // Return immediately
-            res.json({ success: true, message: 'Installation started in background. Check console for progress.' });
+            res.json({ success: true, message: 'Installation started in background.' });
             return; 
-            // Note: We return early, so we don't hit the saveServer below immediately (which is fine, we saved status before?).
-            // Wait, the original code did 'server.executable = ...; saveServer(server);'.
-            // We need to ensure we don't break flow.
-            // The original code falls through to 'saveServer(server); res.json(server);' (Wait, let's check snippet).
         } else if (type === 'neoforge') {
-            const executable = await installerService.installNeoForge(server.workingDirectory, version || '1.21.1', build);
+            const executable = await installerService.installNeoForge(id, server.workingDirectory, version || '1.21.1', build, onProgress);
             server.executable = executable;
-            server.javaVersion = 'Java 21'; // NeoForge usually enforces this
+            server.javaVersion = 'Java 21';
             saveServer(server);
         } else if (type === 'spigot') {
-            await installerService.installSpigot(server.workingDirectory, version || '1.21.11');
+            await installerService.installSpigot(id, server.workingDirectory, version || '1.21.1', onProgress);
+        } else if (type === 'velocity') {
+            await installerService.installVelocity(id, server.workingDirectory, { version: version || '3.4.0-SNAPSHOT', build }, onProgress);
+            const s = getServer(id);
+            if (s) {
+                s.executable = 'velocity.jar';
+                saveServer(s);
+            }
         } else if (type === 'bedrock') {
-            const bVersion = version || '1.21.11.01';
-            await installerService.installBedrock(server.workingDirectory, bVersion);
-            
-            // Hardening: Ensure executable and command are set for Bedrock
+            const bVersion = version || '1.26.0.2';
+            await installerService.installBedrock(id, server.workingDirectory, bVersion, onProgress);
             const s = getServer(id);
             if (s) {
                 const exe = process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server';
                 s.executable = exe;
                 s.executionCommand = process.platform === 'win32' ? exe : `./${exe}`;
-                s.version = bVersion; // Sync confirmed version
+                s.version = bVersion;
+                s.status = 'OFFLINE';
                 saveServer(s);
-                console.log(`[Installation] Bedrock instance ${id} finalized with executable: ${s.executable} and command: ${s.executionCommand}`);
             }
         } else {
-            return res.status(400).json({ error: 'Invalid installation type or missing parameters' });
+            console.error(`[Installation] Rejected: Invalid type "${type}" or missing parameters.`);
+            return res.status(400).json({ 
+                error: 'Invalid installation type or missing parameters',
+                details: { receivedType: type, supported: ['paper', 'purpur', 'vanilla', 'fabric', 'modpack', 'forge', 'neoforge', 'spigot', 'velocity', 'bedrock'] }
+            });
         }
 
         // --- Post-Install: Check Advanced Flags ---
         if (server.advancedFlags) {
             if (server.advancedFlags.installSpark) {
-                // Spark only works on Spigot/Paper/Fabric/Forge/NeoForge
-                // We'll assume the user picked a compatible version or understands it.
-                // Currently only downloading Bukkit version (works on Paper/Spigot)
                 if (type === 'paper' || type === 'purpur' || type === 'spigot') {
-                     console.log(`[Installation] Installing Spark for ${type} server...`);
                      await installerService.installSpark(server.workingDirectory);
                 }
             }
-
-
         }
 
         // --- Post-Install: Online Mode (Crack Server) ---
-        // If explicitly set to false, we must update server.properties, otherwise default (true) is fine.
         if (server.onlineMode === false) {
              const propsPath = path.join(server.workingDirectory, 'server.properties');
-             // If file doesn't exist (it usually doesn't yet on fresh install unless installPaper etc created it)
-             // We create it.
              if (!await fs.pathExists(propsPath)) {
                  await fs.writeFile(propsPath, 'online-mode=false\n');
              } else {
@@ -1030,10 +1069,22 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
              }
         }
 
-        res.json({ success: true, message: 'Installation started' });
+        const finalS = getServer(id);
+        if (finalS && finalS.status === 'INSTALLING') {
+            finalS.status = 'OFFLINE';
+            saveServer(finalS);
+        }
 
+        res.json({ success: true, message: 'Installation complete' });
         auditService.log((req as any).user.id, 'TEMPLATE_INSTALL', id, { type, version });
+
     } catch (e: any) {
+        console.error(`[Installation] Fatal error during ${type} install for ${id}:`, e);
+        const s = getServer(id);
+        if (s) {
+            s.status = 'OFFLINE';
+            saveServer(s);
+        }
         res.status(500).json({ error: e.message });
     }
 });
@@ -1275,6 +1326,17 @@ router.delete('/:id/players/:listType/:identifier', async (req, res) => {
     try {
         const result = await playerService.removePlayer(id, listType as any, identifier);
         res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Get Player Activity History
+router.get('/:id/activity', verifyToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const history = processManager.getActivityHistory(id);
+        res.json(history);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

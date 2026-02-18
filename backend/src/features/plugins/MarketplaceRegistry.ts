@@ -53,7 +53,7 @@ function setCache(key: string, data: PluginSearchResult) {
 }
 
 // --- Platform Mapping ---
-const SOFTWARE_TO_PLATFORMS: Record<string, string[]> = {
+export const SOFTWARE_TO_PLATFORMS: Record<string, string[]> = {
     'Paper': ['bukkit', 'spigot', 'paper'],
     'Purpur': ['bukkit', 'spigot', 'paper', 'purpur'],
     'Spigot': ['bukkit', 'spigot'],
@@ -157,7 +157,7 @@ async function searchModrinth(query: PluginSearchQuery, software: string): Promi
 }
 
 // --- Modrinth Download URL Resolution ---
-export async function getModrinthDownloadUrl(projectId: string, gameVersion?: string) {
+export async function getModrinthDownloadUrl(projectId: string, gameVersion?: string, platforms?: string[]) {
     const headers = { 'User-Agent': 'CraftCommand/1.8.0 (contact@craftcommand.io)' };
     
     // Parallel fetch project and versions
@@ -167,15 +167,30 @@ export async function getModrinthDownloadUrl(projectId: string, gameVersion?: st
     ]);
 
     const project = projectRes.data as any;
-    let versions = versionsRes.data;
+    let versions = versionsRes.data as any[];
 
     // Filter by game version if specified
     if (gameVersion) {
-        const filtered = (versions as any[]).filter((v: any) => v.game_versions?.includes(gameVersion));
+        const filtered = versions.filter((v: any) => v.game_versions?.includes(gameVersion));
         if (filtered.length > 0) versions = filtered;
     }
 
-    if (!(versions as any[]).length) throw new Error('No versions found for this plugin');
+    // Filter by loaders/platforms if specified
+    if (platforms && platforms.length > 0) {
+        const platformSet = new Set(platforms.map(p => p.toLowerCase()));
+        const filtered = versions.filter((v: any) => 
+            v.loaders?.some((loader: string) => platformSet.has(loader.toLowerCase()))
+        );
+        if (filtered.length > 0) {
+            versions = filtered;
+        } else {
+            // Hardening: If we explicitly requested specific platforms and NONE matched,
+            // do NOT fall back to incompatible versions (like Forge on Paper).
+            throw new Error(`No compatible versions found for requested platforms: ${platforms.join(', ')}`);
+        }
+    }
+
+    if (!versions.length) throw new Error('No compatible versions found for this plugin');
 
     const latest = versions[0];
     const primaryFile = (latest as any).files.find((f: any) => f.primary) || (latest as any).files[0];
@@ -428,10 +443,31 @@ export class MarketplaceRegistry {
         };
     }
 
-    async getDownloadUrl(sourceId: string, source: string, gameVersion?: string) {
+    async getDownloadUrl(sourceId: string, source: string, gameVersion?: string, platforms?: string[]) {
         switch (source) {
+            case 'direct':
+                let url = sourceId;
+                let fileName = sourceId.split('/').pop()?.split('?')[0] || 'plugin.jar';
+
+                // Support "url|filename.jar" syntax
+                if (sourceId.includes('|')) {
+                    const parts = sourceId.split('|');
+                    url = parts[0];
+                    fileName = parts[1];
+                } else if (!fileName.endsWith('.jar')) {
+                     fileName += '.jar';
+                }
+
+                return {
+                    url: url,
+                    fileName: fileName,
+                    version: 'latest',
+                    description: 'Manually specified download link',
+                    author: 'Direct Link',
+                    category: 'General'
+                };
             case 'modrinth':
-                return getModrinthDownloadUrl(sourceId, gameVersion);
+                return getModrinthDownloadUrl(sourceId, gameVersion, platforms);
             case 'spiget':
                 return getSpigetDownloadUrl(sourceId);
             case 'hangar':

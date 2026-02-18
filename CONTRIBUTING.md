@@ -1,32 +1,45 @@
 # Contributing to CraftCommand
 
-Thank you for your interest in contributing to CraftCommand!
+Thank you for your interest in contributing! I build CraftCommand as an open-source solution for the Minecraft community, and I welcome all kinds of contributions.
 
-## Getting Started
+## Development Setup
 
-1.  **Fork** the repository.
-2.  **Clone** your fork locally.
-3.  Run `npm install` in the root and in the `backend/` directory.
-4.  Run `run_locally.bat` (Windows) or `npm run start:all`.
+1.  **Fork** the repository and clone it to your local machine.
+2.  **Install Dependencies**:
+    - Root: `npm install`
+    - Backend: `cd backend && npm install`
+    - Frontend: `cd frontend && npm install`
+3.  **Environment**: Copy `.env.example` to `.env` if it doesn't exist.
+4.  **Run Locally**: Use `run_locally.bat` (Windows) or `npm run dev` in the root.
 
-## Code Style
+## Branching Strategy
 
-- Use TypeScript for all new components.
-- Follow the existing folder structure.
-- Ensure all new features have appropriate error handling.
+- `main`: Stable production branch.
+- `develop`: Ongoing feature integration.
+- `feature/*`: Specific feature development.
+- `fix/*`: Specific bug fixes.
 
-## Pull Requests
+## Pull Request Guidelines
 
-1.  Create a feature branch: `git checkout -b feature/my-new-feature`
-2.  Commit your changes: `git commit -m 'Add some feature'`
-3.  Push to the branch: `git push origin feature/my-new-feature`
-4.  Open a Pull Request.
+1.  Create a branch from `develop`.
+2.  **Mandatory Tests**: If adding a feature, include a test case or clear verification steps.
+3.  **Code Quality**: Follow existing TypeScript patterns and use functional components in the frontend.
+4.  **Documentation**: Update relevant `.md` files in `/docs` if your change affects architecture or configuration.
+5.  **Commit Messages**: Use clear, descriptive messages (e.g., `feat: Add support for Modrinth installers`).
 
 ## Reporting Bugs
 
-Please include:
+Please use the [GitHub Issue Tracker](https://github.com/Extroos/Craft-Commands/issues). Provide:
 
-- Your OS and Node.js version.
-- Steps to reproduce.
-- Expected behavior vs. actual behavior.
-- Screenshots if applicable.
+- OS and Node.js version.
+- Exact steps to reproduce.
+- Expected behavior vs. actual result.
+- Log snippets from `backend/logs/app.log`.
+
+## Code of Conduct
+
+Help keep the community professional and welcoming. Be respectful to other contributors and users.
+
+---
+
+_For technical deep-dives, see the [Architecture Guide](docs/ARCHITECTURE.md)._

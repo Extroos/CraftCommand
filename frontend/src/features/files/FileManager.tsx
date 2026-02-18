@@ -14,6 +14,8 @@ import { useToast } from '../ui/Toast';
 import { API } from '@core/services/api';
 import { useUser } from '@features/auth/context/UserContext';
 import { useCollaboration } from '@features/collaboration/context/CollaborationContext';
+import { usePermissions } from '@features/auth/hooks/usePermissions';
+import AccessDenied from '@features/auth/components/AccessDenied';
 
 
 interface FileManagerProps {
@@ -26,7 +28,9 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const [currentPath, setCurrentPath] = useState<string[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const { user } = useUser();
-    const canManage = user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'MANAGER';
+    const { can } = usePermissions();
+    const canManage = can('server.files.write', serverId);
+    const canRead = can('server.files.read', serverId);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'size' | 'modified', direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
     const [isDragging, setIsDragging] = useState(false);
@@ -41,6 +45,8 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const [editorFile, setEditorFile] = useState<{ node: FileNode, content: string } | null>(null);
     const [uploadProgress, setUploadProgress] = useState<{ visible: boolean, progress: number, filename: string }>({ visible: false, progress: 0, filename: '' });
     const [newItemModal, setNewItemModal] = useState<{ type: 'file' | 'folder' | null, value: string }>({ type: null, value: '' });
+    const [deletingItemIds, setDeletingItemIds] = useState<Set<string>>(new Set());
+    const [extractingItemIds, setExtractingItemIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         mountedRef.current = true;
@@ -51,6 +57,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     }, [serverId]);
 
     const fetchFiles = async () => {
+        if (!canRead) return;
         try {
             const pathStr = currentPath.length > 0 ? currentPath.join('/') : '.';
             const files = await API.getFiles(serverId, pathStr);
@@ -90,6 +97,9 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
         if (searchTerm) {
             files = files.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
         }
+        // Filter out optimistically deleted items
+        files = files.filter(f => !deletingItemIds.has(f.id));
+        
         return [...files].sort((a, b) => {
             // Folders always at top
             if (a.isDirectory && !b.isDirectory) return -1;
@@ -150,6 +160,11 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
 
     const handleCreateItem = async () => {
         if (!newItemModal.value || !newItemModal.type) return;
+
+        if (!canManage) {
+            addToast('error', 'Access Denied', 'You do not have permission to create files.');
+            return;
+        }
         
         try {
             const relPath = [...currentPath, newItemModal.value].join('/');
@@ -171,29 +186,60 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const handleDelete = async (idsToDelete?: Set<string>) => {
         const targets = idsToDelete || selectedIds;
         if (targets.size === 0) return;
+
+        if (!can('server.files.write', serverId)) {
+            addToast('error', 'Access Denied', 'You do not have permission to delete files.');
+            return;
+        }
+
         if (!confirm(`Are you sure you want to delete ${targets.size} items?`)) return;
         
+        const paths = Array.from(targets);
+        setDeletingItemIds(prev => {
+            const next = new Set(prev);
+            paths.forEach(p => next.add(p));
+            return next;
+        });
+
         try {
-            const paths = Array.from(targets);
             await API.deleteFiles(serverId, paths);
-            
             addToast('success', 'Items Deleted', `Removed ${targets.size} files/folders.`);
             setSelectedIds(new Set());
-            fetchFiles();
-            
+            // No need to fetch immediately if optimistic filtering works, but safer to refresh
+            await fetchFiles();
         } catch (e) {
             addToast('error', 'Delete Failed', 'Failed to remove items from disk.');
+        } finally {
+            setDeletingItemIds(prev => {
+                const next = new Set(prev);
+                paths.forEach(p => next.add(p)); // Keep them hidden until refresh finishes
+                return next;
+            });
+            // Re-fetch to clear optimistic state and ensure sync
+            fetchFiles().finally(() => setDeletingItemIds(new Set()));
         }
     };
 
     const handleExtract = async (filePath: string, fileName: string) => {
+        if (!can('server.files.write', serverId)) {
+            addToast('error', 'Access Denied', 'You do not have permission to extract files.');
+            return;
+        }
+
         addToast('info', 'Extracting', `Please wait while ${fileName} is being extracted...`);
+        setExtractingItemIds(prev => new Set(prev).add(filePath));
         try {
             await API.extractFile(serverId, filePath);
             addToast('success', 'Extraction Complete', `${fileName} has been extracted.`);
             fetchFiles();
         } catch (e: any) {
             addToast('error', 'Extraction Failed', e.message || 'Failed to extract ZIP file.');
+        } finally {
+            setExtractingItemIds(prev => {
+                const next = new Set(prev);
+                next.delete(filePath);
+                return next;
+            });
         }
     };
 
@@ -244,6 +290,12 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
 
     const handleSaveFile = async () => {
         if (!editorFile) return;
+
+        if (!canManage) {
+            addToast('error', 'Access Denied', 'You do not have permission to save files.');
+            return;
+        }
+
         try {
             await API.saveFileContent(serverId, editorFile.node.path, editorFile.content);
             addToast('success', 'File Saved', editorFile.node.name);
@@ -380,7 +432,17 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                 </tr>
                             )}
                             
-                            {currentFiles.length === 0 && (
+                            {!canRead ? (
+                                <tr>
+                                    <td colSpan={5} className="py-20 text-center">
+                                        <AccessDenied 
+                                            title="File Access Restricted"
+                                            description="You do not have permission to view files on this server. Please contact your administrator for access."
+                                            showBackButton={false}
+                                        />
+                                    </td>
+                                </tr>
+                            ) : currentFiles.length === 0 && (
                                 <tr>
                                     <td colSpan={5} className="py-20 text-center text-muted-foreground">
                                         <div className="flex flex-col items-center gap-2">
@@ -440,6 +502,12 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                                         LIVE
                                                     </span>
                                                 )}
+                                                {extractingItemIds.has(file.path) && (
+                                                    <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-blue-500/10 text-[9px] font-bold text-blue-500 animate-pulse border border-blue-500/20">
+                                                        <Loader2 size={10} className="animate-spin" />
+                                                        EXTRACTING
+                                                    </span>
+                                                )}
                                                 {file.isProtected && (
                                                     <span title="System File" className="ml-2 flex items-center">
                                                         <Shield size={12} className="text-emerald-500" />
@@ -475,10 +543,10 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                                             e.stopPropagation();
                                                             handleDelete(new Set([file.id]));
                                                         }}
-                                                        disabled={file.isProtected}
+                                                        disabled={file.isProtected || deletingItemIds.has(file.id)}
                                                         className={`p-1.5 rounded transition-colors ${file.isProtected ? 'text-muted-foreground/30 cursor-not-allowed' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'}`} title="Delete"
                                                     >
-                                                        <Trash2 size={14} />
+                                                        {deletingItemIds.has(file.id) ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                                                     </button>
                                                 )}
                                             </div>

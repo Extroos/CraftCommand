@@ -30,6 +30,8 @@ import { DiscordConfig, GlobalSettings, DiscordBotConfig } from '@shared/types';
 import { API } from '@core/services/api';
 import { useToast } from '../ui/Toast';
 import { useServers } from '@features/servers/context/ServerContext';
+import { usePermissions } from '@features/auth/hooks/usePermissions';
+import AccessDenied from '@features/auth/components/AccessDenied';
 
 interface IntegrationsProps {
     serverId: string;
@@ -70,6 +72,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
     const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
     
     const { addToast } = useToast();
+    const { can } = usePermissions();
     const { currentServer, updateServerConfig } = useServers();
 
     useEffect(() => {
@@ -110,15 +113,27 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
     };
 
     const handleSaveWebhooks = async () => {
+        if (!can('server.integrations.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions to manage server integrations');
+            return;
+        }
         const updates = { discordConfig: webhookConfig };
-        await API.updateServer(serverId, updates);
-        updateServerConfig(serverId, updates);
-        setIsDirty(false);
-        addToast('success', 'Webhook Saved', 'Server webhook settings updated.');
+        try {
+            await API.updateServer(serverId, updates);
+            updateServerConfig(serverId, updates);
+            setIsDirty(false);
+            addToast('success', 'Webhook Saved', 'Server webhook settings updated.');
+        } catch (e) {
+            addToast('error', 'Save Failed', 'Could not update server integrations.');
+        }
     };
 
     const handleSaveBot = async () => {
         if (!globalSettings) return;
+        if (!can('system.integrations.manage')) {
+            addToast('error', 'Permissions', 'Insufficient permissions to modify global bot settings');
+            return;
+        }
         try {
             await API.updateGlobalSettings({ ...globalSettings, discordBot: botConfig });
             setIsDirty(false);
@@ -129,6 +144,10 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
     };
 
     const handleSyncCommands = async () => {
+        if (!can('system.integrations.manage')) {
+            addToast('error', 'Permissions', 'Insufficient permissions to sync global commands');
+            return;
+        }
         setIsSyncing(true);
         try {
             await API.syncDiscordCommands();
@@ -144,6 +163,10 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
     };
 
     const handleReconnect = async () => {
+        if (!can('system.integrations.manage')) {
+            addToast('error', 'Permissions', 'Insufficient permissions to reconnect bot');
+            return;
+        }
         setIsRefreshingStatus(true);
         try {
             await API.reconnectDiscord();
@@ -165,6 +188,10 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
         setBotConfig(prev => ({ ...prev, [key]: value }));
         setIsDirty(true);
     };
+
+    const CheckmarkIcon = () => (
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+    );
 
     const renderWebhookTab = () => (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full font-sans">
@@ -271,14 +298,15 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
 
                  <button 
                     onClick={handleSaveWebhooks}
-                    disabled={!isDirty}
+                    disabled={!isDirty || !can('server.integrations.manage', serverId)}
+                    title={!can('server.integrations.manage', serverId) ? 'Insufficient Permissions' : ''}
                     className={`w-full py-2.5 rounded-md font-bold text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-lg ${
-                        isDirty 
+                        isDirty && can('server.integrations.manage', serverId)
                         ? 'bg-zinc-100 text-black hover:bg-zinc-300 hover:scale-[1.01] shadow-white/5' 
                         : 'bg-[#18181b] text-[rgb(var(--color-fg-subtle))] border border-[rgb(var(--color-border-subtle))] opacity-50 cursor-not-allowed'
                     }`}
                 >
-                    <Save size={12} className={isDirty ? "animate-pulse" : ""} /> Save Configuration
+                    <Save size={12} className={(isDirty && can('server.integrations.manage', serverId)) ? "animate-pulse" : ""} /> Save Configuration
                 </button>
             </div>
 
@@ -312,12 +340,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
         </div>
     );
 
-    const CheckmarkIcon = () => (
-        <svg  width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-    )
-
-    const renderBotTab = () => {
-        return (
+    const renderBotTab = () => (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full font-sans animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="space-y-6">
                 {/* Connection Status Card */}
@@ -342,9 +365,9 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                         <div className="flex items-center gap-3">
                             <button 
                                 onClick={handleReconnect}
-                                disabled={isRefreshingStatus || !botConfig.enabled}
-                                title="Reconnect Bot"
-                                className="p-2 rounded-md bg-[#18181b] hover:bg-[#27272a] text-[rgb(var(--color-fg-muted))] hover:text-white transition-all border border-[rgb(var(--color-border-subtle))] hover:border-[rgb(var(--color-border-default))] shadow-lg"
+                                disabled={isRefreshingStatus || !botConfig.enabled || !can('system.integrations.manage')}
+                                title={can('system.integrations.manage') ? "Reconnect Bot" : "Insufficient Permissions"}
+                                className="p-2 rounded-md bg-[#18181b] hover:bg-[#27272a] text-[rgb(var(--color-fg-muted))] hover:text-white transition-all border border-[rgb(var(--color-border-subtle))] hover:border-[rgb(var(--color-border-default))] shadow-lg disabled:opacity-50"
                             >
                                 <RefreshCw size={14} className={isRefreshingStatus ? 'animate-spin' : ''} />
                             </button>
@@ -353,9 +376,10 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                                     type="checkbox" 
                                     className="sr-only peer" 
                                     checked={botConfig.enabled}
+                                    disabled={!can('system.integrations.manage')}
                                     onChange={(e) => updateBotConfig('enabled', e.target.checked)}
                                 />
-                                <div className="w-9 h-4 bg-[#18181b] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-500 after:border-zinc-600 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#5865F2]/20 peer-checked:after:bg-[#5865F2] peer-checked:after:border-[#4752C4] group-hover/toggle:after:scale-95 transition-all"></div>
+                                <div className="w-9 h-4 bg-[#18181b] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-500 after:border-zinc-600 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#5865F2]/20 peer-checked:after:bg-[#5865F2] peer-checked:after:border-[#4752C4] group-hover/toggle:after:scale-95 transition-all peer-disabled:opacity-30"></div>
                             </label>
                         </div>
                     </div>
@@ -473,11 +497,12 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
 
                 <div className="flex flex-col gap-3">
                     <div className="flex gap-3">
-                        <button 
+                         <button 
                             onClick={handleSaveBot}
-                            disabled={!isDirty}
+                            disabled={!isDirty || !can('system.integrations.manage')}
+                            title={!can('system.integrations.manage') ? 'Insufficient Permissions' : ''}
                              className={`flex-1 py-2.5 rounded-md font-bold text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-lg ${
-                                isDirty 
+                                isDirty && can('system.integrations.manage')
                                 ? 'bg-zinc-100 text-black hover:bg-zinc-300 hover:scale-[1.01] shadow-white/5' 
                                 : 'bg-[#18181b] text-[rgb(var(--color-fg-subtle))] border border-[rgb(var(--color-border-subtle))] opacity-50 cursor-not-allowed'
                             }`}
@@ -486,10 +511,10 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                         </button>
                         <button 
                             onClick={handleSyncCommands}
-                            disabled={isSyncing || discordStatus.status !== 'online'}
-                            title="Register slash commands with Discord"
+                            disabled={isSyncing || discordStatus.status !== 'online' || !can('system.integrations.manage')}
+                            title={can('system.integrations.manage') ? "Register slash commands with Discord" : "Insufficient Permissions"}
                              className={`px-6 py-2.5 rounded-md font-bold text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-lg ${
-                                discordStatus.status === 'online'
+                                discordStatus.status === 'online' && can('system.integrations.manage')
                                 ? 'bg-[#5865F2] text-white hover:bg-[#4752C4] hover:scale-[1.01] shadow-[#5865F2]/20' 
                                 : 'bg-[#18181b] text-[rgb(var(--color-fg-subtle))] border border-[rgb(var(--color-border-subtle))] opacity-50 cursor-not-allowed'
                             }`}
@@ -621,7 +646,18 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
             </div>
         </div>
     );
-    };
+
+    const canManageServerInt = can('server.integrations.manage', serverId);
+    const canManageSystemInt = can('system.integrations.manage');
+
+    if (!canManageServerInt && !canManageSystemInt && !can('server.integrations.read', serverId)) {
+        return (
+            <AccessDenied 
+                title="Integrations Access Restricted"
+                description="You do not have permission to view or manage integrations for this server. Please contact an administrator for access."
+            />
+        );
+    }
 
     return (
         <div className="h-[calc(100vh-140px)] flex flex-col gap-6 font-sans">

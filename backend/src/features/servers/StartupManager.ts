@@ -14,6 +14,10 @@ import { safetyService, SafetyError } from '../system/SafetyService';
 import { systemSettingsService } from '../system/SystemSettingsService';
 import { NetUtils } from '../../utils/NetUtils';
 import { WEB_ROOT } from '../../constants';
+import { proxyService } from '../network/ProxyService';
+import { serverConfigService } from './ServerConfigService';
+import { SafeFileOperation } from '../../utils/fs';
+import { AppError } from '../../utils/AppError';
 
 export class StartupManager {
 
@@ -23,89 +27,72 @@ export class StartupManager {
     async startServer(server: any, saveServerCallback: (s: any) => void, force: boolean = false): Promise<void> {
         const id = server.id;
 
-        // 0. Smart Auto-Correction (Velocity) - Run BEFORE Safety Checks
-
-
-        // 0.1 Safety Checks (Skip if forced)
-        if (!force) {
-            await safetyService.validateServer(server);
-        }
-
-        // 1. Double-Start Check: Is the port already in use?
-        // Note: SafetyService checks Pre-flight, but we check again here for race conditions.
-        const isPortInUse = await NetUtils.checkPort(server.port);
-        if (isPortInUse) {
-            if (force) {
-                console.warn(`[StartupManager:${id}] Port ${server.port} is busy. Force mode active: purging ghost process...`);
-                const killed = await processManager.killProcessOnPort(server.port);
-                if (killed) {
-                    console.log(`[StartupManager:${id}] Ghost purged. Waiting for handle release...`);
-                    await new Promise(r => setTimeout(r, 1500)); 
-                }
-            } else {
-                throw new SafetyError(
-                    `Port ${server.port} is already in use by another process. Stop any external instances if you want the panel to manage this server.`,
-                    'PORT_BUSY_GHOST',
-                    { port: server.port }
-                );
-            }
-        }
-
-        // 2. Prepare Environment (Create folders, etc.)
-        await this.prepareEnvironment(server);
-
-        // 3. Resolve Java (Skip for Bedrock)
-        let javaPath = '';
-        if (server.software !== 'Bedrock') {
-            javaPath = await javaManager.ensureJava(server.javaVersion || 'Java 17');
-        }
-
-        // 4. Build Command
-        // Enforce Properties for Backend Servers (Trust No One)
-        await this.enforceBackendProperties(server);
-
-        // GLOBAL DOCKER ENFORCEMENT
-        const settings = systemSettingsService.getSettings();
-        let engine = server.executionEngine || 'native';
-        if (engine === 'docker' && !settings.app.dockerEnabled) {
-            console.warn(`[StartupManager:${id}] Docker is disabled globally. Overriding execution engine to 'native' for safety.`);
-            engine = 'native';
-        }
-
-        const { cmd, cwd, env } = await this.buildStartCommand(server, javaPath, engine);
-        
-        // 5. Launch
-        let dockerImage = server.dockerImage;
-        const autoImage = javaManager.getDockerImageForJava(server.javaVersion);
-
-        // Smart Override: If no image set, OR if it's common default/stale, use auto-mapped
-        if (!dockerImage || dockerImage.includes('eclipse-temurin')) {
-             // simplified logic: trust the java manager if it's undefined or a standard image
-             if (!dockerImage) dockerImage = autoImage;
-        }
-
-        console.log(`[StartupManager:${id}] Selected Docker image: ${dockerImage}`);
-        
-        // PERSISTENT DEBUG TRACE
         try {
-            fs.writeFileSync(path.join(process.cwd(), 'data', 'last_docker_start.json'), JSON.stringify({
-                timestamp: new Date().toISOString(),
-                id,
+            // 0.1 Safety Checks (Skip if forced)
+            if (!force) {
+                await safetyService.validateServer(server);
+            }
+
+            // 1. Double-Start Check
+            const isPortInUse = await NetUtils.checkPort(Number(server.port));
+            if (isPortInUse) {
+                if (force) {
+                    logger.warn(`[StartupManager:${id}] Port ${server.port} is busy. Force mode: purging...`);
+                    const killed = await NetUtils.killProcessOnPort(Number(server.port));
+                    if (killed) await new Promise(r => setTimeout(r, 1000));
+                } else {
+                    throw new AppError(409, 'PORT_CONFLICT', `Port ${server.port} is already in use.`);
+                }
+            }
+
+            // 2. Prepare Environment
+            await this.prepareEnvironment(server);
+
+            // 3. Resolve Java (Skip for Bedrock)
+            let javaPath = '';
+            if (server.software !== 'Bedrock') {
+                javaPath = await javaManager.ensureJava(server.javaVersion || 'Java 17');
+            }
+
+            // 4. Build Command
+            // Enforce Properties for Backend Servers (Trust No One)
+            await this.enforceBackendProperties(server);
+
+            // GLOBAL DOCKER ENFORCEMENT
+            const settings = systemSettingsService.getSettings();
+            let engine = server.executionEngine || 'native';
+            if (engine === 'docker' && !settings.app.dockerEnabled) {
+                console.warn(`[StartupManager:${id}] Docker is disabled globally. Overriding execution engine to 'native' for safety.`);
+                engine = 'native';
+            }
+
+            const { cmd, cwd, env } = await this.buildStartCommand(server, javaPath, engine);
+            
+            // 5. Launch
+            let dockerImage = server.dockerImage;
+            const autoImage = javaManager.getDockerImageForJava(server.javaVersion);
+
+            // Smart Override: If no image set, OR if it's common default/stale, use auto-mapped
+            if (!dockerImage || dockerImage.includes('eclipse-temurin')) {
+                if (!dockerImage) dockerImage = autoImage;
+            }
+
+            console.log(`[StartupManager:${id}] Selected Docker image: ${dockerImage}`);
+            
+            processManager.startServer(id, cmd, cwd, { 
+                ...env, 
+                executionEngine: engine,
                 dockerImage,
-                javaVersion: server.javaVersion,
-                autoImage
-            }, null, 2));
-        } catch (e) {}
+                SERVER_PORT: Number(server.port)
+            });
 
-        processManager.startServer(id, cmd, cwd, { 
-            ...env, 
-            executionEngine: engine,
-            dockerImage,
-            SERVER_PORT: server.port
-        });
+            // 6. Clear Restart Flag (Hardening)
+            saveServerCallback({ ...server, needsRestart: false });
 
-        // 6. Clear Restart Flag (Hardening)
-        saveServerCallback({ ...server, needsRestart: false });
+        } catch (error: any) {
+            logger.error(`[StartupManager:${id}] Startup failed: ${error.message}`);
+            throw error;
+        }
     }
 
 
@@ -113,6 +100,9 @@ export class StartupManager {
     private async prepareEnvironment(server: any) {
         const cwd = server.workingDirectory;
         const id = server.id;
+
+        // 0. Permission Guard
+        await SafeFileOperation.checkWritePermissions(cwd);
         
         // 1. Loader/Folder Checks (Auto-Creation)
         const software = server.software?.toLowerCase() || '';
@@ -120,18 +110,18 @@ export class StartupManager {
             const modsDir = path.join(cwd, 'mods');
             if (!(await fs.pathExists(modsDir))) {
                  console.warn(`[StartupManager:${id}] Modded server (${server.software}) detected but 'mods' folder is missing.`);
-                 await fs.ensureDir(modsDir);
+                 await SafeFileOperation.ensureDir(modsDir);
                  console.log(`[StartupManager:${id}] Created empty 'mods' directory.`);
             }
-        } else if (software.includes('paper') || software.includes('spigot') || software.includes('purpur')) {
+        } else if (software.includes('paper') || software.includes('spigot') || software.includes('purpur') || software.includes('velocity')) {
              const pluginsDir = path.join(cwd, 'plugins');
              if (!(await fs.pathExists(pluginsDir))) {
-                 await fs.ensureDir(pluginsDir);
+                 await SafeFileOperation.ensureDir(pluginsDir);
              }
         } else if (software === 'bedrock') {
              const worldsDir = path.join(cwd, 'worlds');
              if (!(await fs.pathExists(worldsDir))) {
-                 await fs.ensureDir(worldsDir);
+                 await SafeFileOperation.ensureDir(worldsDir);
              }
         }
 
@@ -303,30 +293,112 @@ export class StartupManager {
 
     public async enforceBackendProperties(server: any) {
         try {
-            // --- STANDALONE / BACKEND LOGIC ---
-            const propsPath = path.join(server.workingDirectory, 'server.properties');
-            if (await fs.pathExists(propsPath)) {
-                 let content = await fs.readFile(propsPath, 'utf8');
+            const software = server.software?.toLowerCase() || '';
 
-                // 1. STRICT PORT SYNC
-                if (server.port) {
-                    const portStr = `server-port=${server.port}`;
-                    const ipv6PortStr = `server-port-v6=${server.port}`; // Bedrock specific, but harmless for Java
+            // --- VELOCITY CONFIG ENFORCEMENT ---
+            if (software === 'velocity') {
+                const configPath = path.join(server.workingDirectory, 'velocity.toml');
+                if (await fs.pathExists(configPath)) {
+                    const originalContent = await fs.readFile(configPath, 'utf8');
+                    let content = originalContent;
                     
-                    if (content.match(/^server-port\s*=/m)) {
-                        content = content.replace(/^server-port\s*=.*$/m, portStr);
-                    } else {
-                        content += `\n${portStr}`;
+                    // 1. Strip out all existing managed blocks and inline declarations
+                    // This prevents root settings from being swallowed if a block is poorly positioned
+                    content = content.replace(/\[servers\][\s\S]*?(?=\n\[|$)/g, '');
+                    content = content.replace(/\[forced-hosts\][\s\S]*?(?=\n\[|$)/g, '');
+                    content = content.replace(/^servers\s*=\s*\{.*\}$/gm, '');
+                    content = content.replace(/^forced-hosts\s*=\s*\{.*\}$/gm, '');
+                    
+                    // 2. Sync Base Settings (Top Level)
+                    if (server.port) {
+                        if (content.match(/^bind\s*=\s*/m)) {
+                            content = content.replace(/^bind\s*=\s*".*"/m, `bind = "0.0.0.0:${server.port}"`);
+                        } else {
+                            content = `bind = "0.0.0.0:${server.port}"\n${content}`;
+                        }
+                    }
+                    
+                    if (server.onlineMode !== undefined) {
+                        if (content.match(/^online-mode\s*=\s*/m)) {
+                            content = content.replace(/^online-mode\s*=\s*.*$/m, `online-mode = ${server.onlineMode}`);
+                        } else {
+                            content = `online-mode = ${server.onlineMode}\n${content}`;
+                        }
                     }
 
-                    if (server.software === 'Bedrock') {
-                        if (content.match(/^server-port-v6\s*=/m)) {
-                            content = content.replace(/^server-port-v6\s*=.*$/m, ipv6PortStr);
-                        } else {
-                            content += `\n${ipv6PortStr}`;
+                    // Correct key: player-info-forwarding-mode
+                    const forwardingMode = server.network?.proxyConfig?.forwardingMode || 'modern';
+                    if (content.match(/^player-info-forwarding-mode\s*=\s*/m)) {
+                        content = content.replace(/^player-info-forwarding-mode\s*=\s*".*"/m, `player-info-forwarding-mode = "${forwardingMode}"`);
+                    } else if (content.match(/^forwarding-mode\s*=\s*/m)) {
+                        content = content.replace(/^forwarding-mode\s*=\s*".*"/m, `player-info-forwarding-mode = "${forwardingMode}"`);
+                    } else {
+                        // Inject if totally missing
+                        content = `player-info-forwarding-mode = "${forwardingMode}"\n${content}`;
+                    }
+
+                    // 3. Purge dangerous/deprecated keys that cause startup crashes or warnings
+                    content = content.replace(/^forwarding-secret\s*=\s*".*"$/gm, '');
+                    
+                    // 4. Force block headers to start on new lines and be independent
+                    content = content.trim();
+
+                    // 5. Append Managed Blocks at the end
+                    const serversBlock = proxyService.generateVelocityServersConfig(server.id);
+                    if (serversBlock) {
+                        content += `\n\n${serversBlock}`;
+                    }
+
+                    let forcedHostsBlock = '[forced-hosts]\n';
+                    if (server.network?.proxyConfig?.forcedHosts && Object.keys(server.network.proxyConfig.forcedHosts).length > 0) {
+                        for (const [host, targets] of Object.entries(server.network.proxyConfig.forcedHosts)) {
+                            forcedHostsBlock += `  "${host}" = ${JSON.stringify(targets)}\n`;
+                        }
+                    } else {
+                        // Clean defaults
+                        forcedHostsBlock += `  # No forced hosts configured\n`;
+                    }
+                    content += `\n\n${forcedHostsBlock}`;
+
+                    if (content.trim() !== originalContent.trim()) {
+                        await fs.writeFile(configPath, content.trim() + '\n');
+                        logger.info(`[StartupManager] Robustly synced Velocity Network Model for ${server.name}`);
+                    }
+
+                    // 6. Ensure forwarding secret files etc. are synced
+                    await proxyService.syncForwarding(server.id);
+
+                    // 7. SMART SYNC: Automatically enforce configuration for all linked backend servers
+                    const links = server.network?.proxyConfig?.links || [];
+                    if (links.length > 0) {
+                        logger.info(`[StartupManager:${server.id}] Proxy starting. Auto-syncing ${links.length} linked backend servers...`);
+                        
+                        // We avoid deep recursion by only passing the target backend servers
+                        const { serverRepository } = await import('../../storage/ServerRepository');
+                        const allServers = serverRepository.findAll();
+                        
+                        for (const link of links) {
+                            const backend = allServers.find(s => s.id === link.serverId);
+                            if (backend && backend.id !== server.id) {
+                                logger.info(`[StartupManager:${server.id}] -> Triggering sync for ${backend.name} (${backend.software})`);
+                                // Recursive call to fix online-mode and paper-global.yml for each backend
+                                await this.enforceBackendProperties(backend);
+                            }
                         }
                     }
                 }
+                return;
+            }
+
+            // --- STANDALONE / BACKEND LOGIC (Java/Bedrock) ---
+            
+            // 1. General Property Sync (Phase 54.2)
+            // This handles port, online-mode, motd, max-players, and difficulty
+            await serverConfigService.enforceConfig(server);
+
+            const propsPath = path.join(server.workingDirectory, 'server.properties');
+            if (await fs.pathExists(propsPath)) {
+                 let content = await fs.readFile(propsPath, 'utf8');
 
                 // 2. NETWORK COMPRESSION THRESHOLD SYNC
                 if (server.advancedFlags?.compressionThreshold !== undefined) {
@@ -339,11 +411,105 @@ export class StartupManager {
                     }
                 }
 
+                // 3. PROXY-AWARE AUTHENTICATION ENFORCEMENT
+                // Backend servers (Paper/Forge/etc.) MUST be in online-mode=false to accept Velocity connections
+                const { serverRepository } = await import('../../storage/ServerRepository');
+                const allServers = serverRepository.findAll();
+                const isLinkedToProxy = allServers.some(s => 
+                    s.software === 'Velocity' && 
+                    s.network?.proxyConfig?.links?.some((l: any) => l.serverId === server.id)
+                );
+
+                if (isLinkedToProxy && software !== 'velocity') {
+                    if (content.match(/^online-mode\s*=/m)) {
+                        content = content.replace(/^online-mode\s*=.*$/m, 'online-mode=false');
+                    } else {
+                        content += '\nonline-mode=false';
+                    }
+                    logger.info(`[StartupManager:${server.id}] Enforced online-mode=false for proxy compliance.`);
+                }
+                
                 await fs.writeFile(propsPath, content);
+
+                // 4. FORWARDING REVERT (Spigot/Paper)
+                if (software.includes('spigot')) {
+                    const spigotPath = path.join(server.workingDirectory, 'spigot.yml');
+                    if (await fs.pathExists(spigotPath)) {
+                        let spigotContent = await fs.readFile(spigotPath, 'utf8');
+                        if (isLinkedToProxy) {
+                            spigotContent = spigotContent.replace(/bungeecord:\s*false/g, 'bungeecord: true');
+                        } else {
+                            spigotContent = spigotContent.replace(/bungeecord:\s*true/g, 'bungeecord: false');
+                        }
+                        await fs.writeFile(spigotPath, spigotContent);
+                    }
+                }
+
+                if (software.includes('paper') || software.includes('purpur')) {
+                    await this.enforcePaperForwarding(server, isLinkedToProxy);
+                }
             }
 
         } catch (err) {
              console.error(`[StartupManager] Failed to enforce properties:`, err);
+        }
+    }
+
+    private async enforcePaperForwarding(server: any, isLinked: boolean) {
+        const paths = [
+            path.join(server.workingDirectory, 'config', 'paper-global.yml'),
+            path.join(server.workingDirectory, 'paper.yml') // Legacy 1.18 and below
+        ];
+
+        for (const configPath of paths) {
+            if (!(await fs.pathExists(configPath))) continue;
+
+            try {
+                let content = await fs.readFile(configPath, 'utf8');
+                const { serverRepository } = await import('../../storage/ServerRepository');
+                const allServers = serverRepository.findAll();
+                
+                // Find the proxy this server is linked to
+                const proxy = allServers.find(s => 
+                    s.software === 'Velocity' && 
+                    s.network?.proxyConfig?.links?.some((l: any) => l.serverId === server.id)
+                );
+
+                if (isLinked && proxy && proxy.network?.proxyConfig) {
+                    const config = proxy.network.proxyConfig;
+                    const mode = config.forwardingMode || 'modern';
+                    const secret = config.secret || '';
+
+                    if (mode === 'modern') {
+                        // 1. Enable Velocity
+                        if (content.match(/velocity:\s*\n\s*enabled:\s*false/)) {
+                            content = content.replace(/(velocity:\s*\n\s*enabled:\s*)false/, '$1true');
+                        } else if (!content.includes('velocity:')) {
+                            // This shouldn't happen with standard Paper but just in case
+                            content += '\nproxies:\n  velocity:\n    enabled: true\n    online-mode: false\n    secret: ""';
+                        } else {
+                             content = content.replace(/(velocity:\s*\n\s*enabled:\s*)\w+/, '$1true');
+                        }
+
+                        // 2. Set Secret
+                        if (content.match(/secret:\s*['"]?.*['"]?/)) {
+                            content = content.replace(/(secret:\s*)['"]?.*?['"]?(\n|$)/, `$1'${secret}'$2`);
+                        }
+                        
+                        await fs.writeFile(configPath, content);
+                        logger.info(`[StartupManager:${server.id}] Synced Velocity forwarding to ${path.basename(configPath)}`);
+                    }
+                } else {
+                    // REVERT: Disable Velocity forwarding if not linked
+                    if (content.match(/velocity:\s*\n\s*enabled:\s*true/)) {
+                        content = content.replace(/(velocity:\s*\n\s*enabled:\s*)true/, '$1false');
+                        await fs.writeFile(configPath, content);
+                        logger.info(`[StartupManager:${server.id}] Disabled Velocity forwarding in ${path.basename(configPath)}`);
+                    }
+                }
+            } catch (e) {
+                logger.error(`[StartupManager] Error enforcing Paper forwarding in ${configPath}: ${e instanceof Error ? e.message : String(e)}`);
+            }
         }
     }
 }

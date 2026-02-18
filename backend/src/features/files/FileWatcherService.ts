@@ -52,6 +52,12 @@ export class FileWatcherService extends EventEmitter {
             this.watchers.delete(serverId);
         }
     }
+
+    shutdown() {
+        console.log('[FileWatcher] Closing all file watchers...');
+        this.watchers.forEach(watcher => watcher.close());
+        this.watchers.clear();
+    }
 }
 
 export const fileWatcherService = new FileWatcherService();

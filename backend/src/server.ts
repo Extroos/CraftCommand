@@ -17,7 +17,7 @@ import { setupSocket } from './sockets';
 // But we need to inject IO first.
 
 import { logger } from './utils/logger';
-import { getServers, startServer } from './features/servers/ServerService';
+import { getServers, startServer, cleanupInstallState } from './features/servers/ServerService';
 import { javaManager } from './features/processes/JavaManager';
 import { processManager } from './features/processes/ProcessManager';
 import { fileWatcherService } from './features/files/FileWatcherService';
@@ -25,6 +25,7 @@ import { discordService } from './features/integrations/DiscordService';
 import { systemSettingsService } from './features/system/SystemSettingsService';
 import { autoHealingService } from './features/servers/AutoHealingService';
 import { updateService } from './features/system/UpdateService';
+import { migrationService } from './features/system/MigrationService';
 import { errorHandler } from './middleware/errorHandler';
 import os from 'os';
 
@@ -81,7 +82,11 @@ const startup = async () => {
     await import('fs-extra').then(f => f.ensureDir(DATA_PATHS.BACKGROUNDS_UPLOADS_DIR));
 
     logger.info('Starting migrations...');
+    await migrationService.runMigrations();
     logger.info('Initializing system components...');
+
+    // 0. Self-Healing: Cleanup stuck installation states (Phase 53.3)
+    cleanupInstallState();
 
     try {
         const servers = getServers();
@@ -219,10 +224,10 @@ const startMain = async () => {
                 </head>
                 <body>
                     <div class="card">
-                        <h1>UI Not Found</h1>
-                        <p>The Web Dashboard assets are missing or corrupted.</p>
-                        <p>Click below to synchronize the latest assets from the repository.</p>
-                        <button onclick="runUpdate()">Update Web (BETA)</button>
+                        <h1>UI Component Missing</h1>
+                        <p>The Web Dashboard assets (v1.11.0) were not found or are currently being updated.</p>
+                        <p>This usually occurs after a partial update or a manual file deletion.</p>
+                        <button onclick="runUpdate()">Repair Installation</button>
                         <p id="status" style="margin-top: 1rem; font-size: 0.9rem; color: #94a3b8;"></p>
                     </div>
                     <script>
@@ -230,16 +235,10 @@ const startMain = async () => {
                              const btn = document.querySelector('button');
                              const status = document.getElementById('status');
                              btn.disabled = true;
-                             status.innerText = 'Synchronizing... (Check backend logs)';
+                             status.innerText = 'Initializing Repair...';
                              
-                             // Since we don't have a token here (this is a public recovery page),
-                             // the actual /api/system/update-web/run is protected.
-                             // RECOVERY LOGIC: For security, the recovery page should probably
-                             // link to documentation or require a physical button press on the server.
-                             // BUT for this UX, we want it to work if the user is local.
-                             // COMPROMISE: We will provide a link to the launcher instructions or 
-                             // a specialized unprotected recovery endpoint if we decide to add one.
-                             status.innerText = 'Please run "run_locally.bat" to synchronize assets automatically on startup.';
+                             // We recommend running the local launcher for total integrity
+                             status.innerText = 'Please run "run_locally.bat" or "apply_update.ps1" to restore full system integrity.';
                         }
                     </script>
                 </body>
@@ -260,6 +259,39 @@ const startMain = async () => {
             logger.error(`CRITICAL: Backend startup failed: ${e.message}`);
         }
     });
+
+    // --- GRACEFUL SHUTDOWN LOGIC ---
+    const shutdown = async (signal: string) => {
+        logger.info(`\n[System] Received ${signal}. Initiating graceful shutdown...`);
+        
+        try {
+            // 1. Stop accepting new connections (if we had a way to stop express, but httpServer.close is async)
+            if (httpServer) {
+                httpServer.close(() => {
+                    logger.info('[System] HTTP server closed.');
+                });
+            }
+
+            // 2. Stop Integration Services
+            await discordService.shutdown();
+            
+            // 3. Stop internal loops/watchers
+            updateService.shutdown();
+            fileWatcherService.shutdown();
+
+            // 4. Kill Child Processes (Critical: Minecraft Servers)
+            await processManager.shutdown();
+
+            logger.success('[System] Shutdown complete. Goodbye!');
+            process.exit(0);
+        } catch (e: any) {
+            logger.error(`[System] Error during shutdown: ${e.message}`);
+            process.exit(1);
+        }
+    };
+
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
 };
 
 startMain();

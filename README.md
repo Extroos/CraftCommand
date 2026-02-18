@@ -4,13 +4,13 @@
 
 **The Professional Hybrid Cloud Platform for Java & Bedrock Infrastructure**
 
-![version](https://img.shields.io/badge/version-v1.10.1-emerald)
+![version](https://img.shields.io/badge/version-v1.11.0-emerald)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-AGPLv3-blue.svg)
 
 **CraftCommand** is a professional-grade orchestrator that bridges the gap between simple local launchers and complex enterprise infrastructure. It provides **monolithic management** with a **distributed data plane**, designed to **prevent mistakes**, **explain problems**, and **scale safely** from solo use to massive networks.
 
-[Features](docs/ARCHITECTURE.md) • [Architecture](docs/ARCHITECTURE.md) • [Quick Start](#quick-start) • [Security Model](docs/SECURITY.md) • [Full Docs](docs/README.md)
+[Features](docs/ARCHITECTURE.md) • [Architecture](docs/ARCHITECTURE.md) • [Quick Start](#quick-start) • [Security Model](SECURITY.md) • [Full Docs](docs/README.md)
 
 </div>
 
@@ -28,15 +28,15 @@ Most hosting solutions are either **too fragile** (Basic `.bat` files) or **too 
 
 ### Honest Comparison Matrix
 
-| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.10.0)**       |
+| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.11.0)**       |
 | :------------------- | :----------------: | :------------------------: | :-----------------------------------: |
-| **Ideal For**        |      Testing       | Reselling & Large Networks |       **Home Hosting & Teams**        |
+| **Ideal For**        |      Testing       | Reselling & Large Networks |    **Home Hosting & Private Use**     |
 | **Setup Time**       |      Instant       |     Hours (Linux req.)     |       **Instant (Zero-Config)**       |
 | **Architecture**     |    Local Child     |     Distributed Docker     |      **Hybrid (Local + Agents)**      |
 | **OS Synergy**       |        All         |        Linux First         | **Universal (Win Panel + Lin Nodes)** |
-| **Resilience**       |    Crash = Dead    |        Auto-Restart        |  **Self-Healing + Zombie Adoption**   |
-| **Networking**       |  Manual Port Fwd   |       Reverse Proxy        |   **Atomic Proxy + SSL Auto-Issue**   |
-| **License Model**    |      Various       |        Proprietary         |         **Copyleft (AGPLv3)**         |
+| **Resilience**       |    Crash = Dead    |        Auto-Restart        |    **Auto-Healing v3 (Sentinel)**     |
+| **Networking**       |  Manual Port Fwd   |       Reverse Proxy        |  **Proxy Orchestration (Velocity)**   |
+| **World Data**       |     Level Fold     |      Manual Database       |    **World Intelligence (Dynmap)**    |
 | **Environment Fix**  |   Manual Install   |        Error & Exit        |  **Integrated Auto-Fix (Heuristic)**  |
 | **File Transfer**    |     Local Only     |      SFTP Client Req.      |  **Secure Chunked Sync (Built-in)**   |
 | **UX Design**        |  Industrial/Flat   |      Functional/Busy       |     **Premium Glassmorphic IDE**      |
@@ -54,34 +54,45 @@ _Manage multiple servers with a professional, data-dense interface._
 
 _The cluster-wide "God View"_
 
-- **Resource Heatmap**: Spatial visualization of CPU/RAM density across the entire cluster.
-- **Environment Health**: Integrated prerequisite detection (Java 8-21, Docker, Git).
-- **One-Click Auto-Fix**: Automatically repair remote node environments directly from the UI using heuristic diagnosis.
-- **Unified Instance Monitor**: High-performance searchable monitor for all instances across all hosts.
+- **Resource Heatmap**: Real-time spatial visualization of CPU/RAM density across the entire cluster with load-aware color coding.
+- **Environment Health**: Integrated prerequisite detection and normalization (Java 8-21, Docker, Git, Permissions).
+- **One-Click Heuristic Fix**: Automatically repair remote node environments directly from the UI using targeted diagnosis.
+- **Node Capabilities**: Instant advertising of host capabilities (OS, Core Count, Virtualization Status).
 
-### 2. Intelligent Scheduler
+### 2. World Intelligence & Telemetry
 
-_Deterministic Infrastructure Orchestration_
+_Deep spatial visibility into your worlds_
 
-- **Metric-Based Placement**: Servers are automatically deployed to the node with the healthiest resource profile (Lowest CPU load, Highest Free RAM).
-- **Capacity Guards**: Prevents over-provisioning through proactive hardware monitoring and capability advertising.
+- **Dynmap Integration**: Professional one-click installation and verification suite for real-time world maps.
+- **Viewport Control**: Native embedded map viewports with secure proxy-forwarding.
+- **Remote Render Triggers**: Trigger update, full, or radius renders directly from the panel without console access.
+- **Health Handshake**: Automated telemetry verification via internal service probes.
 
-### 3. Resilience & Self-Healing (The "Doctor")
+### 3. Proxy Orchestration
 
-- **Zombie Adoption**: If the Node Agent or Panel restarts, it automatically re-attaches to running server processes without downtime.
-- **Heuristic Diagnosis**: Our engine reads logs faster than you can, identifying EULA issues, Java conflicts, or plugin loops instantly.
-- **Atomic Proxy**: Velocity and Bungee proxies are managed as atomic units—if a backend falls, the proxy holds the player connection until recovery.
-- **Watchdog System**: Proactive monitoring for hangs and deadlocks with automated recovery.
+_High-performance network management_
 
-### 4. Developer Experience (DevX)
+- **Native Velocity Support**: Full-stack integration for high-performance proxies with automated lifecycle management.
+- **Via Suite Automation**: One-click deployment of the ViaVersion suite (Backwards, Rewind) for multi-version compatibility.
+- **Forwarding Synchronization**: Automated management of modern/legacy forwarding secrets and backend server links.
+- **Connectivity Mapping**: Visual management of server aliases and priority join lists.
 
-- **Embedded Monaco IDE**: The power of VS Code in your browser with full syntax highlighting for YAML, JSON, and Properties.
-- **Real-time Co-Presence**: See exactly which file or tab your teammates are viewing to prevent configuration drift.
-- **Plugin Marketplace**: Aggregate search (Modrinth, Spiget, Hangar) with automated, one-click installation.
-- **Smart Terminal**: Resizable console with adaptive prompt, scanline effects, and PowerShell quoting stabilization.
+### 4. Resilience & Auto-Healing v3 (Sentinel)
+
+- **Sentinel Throttling**: Proactive system sentinel that protects the host by throttling recoveries during CPU/RAM/IO overload.
+- **Drift Detection**: Automatic repair of "Zombie" instances (Status ONLINE but PID missing) and orphaned processes.
+- **Stateful Recovery Pipeline**: Multi-stage repair logic (Triage -> Scrap -> Start -> Verify) with stability scoring.
+- **Safe Mode Protection**: Panic control system that isolates failing instances to prevent host exhaustion.
+
+### 5. Developer Experience (DevX)
+
+- **Embedded Monaco IDE**: The power of VS Code in your browser with full syntax highlighting for Minecraft configurations.
+- **Plugin Marketplace**: Integrated Modrinth/Spiget search with automated dependency resolution.
+- **MC Identity Restoration**: Professional 64x64 PNG branding system for in-game server-icon and world-icon.
+- **Immutable Audit Ledger**: Cluster-wide audit trail for Every command, import, and configuration change.
 
 ![Dashboard](assets/Dashboard.png)
-_Real-time monitoring with heuristic diagnosis and self-healing controls._
+_Real-time monitoring with Auto-Healing v3 and World Intelligence controls._
 
 ---
 
@@ -158,23 +169,23 @@ _Best for: Contributing to CraftCommand._
 
 ## Troubleshooting
 
-Common issues and error codes are documented in our dedicated guide.
+Common issues and error codes are documented in the dedicated guide.
 
-[**View the Troubleshooting Guide (Error Codes & Fixes)**](docs/troubleshooting.md)
+[**View the Troubleshooting Guide (Error Codes & Fixes)**](docs/support/TROUBLESHOOTING.md)
 
 Some common quick fixes:
 
-- **E_JAVA_MISSING**: Install Java 21 (for 1.21+) or Java 17 (for 1.18+).
-- **E_PORT_IN_USE**: Port 25565 is taken. Stop other servers or change the port.
-- **Can't Connect**: Check your firewall and port forwarding settings.
+- **E_JAVA_MISSING**: Use the **Heuristic Fix (Wand Icon)** in the GOC to auto-install the correct Java version.
+- **E_PORT_IN_USE**: Port conflict detected. Use the **Environment Doctor** to identify the conflicting process.
+- **Can't Connect**: Ensure your DuckDNS synchronization is active in Global Settings.
 
 ---
 
 ## Technical Architecture
 
 - **Core**: React 19, TypeScript, Node.js, Express, Socket.IO.
-- **Styling**: Framer Motion (60FPS), TailwindCSS, Glassmorphism (Quality Mode).
-- **Orchestration**: Native Process Spawning & Docker Engine API integration.
+- **Styling**: Framer Motion (60FPS), Vanilla CSS, Glassmorphism (Premium Aesthetic).
+- **Orchestration**: Auto-Healing v3 (Sentinel) Engine with Native Process Spawning & Docker Support.
 - **Storage**: Hybrid Dual-Storage (SQLite for teams, JSON for solo portability).
 - **License**: [GNU Affero General Public License v3.0](LICENSE)
 

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Package, Download, User, Loader2, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Search, Package, Download, User, Loader2, ArrowRight, X, RefreshCw, Blocks, Box, AlertTriangle } from 'lucide-react';
 import { API } from '@core/services/api';
 
 interface Modpack {
@@ -11,17 +11,50 @@ interface Modpack {
     slug: string;
     downloads: number;
     version_id: string;
+    project_type: 'mod' | 'modpack';
 }
 
 interface ModpackBrowserProps {
     onSelect: (pack: Modpack) => void;
+    serverSoftware?: string;
 }
 
-const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect }) => {
+// Maps server software → Modrinth loader category
+const SOFTWARE_TO_LOADER: Record<string, string> = {
+    'Fabric': 'fabric',
+    'Forge': 'forge',
+    'NeoForge': 'neoforge',
+    'Quilt': 'quilt',
+    'Paper': 'paper',
+    'Purpur': 'paper',
+    'Spigot': 'spigot',
+    'Bukkit': 'bukkit',
+};
+
+const LOADER_OPTIONS = [
+    { label: 'Fabric', value: 'fabric' },
+    { label: 'Forge', value: 'forge' },
+    { label: 'NeoForge', value: 'neoforge' },
+    { label: 'Quilt', value: 'quilt' },
+];
+
+const TYPE_OPTIONS = [
+    { label: 'All', value: 'all' },
+    { label: 'Mods', value: 'mod' },
+    { label: 'Modpacks', value: 'modpack' },
+];
+
+const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftware }) => {
+    // Auto-detect loader from server software
+    const detectedLoader = serverSoftware ? (SOFTWARE_TO_LOADER[serverSoftware] || 'fabric') : 'fabric';
+
     const [query, setQuery] = useState('');
     const [packs, setPacks] = useState<Modpack[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [debouncedQuery, setDebouncedQuery] = useState('');
+    const [activeLoader, setActiveLoader] = useState(detectedLoader);
+    const [activeType, setActiveType] = useState<'all' | 'mod' | 'modpack'>('all');
+    const [error, setError] = useState<string | null>(null);
 
     // Debounce Search
     useEffect(() => {
@@ -30,26 +63,43 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect }) => {
     }, [query]);
 
     // Fetch Logic
-    useEffect(() => {
-        const search = async () => {
-            if (!debouncedQuery) return; // Wait for input
-            setIsLoading(true);
-            try {
-                // We'll use the generic fetch in API or add a dedicated method later
-                // For now, direct fetch to our new endpoint
-                const res = await fetch(`/api/modpacks/search?q=${encodeURIComponent(debouncedQuery)}&loader=fabric`); // Default to fabric for now, can add toggle later
-                if (res.ok) {
-                    const data = await res.json();
-                    setPacks(data);
-                }
-            } catch (e) {
-                console.error("Failed to search modpacks", e);
-            } finally {
-                setIsLoading(false);
+    const search = useCallback(async () => {
+        if (!debouncedQuery) {
+            setPacks([]);
+            return;
+        }
+        setIsLoading(true);
+        setError(null);
+        try {
+            const params = new URLSearchParams({
+                q: debouncedQuery,
+                loader: activeLoader,
+                type: activeType,
+            });
+            const res = await fetch(`/api/modpacks/search?${params.toString()}`);
+            if (!res.ok) {
+                throw new Error(`Search failed (${res.status})`);
             }
-        };
+            const data = await res.json();
+            setPacks(Array.isArray(data) ? data : []);
+        } catch (e: any) {
+            console.error("Failed to search mods/modpacks", e);
+            setError(e.message || 'Search failed. Check your connection and try again.');
+            setPacks([]);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [debouncedQuery, activeLoader, activeType]);
+
+    useEffect(() => {
         search();
-    }, [debouncedQuery]);
+    }, [search]);
+
+    const formatDownloads = (n: number): string => {
+        if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+        if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+        return String(n);
+    };
 
     return (
         <div className="space-y-4">
@@ -58,12 +108,80 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect }) => {
                 <Search className="absolute left-3 top-3 text-muted-foreground w-5 h-5" />
                 <input 
                     type="text" 
-                    placeholder="Search Modpacks (e.g. 'Better Minecraft', 'Origins')..." 
+                    placeholder="Search mods & modpacks (e.g. 'Sodium', 'Origins', 'Better Minecraft')..." 
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    className="w-full bg-secondary/30 border border-border rounded-xl pl-10 pr-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
+                    className="w-full bg-secondary/30 border border-border rounded-xl pl-10 pr-10 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
                 />
+                {query && (
+                    <button 
+                        onClick={() => setQuery('')} 
+                        className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                        <X size={16} />
+                    </button>
+                )}
             </div>
+
+            {/* Filter Bar */}
+            <div className="flex flex-wrap gap-4">
+                {/* Loader Toggle */}
+                <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mr-1">Loader</span>
+                    {LOADER_OPTIONS.map(opt => (
+                        <button
+                            key={opt.value}
+                            onClick={() => setActiveLoader(opt.value)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                                activeLoader === opt.value 
+                                    ? 'bg-primary text-primary-foreground shadow-sm' 
+                                    : 'bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground'
+                            }`}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Type Toggle */}
+                <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mr-1">Type</span>
+                    {TYPE_OPTIONS.map(opt => (
+                        <button
+                            key={opt.value}
+                            onClick={() => setActiveType(opt.value as typeof activeType)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                                activeType === opt.value 
+                                    ? 'bg-primary text-primary-foreground shadow-sm' 
+                                    : 'bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground'
+                            }`}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Error State */}
+            {error && (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm bg-red-500/10 border border-red-500/30 text-red-400">
+                    <AlertTriangle size={16} />
+                    <span className="flex-1">{error}</span>
+                    <button 
+                        onClick={search} 
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/20 hover:bg-red-500/30 transition-colors"
+                    >
+                        <RefreshCw size={12} /> Retry
+                    </button>
+                </div>
+            )}
+
+            {/* Results Count */}
+            {packs.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                    {packs.length} result{packs.length !== 1 ? 's' : ''}
+                </p>
+            )}
 
             {/* Results Grid */}
             <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
@@ -71,17 +189,29 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect }) => {
                     <div className="flex justify-center py-10">
                         <Loader2 className="animate-spin text-primary" size={32} />
                     </div>
-                ) : packs.length === 0 ? (
+                ) : packs.length === 0 && !error ? (
                     <div className="text-center py-10 text-muted-foreground bg-secondary/10 rounded-xl border border-dashed border-border">
                         <Package size={32} className="mx-auto mb-2 opacity-50" />
-                        <p>Search for a modpack to begin</p>
+                        {debouncedQuery ? (
+                            <>
+                                <p className="font-medium">No results found</p>
+                                <p className="text-xs mt-1">Try a different search term or switch the loader</p>
+                            </>
+                        ) : (
+                            <>
+                                <p>Search for mods & modpacks to begin</p>
+                                <p className="text-xs mt-1 text-muted-foreground/60">
+                                    Try "Sodium", "Create", "Origins", or "Better Minecraft"
+                                </p>
+                            </>
+                        )}
                     </div>
                 ) : (
                     packs.map((pack) => (
                         <div 
                             key={pack.id}
                             onClick={() => onSelect(pack)}
-                            className="flex items-center gap-4 p-3 rounded-xl border border-border bg-card/50 hover:bg-secondary/50 cursor-pointer transition-all group"
+                            className="flex items-center gap-4 p-3 rounded-xl border border-border bg-card/50 hover:bg-secondary/50 hover:border-primary/30 cursor-pointer transition-all group"
                         >
                             <img 
                                 src={pack.icon_url || 'https://via.placeholder.com/64'} 
@@ -89,11 +219,25 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect }) => {
                                 className="w-12 h-12 rounded-lg object-cover bg-secondary" 
                             />
                             <div className="flex-1 min-w-0">
-                                <h4 className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">{pack.title}</h4>
+                                <div className="flex items-center gap-2">
+                                    <h4 className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">{pack.title}</h4>
+                                    {/* Type Badge */}
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase flex-shrink-0 ${
+                                        pack.project_type === 'modpack' 
+                                            ? 'bg-violet-500/15 text-violet-400 border border-violet-500/20' 
+                                            : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                                    }`}>
+                                        {pack.project_type === 'modpack' ? (
+                                            <span className="flex items-center gap-0.5"><Blocks size={8} /> Pack</span>
+                                        ) : (
+                                            <span className="flex items-center gap-0.5"><Box size={8} /> Mod</span>
+                                        )}
+                                    </span>
+                                </div>
                                 <p className="text-xs text-muted-foreground truncate">{pack.description}</p>
                                 <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground font-mono">
                                     <span className="flex items-center gap-1"><User size={10} /> {pack.author}</span>
-                                    <span className="flex items-center gap-1"><Download size={10} /> {pack.downloads.toLocaleString()}</span>
+                                    <span className="flex items-center gap-1"><Download size={10} /> {formatDownloads(pack.downloads)}</span>
                                 </div>
                             </div>
                             <button className="p-2 text-primary opacity-0 group-hover:opacity-100 transition-opacity bg-primary/10 rounded-lg">

@@ -1,10 +1,10 @@
 {
-  "version": "1.10.1",
-  "title": "CraftCommand: Stability & UI Patch",
+  "version": "1.11.0",
+  "title": "CraftCommand: Network Fabric & Systems Integrity",
   "notes": [
-    "Enhanced System Stability: Resolved critical issues with maintenance tools and restored missing diagnostic scripts.",
-    "User Personalization: Full-stack support for custom profile avatars and improved presence visuals.",
-    "Launcher Hardening: Improved console reliability with robust PowerShell quoting and clearer interactive menus.",
-    "Emergency Controls: Restored Panic Control for instant network isolation in critical scenarios."
+    "Network Fabric: Native Velocity and Cross-Play integration for unified connectivity.",
+    "Systems Integrity: Secure update engine with Ed25519 signatures and atomic rollbacks.",
+    "Resource Stewardship: Implementation of Memory Scaler and Process Limiter for cluster stability.",
+    "Intelligent Diagnostics: Automated detection and 'Auto-Fix' logic for system-wide failures."
   ]
 }

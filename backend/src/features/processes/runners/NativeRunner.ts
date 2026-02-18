@@ -5,6 +5,7 @@ import si from 'systeminformation';
 import fs from 'fs-extra';
 import { exec } from 'child_process';
 import util from 'util';
+import treeKill from 'tree-kill';
 
 const execAsync = util.promisify(exec);
 
@@ -52,9 +53,12 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
 
     async stop(id: string, force: boolean = false): Promise<void> {
         const process = this.processes.get(id);
-        if (process) {
+        if (process && process.pid) {
             if (force) {
-                process.kill('SIGKILL');
+                // Use tree-kill to ensure the entire process tree (shell + child) is killed
+                treeKill(process.pid, 'SIGKILL', (err) => {
+                    if (err) console.error(`[NativeRunner] Failed to force kill ${id}:`, err);
+                });
             } else {
                 process.stdin?.write("stop\n");
             }

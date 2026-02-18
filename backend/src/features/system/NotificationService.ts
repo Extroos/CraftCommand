@@ -8,7 +8,7 @@ import { logger } from '../../utils/logger';
 
 export class NotificationService {
     
-    public async create(userId: string, type: NotificationType, title: string, message: string, metadata?: any, link?: string, options?: { dismissible?: boolean }): Promise<Notification> {
+    public async create(userId: string, type: NotificationType, title: string, message: string, metadata?: any, link?: string, options?: { dismissible?: boolean, actionLabel?: string }): Promise<Notification> {
         const notification: Notification = {
             id: Math.random().toString(36).substring(7),
             userId,
@@ -19,6 +19,7 @@ export class NotificationService {
             createdAt: Date.now(),
             metadata,
             link,
+            actionLabel: options?.actionLabel,
             dismissible: options?.dismissible ?? true
         };
 

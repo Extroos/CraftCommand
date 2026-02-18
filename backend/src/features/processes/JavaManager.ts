@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import axios from 'axios';
 import AdmZip from 'adm-zip';
+import { logger } from '../../utils/logger';
 
 
 import { EventEmitter } from 'events';
@@ -14,27 +15,44 @@ const execAsync = util.promisify(exec);
 
 export class JavaManager extends EventEmitter {
     
+    // Phase 56.3: Track current status for session recovery
+    public currentStatus: { message: string, percent?: number, phase?: string } | null = null;
 
     // Download portable Java if missing
     async ensureJava(version: string): Promise<string> {
         console.log(`[JavaManager] Request to ensure ${version}`);
-        // Map "Java 17" to "17", "Java 8" to "8"
+        
+        // 1. SMART CHECK: Check for existing system-wide Java first (v1.12.0)
+        const detected = await this.detectJavaVersions();
         const majorVer = version.replace('Java ', '').trim();
+        
+        // Look for a version that matches the major version requested (e.g. 'jdk-17', '17.0.x')
+        const matchingSystemJava = detected.find(j => 
+            j.version.includes(majorVer) || 
+            j.path.includes(`jdk-${majorVer}`) ||
+            j.path.includes(`jre-${majorVer}`) ||
+            (j.version === 'System Default' && majorVer === '17') // Common default
+        );
+
+        if (matchingSystemJava && matchingSystemJava.path !== 'java') {
+            logger.info(`[JavaManager] Preferred system Java found for ${version}: ${matchingSystemJava.path}`);
+            return matchingSystemJava.path;
+        }
+
         const runtimeDir = path.join(__dirname, '../../runtimes', majorVer);
         const javaBin = path.join(runtimeDir, 'bin', 'java.exe');
 
-        // Check if already exists
+        // 2. Check Managed Runtimes
         if (await fs.pathExists(javaBin)) {
-            console.log(`[JavaManager] Found existing runtime at ${javaBin}`);
+            console.log(`[JavaManager] Found existing managed runtime at ${javaBin}`);
             return javaBin;
         }
 
-        // If not found, download it
-        console.log(`[JavaManager] Runtime ${version} not found. Downloading...`);
-        this.emit('status', { message: `Downloading ${version}...` });
-        console.log(`[JavaManager] calling downloadJava(${majorVer}, ${runtimeDir})...`);
+        // 3. Fallback: Download it
+        console.log(`[JavaManager] No compatible Java found. Downloading ${version}...`);
+        this.currentStatus = { message: `Downloading ${version}...` };
+        this.emit('status', this.currentStatus);
         await this.downloadJava(majorVer, runtimeDir);
-        console.log(`[JavaManager] downloadJava returned.`);
         return javaBin;
     }
 
@@ -48,7 +66,8 @@ export class JavaManager extends EventEmitter {
             await fs.ensureDir(path.dirname(zipPath));
 
             console.log(`[JavaManager] Downloading JDK ${majorVer} from ${url}`);
-            this.emit('status', { message: `Downloading Java ${majorVer}...`, phase: 'downloading' });
+            this.currentStatus = { message: `Downloading Java ${majorVer}...`, phase: 'downloading' };
+            this.emit('status', this.currentStatus);
             
             // Throttle progress updates to prevent performance issues
             let lastProgressEmit = 0;
@@ -67,11 +86,12 @@ export class JavaManager extends EventEmitter {
                         
                         // Only emit if: 1 second has passed OR percentage changed by 5% or more
                         if (now - lastProgressEmit > 1000 || Math.abs(percent - lastPercent) >= 5) {
-                            this.emit('progress', { 
+                            this.currentStatus = { 
                                 phase: 'downloading',
                                 percent,
                                 message: `Downloading Java ${majorVer}... ${percent}%`
-                            });
+                            };
+                            this.emit('progress', this.currentStatus);
                             lastProgressEmit = now;
                             lastPercent = percent;
                         }
@@ -86,10 +106,11 @@ export class JavaManager extends EventEmitter {
             }
             
             await fs.writeFile(zipPath, response.data as any);
-            console.log(`[JavaManager] Download complete. Size: ${((response.data as any).byteLength / 1024 / 1024).toFixed(1)}MB`);
+            console.log(`[JavaManager] Extraction complete. Size: ${((response.data as any).byteLength / 1024 / 1024).toFixed(1)}MB`);
             
             console.log(`[JavaManager] Extracting JDK ${majorVer}...`);
-            this.emit('status', { message: `Extracting Java ${majorVer}...`, phase: 'extracting' });
+            this.currentStatus = { message: `Extracting Java ${majorVer}...`, phase: 'extracting' };
+            this.emit('status', this.currentStatus);
             
             const zip = new AdmZip(zipPath);
             zip.extractAllTo(path.dirname(zipPath), true);
@@ -103,7 +124,8 @@ export class JavaManager extends EventEmitter {
             if (jdkFolder) {
                 const source = path.join(path.dirname(zipPath), jdkFolder);
                 
-                this.emit('status', { message: `Installing Java ${majorVer}...`, phase: 'installing' });
+                this.currentStatus = { message: `Installing Java ${majorVer}...`, phase: 'installing' };
+                this.emit('status', this.currentStatus);
                 
                 // Safety: Ensure destination is clear
                 if (await fs.pathExists(destDir)) {
@@ -138,6 +160,7 @@ export class JavaManager extends EventEmitter {
             await fs.remove(zipPath);
             console.log(`[JavaManager] JDK ${majorVer} installed to ${destDir}`);
             this.emit('status', { message: `Java ${majorVer} ready`, phase: 'complete' });
+            this.currentStatus = null; // Clear on success
             
         } catch (error: any) {
             // Clean up partial downloads on error
@@ -159,7 +182,8 @@ export class JavaManager extends EventEmitter {
                 ? 'Cannot reach download server. Please check your internet connection.'
                 : `Download failed: ${error.message}`;
             
-            this.emit('error', { message: userMessage, phase: 'failed' });
+            this.currentStatus = { message: userMessage, phase: 'failed' };
+            this.emit('error', this.currentStatus);
             throw error;
         }
     }

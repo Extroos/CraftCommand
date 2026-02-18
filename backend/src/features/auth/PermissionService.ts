@@ -1,31 +1,10 @@
 import {  UserProfile, Permission, UserRole  } from '@shared/types';
+import { ROLE_PERMISSIONS } from '@shared/constants/roles';
 
 class PermissionService {
     
     // Define Permission Sets per Role
-    private readonly ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-        'OWNER': [
-            'server.view', 'server.start', 'server.stop', 'server.restart',
-            'server.console.read', 'server.console.write', 'server.files.read', 'server.files.write', 
-            'server.settings', 'server.players.manage', 'server.backups.manage', 
-            'server.create', 'server.delete', 'users.manage',
-            'system.remote_access.manage'
-        ],
-        'ADMIN': [
-            'server.view', 'server.start', 'server.stop', 'server.restart',
-            'server.console.read', 'server.console.write', 'server.files.read', 'server.files.write', 
-            'server.settings', 'server.players.manage', 'server.backups.manage', 
-            'server.create', 'server.delete', 'users.manage'
-        ],
-        'MANAGER': [
-            'server.view', 'server.start', 'server.stop', 'server.restart',
-            'server.console.read', 'server.console.write', 'server.files.read', 'server.files.write', 
-            'server.settings', 'server.players.manage', 'server.backups.manage'
-        ],
-        'VIEWER': [
-            'server.view', 'server.console.read', 'server.files.read'
-        ]
-    };
+    private readonly ROLE_PERMISSIONS = ROLE_PERMISSIONS;
 
     /**
      * Check if a user has a specific permission.

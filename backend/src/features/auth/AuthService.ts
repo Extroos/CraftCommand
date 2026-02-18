@@ -1,19 +1,18 @@
-
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import {  UserProfile, UserRole  } from '@shared/types';
-import { auditService } from '../system/AuditService';
+import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from '../../utils/errors';
 import bcrypt from 'bcryptjs';
+import { auditService } from '../system/AuditService';
+import { systemSettingsService } from '../system/SystemSettingsService';
 import { userRepository } from '../../storage/UserRepository';
+import { ROLE_HIERARCHY } from '@shared/constants/roles';
+import { generateSecret, generateURI, verify } from 'otplib';
+import QRCode from 'qrcode';
 
-export class AuthService {
-    
-    private readonly ROLE_HIERARCHY: Record<UserRole, number> = {
-        'OWNER': 3,
-        'ADMIN': 2,
-        'MANAGER': 1,
-        'VIEWER': 0
-    };
+class AuthService {
+    private readonly JWT_SECRET = process.env.JWT_SECRET || 'super-secret-dev-key';
+    private readonly ROLE_HIERARCHY = ROLE_HIERARCHY;
 
     constructor() {
         this.ensureAdminExists();
@@ -82,7 +81,7 @@ export class AuthService {
         if (password.length < 8) throw new Error('Password must be at least 8 characters long');
     }
 
-    async login(email: string, pass: string): Promise<{ user: UserProfile, token: string } | null> {
+    async login(email: string, pass: string): Promise<{ user: UserProfile, token: string, twoFactorRequired?: boolean } | null> {
         const user = userRepository.findByEmail(email);
         if (!user || !user.passwordHash) return null;
 
@@ -92,15 +91,19 @@ export class AuthService {
             return null;
         }
 
+        const { passwordHash, ...safeUser } = user;
+        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+
+        if (user.twoFactorEnabled) {
+            // Return partial token for 2FA verification
+            const loginToken = jwt.sign({ id: user.id, email: user.email, partial: true }, secret, { expiresIn: '15m' });
+            return { user: safeUser as UserProfile, token: loginToken, twoFactorRequired: true };
+        }
+
         // Update last login
         userRepository.update(user.id, { lastLogin: Date.now() });
-        
         auditService.log(user.id, 'LOGIN_SUCCESS', undefined, undefined, undefined, user.email);
-
-        const { passwordHash, ...safeUser } = user;
         
-        // Use JWT for secure session management
-        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
         const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, secret, { expiresIn: '7d' });
         
         return { user: safeUser as UserProfile, token };
@@ -257,6 +260,157 @@ export class AuthService {
         
         const { passwordHash, ...safeUser } = updated;
         return safeUser;
+    }
+
+    // --- Phase 64: 2FA Completion ---
+
+    private readonly ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'craftcommand-default-key-32-chars-!!';
+    private readonly ALGORITHM = 'aes-256-cbc';
+
+    private encrypt(text: string): string {
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv(this.ALGORITHM, Buffer.from(this.ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+        let encrypted = cipher.update(text);
+        encrypted = Buffer.concat([encrypted, cipher.final()]);
+        return iv.toString('hex') + ':' + encrypted.toString('hex');
+    }
+
+    private decrypt(text: string): string {
+        const textParts = text.split(':');
+        const iv = Buffer.from(textParts.shift()!, 'hex');
+        const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+        const decipher = crypto.createDecipheriv(this.ALGORITHM, Buffer.from(this.ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+        let decrypted = decipher.update(encryptedText);
+        decrypted = Buffer.concat([decrypted, decipher.final()]);
+        return decrypted.toString();
+    }
+
+    async start2FASetup(userId: string): Promise<{ qrCode: string, secret: string }> {
+        const user = userRepository.findById(userId);
+        if (!user) throw new NotFoundError('User not found');
+
+        const secret = generateSecret();
+        const otpauth = generateURI({ issuer: 'CraftCommand', label: user.email, secret });
+        const qrCode = await QRCode.toDataURL(otpauth);
+
+        const encryptedSecret = this.encrypt(secret);
+        userRepository.update(userId, {
+            twoFactorPendingSecretEncrypted: encryptedSecret,
+            twoFactorPendingCreatedAt: Date.now()
+        });
+
+        auditService.log(userId, 'USER_UPDATE', userId, { action: '2FA_SETUP_STARTED' });
+
+        return { qrCode, secret };
+    }
+
+    async confirm2FASetup(userId: string, code: string): Promise<{ backupCodes: string[] }> {
+        const user = userRepository.findById(userId);
+        if (!user || !user.twoFactorPendingSecretEncrypted) {
+            throw new ValidationError('2FA setup not initiated');
+        }
+
+        // Check expiration (10 mins)
+        if (Date.now() - (user.twoFactorPendingCreatedAt || 0) > 10 * 60 * 1000) {
+            throw new ValidationError('2FA setup expired');
+        }
+
+        const secret = this.decrypt(user.twoFactorPendingSecretEncrypted);
+        const { valid } = await verify({ token: code, secret });
+
+        if (!valid) throw new UnauthorizedError('Invalid verification code');
+
+        // Generate backup codes
+        const plainBackupCodes = Array.from({ length: 10 }, () => crypto.randomBytes(4).toString('hex'));
+        const hashedBackupCodes = plainBackupCodes.map(c => bcrypt.hashSync(c, 10));
+
+        userRepository.update(userId, {
+            twoFactorEnabled: true,
+            twoFactorSecretEncrypted: user.twoFactorPendingSecretEncrypted,
+            twoFactorVerifiedAt: Date.now(),
+            twoFactorBackupCodesHashed: hashedBackupCodes,
+            twoFactorPendingSecretEncrypted: undefined,
+            twoFactorPendingCreatedAt: undefined
+        });
+
+        auditService.log(userId, 'USER_UPDATE', userId, { action: '2FA_ENABLED' });
+
+        return { backupCodes: plainBackupCodes };
+    }
+
+    async verify2FA(userId: string, code: string): Promise<boolean> {
+        const user = userRepository.findById(userId);
+        if (!user || !user.twoFactorEnabled || !user.twoFactorSecretEncrypted) return false;
+
+        const secret = this.decrypt(user.twoFactorSecretEncrypted);
+        const { valid } = await verify({ token: code, secret });
+
+        if (!valid) {
+            // Check recovery codes
+            const { valid: isValidRecovery } = await this.verifyRecoveryCode(userId, code);
+            if (!isValidRecovery) {
+                auditService.log(userId, 'LOGIN_FAIL', undefined, { method: '2FA', reason: 'Invalid TOTP or recovery code' });
+                throw new UnauthorizedError('Invalid 2FA code or recovery code');
+            } else {
+                auditService.log(userId, 'LOGIN_SUCCESS', undefined, { method: 'RECOVERY_CODE' });
+                return true; // Recovery code was valid
+            }
+        } else { // TOTP code IS valid
+            auditService.log(userId, 'LOGIN_SUCCESS', undefined, { method: '2FA' });
+            return true; // TOTP code was valid
+        }
+    }
+
+    async verifyRecoveryCode(userId: string, code: string): Promise<{ valid: boolean }> {
+        const user = userRepository.findById(userId);
+        if (!user || !user.twoFactorEnabled || !user.twoFactorBackupCodesHashed) return { valid: false };
+
+        const codes = user.twoFactorBackupCodesHashed;
+        for (let i = 0; i < codes.length; i++) {
+            const match = await bcrypt.compare(code, codes[i]);
+            if (match) {
+                // Remove used code
+                codes.splice(i, 1);
+                userRepository.update(userId, { twoFactorBackupCodesHashed: codes });
+                return { valid: true };
+            }
+        }
+
+        return { valid: false };
+    }
+
+    async disable2FA(userId: string, passwordConfirm: string, code: string): Promise<void> {
+        const user = userRepository.findById(userId);
+        if (!user || !user.twoFactorEnabled) throw new ValidationError('2FA not enabled');
+
+        const passValid = await bcrypt.compare(passwordConfirm, user.passwordHash!);
+        if (!passValid) throw new UnauthorizedError('Invalid password');
+
+        const secret = this.decrypt(user.twoFactorSecretEncrypted!);
+        const { valid: codeValid } = await verify({ token: code, secret });
+        
+        // Also allow recovery code to disable? Typically yes.
+        let recoveryValid = false;
+        if (!codeValid && user.twoFactorBackupCodesHashed) {
+            const index = user.twoFactorBackupCodesHashed.findIndex(hash => bcrypt.compareSync(code, hash));
+            if (index !== -1) {
+                recoveryValid = true;
+                const remainingCodes = [...user.twoFactorBackupCodesHashed];
+                remainingCodes.splice(index, 1);
+                userRepository.update(userId, { twoFactorBackupCodesHashed: remainingCodes });
+            }
+        }
+
+        if (!codeValid && !recoveryValid) throw new UnauthorizedError('Invalid 2FA code');
+
+        userRepository.update(userId, {
+            twoFactorEnabled: false,
+            twoFactorSecretEncrypted: undefined,
+            twoFactorBackupCodesHashed: undefined,
+            twoFactorVerifiedAt: undefined
+        });
+
+        auditService.log(userId, 'USER_UPDATE', userId, { action: '2FA_DISABLED' });
     }
 
     deleteUser(id: string, actor?: UserProfile) {

@@ -97,6 +97,20 @@ export class NetUtils {
                     }
 
                     logger.warn(`[NetUtils] Killing ghost process '${name}' (PID: ${listener.pid}) on port ${port}`);
+                    
+                    // Windows Specific Stubborn Process Purging
+                    if (process.platform === 'win32') {
+                        try {
+                            const { exec } = await import('child_process');
+                            const util = await import('util');
+                            const execAsync = util.promisify(exec);
+                            await execAsync(`taskkill /F /PID ${listener.pid} /T`);
+                            return true;
+                        } catch (e) {
+                            logger.error(`[NetUtils] taskkill failed: ${e.message}. Falling back to standard kill.`);
+                        }
+                    }
+
                     process.kill(listener.pid, 'SIGKILL');
                     return true;
                 }
@@ -136,6 +150,58 @@ export class NetUtils {
             socket.on('error', () => { socket.destroy(); resolve(false); });
             socket.on('timeout', () => { socket.destroy(); resolve(false); });
             socket.connect(port, '127.0.0.1');
+        });
+    }
+
+    /**
+     * BEDROCK RAKNET QUERY: Fetches player count and latency from a Bedrock server using UDP.
+     */
+    static async queryBedrock(port: number, host = '127.0.0.1'): Promise<{ online: boolean, players: number, maxPlayers: number, ping: number, version: string } | null> {
+        const dgram = await import('dgram');
+        const client = dgram.createSocket('udp4');
+        const start = Date.now();
+
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                client.close();
+                resolve(null);
+            }, 2000);
+
+            client.on('message', (msg) => {
+                if (msg[0] === 0x1c) { // ID_UNCONNECTED_PONG
+                    clearTimeout(timeout);
+                    client.close();
+                    const latency = Date.now() - start;
+                    
+                    try {
+                        // The string starts after the magic ID and headers at byte 35
+                        const dataStr = msg.subarray(35).toString('utf8');
+                        const parts = dataStr.split(';');
+                        
+                        resolve({
+                            online: true,
+                            players: parseInt(parts[4]) || 0,
+                            maxPlayers: parseInt(parts[5]) || 0,
+                            version: parts[3] || 'Unknown',
+                            ping: latency
+                        });
+                    } catch (e) {
+                        resolve({ online: true, players: 0, maxPlayers: 0, version: 'Unknown', ping: latency });
+                    }
+                }
+            });
+
+            // Craft RakNet Unconnected Ping
+            const packet = Buffer.alloc(33);
+            packet[0] = 0x01; // ID_UNCONNECTED_PING
+            // Timestamp (8 bytes)
+            packet.writeBigInt64BE(BigInt(Date.now()), 1);
+            // Magic (16 bytes)
+            Buffer.from('00ffff00fefefefefdfdfdfcaaaaaaaa', 'hex').copy(packet, 9);
+            // Client GUID (8 bytes)
+            packet.writeBigInt64BE(BigInt(Math.floor(Math.random() * 1000000)), 25);
+
+            client.send(packet, port, host);
         });
     }
 }

@@ -1,19 +1,40 @@
 import axios from 'axios';
 import fs from 'fs-extra';
-// TODO:
-// - [x] Fix `RemoteRunner.ts` import paths & audit runners
-// - [/] Fix dynamic imports (InstallerService.ts, etc.)
-// - [ ] Verify backend compilation
 import path from 'path';
 import AdmZip from 'adm-zip';
 import extract from 'extract-zip';
 import { EventEmitter } from 'events';
+import { SafeFileOperation } from '../../utils/fs';
+import { logger } from '../../utils/logger';
+
+const CACHE_DIR = path.join(process.cwd(), 'cache');
+const BEDROCK_CACHE_DIR = path.join(CACHE_DIR, 'bedrock');
 
 export class InstallerService extends EventEmitter {
     
+    // Phase 56.3: Track active progress for session recovery
+    private activeProgress: Map<string, { percent: number, message: string }> = new Map();
+
+    public getActiveProgress() {
+        return Object.fromEntries(this.activeProgress);
+    }
+
+    private updateProgress(serverId: string, message: string, percent?: number) {
+        if (!serverId) return;
+        const current = this.activeProgress.get(serverId) || { percent: 0, message: '' };
+        const newPercent = percent !== undefined ? percent : current.percent;
+        this.activeProgress.set(serverId, { percent: newPercent, message });
+        this.emit('status', { serverId, message, percent: newPercent });
+    }
+
+    private clearProgress(serverId: string) {
+        if (!serverId) return;
+        this.activeProgress.delete(serverId);
+    }
+
     // Download a file with progress events
-    async downloadFile(url: string, destPath: string) {
-        console.log(`[Installer] Downloading ${url} to ${destPath}`);
+    async downloadFile(url: string, destPath: string, onProgress?: (msg: string, percent?: number) => void, serverId?: string) {
+        logger.info(`[Installer] Downloading ${url} to ${destPath}`);
         const writer = fs.createWriteStream(destPath);
         
         try {
@@ -30,10 +51,10 @@ export class InstallerService extends EventEmitter {
                 timeout: 30000 // 30s timeout
             });
 
-            const totalLength = response.headers['content-length'];
+            const totalLength = parseInt(response.headers['content-length'] || '0', 10);
             
             this.emit('progress', {
-                total: parseInt(totalLength, 10),
+                total: totalLength,
                 current: 0,
                 percent: 0
             });
@@ -42,11 +63,22 @@ export class InstallerService extends EventEmitter {
             const dataStream = response.data as any;
             dataStream.on('data', (chunk: any) => {
                 current += chunk.length;
+                const percent = totalLength > 0 ? Math.round((current / totalLength) * 100) : 0;
+                
                 this.emit('progress', {
-                    total: parseInt(totalLength, 10),
+                    total: totalLength,
                     current: current,
-                    percent: Math.round((current / totalLength) * 100)
+                    percent: percent
                 });
+
+                // Periodic progress message updates
+                if (totalLength > 0) {
+                    if (current === chunk.length || percent % 10 === 0 || percent === 100) {
+                         const msg = `Downloading... ${percent}%`;
+                         onProgress?.(msg, percent);
+                         if (serverId) this.updateProgress(serverId, msg, percent);
+                    }
+                }
             });
 
             dataStream.pipe(writer);
@@ -66,9 +98,12 @@ export class InstallerService extends EventEmitter {
     }
 
     // Install PaperMC
-    async installPaper(serverDir: string, version: string, build: string = 'latest') {
+    async installPaper(serverId: string, serverDir: string, version: string, build: string = 'latest', onProgress?: (msg: string, percent?: number) => void) {
         try {
-            this.emit('status', 'Fetching PaperMC builds...');
+            await SafeFileOperation.checkDiskSpace(serverDir);
+            const msg = 'Fetching PaperMC builds...';
+            this.updateProgress(serverId, msg, 0);
+            onProgress?.(msg);
             if (build === 'latest') {
                 const buildsUrl = `https://api.papermc.io/v2/projects/paper/versions/${version}/builds`;
                 const buildsRes = await axios.get(buildsUrl);
@@ -81,23 +116,35 @@ export class InstallerService extends EventEmitter {
             const dest = path.join(serverDir, 'server.jar');
 
             await fs.ensureDir(serverDir);
-            await this.downloadFile(downloadUrl, dest);
+            const dMsg = `Downloading Paper ${version}...`;
+            this.updateProgress(serverId, dMsg, 0);
+            onProgress?.(dMsg, 0);
+            await this.downloadFile(downloadUrl, dest, onProgress, serverId);
             
             await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
             
-            this.emit('status', 'Installation Complete');
+            const cMsg = 'Installation Complete';
+            this.updateProgress(serverId, cMsg, 100);
+            onProgress?.(cMsg);
+            
+            // Wait a sec before clearing so UI shows it's done
+            setTimeout(() => this.clearProgress(serverId), 2000);
             return true;
 
         } catch (e) {
             console.error('Paper install failed', e);
+            this.clearProgress(serverId);
             throw e;
         }
     }
 
     // Install Purpur
-    async installPurpur(serverDir: string, version: string, build: string = 'latest') {
+    async installPurpur(serverId: string, serverDir: string, version: string, build: string = 'latest', onProgress?: (msg: string, percent?: number) => void) {
         try {
-            this.emit('status', 'Fetching Purpur builds...');
+            await SafeFileOperation.checkDiskSpace(serverDir);
+            const msg = 'Fetching Purpur builds...';
+            this.updateProgress(serverId, msg, 0);
+            onProgress?.(msg);
             
             // Purpur API: https://api.purpurmc.org/v2/purpur/{version}/latest/download
             // Or specific build: https://api.purpurmc.org/v2/purpur/{version}/{build}/download
@@ -112,29 +159,38 @@ export class InstallerService extends EventEmitter {
             const dest = path.join(serverDir, 'server.jar');
 
             await fs.ensureDir(serverDir);
-            this.emit('status', `Downloading Purpur ${version}...`);
-            await this.downloadFile(downloadUrl, dest);
+            const dMsg = `Downloading Purpur ${version}...`;
+            this.updateProgress(serverId, dMsg, 0);
+            onProgress?.(dMsg, 0);
+            await this.downloadFile(downloadUrl, dest, onProgress, serverId);
             
             await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
             
-            this.emit('status', 'Installation Complete');
+            const cMsg = 'Installation Complete';
+            this.updateProgress(serverId, cMsg, 100);
+            onProgress?.(cMsg);
+            setTimeout(() => this.clearProgress(serverId), 2000);
             return true;
 
         } catch (e) {
             console.error('Purpur install failed', e);
+            this.clearProgress(serverId);
             throw e;
         }
     }
 
     // Install CurseForge/Modrinth Modpack
-    async installModpackFromZip(serverDir: string, zipUrl: string, mcVersion?: string) {
+    async installModpackFromZip(serverId: string, serverDir: string, zipUrl: string, mcVersion?: string, onProgress?: (msg: string, percent?: number) => void) {
         try {
+            await SafeFileOperation.checkDiskSpace(serverDir, 1000); // Modpacks need more space (1GB min)
             await fs.ensureDir(serverDir);
             
             // Resolve Modrinth ID if needed
             if (zipUrl.startsWith('modrinth:')) {
                 const projectId = zipUrl.split(':')[1];
-                this.emit('status', `Resolving Modrinth Project ${projectId}...`);
+                const rMsg = `Resolving Modrinth Project ${projectId}...`;
+                this.updateProgress(serverId, rMsg, 0);
+                onProgress?.(rMsg);
                 const vRes = await axios.get(`https://api.modrinth.com/v2/project/${projectId}/version`);
                 const version = (vRes.data as any)[0];
                 const file = version.files.find((f: any) => f.primary) || version.files[0];
@@ -145,10 +201,14 @@ export class InstallerService extends EventEmitter {
             const zipPath = path.join(serverDir, 'modpack.zip');
             const tempExtractDir = path.join(serverDir, 'temp_extract');
             
-            this.emit('status', 'Downloading Modpack...');
-            await this.downloadFile(zipUrl, zipPath);
+            const dMsg = 'Downloading Modpack...';
+            this.updateProgress(serverId, dMsg, 5);
+            onProgress?.(dMsg, 0);
+            await this.downloadFile(zipUrl, zipPath, onProgress, serverId);
             
-            this.emit('status', 'Extracting Modpack for Analysis...');
+            const eMsg = 'Extracting Modpack for Analysis...';
+            this.updateProgress(serverId, eMsg, 40);
+            onProgress?.(eMsg);
             // Extract to temp dir first to analyze
             await fs.ensureDir(tempExtractDir);
             
@@ -156,10 +216,14 @@ export class InstallerService extends EventEmitter {
             let extractedCount = 0;
             await extract(zipPath, { 
                 dir: tempExtractDir,
-                onEntry: () => {
+                onEntry: (entry) => {
                     extractedCount++;
-                    if (extractedCount % 1000 === 0) {
-                        this.emit('status', `Analyzing Modpack... (${extractedCount} files extracted)`);
+                    // Reporting extraction progress (capped at 99% until fully done)
+                    if (extractedCount % 100 === 0) {
+                        const percent = Math.min(99, Math.round((extractedCount / 5000) * 100)); // Rough estimate if total unknown
+                        const msg = `Extracting Modpack... (${extractedCount} files)`;
+                        this.emit('status', msg);
+                        onProgress?.(msg, percent);
                     }
                 }
             });
@@ -180,7 +244,9 @@ export class InstallerService extends EventEmitter {
             }
 
             // Move files to server root
-            this.emit('status', 'Installing Modpack Files...');
+            const iMsg = 'Installing Modpack Files...';
+            this.emit('status', iMsg);
+            onProgress?.(iMsg);
             await fs.copy(rootContentDir, serverDir, { overwrite: true });
 
             // Cleanup temp
@@ -195,11 +261,11 @@ export class InstallerService extends EventEmitter {
                     this.emit('status', `Auto-Installing ${packType.loader} for ${mcVersion}...`);
                     
                     if (packType.loader === 'Fabric') {
-                        await this.installFabric(serverDir, mcVersion);
+                        await this.installFabric(serverId, serverDir, mcVersion);
                     } else if (packType.loader === 'NeoForge') {
-                        await this.installNeoForge(serverDir, mcVersion);
+                        await this.installNeoForge(serverId, serverDir, mcVersion);
                     } else if (packType.loader === 'Forge') {
-                        await this.installForge(serverDir, mcVersion);
+                        await this.installForge(serverId, serverDir, mcVersion);
                     }
                     
                     this.emit('status', `${packType.loader} Installed. Client Pack Ready.`);
@@ -211,10 +277,14 @@ export class InstallerService extends EventEmitter {
             } 
             
             await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
-            this.emit('status', 'Modpack Installed.');
+            const cMsg = 'Modpack Installed.';
+            this.updateProgress(serverId, cMsg, 100);
+            onProgress?.(cMsg);
+            setTimeout(() => this.clearProgress(serverId), 2000);
             
         } catch (e) {
              console.error('Modpack install failed', e);
+             this.clearProgress(serverId);
              await fs.remove(path.join(serverDir, 'temp_extract')).catch(() => {});
              throw e;
         }
@@ -275,9 +345,12 @@ export class InstallerService extends EventEmitter {
     }
 
     // Install Vanilla (Mojang)
-    async installVanilla(serverDir: string, version: string) {
+    async installVanilla(serverId: string, serverDir: string, version: string, onProgress?: (msg: string, percent?: number) => void) {
         try {
-            this.emit('status', 'Fetching Vanilla manifest...');
+            await SafeFileOperation.checkDiskSpace(serverDir);
+            const mMsg = 'Fetching Vanilla manifest...';
+            this.updateProgress(serverId, mMsg, 0);
+            onProgress?.(mMsg);
             const manifestUrl = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
             const manifestRes = await axios.get(manifestUrl);
             
@@ -290,22 +363,28 @@ export class InstallerService extends EventEmitter {
             const dest = path.join(serverDir, 'server.jar');
             await fs.ensureDir(serverDir);
             
-            this.emit('status', 'Downloading Vanilla Jar...');
-            await this.downloadFile(downloadUrl, dest);
+            this.updateProgress(serverId, 'Downloading Vanilla Jar...', 20);
+            onProgress?.('Downloading Vanilla Jar...', 0);
+            await this.downloadFile(downloadUrl, dest, onProgress, serverId);
             
             await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
-            this.emit('status', 'Installation Complete');
+            this.updateProgress(serverId, 'Installation Complete', 100);
+            setTimeout(() => this.clearProgress(serverId), 2000);
             
         } catch (e) {
             console.error('Vanilla install failed', e);
+            this.clearProgress(serverId);
             throw e;
         }
     }
 
     // Install Fabric
-    async installFabric(serverDir: string, version: string) {
+    async installFabric(serverId: string, serverDir: string, version: string, onProgress?: (msg: string, percent?: number) => void) {
         try {
-            this.emit('status', 'Fetching Fabric versions...');
+            await SafeFileOperation.checkDiskSpace(serverDir);
+            const fMsg = 'Fetching Fabric versions...';
+            this.updateProgress(serverId, fMsg, 0);
+            onProgress?.(fMsg);
             const loaderRes = await axios.get('https://meta.fabricmc.net/v2/versions/loader');
             const loaderVersion = loaderRes.data[0].version; 
             const installerVersion = '1.0.1';
@@ -315,20 +394,25 @@ export class InstallerService extends EventEmitter {
             const dest = path.join(serverDir, 'server.jar');
             await fs.ensureDir(serverDir);
             
-            this.emit('status', `Downloading Fabric for ${version}...`);
-            await this.downloadFile(downloadUrl, dest);
+            const dMsg = `Downloading Fabric for ${version}...`;
+            this.updateProgress(serverId, dMsg, 30);
+            onProgress?.(dMsg, 0);
+            await this.downloadFile(downloadUrl, dest, onProgress, serverId);
             
             await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
-            this.emit('status', 'Installation Complete');
+            this.updateProgress(serverId, 'Installation Complete', 100);
+            setTimeout(() => this.clearProgress(serverId), 2000);
 
         } catch (e) {
             console.error('Fabric install failed', e);
+            this.clearProgress(serverId);
             throw e;
         }
     }
     // Install Forge
-    async installForge(serverDir: string, version: string, localModpack?: string, build?: string, onProgress?: (msg: string) => void) {
+    async installForge(serverId: string, serverDir: string, version: string, localModpack?: string, build?: string, onProgress?: (msg: string, percent?: number) => void) {
         try {
+            await SafeFileOperation.checkDiskSpace(serverDir, 1000); // Modded servers need 1GB min
             const { javaManager } = await import('../processes/JavaManager');
             const { validateBuildId } = await import('../../utils/validation');
 
@@ -353,22 +437,22 @@ export class InstallerService extends EventEmitter {
             if (localModpack) {
                 const msg = `Extracting custom modpack: ${localModpack}...`;
                 console.log(`[Installer:Forge] ${msg}`);
-                this.emit('status', msg);
+                this.updateProgress(serverId, msg, 5);
                 onProgress?.(msg);
                 const zipPath = path.join(serverDir, localModpack);
                 if (await fs.pathExists(zipPath)) {
                     let entryCount = 0;
                     await extract(zipPath, { 
                         dir: serverDir,
-                        onEntry: (entry, zipfile) => {
-                            entryCount++;
-                            if (entryCount % 1000 === 0) {
-                                const msg = `Extracting... (${entryCount} files processed)`;
-                                // console.log(`[Installer:Forge] ${msg}`);
-                                this.emit('status', msg);
-                                onProgress?.(msg);
-                            }
+                    onEntry: (entry) => {
+                        entryCount++;
+                        if (entryCount % 100 === 0) {
+                            const percent = Math.min(80, Math.round((entryCount / 5000) * 100)); // Cap at 80 for extraction
+                            const msg = `Extracting modpack... (${entryCount} files)`;
+                            this.emit('status', msg);
+                            onProgress?.(msg, percent);
                         }
+                    }
                     });
                     const msg = `Modpack extracted successfully (${entryCount} files installed).`;
                     console.log(`[Installer:Forge] ${msg}`);
@@ -419,9 +503,15 @@ export class InstallerService extends EventEmitter {
             const installerPath = path.join(serverDir, 'forge-installer.jar');
             await fs.ensureDir(serverDir);
 
-            this.emit('status', `Downloading Forge ${forgeVersion}...`);
+            this.updateProgress(serverId, `Downloading Forge ${forgeVersion}...`, 70);
             console.log(`[Installer:Forge] Downloading Installer...`);
-            await this.downloadFile(installerUrl, installerPath);
+            onProgress?.(`Downloading Forge Installer...`, 80); // Extraction was at 80%
+            await this.downloadFile(installerUrl, installerPath, (msg, pct) => {
+                // Map download percentage (0-100) to sub-range 80-95
+                const mappedPercent = 80 + Math.round((pct || 0) * 0.15);
+                this.updateProgress(serverId, msg, mappedPercent);
+                onProgress?.(msg, mappedPercent);
+            }, serverId);
 
             this.emit('status', 'Running Forge Installer (This may take a minute)...');
             console.log(`[Installer:Forge] Running Forge Installer...`);
@@ -467,18 +557,21 @@ export class InstallerService extends EventEmitter {
                  return forgeJar;
             }
 
-            this.emit('status', 'Forge installed.');
+            this.updateProgress(serverId, 'Forge installed.', 100);
+            setTimeout(() => this.clearProgress(serverId), 2000);
             return 'run.bat'; // Default fallback
 
         } catch (e) {
             console.error('Forge install failed', e);
+            this.clearProgress(serverId);
             throw e;
         }
     }
 
     // Install NeoForge
-    async installNeoForge(serverDir: string, version: string, build?: string) {
+    async installNeoForge(serverId: string, serverDir: string, version: string, build?: string, onProgress?: (msg: string, percent?: number) => void) {
         try {
+            await SafeFileOperation.checkDiskSpace(serverDir, 1000); // Modded servers need 1GB min
             const { javaManager } = await import('../processes/JavaManager');
             const { validateBuildId } = await import('../../utils/validation');
 
@@ -494,9 +587,14 @@ export class InstallerService extends EventEmitter {
             // 1.20.4 and below use Java 17, 1.20.5+ use Java 21
             if (mcMajor === 20 && mcMinor <= 4) requiredJava = 'Java 17';
 
+            const jMsg = `Ensuring ${requiredJava} exists...`;
+            this.emit('status', jMsg);
+            onProgress?.(jMsg);
             const javaPath = await javaManager.ensureJava(requiredJava);
 
-            this.emit('status', `Fetching NeoForge version for ${version}...`);
+            const vMsg = `Fetching NeoForge version for ${version}...`;
+            this.emit('status', vMsg);
+            onProgress?.(vMsg);
             
             let matchingVersion = build;
 
@@ -530,10 +628,13 @@ export class InstallerService extends EventEmitter {
             const installerPath = path.join(serverDir, 'neoforge-installer.jar');
             await fs.ensureDir(serverDir);
 
-            this.emit('status', `Downloading NeoForge ${matchingVersion}...`);
-            await this.downloadFile(downloadUrl, installerPath);
+            this.updateProgress(serverId, `Downloading NeoForge ${matchingVersion}...`, 30);
+            onProgress?.(`Downloading NeoForge Installer...`, 0);
+            await this.downloadFile(downloadUrl, installerPath, onProgress, serverId);
 
-            this.emit('status', 'Running NeoForge Installer...');
+            const eMsg = 'Running NeoForge Installer...';
+            this.updateProgress(serverId, eMsg, 60);
+            onProgress?.(eMsg);
             
             const { spawn } = await import('child_process');
             
@@ -565,19 +666,26 @@ export class InstallerService extends EventEmitter {
                 await fs.writeFile(argsFile, '# Put your custom JVM arguments here\n-Xms4G\n-Xmx4G\n');
             }
 
-            this.emit('status', 'NeoForge installed.');
+            const cMsg = 'NeoForge installed.';
+            this.updateProgress(serverId, cMsg, 100);
+            onProgress?.(cMsg);
+            setTimeout(() => this.clearProgress(serverId), 2000);
             return 'run.bat';
 
         } catch (e) {
             console.error('NeoForge install failed', e);
+            this.clearProgress(serverId);
             throw e;
         }
     }
 
     // Install Spigot (Using a common mirror for speed, or BuildTools)
-    async installSpigot(serverDir: string, version: string) {
+    async installSpigot(serverId: string, serverDir: string, version: string, onProgress?: (msg: string, percent?: number) => void) {
         try {
-            this.emit('status', `Searching for Spigot ${version} mirror...`);
+            await SafeFileOperation.checkDiskSpace(serverDir);
+            const sMsg = `Searching for Spigot ${version} mirror...`;
+            this.updateProgress(serverId, sMsg, 0);
+            onProgress?.(sMsg);
             
             // Note: Official Spigot requires BuildTools, but many mirrors exist.
             // For a better UX, we'll try a common one, or provide instructions.
@@ -588,7 +696,8 @@ export class InstallerService extends EventEmitter {
             await fs.ensureDir(serverDir);
             
             try {
-                await this.downloadFile(downloadUrl, dest);
+                onProgress?.('Downloading Spigot Jar...', 0);
+                await this.downloadFile(downloadUrl, dest, onProgress);
                 this.emit('status', 'Spigot Downloaded successfully.');
             } catch (e) {
                 this.emit('status', 'Mirror failed. Falling back to BuildTools (Slow)...');
@@ -596,11 +705,12 @@ export class InstallerService extends EventEmitter {
                 throw new Error('Spigot download failed. No mirror found for this version.');
             }
 
-            await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
-            this.emit('status', 'Installation Complete');
+            this.updateProgress(serverId, 'Installation Complete', 100);
+            setTimeout(() => this.clearProgress(serverId), 2000);
 
         } catch (e) {
             console.error('Spigot install failed', e);
+            this.clearProgress(serverId);
             throw e;
         }
     }
@@ -614,7 +724,7 @@ export class InstallerService extends EventEmitter {
 
         // Check availability
         if (await fs.pathExists(dest)) {
-            console.log('[Installer] Spark is already installed. Skipping.');
+            logger.success('[Installer] Bedrock Java pre-requisite met.');
             return;
         }
         
@@ -695,40 +805,62 @@ export class InstallerService extends EventEmitter {
         };
     }
 
-    async installBedrock(serverDir: string, version: string) {
+    async installBedrock(serverId: string, serverDir: string, version: string, onProgress?: (msg: string, percent?: number) => void) {
         try {
+            await SafeFileOperation.checkDiskSpace(serverDir);
             console.log(`[Installer] Starting Bedrock install for v${version}. Platform: ${process.platform}`);
-            this.emit('status', `Preparing Bedrock ${version} installation...`);
+            const pMsg = `Preparing Bedrock ${version} installation...`;
+            this.updateProgress(serverId, pMsg, 0);
+            onProgress?.(pMsg);
             
             const platform = process.platform === 'win32' ? 'win' : 'linux';
-            // OFFICIAL URL: https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.21.11.01.zip
             const downloadUrl = `https://www.minecraft.net/bedrockdedicatedserver/bin-${platform}/bedrock-server-${version}.zip`;
             
             console.log(`[Installer] Bedrock Download Link: ${downloadUrl}`);
             const zipPath = path.join(serverDir, 'bedrock.zip');
-            await fs.ensureDir(serverDir);
+            const cacheZipPath = path.join(BEDROCK_CACHE_DIR, `bedrock-server-${version}-${platform}.zip`);
             
-            this.emit('status', `Downloading Bedrock ${version} (${platform})...`);
-            try {
-                // Secondary check: Ensure we are NOT using azureedge.net anymore
-                if (downloadUrl.includes('azureedge.net')) {
-                   console.warn(`[Installer] SECURITY/STABILITY: AzureEdge URL detected. Overriding to minecraft.net.`);
-                   // downloadUrl already set to www.minecraft.net above, but let's be double sure for this block
-                }
-                await this.downloadFile(downloadUrl, zipPath);
-            } catch (err: any) {
-                console.error(`[Installer] Bedrock download failed: ${err.message}`);
-                
-                // If the error message already contains "DNS Resolution failed", rethrow it
-                if (err.message.includes('DNS Resolution failed')) throw err;
+            await fs.ensureDir(serverDir);
+            await fs.ensureDir(BEDROCK_CACHE_DIR);
 
-                throw new Error(`Failed to download Bedrock server from ${downloadUrl}. Error: ${err.message}. Please check your internet connection or try a manual binary upload via the "Files" tab.`);
+            // --- Cache Handling ---
+            if (!await fs.pathExists(cacheZipPath)) {
+                console.log(`[Installer] Bedrock Cache MISS: Downloading to ${cacheZipPath}`);
+                this.updateProgress(serverId, `Downloading Bedrock ${version} (${platform})...`, 0);
+                onProgress?.(`Downloading Bedrock ${version} (${platform})...`, 0);
+                try {
+                    await this.downloadFile(downloadUrl, cacheZipPath, onProgress, serverId);
+                } catch (err: any) {
+                    console.error(`[Installer] Bedrock download failed: ${err.message}`);
+                    if (err.message.includes('DNS Resolution failed')) throw err;
+                    throw new Error(`Failed to download Bedrock server from ${downloadUrl}. Error: ${err.message}. Please check your internet connection or try a manual binary upload via the "Files" tab.`);
+                }
+            } else {
+                console.log(`[Installer] Bedrock Cache HIT: ${cacheZipPath}`);
+                this.updateProgress(serverId, `Using cached Bedrock ${version} binaries...`, 20);
             }
             
-            this.emit('status', 'Extracting Bedrock binaries...');
-            await extract(zipPath, { dir: serverDir });
-            
-            await fs.remove(zipPath);
+            const eMsg = 'Extracting Bedrock binaries...';
+            this.updateProgress(serverId, eMsg, 30);
+            onProgress?.(eMsg);
+
+            logger.info('[Installer] Extracting Java runtime...');
+            const zip = new AdmZip(cacheZipPath);
+            const totalEntries = zip.getEntries().length;
+            let extractedCount = 0;
+
+            await extract(cacheZipPath, { 
+                dir: serverDir,
+                onEntry: (entry) => {
+                    extractedCount++;
+                    if (extractedCount % 50 === 0 || extractedCount === totalEntries) {
+                        const percent = 30 + Math.round((extractedCount / totalEntries) * 70);
+                        const msg = `Extracting Bedrock binaries... (${extractedCount}/${totalEntries})`;
+                        this.updateProgress(serverId, msg, percent);
+                        onProgress?.(msg, percent);
+                    }
+                }
+            });
 
             // --- Smart Flattening (v1.10.1) ---
             // Some zip versions might contain a subfolder. Let's check.
@@ -745,8 +877,18 @@ export class InstallerService extends EventEmitter {
                     if ((await fs.stat(nestedDir)).isDirectory()) {
                         console.log(`[Installer] Found single subfolder: ${subDirs[0]}. Flattening...`);
                         const nestedFiles = await fs.readdir(nestedDir);
+                        const protectedFiles = ['server.properties', 'allowlist.json', 'permissions.json', 'whitelist.json', 'valid_known_packs.json', 'world_behavior_packs.json', 'world_resource_packs.json'];
+                        
                         for (const file of nestedFiles) {
-                            await fs.move(path.join(nestedDir, file), path.join(serverDir, file), { overwrite: true });
+                            const targetPath = path.join(serverDir, file);
+                            const shouldOverwrite = !protectedFiles.includes(file) || !(await fs.pathExists(targetPath));
+                            
+                            if (shouldOverwrite) {
+                                await fs.move(path.join(nestedDir, file), targetPath, { overwrite: true });
+                            } else {
+                                logger.info(`[Installer] Protecting existing config file: ${file}`);
+                                await fs.remove(path.join(nestedDir, file)); // Clean up the source even if skipped
+                            }
                         }
                         await fs.remove(nestedDir);
                     }
@@ -769,12 +911,102 @@ export class InstallerService extends EventEmitter {
                  }
             }
 
-            this.emit('status', 'Bedrock Installation Complete');
-            return true;
+            const cMsg = 'Bedrock Installation Complete';
+            this.updateProgress(serverId, 'Bedrock installation complete.', 100);
+            onProgress?.('Bedrock installation complete.', 100);
+            setTimeout(() => this.clearProgress(serverId), 2000);
+
         } catch (e) {
-            console.error('[Installer] Bedrock install failed:', e);
+            console.error('Bedrock install failed', e);
+            this.clearProgress(serverId);
             throw e;
         }
+    }
+
+    /**
+     * Installs Velocity Proxy
+     */
+    async installVelocity(serverId: string, serverDir: string, options: { version: string, build?: string }, onProgress?: (msg: string, percent?: number) => void) {
+        const { version, build = 'latest' } = options;
+        try {
+            await SafeFileOperation.checkDiskSpace(serverDir, 200); // Proxies are light
+            this.updateProgress(serverId, `Preparing Velocity ${version}...`, 0);
+            const vMsg = `Preparing Velocity ${version} installation...`;
+            onProgress?.(vMsg);
+
+            const maxRetries = 3;
+            let attempt = 0;
+
+            while (attempt < maxRetries) {
+                try {
+                    attempt++;
+                    const msg = `Fetching Velocity builds (Attempt ${attempt})...`;
+                    this.updateProgress(serverId, msg);
+                    onProgress?.(msg);
+                    
+                    let targetBuild = build;
+                    if (build === 'latest') {
+                        const buildsUrl = `https://api.papermc.io/v2/projects/velocity/versions/${version}/builds`;
+                        const buildsRes = await axios.get(buildsUrl, { timeout: 10000 });
+                        const builds = (buildsRes.data as any).builds;
+                        if (!builds || builds.length === 0) throw new Error('No builds found for this version');
+                        targetBuild = builds[builds.length - 1].build;
+                    }
+
+                    const jarName = `velocity-${version}-${targetBuild}.jar`;
+                    const downloadUrl = `https://api.papermc.io/v2/projects/velocity/versions/${version}/builds/${targetBuild}/downloads/${jarName}`;
+                    const dest = path.join(serverDir, 'velocity.jar');
+
+                    await fs.ensureDir(serverDir);
+                    const dMsg = `Downloading Velocity ${version} (Build ${targetBuild})...`;
+                    this.updateProgress(serverId, dMsg, 10);
+                    onProgress?.(dMsg, 0);
+                    await this.downloadFile(downloadUrl, dest, onProgress, serverId);
+                    
+                    // Generate basic velocity.toml
+                    const configPath = path.join(serverDir, 'velocity.toml');
+                    if (!(await fs.pathExists(configPath))) {
+                        const defaultConfig = `
+# Velocity Configuration
+# Generated by CraftCommand
+
+bind = "0.0.0.0:25565"
+motd = "A Velocity Proxy"
+show-max-players = 500
+online-mode = true
+player-info-forwarding-mode = "modern"
+
+[servers]
+# Backends will be synced here automatically by CraftCommand
+
+[forced-hosts]
+# Forced hosts will be synced here automatically
+
+[advanced]
+        `;
+                        await fs.writeFile(configPath, defaultConfig.trim());
+                    }
+
+                    const cMsg = 'Installation Complete';
+                    this.updateProgress(serverId, cMsg, 100);
+                    onProgress?.(cMsg);
+                    setTimeout(() => this.clearProgress(serverId), 2000);
+                    return true;
+
+                } catch (e: any) {
+                    console.error(`Velocity install attempt ${attempt} failed`, e.message);
+                    if (attempt >= maxRetries) {
+                        throw new Error(`Failed to install Velocity after ${maxRetries} attempts: ${e.message}`);
+                    }
+                    await new Promise(r => setTimeout(r, 2000 * attempt)); // Exponential backoff
+                }
+            }
+        } catch (e) {
+            console.error('Velocity install failed', e);
+            this.clearProgress(serverId);
+            throw e;
+        }
+        return false;
     }
 }
 

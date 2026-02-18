@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs-extra';
 import path from 'path';
 import {  InstalledPlugin, PluginSource, PluginSearchQuery, PluginSearchResult, PluginUpdateInfo, PluginPlatform  } from '@shared/types';
-import { marketplaceRegistry, getTargetDir, supportsPlugins } from './MarketplaceRegistry';
+import { marketplaceRegistry, SOFTWARE_TO_PLATFORMS, getTargetDir, supportsPlugins } from './MarketplaceRegistry';
 import { installerService } from '../installer/InstallerService';
 import { serverRepository } from '../../storage/ServerRepository';
 import { pluginRepository } from '../../storage/PluginRepository';
@@ -48,17 +48,28 @@ export class PluginService {
             throw new Error('Server directory does not exist. Please install or configure the server first.');
         }
 
-        // Check if already installed (return existing instead of erroring)
+        // Check if already installed
         const existing = pluginRepository.findBySourceId(sourceId, serverId);
         if (existing) {
-            logger.warn(`[PluginService] Plugin already installed: ${existing.name}. Returning existing record.`);
-            return existing;
+            // Hardening: Verify the file actually exists on DISK.
+            // If the record exists but the file is missing (Ghost Installation), clear the record and proceed.
+            const targetDir = path.join(server.workingDirectory, getTargetDir(server.software));
+            const jarPath = path.join(targetDir, existing.fileName);
+            
+            if (await fs.pathExists(jarPath)) {
+                logger.warn(`[PluginService] Plugin already installed: ${existing.name}. Returning existing record.`);
+                return existing;
+            } else {
+                logger.warn(`[PluginService] Ghost record found for ${existing.name} (DB entry exists but file missing). Clearing record and re-installing...`);
+                pluginRepository.delete(existing.id);
+            }
         }
 
         // Resolve download URL with clear error handling
         let downloadInfo;
         try {
-            downloadInfo = await marketplaceRegistry.getDownloadUrl(sourceId, source, server.version);
+            const platforms = SOFTWARE_TO_PLATFORMS[server.software] || [];
+            downloadInfo = await marketplaceRegistry.getDownloadUrl(sourceId, source, server.version, platforms);
         } catch (err: any) {
             logger.error(`[PluginService] Failed to resolve download URL for ${sourceId} (${source}): ${err.message}`);
             throw new Error(`Could not find a compatible download for this plugin from ${source}. ${err.message}`);

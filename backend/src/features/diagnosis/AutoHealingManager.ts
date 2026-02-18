@@ -53,10 +53,10 @@ export class AutoHealingManager {
                     await DiagnosisActions.removeDuplicatePlugins(fsManager, payload.files);
                     break;
                 case 'TAKE_HEAP_SNAPSHOT':
-                    await (DiagnosisActions as any).takeHeapSnapshot(payload.reason);
+                    await DiagnosisActions.takeHeapSnapshot(payload.reason);
                     break;
                 case 'RESTORE_DATA_BACKUP':
-                    await (DiagnosisActions as any).restoreDataBackup(fsManager, payload.filename);
+                    await DiagnosisActions.restoreDataBackup(fsManager, payload.filename);
                     break;
                 case 'REINSTALL_BEDROCK':
                     await DiagnosisActions.reinstallBedrock(server);
@@ -64,7 +64,24 @@ export class AutoHealingManager {
                 case 'UPDATE_CONFIG':
                     // Payload contains the config updates (e.g., { ram: 4 } or { port: 25566 })
                     logger.info(`[AutoHealing] Applying Config Update to ${serverId}: ${JSON.stringify(payload)}`);
-                    await updateServer(serverId, payload);
+                    if (payload.reassignMapPort) {
+                        await DiagnosisActions.reassignMapPort(server, fsManager);
+                    } else if (payload.triggerDdnsUpdate) {
+                        await DiagnosisActions.triggerDdnsUpdate(server);
+                    } else if (payload.repairPermissions) {
+                        await DiagnosisActions.repairPermissions(server, fsManager);
+                    } else {
+                        await updateServer(serverId, payload);
+                    }
+                    break;
+                case 'RESYNC_VELOCITY_SECRET':
+                    await DiagnosisActions.resyncVelocitySecret(server, fsManager);
+                    break;
+                case 'INSTALL_JAVA':
+                    await DiagnosisActions.installJava(payload.version);
+                    break;
+                case 'TRIGGER_DDNS_UPDATE':
+                    await DiagnosisActions.triggerDdnsUpdate(server);
                     break;
                 default:
                     throw new Error(`Unknown auto-heal action type: ${actionType}`);

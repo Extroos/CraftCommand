@@ -134,8 +134,11 @@ const StatusPage: React.FC<StatusPageProps> = ({ onNavigateLogin }) => {
 
     const systemsAllGreen = servers.length > 0 && servers.every(s => s.status === ServerStatus.ONLINE);
 
+    const activeBg = localStorage.getItem('cc_bg_status');
+    const bgClass = activeBg ? 'bg-transparent-if-bg' : 'bg-[#09090b]';
+
     return (
-        <div className="min-h-screen bg-[#09090b] text-white font-sans selection:bg-emerald-500/30 overflow-x-hidden">
+        <div className={`min-h-screen ${bgClass} text-white font-sans selection:bg-emerald-500/30 overflow-y-auto overflow-x-hidden`}>
             
             {/* Arty Background Layer */}
             <div className="fixed inset-0 z-0 pointer-events-none">

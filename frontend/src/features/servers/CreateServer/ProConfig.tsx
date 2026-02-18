@@ -1,9 +1,10 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Terminal, Loader2, Settings2, Globe } from 'lucide-react';
+import { Globe, Zap } from 'lucide-react';
 import { FormData } from './types';
 import { NodeInfo } from '@shared/types';
 import { useSystem } from '@features/system/context/SystemContext';
+import { useUser } from '@features/auth/context/UserContext';
 import ModpackBrowser from '../ModpackBrowser';
 
 interface ProConfigProps {
@@ -32,6 +33,7 @@ const ProConfig: React.FC<ProConfigProps> = ({
     bedrockVersions
 }) => {
     const { settings } = useSystem();
+    const { user } = useUser();
     return (
         <motion.div 
             key="pro"
@@ -40,20 +42,22 @@ const ProConfig: React.FC<ProConfigProps> = ({
             exit={{ opacity: 0, y: 10 }}
             className="grid grid-cols-1 lg:grid-cols-12 gap-6"
         >
-            <div className="lg:col-span-8 space-y-3">
-                <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-lg p-4">
+            <div className="lg:col-span-8 space-y-4">
+                <div className={`border border-border rounded-xl p-5 shadow-sm transition-all duration-500 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow' : 'bg-card/40'}`}>
                     {renderSoftwareStep()}
                 </div>
                 {settings?.app?.distributedNodes?.enabled && (
-                    <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-lg p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Globe size={14} className="text-cyan-400" />
-                            <h3 className="text-[10px] font-black uppercase tracking-widest text-[rgb(var(--color-fg-muted))]">Deployment Target</h3>
+                    <div className={`border border-border rounded-xl p-5 shadow-sm transition-all duration-500 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow' : 'bg-card/40'}`}>
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-1.5 bg-cyan-500/10 rounded-md border border-cyan-500/20">
+                                <Globe size={14} className="text-cyan-400" />
+                            </div>
+                            <h3 className="text-[10px] font-black uppercase tracking-widest text-foreground/70">Deployment Target</h3>
                         </div>
                         <select 
                             value={formData.nodeId}
                             onChange={e => setFormData(prev => ({ ...prev, nodeId: e.target.value }))}
-                            className="w-full bg-black/40 border border-white/10 rounded-lg py-2 px-3 outline-none text-xs text-white font-medium cursor-pointer hover:bg-black/60 transition-colors"
+                            className="w-full bg-muted/40 border border-border rounded-lg py-2.5 px-4 outline-none text-[11px] text-foreground font-black uppercase tracking-widest cursor-pointer hover:bg-muted/60 transition-all appearance-none"
                         >
                             <option value="auto">Automatic (Recommended)</option>
                             <option value="local">Local Panel (Current System)</option>
@@ -63,34 +67,37 @@ const ProConfig: React.FC<ProConfigProps> = ({
                                 </option>
                             ))}
                         </select>
+                        <p className="text-[8px] text-muted-foreground mt-2 font-bold uppercase tracking-widest opacity-40">Distributed provisioning optimizes for node latency.</p>
                     </div>
                 )}
 
-                <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-lg p-4">
+                <div className={`border border-border rounded-xl p-5 shadow-sm transition-all duration-500 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow' : 'bg-card/40'}`}>
                     {renderDetailsStep()}
                 </div>
-                <div className="bg-[#121214]/60 border border-[rgb(var(--color-border-subtle))] rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                        <Zap size={14} className="text-emerald-500" />
-                        <h3 className="text-[10px] font-black uppercase tracking-widest text-[rgb(var(--color-fg-muted))]">Advanced Parameters</h3>
+                <div className={`border border-border rounded-xl p-5 shadow-sm transition-all duration-500 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow' : 'bg-card/40'}`}>
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-1.5 bg-emerald-500/10 rounded-md border border-emerald-500/20">
+                            <Zap size={14} className="text-emerald-500" />
+                        </div>
+                        <h3 className="text-[10px] font-black uppercase tracking-widest text-foreground/70">Advanced Parameters</h3>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {[
                                 { id: 'aikarFlags', label: "Aikar's Flags", desc: "Enterprise GC Tuning", javaOnly: true },
-                                { id: 'installSpark', label: "Spark Profiler", desc: "Real-time Diagnostics", javaOnly: true },
-                                { id: 'onlineMode', label: "Official Auth", desc: "Enable Minecraft Account verification", javaOnly: false }
-                            ].filter(flag => !flag.javaOnly || capabilities.supportsJava).map(flag => (
-                            <label key={flag.id} className={`flex flex-col gap-1 p-2 bg-black/20 border border-[rgb(var(--color-border-subtle))] rounded-lg cursor-pointer hover:border-[rgb(var(--color-border-default))] transition-all ${flag.id === 'onlineMode' && !formData.onlineMode ? 'border-rose-500/30 bg-rose-500/5' : ''}`}>
+                                { id: 'installSpark', label: "Spark Profiler", desc: "Real-time Diagnostics", javaOnly: true, supportsSpark: capabilities.supportsSpark },
+                                { id: 'onlineMode', label: "Official Auth", desc: "Minecraft verification", javaOnly: false }
+                            ].filter(flag => (!flag.javaOnly || capabilities.supportsJava) && (flag.supportsSpark === undefined || flag.supportsSpark)).map(flag => (
+                            <label key={flag.id} className={`flex flex-col gap-1 p-3 bg-muted/20 border border-border rounded-xl cursor-pointer hover:bg-muted/40 transition-all ${flag.id === 'onlineMode' && !formData.onlineMode ? 'border-rose-500/30 bg-rose-500/5' : ''}`}>
                                 <div className="flex items-center gap-3">
                                     <input 
                                         type="checkbox" 
                                         checked={(formData as any)[flag.id]} 
                                         onChange={() => setFormData({...formData, [flag.id]: !(formData as any)[flag.id]})}
-                                        className={`w-3.5 h-3.5 rounded border-[rgb(var(--color-border-default))] bg-black ${flag.id === 'onlineMode' && !formData.onlineMode ? 'accent-rose-500' : 'accent-primary'}`}
+                                        className={`w-3.5 h-3.5 rounded border-border bg-black ${flag.id === 'onlineMode' && !formData.onlineMode ? 'accent-rose-500' : 'accent-primary'}`}
                                     /> 
-                                    <span className={`text-xs font-bold ${flag.id === 'onlineMode' && !formData.onlineMode ? 'text-rose-500' : 'text-[rgb(var(--color-fg-secondary))]'}`}>{flag.label}</span>
+                                    <span className={`text-[11px] font-black uppercase tracking-widest ${flag.id === 'onlineMode' && !formData.onlineMode ? 'text-rose-500' : 'text-foreground/80'}`}>{flag.label}</span>
                                 </div>
-                                <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] pl-6.5 font-medium">{flag.id === 'onlineMode' && !formData.onlineMode ? "CRACKED MODE ENABLED" : flag.desc}</p>
+                                <p className="text-[8px] text-muted-foreground pl-6.5 font-bold uppercase tracking-widest opacity-40">{flag.id === 'onlineMode' && !formData.onlineMode ? "SECURITY RISK" : flag.desc}</p>
                             </label>
                         ))}
                     </div>
@@ -100,7 +107,7 @@ const ProConfig: React.FC<ProConfigProps> = ({
             <div className="lg:col-span-4">
                 <div className="sticky top-0">
                     {renderReviewStep()}
-                    <div className="mt-4 p-4 rounded-xl border border-[rgb(var(--color-border-subtle))] bg-input/40 text-[9px] text-[rgb(var(--color-fg-subtle))] font-bold uppercase tracking-widest leading-relaxed">
+                    <div className="mt-4 p-4 rounded-xl border border-border bg-muted/20 text-[8px] text-muted-foreground font-black uppercase tracking-[0.2em] leading-relaxed opacity-40">
                         Node provisioning is localized. verify host capacity before deployment.
                     </div>
                 </div>

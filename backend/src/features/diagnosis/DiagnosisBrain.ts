@@ -1,6 +1,11 @@
 import { DiagnosisRule, SystemStats, ServerConfig, DiagnosisResult } from './types';
 import { CrashReport } from './CrashReportReader';
 
+/** Internal type that extends DiagnosisResult with tier metadata for brain processing */
+interface InternalDiagnosisResult extends DiagnosisResult {
+    _tier: number;
+}
+
 export class DiagnosisBrain {
     /**
      * Executes the diagnosis pipeline with tiered inference
@@ -49,7 +54,7 @@ export class DiagnosisBrain {
         env: SystemStats,
         crashReport?: CrashReport
     ): Promise<DiagnosisResult[]> {
-        const results: DiagnosisResult[] = [];
+        const results: InternalDiagnosisResult[] = [];
         const logContent = logs.join('\n');
         const crashContent = crashReport?.content || '';
 
@@ -66,14 +71,14 @@ export class DiagnosisBrain {
                 if (hasLogMatch || hasCrashMatch || isExplicitlyProactive || isProactiveNeeded) {
                     const result = await rule.analyze(server, logs, env, crashReport);
                     if (result) {
-                        // Internal metadata for brain processing
-                        (result as any)._tier = rule.tier;
+                        // Attach tier metadata for brain processing
+                        const internal: InternalDiagnosisResult = { ...result, _tier: rule.tier };
                         
                         // Apply default confidence if not specified by rule logic
-                        if (result.confidence === undefined) {
-                            result.confidence = rule.defaultConfidence;
+                        if (internal.confidence === undefined) {
+                            internal.confidence = rule.defaultConfidence;
                         }
-                        results.push(result);
+                        results.push(internal);
                     }
                 }
             } catch (e) {
@@ -95,11 +100,15 @@ export class DiagnosisBrain {
         // 1. Causality-Based Suppression (Knowledge-Driven)
         // Rule A -> causes Rule B
         const causalityMap: Record<string, string[]> = {
-            'insufficient_ram': ['memory_oom', 'tps_lag', 'cpu_exhaustion', 'watchdog_stunt'],
+            'insufficient_ram': ['memory_oom', 'tps_lag', 'cpu_exhaustion', 'watchdog_stunt', 'node_resource_starvation'],
             'memory_oom': ['tps_lag', 'watchdog_stunt'],
-            'disk_space_full': ['data_integrity', 'world_corruption', 'telemetry_cleanup', 'bad_config', 'permission_denied'],
-            'java_version': ['mod_dependency', 'plugin_incompatible', 'mixin_conflict', 'plugin_access_denied'],
-            'node_health': ['port_binding', 'network_offline']
+            'disk_space_full': ['data_integrity', 'world_corruption', 'telemetry_cleanup', 'bad_config', 'permission_denied', 'dynmap_storage_full'],
+            'java_version_unsupported': ['mod_dependency', 'plugin_incompatible', 'mixin_conflict', 'plugin_access_denied', 'java_binary_missing'],
+            'java_binary_missing': ['startup_failure', 'process_exit_immediate'],
+            'node_resource_starvation': ['tps_lag', 'network_latency', 'heartbeat_missed'],
+            'node_version_mismatch': ['sync_failure', 'cluster_instability'],
+            'duckdns_auth_failure': ['public_ip_mismatch', 'network_offline'],
+            'dynmap_port_conflict': ['port_binding_failed']
         };
 
         // Suppress known effects
@@ -120,8 +129,8 @@ export class DiagnosisBrain {
         // 2. Sort by tier first, then confidence
         // Tier 1 (Infrastructure) is the "highest" priority root cause
         const sorted = [...results].sort((a, b) => {
-            const tierA = (a as any)._tier || 3;
-            const tierB = (b as any)._tier || 3;
+            const tierA = (a as InternalDiagnosisResult)._tier || 3;
+            const tierB = (b as InternalDiagnosisResult)._tier || 3;
             
             // If one is already suppressed by the other, they are ranked accordingly
             if (a.suppressedBy?.includes(b.ruleId)) return 1;
@@ -134,8 +143,8 @@ export class DiagnosisBrain {
         const rootCause = sorted[0];
         rootCause.isRootCause = true;
 
-        // Cleanup internal metadata
-        results.forEach(r => delete (r as any)._tier);
+        // Cleanup internal metadata before returning to callers
+        sorted.forEach(r => delete (r as any)._tier);
 
         // 3. Infrastructure Suppression (Logic-Driven fallback)
         // If an infrastructure issue (Tier 1) exists, it suppresses related Tier 2/3 warnings
@@ -151,12 +160,6 @@ export class DiagnosisBrain {
         }
 
         return sorted;
-    }
-
-    private getRuleTier(ruleId: string): number {
-        // This is a helper, though ideally the result would carry the tier info.
-        // For now, Tier 1 is highest priority in RCA.
-        return 3; // Default
     }
 }
 

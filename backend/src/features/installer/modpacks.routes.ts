@@ -4,22 +4,24 @@ import { verifyToken } from '../../middleware/authMiddleware';
 
 const router = express.Router();
 
-// Search Modpacks
+// Unified Search — supports type=mod|modpack|all (default: all)
 router.get('/search', async (req, res) => {
-    const { q, loader, version } = req.query;
+    const { q, loader, version, type } = req.query;
     try {
-        const results = await modpackService.searchModpacks(
+        const results = await modpackService.searchAll(
             (q as string) || '', 
             (loader as string) || 'fabric',
-            (version as string) || undefined
+            (version as string) || undefined,
+            (type as 'all' | 'mod' | 'modpack') || 'all'
         );
         res.json(results);
     } catch (e) {
-        res.status(500).json({ error: 'Failed to search modpacks' });
+        console.error('[modpacks.routes] Search failed:', e);
+        res.status(500).json({ error: 'Failed to search mods/modpacks' });
     }
 });
 
-// Get Modpack Version Info
+// Get Modpack/Mod Version Info
 router.get('/:id/version', async (req, res) => {
     const { id } = req.params;
     const { versionId } = req.query;
@@ -27,7 +29,7 @@ router.get('/:id/version', async (req, res) => {
         const version = await modpackService.getVersionFile(id, versionId as string);
         res.json(version);
     } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch modpack version info' });
+        res.status(500).json({ error: 'Failed to fetch version info' });
     }
 });
 

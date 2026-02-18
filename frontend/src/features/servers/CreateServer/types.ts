@@ -1,5 +1,5 @@
-export type WizardStep = 'category' | 'marketing' | 'software' | 'details' | 'review';
-export type CreateMode = 'wizard' | 'pro';
+export type WizardStep = 'software' | 'details' | 'review';
+export type CreateMode = 'wizard' | 'pro' | 'proxy';
 export type ServerCategory = 'GAME';
 
 export interface FormData {
@@ -8,7 +8,7 @@ export interface FormData {
     loaderBuild?: string; // Specific build
     software: string;
     version: string;
-    javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21';
+    javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21' | 'Do Not Override';
     port: number;
     ram: number;
     maxPlayers: number;
@@ -25,6 +25,8 @@ export interface FormData {
     templateId?: string;
     cpuPriority?: 'normal' | 'high' | 'realtime';
     nodeId: string;
+    forwardingMode?: 'none' | 'legacy' | 'bungeeguard' | 'modern';
+    proxySecret?: string;
 }
 
 export interface CreateServerProps {

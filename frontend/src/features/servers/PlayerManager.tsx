@@ -2,13 +2,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 // import { useParams } from 'react-router-dom'; // Removed
 import { motion, AnimatePresence } from 'framer-motion';
 import { Player } from '@shared/types';
-import { Shield, Ban, Trash2, UserPlus, UserCheck, Gavel, Crown, Search, Eye, EyeOff, Globe, RotateCw, Loader2, Users, Copy, Check } from 'lucide-react';
+import { Shield, Ban, Trash2, UserPlus, UserCheck, Gavel, Crown, Search, Eye, EyeOff, Globe, RotateCw, Loader2, Users, Copy, Check, History as ActivityHistory } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import { API } from '@core/services/api';
 import { socketService } from '@core/services/socket';
 import { useServers } from '@features/servers/context/ServerContext';
+import { usePermissions } from '@features/auth/hooks/usePermissions';
+import { useUser } from '@features/auth/context/UserContext';
+import ActivityTimeline from './ActivityTimeline';
 
-type ListType = 'ONLINE' | 'ALL' | 'WHITELIST' | 'OPS' | 'BANNED' | 'IP_BANNED';
+type ListType = 'ONLINE' | 'ALL' | 'WHITELIST' | 'OPS' | 'BANNED' | 'IP_BANNED' | 'ACTIVITY';
 
 const PlayerSkeleton = () => (
     <tr className="animate-pulse border-b border-border/50">
@@ -27,6 +30,10 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
     // const { id } = useParams<{ id: string }>(); // Deprecated in favor of Prop
     const id = serverId; // Alias for compatibility with existing code
     const [activeList, setActiveList] = useState<ListType>('ONLINE');
+    const view = activeList === 'ACTIVITY' ? 'activity' : 'list';
+    const { can } = usePermissions();
+    const { user } = useUser();
+    const canManage = can('server.players.manage', serverId);
     const [players, setPlayers] = useState<Player[]>([]);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -48,6 +55,7 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
             return;
         }
 
+        if (view === 'activity') return; // Activity is handled by its own component
         setLoading(true);
         try {
             const apiType = activeList === 'ALL' ? 'all' :
@@ -128,6 +136,11 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
 
     const handleAction = async (player: Player, action: 'KICK' | 'BAN' | 'OP' | 'DEOP' | 'UNBAN' | 'UNWHITELIST' | 'BAN_IP') => {
         if (!id) return;
+        
+        if (!canManage) {
+            addToast('error', 'Access Denied', 'You do not have permission to moderate players.');
+            return;
+        }
 
         try {
             if (action === 'KICK') {
@@ -170,6 +183,12 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
 
     const handleAdd = async () => {
         if (!id || !addInput) return;
+
+        if (!canManage) {
+            addToast('error', 'Access Denied', 'You do not have permission to moderate players.');
+            return;
+        }
+
         try {
             const apiType = activeList === 'WHITELIST' ? 'whitelist' : 
                           activeList === 'OPS' ? 'ops' :
@@ -215,6 +234,7 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
                     <nav className="flex flex-col">
                         {[
                             { id: 'ONLINE', label: 'Online Players', icon: <UserCheck size={16} />, color: 'emerald' },
+                            { id: 'ACTIVITY', label: 'Live Activity', icon: <ActivityHistory size={16} />, color: 'amber' },
                             { id: 'ALL', label: 'All Players', icon: <Users size={16} />, color: 'blue' },
                             { id: 'WHITELIST', label: 'Whitelist', icon: <Shield size={16} />, color: 'primary' },
                             { id: 'OPS', label: 'Operators', icon: <Crown size={16} />, color: 'amber' },
@@ -241,7 +261,7 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
                     </nav>
                 </div>
 
-                {activeList !== 'ONLINE' && activeList !== 'ALL' && (
+                {activeList !== 'ONLINE' && activeList !== 'ALL' && canManage && (
                     <div className="bg-blue-900/10 border border-blue-900/30 rounded-xl p-4">
                         <h3 className="text-sm font-semibold text-blue-400 mb-2">
                             Add to {activeList === 'OPS' ? 'Operators' : activeList === 'WHITELIST' ? 'Whitelist' : activeList === 'BANNED' ? 'Ban List' : 'IP Ban List'}
@@ -267,223 +287,247 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
             </div>
 
             {/* Main Content */}
-            <div className="lg:col-span-3 bg-card border border-border rounded-xl flex flex-col overflow-hidden shadow-sm">
-                <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
-                    <h2 className="font-semibold text-lg tracking-tight flex items-center gap-3">
-                        {activeList === 'ONLINE' ? 'Server Roster' : 
-                         activeList === 'ALL' ? 'All Known Players' :
-                         activeList === 'WHITELIST' ? 'Whitelisted Users' :
-                         activeList === 'OPS' ? 'Server Operators' : 
-                         activeList === 'IP_BANNED' ? 'Blocked IP Addresses' : 'Banned Users'}
-                         
-                        {isLoading && <Loader2 size={16} className="animate-spin text-muted-foreground" />}
-                    </h2>
-                    <div className="flex gap-3">
-                        <button 
-                             onClick={fetchPlayers}
-                             className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
-                             title="Refresh List"
-                        >
-                            <RotateCw size={16} className={isLoading ? "animate-spin" : ""} />
-                        </button>
-                        {(activeList === 'ONLINE' || activeList === 'ALL') && (
-                            <button 
-                                onClick={() => setShowIps(!showIps)}
-                                className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
-                                title={showIps ? "Hide IPs" : "Show IPs"}
-                            >
-                                {showIps ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
-                        )}
-                        <div className="relative w-64">
-                            <Search className="absolute left-2.5 top-2.5 text-muted-foreground h-4 w-4" />
-                            <input 
-                                type="text" 
-                                placeholder="Search..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-background border border-border rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            />
+            {/* Main Content */}
+            <div className="lg:col-span-3 min-w-0">
+                {activeList === 'ACTIVITY' ? (
+                    <ActivityTimeline serverId={id!} />
+                ) : (
+                    <div className="bg-card border border-border rounded-xl flex flex-col h-full overflow-hidden shadow-sm">
+                        <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
+                            <h2 className="font-semibold text-lg tracking-tight flex items-center gap-3">
+                                {activeList === 'ONLINE' ? 'Server Roster' : 
+                                 activeList === 'ALL' ? 'All Known Players' :
+                                 activeList === 'WHITELIST' ? 'Whitelisted Users' :
+                                 activeList === 'OPS' ? 'Server Operators' : 
+                                 activeList === 'IP_BANNED' ? 'Blocked IP Addresses' : 'Banned Users'}
+                                 
+                                {isLoading && <Loader2 size={16} className="animate-spin text-muted-foreground" />}
+                            </h2>
+                            <div className="flex gap-3">
+                                <button 
+                                     onClick={fetchPlayers}
+                                     className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+                                     title="Refresh List"
+                                >
+                                    <RotateCw size={16} className={isLoading ? "animate-spin" : ""} />
+                                </button>
+                                {(activeList === 'ONLINE' || activeList === 'ALL') && (
+                                    <button 
+                                        onClick={() => setShowIps(!showIps)}
+                                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+                                        title={showIps ? "Hide IPs" : "Show IPs"}
+                                    >
+                                        {showIps ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                )}
+                                <div className="relative w-64">
+                                    <Search className="absolute left-2.5 top-2.5 text-muted-foreground h-4 w-4" />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search..." 
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full bg-background border border-border rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                    />
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
 
-                <div className="flex-1 overflow-y-auto p-2">
-                    <table className="w-full text-sm text-left border-separate border-spacing-y-2">
-                        <thead className="text-xs uppercase text-muted-foreground font-semibold sticky top-0 bg-card z-10">
-                            <tr>
-                                {activeList !== 'IP_BANNED' && <th className="px-4 pb-2">User</th>}
-                                <th className="px-4 pb-2">{activeList === 'IP_BANNED' ? 'IP Address' : 'UUID'}</th>
-                                {(activeList === 'ONLINE' || activeList === 'ALL') && <th className="px-4 pb-2">IP Address</th>}
-                                {(activeList === 'ONLINE' || activeList === 'ALL') && <th className="px-4 pb-2">Status</th>}
-                                <th className="px-4 pb-2 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {isLoading ? (
-                                <>
-                                    <PlayerSkeleton />
-                                    <PlayerSkeleton />
-                                    <PlayerSkeleton />
-                                </>
-                            ) : (
-                                <AnimatePresence mode="popLayout">
-                                    {filteredPlayers.length === 0 ? (
-                                         <motion.tr 
-                                            initial={{ opacity: 0 }} 
-                                            animate={{ opacity: 1 }} 
-                                            key="empty"
-                                        >
-                                            <td colSpan={5} className="h-64 text-center">
-                                                <div className="flex flex-col items-center justify-center text-muted-foreground opacity-50">
-                                                    <UserCheck size={48} className="mb-4" />
-                                                    <p>No players found in this list.</p>
-                                                    <p className="text-xs mt-1">Try changing tabs or adding a player.</p>
-                                                </div>
-                                            </td>
-                                        </motion.tr>
+                        <div className="flex-1 overflow-y-auto p-2">
+                            <table className="w-full text-sm text-left border-separate border-spacing-y-2">
+                                <thead className="text-xs uppercase text-muted-foreground font-semibold sticky top-0 bg-card z-10">
+                                    <tr>
+                                        {activeList !== 'IP_BANNED' && <th className="px-4 pb-2">User</th>}
+                                        <th className="px-4 pb-2">{activeList === 'IP_BANNED' ? 'IP Address' : 'UUID'}</th>
+                                        {(activeList === 'ONLINE' || activeList === 'ALL') && <th className="px-4 pb-2">IP Address</th>}
+                                        {(activeList === 'ONLINE' || activeList === 'ALL') && <th className="px-4 pb-2">Status</th>}
+                                        <th className="px-4 pb-2 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {isLoading ? (
+                                        <>
+                                            <PlayerSkeleton />
+                                            <PlayerSkeleton />
+                                            <PlayerSkeleton />
+                                        </>
                                     ) : (
-                                        filteredPlayers.map((player) => (
-                                            <motion.tr 
-                                                key={player.uuid + player.name} 
-                                                layout
-                                                initial={{ opacity: 0, scale: 0.95 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                exit={{ opacity: 0, scale: 0.95 }}
-                                                transition={{ duration: 0.15 }}
-                                                className="bg-muted/10 hover:bg-muted/30 transition-colors group"
-                                            >
-                                                {activeList !== 'IP_BANNED' && (
-                                                    <td className="px-4 py-3 rounded-l-lg">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="relative">
-                                                                <img src={player.skinUrl} alt={player.name} className={`w-8 h-8 rounded-md bg-muted ${!player.online && activeList === 'ALL' ? 'grayscale opacity-70' : ''}`} />
-                                                                {activeList === 'ALL' && (
-                                                                    <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-card ${player.online ? 'bg-emerald-500' : 'bg-gray-400'}`}></div>
-                                                                )}
-                                                            </div>
-                                                            <div>
-                                                                <div className="font-medium flex items-center gap-1.5">
-                                                                    {player.name}
-                                                                    {player.isOp && activeList !== 'OPS' && <Crown size={12} className="text-amber-500" fill="currentColor" />}
-                                                                </div>
-                                                                <div className="text-[10px] text-muted-foreground bg-secondary px-1.5 rounded w-fit mt-0.5">
-                                                                    {player.online ? 'Online' : 'Offline'}
-                                                                </div>
-                                                            </div>
+                                        <AnimatePresence mode="popLayout">
+                                            {filteredPlayers.length === 0 ? (
+                                                 <motion.tr 
+                                                    initial={{ opacity: 0 }} 
+                                                    animate={{ opacity: 1 }} 
+                                                    key="empty"
+                                                >
+                                                    <td colSpan={5} className="h-64 text-center">
+                                                        <div className="flex flex-col items-center justify-center text-muted-foreground opacity-50">
+                                                            <UserCheck size={48} className="mb-4" />
+                                                            <p>No players found in this list.</p>
+                                                            <p className="text-xs mt-1">Try changing tabs or adding a player.</p>
                                                         </div>
                                                     </td>
-                                                )}
-                                                <td className={`px-4 py-3 font-mono text-xs text-muted-foreground ${activeList === 'IP_BANNED' ? 'rounded-l-lg' : ''}`}>
-                                                    <div className="flex items-center gap-2 group/uuid">
-                                                        <span>{activeList === 'IP_BANNED' ? player.ip : player.uuid?.substring(0, 18) + (player.uuid?.length > 18 ? '...' : '')}</span>
-                                                        <button 
-                                                            onClick={() => copyToClipboard(activeList === 'IP_BANNED' ? player.ip! : player.uuid)}
-                                                            className="opacity-0 group-hover/uuid:opacity-100 transition-opacity hover:text-foreground"
-                                                        >
-                                                            {copied === (activeList === 'IP_BANNED' ? player.ip : player.uuid) ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                                
-                                                {(activeList === 'ONLINE' || activeList === 'ALL') && (
-                                                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                                                        <span className={`px-2 py-0.5 rounded ${showIps ? 'bg-secondary' : 'blur-[4px] bg-secondary/50'}`}>
-                                                            {maskIp(player.ip)}
-                                                        </span>
-                                                    </td>
-                                                )}
-
-                                                {(activeList === 'ONLINE' || activeList === 'ALL') && (
-                                                    <td className="px-4 py-3">
-                                                        {player.online ? (
-                                                            <div className="flex items-center gap-1.5">
-                                                                <div className={`w-2 h-2 rounded-full ${player.ping !== undefined && player.ping < 50 ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
-                                                                <span className="font-mono text-xs">{player.ping || 0}ms</span>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-xs text-muted-foreground">
-                                                                Last seen: {player.lastSeen ? new Date(player.lastSeen).toLocaleDateString() : 'Unknown'}
-                                                            </span>
+                                                </motion.tr>
+                                            ) : (
+                                                filteredPlayers.map((player) => (
+                                                    <motion.tr 
+                                                        key={player.uuid + player.name} 
+                                                        layout
+                                                        initial={{ opacity: 0, scale: 0.95 }}
+                                                        animate={{ opacity: 1, scale: 1 }}
+                                                        exit={{ opacity: 0, scale: 0.95 }}
+                                                        transition={{ duration: 0.15 }}
+                                                        className="bg-muted/10 hover:bg-muted/30 transition-colors group"
+                                                    >
+                                                        {activeList !== 'IP_BANNED' && (
+                                                            <td className="px-4 py-3 rounded-l-lg">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="relative">
+                                                                        <img 
+                                                                            src={player.skinUrl} 
+                                                                            alt={player.name} 
+                                                                            className={`w-8 h-8 rounded-md bg-muted ${!player.online && activeList === 'ALL' ? 'grayscale opacity-70' : ''}`} 
+                                                                            onError={(e) => {
+                                                                                (e.target as HTMLImageElement).src = 'https://mc-heads.net/avatar/steve/64';
+                                                                            }}
+                                                                        />
+                                                                        {activeList === 'ALL' && (
+                                                                            <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-card ${player.online ? 'bg-emerald-500' : 'bg-gray-400'}`}></div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="font-medium flex items-center gap-1.5">
+                                                                            {player.name}
+                                                                            {player.isOp && activeList !== 'OPS' && <Crown size={12} className="text-amber-500" fill="currentColor" />}
+                                                                        </div>
+                                                                        <div className="text-[10px] text-muted-foreground bg-secondary px-1.5 rounded w-fit mt-0.5">
+                                                                            {player.online ? 'Online' : 'Offline'}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
                                                         )}
-                                                    </td>
-                                                )}
-                                                
-                                                <td className="px-4 py-3 rounded-r-lg text-right">
-                                                    <div className="flex items-center justify-end gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                                                        <td className={`px-4 py-3 font-mono text-xs text-muted-foreground ${activeList === 'IP_BANNED' ? 'rounded-l-lg' : ''}`}>
+                                                            <div className="flex items-center gap-2 group/uuid">
+                                                                <span>{activeList === 'IP_BANNED' ? player.ip : player.uuid?.substring(0, 18) + (player.uuid?.length > 18 ? '...' : '')}</span>
+                                                                <button 
+                                                                    onClick={() => copyToClipboard(activeList === 'IP_BANNED' ? player.ip! : player.uuid)}
+                                                                    className="opacity-0 group-hover/uuid:opacity-100 transition-opacity hover:text-foreground"
+                                                                >
+                                                                    {copied === (activeList === 'IP_BANNED' ? player.ip : player.uuid) ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                        
                                                         {(activeList === 'ONLINE' || activeList === 'ALL') && (
-                                                            <>
-                                                                {player.online && (
+                                                            <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                                                                <span className={`px-2 py-0.5 rounded ${showIps ? 'bg-secondary' : 'blur-[4px] bg-secondary/50'}`}>
+                                                                    {maskIp(player.ip)}
+                                                                </span>
+                                                            </td>
+                                                        )}
+
+                                                        {(activeList === 'ONLINE' || activeList === 'ALL') && (
+                                                            <td className="px-4 py-3">
+                                                                {player.online ? (
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <div className={`w-2 h-2 rounded-full ${player.ping !== undefined && player.ping < 50 ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+                                                                        <span className="font-mono text-xs">{player.ping || 0}ms</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-xs text-muted-foreground">
+                                                                        Last seen: {player.lastSeen ? new Date(player.lastSeen).toLocaleDateString() : 'Unknown'}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                        )}
+                                                        
+                                                         <td className="px-4 py-3 rounded-r-lg text-right">
+                                                            <div className="flex items-center justify-end gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                                                                {(activeList === 'ONLINE' || activeList === 'ALL') && (
+                                                                    <>
+                                                                        {player.online && (
+                                                                            <button 
+                                                                                onClick={() => handleAction(player, 'KICK')}
+                                                                                disabled={!canManage}
+                                                                                className={`px-2 py-1 text-xs font-medium border border-border rounded transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed' : 'hover:bg-secondary hover:text-foreground'}`}
+                                                                            >
+                                                                                Kick
+                                                                            </button>
+                                                                        )}
+                                                                        <button 
+                                                                            onClick={() => handleAction(player, 'BAN')}
+                                                                            disabled={!canManage}
+                                                                            className={`p-1.5 rounded transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed text-muted-foreground' : 'text-rose-500 hover:bg-rose-500/10'}`} 
+                                                                            title={canManage ? "Ban Player" : "Insufficient Permissions"}
+                                                                        >
+                                                                            <Gavel size={16} />
+                                                                        </button>
+                                                                    </>
+                                                                )}
+                                                                
+                                                                {activeList === 'BANNED' && (
                                                                     <button 
-                                                                        onClick={() => handleAction(player, 'KICK')}
-                                                                        className="px-2 py-1 text-xs font-medium border border-border rounded hover:bg-secondary hover:text-foreground transition-colors"
+                                                                        onClick={() => handleAction(player, 'UNBAN')}
+                                                                        disabled={!canManage}
+                                                                        className={`px-3 py-1.5 text-xs font-medium border rounded transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed bg-muted text-muted-foreground border-border' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20'}`}
                                                                     >
-                                                                        Kick
+                                                                        Unban
                                                                     </button>
                                                                 )}
-                                                                <button 
-                                                                    onClick={() => handleAction(player, 'BAN')}
-                                                                    className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded transition-colors" title="Ban Player"
-                                                                >
-                                                                    <Gavel size={16} />
-                                                                </button>
-                                                            </>
-                                                        )}
-                                                        
-                                                        {activeList === 'BANNED' && (
-                                                            <button 
-                                                                onClick={() => handleAction(player, 'UNBAN')}
-                                                                className="px-3 py-1.5 text-xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded hover:bg-emerald-500/20 transition-colors"
-                                                            >
-                                                                Unban
-                                                            </button>
-                                                        )}
-
-                                                        {activeList === 'IP_BANNED' && (
-                                                            <button 
-                                                                onClick={() => handleAction(player, 'UNBAN')}
-                                                                className="px-3 py-1.5 text-xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded hover:bg-emerald-500/20 transition-colors"
-                                                            >
-                                                                Unblock IP
-                                                            </button>
-                                                        )}
-
-                                                        {activeList === 'WHITELIST' && (
-                                                            <button 
-                                                                onClick={() => handleAction(player, 'UNWHITELIST')}
-                                                                className="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded transition-colors"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        )}
-                                                        
-                                                        {(activeList === 'ONLINE' || activeList === 'OPS' || activeList === 'ALL') && (
-                                                            player.isOp ? (
-                                                                <button 
-                                                                    onClick={() => handleAction(player, 'DEOP')}
-                                                                    className="p-1.5 text-amber-500 hover:bg-amber-500/10 rounded transition-colors" title="De-Op"
-                                                                >
-                                                                    <Crown size={16} />
-                                                                </button>
-                                                            ) : (
-                                                                <button 
-                                                                    onClick={() => handleAction(player, 'OP')}
-                                                                    className="p-1.5 text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 rounded transition-colors" title="Make Operator"
-                                                                >
-                                                                    <Crown size={16} />
-                                                                </button>
-                                                            )
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </motion.tr>
-                                        ))
+                                                                
+                                                                {activeList === 'IP_BANNED' && (
+                                                                    <button 
+                                                                        onClick={() => handleAction(player, 'UNBAN')}
+                                                                        disabled={!canManage}
+                                                                        className={`px-3 py-1.5 text-xs font-medium border rounded transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed bg-muted text-muted-foreground border-border' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20'}`}
+                                                                    >
+                                                                        Unblock IP
+                                                                    </button>
+                                                                )}
+                                                                
+                                                                {activeList === 'WHITELIST' && (
+                                                                    <button 
+                                                                        onClick={() => handleAction(player, 'UNWHITELIST')}
+                                                                        disabled={!canManage}
+                                                                        className={`p-1.5 rounded transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed text-muted-foreground' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
+                                                                    >
+                                                                        <Trash2 size={16} />
+                                                                    </button>
+                                                                )}
+                                                                
+                                                                {(activeList === 'ONLINE' || activeList === 'OPS' || activeList === 'ALL') && (
+                                                                    player.isOp ? (
+                                                                        <button 
+                                                                            onClick={() => handleAction(player, 'DEOP')}
+                                                                            disabled={!canManage}
+                                                                            className={`p-1.5 rounded transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed text-muted-foreground' : 'text-amber-500 hover:bg-amber-500/10'}`} 
+                                                                            title={canManage ? "De-Op" : "Insufficient Permissions"}
+                                                                        >
+                                                                            <Crown size={16} />
+                                                                        </button>
+                                                                    ) : (
+                                                                        <button 
+                                                                            onClick={() => handleAction(player, 'OP')}
+                                                                            disabled={!canManage}
+                                                                            className={`p-1.5 rounded transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed text-muted-foreground' : 'text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10'}`} 
+                                                                            title={canManage ? "Make Operator" : "Insufficient Permissions"}
+                                                                        >
+                                                                            <Crown size={16} />
+                                                                        </button>
+                                                                    )
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </motion.tr>
+                                                ))
+                                            )}
+                                        </AnimatePresence>
                                     )}
-                                </AnimatePresence>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -2,8 +2,79 @@
 import { Router } from 'express';
 import { verifyToken, requireRole } from '../../middleware/authMiddleware';
 import { networkService } from './NetworkService';
+import { proxyService } from './ProxyService';
+import { startupManager } from '../servers/StartupManager';
+import { getServer, saveServer } from '../servers/ServerService';
 
 const router = Router();
+
+// Proxy Linking
+router.post('/proxy/link', verifyToken, requireRole(['OWNER', 'ADMIN', 'MANAGER']), async (req, res) => {
+    const { proxyId, backendId, alias } = req.body;
+    if (!proxyId || !backendId || !alias) {
+        return res.status(400).json({ error: 'proxyId, backendId, and alias are required' });
+    }
+    try {
+        proxyService.linkServer(proxyId, backendId, alias);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+router.post('/proxy/unlink', verifyToken, requireRole(['OWNER', 'ADMIN', 'MANAGER']), async (req, res) => {
+    const { proxyId, backendId } = req.body;
+    if (!proxyId || !backendId) {
+        return res.status(400).json({ error: 'proxyId and backendId are required' });
+    }
+    try {
+        proxyService.unlinkServer(proxyId, backendId);
+        
+        // Trigger property enforcement to revert online-mode and forwarding
+        const backend = getServer(backendId);
+        if (backend) {
+            await startupManager.enforceBackendProperties(backend);
+            
+            // If the server is online, mark it as needing restart to apply changes
+            if (backend.status === 'ONLINE') {
+                saveServer({ ...backend, needsRestart: true });
+            }
+        }
+        
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+router.post('/proxy/unlink-by-server', verifyToken, requireRole(['OWNER', 'ADMIN', 'MANAGER']), async (req, res) => {
+    const { serverId } = req.body;
+    if (!serverId) {
+        return res.status(400).json({ error: 'serverId is required' });
+    }
+    try {
+        const proxy = proxyService.findProxyForServer(serverId);
+        if (!proxy) {
+            return res.json({ success: true, message: 'Server was not linked to any proxy' });
+        }
+        proxyService.unlinkServer(proxy.id, serverId);
+        
+        // Trigger property enforcement to revert online-mode and forwarding
+        const backend = getServer(serverId);
+        if (backend) {
+            await startupManager.enforceBackendProperties(backend);
+            
+            // If the server is online, mark it as needing restart to apply changes
+            if (backend.status === 'ONLINE') {
+                saveServer({ ...backend, needsRestart: true });
+            }
+        }
+
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
 
 // Debug middleware
 router.use((req, res, next) => {
@@ -108,6 +179,18 @@ router.post('/port-check', verifyToken, requireRole(['OWNER', 'ADMIN']), async (
     }
     const status = await networkService.checkPort(port);
     res.json(status);
+});
+
+router.post('/proxy/install-via-suite', verifyToken, requireRole(['OWNER', 'ADMIN', 'MANAGER']), async (req, res) => {
+    const { proxyId } = req.body;
+    if (!proxyId) return res.status(400).json({ error: 'Missing proxyId' });
+
+    try {
+        await proxyService.installViaSuite(proxyId);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: (e as Error).message });
+    }
 });
 
 export default router;

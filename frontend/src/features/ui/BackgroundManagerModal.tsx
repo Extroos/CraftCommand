@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Image as ImageIcon, Settings, Eye, EyeOff, Sliders, Trash2, Globe, Monitor, Terminal as TerminalIcon, FileText, Layout, Shield, Users as UsersIcon, Clock, HardDrive, Cpu, ExternalLink, Upload, AlertCircle, Loader2, Webhook, Layers } from 'lucide-react';
+import { X, Image as ImageIcon, Settings, Eye, EyeOff, Sliders, Trash2, Globe, Monitor, Terminal as TerminalIcon, FileText, Layout, Shield, Users as UsersIcon, Clock, HardDrive, Cpu, ExternalLink, Upload, AlertCircle, Loader2, Webhook, Layers, Zap } from 'lucide-react';
 import { CustomBackgrounds, BackgroundSettings } from '@shared/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { STAGGER_CONTAINER, STAGGER_ITEM } from '../../styles/motion';
@@ -13,6 +13,7 @@ interface BackgroundManagerModalProps {
 }
 
 const VIEW_CONFIGS = [
+    { key: 'global', label: 'Global / Default', icon: ImageIcon },
     { key: 'login', label: 'Login Page', icon: Globe },
     { key: 'serverSelection', label: 'Server Selection', icon: Monitor },
     { key: 'dashboard', label: 'Dashboard', icon: Layout },
@@ -24,11 +25,15 @@ const VIEW_CONFIGS = [
     { key: 'players', label: 'Player Manager', icon: UsersIcon },
     { key: 'access', label: 'Access Control', icon: Shield },
     { key: 'integrations', label: 'Integrations', icon: Webhook },
+    { key: 'network', label: 'Proxy Network', icon: Globe },
     { key: 'settings', label: 'Server Settings', icon: Settings },
     { key: 'architect', label: 'Architect Views', icon: Layers },
     { key: 'users', label: 'User Management', icon: UsersIcon },
+    { key: 'profile', label: 'User Profile', icon: Settings },
     { key: 'globalSettings', label: 'System Configuration', icon: Shield },
+    { key: 'operations', label: 'Global Operations', icon: Zap },
     { key: 'auditLog', label: 'Audit Log', icon: Shield },
+    { key: 'status', label: 'Public Status', icon: Globe },
 ];
 
 const BackgroundManagerModal: React.FC<BackgroundManagerModalProps> = ({ onClose, currentBackgrounds, onSave, visualQuality }) => {
@@ -104,6 +109,12 @@ const BackgroundManagerModal: React.FC<BackgroundManagerModalProps> = ({ onClose
                             <p className="text-xs text-muted-foreground">Personalize your workspace with custom imagery.</p>
                         </div>
                     </div>
+                    {!visualQuality && (
+                        <div className="bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-lg flex items-center gap-2 text-[10px] font-bold text-amber-500 animate-pulse">
+                            <AlertCircle size={14} />
+                            <span>QUALITY MODE OFF: CHANGES WILL NOT BE VISIBLE</span>
+                        </div>
+                    )}
                     <button 
                         onClick={onClose}
                         className="p-2 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground"

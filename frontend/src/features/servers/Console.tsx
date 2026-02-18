@@ -7,6 +7,7 @@ import { API } from '@core/services/api';
 import { socketService } from '@core/services/socket';
 import { useToast } from '../ui/Toast';
 import { useUser } from '@features/auth/context/UserContext';
+import { usePermissions } from '@features/auth/hooks/usePermissions';
 import { useCollaboration } from '@features/collaboration/context/CollaborationContext';
 import PresenceBar from '../collaboration/PresenceBar';
 import { UserRole } from '@shared/types';
@@ -37,13 +38,14 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
     const endRef = useRef<HTMLDivElement>(null);
     const { addToast } = useToast();
     const { user, theme } = useUser(); // Access global user prefs
+    const { can } = usePermissions();
     const { updateActiveView } = useCollaboration();
 
-    // Role-based access: check if user can write commands
-    const ROLE_RANK: Record<UserRole, number> = { 'VIEWER': 0, 'MANAGER': 1, 'ADMIN': 2, 'OWNER': 3 };
-    const collab = server?.collabSettings;
-    const writeRole = collab?.console?.writeRole || 'MANAGER';
-    const canWrite = (ROLE_RANK[user?.role || 'VIEWER'] ?? 0) >= (ROLE_RANK[writeRole] ?? 0);
+    // Power Actions check
+    const canStart = can('server.start', serverId);
+    const canStop = can('server.stop', serverId);
+    const canRestart = can('server.restart', serverId);
+    const canWrite = can('server.console.write', serverId);
 
     // Notify collab context that we're on console
     React.useEffect(() => {
@@ -131,12 +133,24 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
 
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {
         if (action === 'start') {
+            if (!canStart) {
+                addToast('error', 'Permissions', 'Insufficient permissions to start server');
+                return;
+            }
             addToast('info', 'Console', 'Boot sequence initiated.');
             await API.startServer(serverId);
         } else if (action === 'stop') {
+            if (!canStop) {
+                addToast('error', 'Permissions', 'Insufficient permissions to stop server');
+                return;
+            }
             addToast('warning', 'Console', 'Termination signal sent.');
             await API.stopServer(serverId);
         } else if (action === 'restart') {
+            if (!canRestart) {
+                addToast('error', 'Permissions', 'Insufficient permissions to restart server');
+                return;
+            }
             addToast('info', 'Console', 'Restarting process...');
             await API.stopServer(serverId);
             setTimeout(() => API.startServer(serverId), 2000);
@@ -176,10 +190,10 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     <div className="flex items-center p-1 bg-background/50 border border-border rounded-lg shadow-sm">
                         <button 
                             onClick={() => handlePower('start')}
-                            disabled={status !== ServerStatus.OFFLINE || isJavaDownloading}
-                            title={isJavaDownloading ? "Java is being downloaded. Please wait..." : "Start Server"}
+                            disabled={status !== ServerStatus.OFFLINE || isJavaDownloading || !canStart}
+                            title={!canStart ? 'Insufficient Permissions' : (isJavaDownloading ? "Java is being downloaded. Please wait..." : "Start Server")}
                             className={`p-2 rounded-md transition-all duration-200 flex items-center gap-2 text-xs font-medium ${
-                                status === ServerStatus.OFFLINE && !isJavaDownloading
+                                status === ServerStatus.OFFLINE && !isJavaDownloading && canStart
                                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-inner' 
                                 : 'text-muted-foreground opacity-50 cursor-not-allowed hover:bg-secondary'
                             }`}
@@ -189,18 +203,18 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         <div className="w-[1px] h-4 bg-border mx-1"></div>
                         <button 
                             onClick={() => handlePower('restart')}
-                            disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING}
+                            disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING || !canRestart}
                             className={`p-2 rounded-md transition-all duration-200 text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed`}
-                            title={status === ServerStatus.STARTING ? "Startup Lock Active" : "Restart Server"}
+                            title={!canRestart ? 'Insufficient Permissions' : (status === ServerStatus.STARTING ? "Startup Lock Active" : "Restart Server")}
                         >
                             <RotateCcw size={14} />
                         </button>
                         <div className="w-[1px] h-4 bg-border mx-1"></div>
                         <button 
                             onClick={() => handlePower('stop')}
-                            disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING}
+                            disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING || !canStop}
                             className={`p-2 rounded-md transition-all duration-200 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 disabled:cursor-not-allowed`}
-                            title={status === ServerStatus.STARTING ? "Startup Lock Active" : "Kill Process"}
+                            title={!canStop ? 'Insufficient Permissions' : (status === ServerStatus.STARTING ? "Startup Lock Active" : "Kill Process")}
                         >
                             <Ban size={14} />
                         </button>

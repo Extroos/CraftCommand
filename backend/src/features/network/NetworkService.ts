@@ -192,13 +192,42 @@ class NetworkService extends EventEmitter {
     }
 
     public async checkPort(port: number): Promise<PortReachability> {
-        // Real implementation would use an external API for 100% accuracy from internet
-        // For now, we provide the timestamp and mark as unknown unless we integrate a specific tool
-        return {
+    // Use external API to check if port is reachable from the internet
+    try {
+        const publicIp = this.state.publicIp.current || await this.getPublicIp();
+        if (!publicIp) {
+            return { port, status: 'unknown', lastCheckedAt: Date.now() };
+        }
+
+        const response = await axios.get(
+            `https://portchecker.io/api/v1/query/${publicIp}/${port}`,
+            { timeout: 10000 }
+        );
+
+        const data = response.data as any;
+        const isOpen = data?.status === 'open' || data?.open === true;
+
+        const result: PortReachability = {
             port,
-            status: 'unknown',
+            status: isOpen ? 'open' : 'closed',
             lastCheckedAt: Date.now()
         };
+
+        // Update cached reachability
+        const idx = this.state.reachability.findIndex(r => r.port === port);
+        if (idx >= 0) {
+            this.state.reachability[idx] = result;
+        } else {
+            this.state.reachability.push(result);
+        }
+        this.saveState();
+
+        return result;
+    } catch (e: any) {
+        console.warn(`[NetworkService] Port check failed for ${port}: ${e.message}`);
+        // Fallback: try a simple TCP self-check as a secondary signal
+        return { port, status: 'unknown', lastCheckedAt: Date.now() };
+    }
     }
 
     private async update() {

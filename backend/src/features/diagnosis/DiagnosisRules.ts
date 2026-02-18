@@ -1,12 +1,23 @@
 import { DiagnosisRule, SystemStats, ServerConfig, DiagnosisResult } from './types';
 import { CrashReport } from './CrashReportReader';
 import { ConfigReader } from '../../utils/ConfigReader';
+import { CrossPlayRules } from './CrossPlayDiagnosisRules';
 import { NetUtils } from '../../utils/NetUtils';
 import { serverConfigService } from '../servers/ServerConfigService';
 import path from 'path';
 import fs from 'fs-extra';
 import { PluginRules } from './PluginDiagnosisRules';
+import { NetworkRules } from './NetworkDiagnosisRules';
+import { NodeRules } from './NodeDiagnosisRules';
+import { JavaRules } from './JavaDiagnosisRules';
+import { MapRules } from './MapDiagnosisRules';
 import { BedrockRules } from './BedrockDiagnosisRules';
+import { VelocityRules } from './VelocityDiagnosisRules';
+import { PredictiveRules } from './PredictiveDiagnosisRules';
+import { ResourceAdvisorRules } from './ResourceAdvisorRules';
+import { ConnectivityRules } from './ConnectivityDiagnosisRules';
+import { HostingOSRules } from './HostingOSDiagnosisRules';
+import { UpdateRules } from './UpdateDiagnosisRules';
 
 export const EulaRule: DiagnosisRule = {
     id: 'eula_check',
@@ -20,6 +31,9 @@ export const EulaRule: DiagnosisRule = {
     defaultConfidence: 100,
     isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
+        // EULA only applies to Java Edition servers — Bedrock and Velocity don't have eula.txt
+        if (server.software === 'Bedrock' || server.software === 'Velocity') return null;
+
         const hasLog = logs.some(l => l.includes('agree to the EULA'));
         
         // Universal Check: Logs OR Direct Filesystem check
@@ -211,9 +225,10 @@ export const JavaVersionRule: DiagnosisRule = {
     name: 'Java Version Mismatch',
     description: 'Checks if the Java version matches the mod loader requirements',
     triggers: [
-        /java/i,
-        /version/i,
-        /unsupported/i
+        /UnsupportedClassVersionError/i,
+        /unsupported.*java/i,
+        /compiled by a more recent version/i,
+        /java \d+ is required/i
     ],
     tier: 1,
     defaultConfidence: 95,
@@ -228,10 +243,11 @@ export const JavaVersionRule: DiagnosisRule = {
 
         // Proactive Intelligence: Determine requirements based on software version
         if (server.software?.toLowerCase() === 'paper' || server.software?.toLowerCase() === 'purpur' || server.software?.toLowerCase() === 'spigot') {
-            const versionMatch = server.version?.match(/1\.(\d+)/);
+            const versionMatch = server.version?.match(/1\.(\d+)\.?(\d+)?/);
             if (versionMatch) {
                 const minor = parseInt(versionMatch[1]);
-                if (minor >= 20.5) {
+                const patch = parseInt(versionMatch[2] || '0');
+                if (minor >= 21 || (minor === 20 && patch >= 5)) {
                     requiredJava = 'Java 21';
                     minVersion = 21;
                 } else if (minor >= 18) {
@@ -286,9 +302,9 @@ export const MemoryRule: DiagnosisRule = {
     name: 'Out of Memory',
     description: 'Checks for OutOfMemoryErrors and severe memory pressure',
     triggers: [
-        /memory/i,
-        /heap/i,
-        /oom/i
+        /OutOfMemoryError/i,
+        /java heap space/i,
+        /GC overhead limit exceeded/i
     ],
     tier: 1,
     defaultConfidence: 95,
@@ -1293,6 +1309,7 @@ export const LogSpamRule: DiagnosisRule = {
 };
 
 export const CoreRules: DiagnosisRule[] = [
+    ...UpdateRules,
     ResourceExhaustionRule, // Moved to top for debug
     EulaRule,
     MissingDirectoryRule,
@@ -1325,5 +1342,15 @@ export const CoreRules: DiagnosisRule[] = [
     ForgeLibraryMissingRule,
     LogSpamRule,
     ...PluginRules,
-    ...BedrockRules
+    ...BedrockRules,
+    ...VelocityRules,
+    ...NetworkRules,
+    ...NodeRules,
+    ...JavaRules,
+    ...CrossPlayRules,
+    ...MapRules,
+    ...PredictiveRules,
+    ...ResourceAdvisorRules,
+    ...ConnectivityRules,
+    ...HostingOSRules
 ];

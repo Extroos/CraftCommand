@@ -5,7 +5,7 @@ import { startupManager } from '../servers/StartupManager';
 import { FileSystemManager } from '../files/FileSystemManager';
 import {  ServerConfig  } from '@shared/types';
 import si from 'systeminformation';
-import fs from 'fs-extra';
+import fsExtra from 'fs-extra';
 import path from 'path';
 
 /**
@@ -186,7 +186,7 @@ export const DiagnosisActions = {
         const v8 = require('v8');
         const { DATA_DIR } = require('../../constants');
         const snapshotsDir = path.join(DATA_DIR, 'snapshots');
-        await fs.ensureDir(snapshotsDir);
+        await fsExtra.ensureDir(snapshotsDir);
         
         const filename = path.join(snapshotsDir, `heap-${Date.now()}-${reason}.heapsnapshot`);
         logger.info(`[DiagnosisAction] Writing heap snapshot to ${filename}...`);
@@ -215,6 +215,162 @@ export const DiagnosisActions = {
     reinstallBedrock: async (server: ServerConfig) => {
         const { installerService } = require('../installer/InstallerService');
         logger.warn(`[DiagnosisAction] Restoring Bedrock binaries for ${server.id}...`);
-        await installerService.installBedrock(server.workingDirectory, server.version);
+        await installerService.installBedrock(server.id, server.workingDirectory, server.version);
+    },
+
+    /**
+     * Re-generates the forwarding.secret file for Velocity
+     */
+    resyncVelocitySecret: async (server: ServerConfig, fs: FileSystemManager) => {
+        const secret = server.network?.proxyConfig?.secret;
+        if (!secret) throw new Error('No secret configured in Panel for this proxy.');
+
+        logger.info(`[DiagnosisAction] Re-syncing Velocity forwarding secret...`);
+        await fs.writeFile('forwarding.secret', secret);
+    },
+
+    /**
+     * Triggers a Java runtime download
+     */
+    installJava: async (version: string) => {
+        const { javaManager } = require('../processes/JavaManager');
+        logger.info(`[DiagnosisAction] Triggering Java ${version} installation...`);
+        await javaManager.ensureJava(version);
+    },
+
+    /**
+     * Manually triggers a DDNS update for a server
+     */
+    triggerDdnsUpdate: async (server: ServerConfig) => {
+        const { networkService } = require('../network/NetworkService');
+        logger.info(`[DiagnosisAction] Manually triggering DDNS update for ${server.name}`);
+        await networkService.updateDdns(server.id);
+    },
+
+    /**
+     * Reassigns the Dynmap port in its configuration file
+     */
+    reassignMapPort: async (server: ServerConfig, fs: FileSystemManager) => {
+        const configPath = 'plugins/dynmap/configuration.txt';
+        if (!(await fs.exists(configPath))) throw new Error('Dynmap configuration not found.');
+
+        let config = await fs.readFile(configPath);
+        
+        // Find a new port
+        const { NetUtils } = require('../../utils/NetUtils');
+        let newPort = 8123; // Default
+        for (let i = 1; i <= 20; i++) {
+            const testPort = 8123 + i;
+            if (!(await NetUtils.checkPort(testPort))) {
+                newPort = testPort;
+                break;
+            }
+        }
+
+        logger.info(`[DiagnosisAction] Reassigning Dynmap port to ${newPort}`);
+        config = config.replace(/^webserver-port:.*$/m, `webserver-port: ${newPort}`);
+        await fs.writeFile(configPath, config);
+    },
+
+    /**
+     * Repairs file permissions on the server's plugin directory (Linux/macOS)
+     */
+    repairPermissions: async (server: ServerConfig, fs: FileSystemManager) => {
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execAsync = promisify(exec);
+
+        if (process.platform === 'win32') {
+            logger.info(`[DiagnosisAction] Skipping permission repair on Windows (not applicable).`);
+            return;
+        }
+
+        const pluginsDir = path.join(server.workingDirectory, 'plugins');
+        logger.info(`[DiagnosisAction] Repairing permissions on ${pluginsDir}...`);
+        
+        try {
+            // Set read/write/execute for owner, read/execute for group and others
+            await execAsync(`chmod -R 755 "${pluginsDir}"`);
+            logger.success(`[DiagnosisAction] Permissions repaired for ${pluginsDir}`);
+        } catch (error: any) {
+            logger.error(`[DiagnosisAction] Failed to repair permissions: ${error.message}`);
+            throw error;
+        }
+    },
+
+    reinstallGeyser: async (server: ServerConfig): Promise<boolean> => {
+        try {
+            const { pluginService } = require('../plugins/PluginService');
+            const { crossPlayService } = require('../network/CrossPlayService');
+            const { proxyService } = require('../network/ProxyService');
+            
+            const topology = crossPlayService.detectTopology(server.id);
+            const target = topology === 'velocity'
+                ? (proxyService.findProxyForServer(server.id)?.id || server.id)
+                : server.id;
+                
+            await pluginService.install(target, 'geyser', 'modrinth');
+            await crossPlayService.syncConfigs(server.id);
+            return true;
+        } catch (e) {
+            logger.error(`[DiagnosisActions] Failed to reinstall Geyser: ${e}`);
+            return false;
+        }
+    },
+
+    reinstallFloodgate: async (server: ServerConfig): Promise<boolean> => {
+        try {
+            const { pluginService } = require('../plugins/PluginService');
+            const { crossPlayService } = require('../network/CrossPlayService');
+            const { proxyService } = require('../network/ProxyService');
+            
+            const topology = crossPlayService.detectTopology(server.id);
+            const target = topology === 'velocity'
+                ? (proxyService.findProxyForServer(server.id)?.id || server.id)
+                : server.id;
+                
+            await pluginService.install(target, 'floodgate', 'modrinth');
+            if (topology === 'velocity' && target !== server.id) {
+                 try { await pluginService.install(server.id, 'floodgate', 'modrinth'); } catch {}
+            }
+            return true;
+        } catch (e) {
+            logger.error(`[DiagnosisActions] Failed to reinstall Floodgate: ${e}`);
+            return false;
+        }
+    },
+
+    resyncCrossPlayForwarding: async (server: ServerConfig): Promise<boolean> => {
+        try {
+            const { crossPlayService } = require('../network/CrossPlayService');
+            await crossPlayService.syncConfigs(server.id);
+            return true;
+        } catch (e) {
+            logger.error(`[DiagnosisActions] Failed to resync cross-play configs: ${e}`);
+            return false;
+        }
+    },
+
+    reassignBedrockPort: async (server: ServerConfig): Promise<boolean> => {
+        try {
+             const { crossPlayService } = require('../network/CrossPlayService');
+             const { NetUtils } = require('../../utils/NetUtils');
+             const { saveServer } = require('../servers/ServerService');
+             
+             const current = server.crossPlay?.bedrockPort || 19132;
+             for (let p = current + 1; p < current + 100; p++) {
+                if (await NetUtils.checkUDPPortBind(p)) {
+                    server.crossPlay!.bedrockPort = p;
+                    server.needsRestart = true;
+                    saveServer(server);
+                    await crossPlayService.syncConfigs(server.id);
+                    return true;
+                }
+            }
+            return false;
+        } catch (e) {
+             logger.error(`[DiagnosisActions] Failed to reassign Bedrock port: ${e}`);
+             return false;
+        }
     }
 };

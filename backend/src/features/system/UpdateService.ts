@@ -1,12 +1,28 @@
 import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
+import crypto from 'crypto';
 import { authService } from '../auth/AuthService';
 import { discordService } from '../integrations/DiscordService';
 import { logger } from '../../utils/logger';
 import { notificationService } from './NotificationService';
+import { nodeRegistryService } from '../nodes/NodeRegistryService';
+
+import { updateVerifier } from './UpdateVerifier';
+import AdmZip from 'adm-zip';
 
 const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/Extroos/Craft-Commands/main/version.json';
+const GITHUB_RELEASES_API = 'https://api.github.com/repos/Extroos/Craft-Commands/releases/tags';
+
+export type UpdateStatus = 'IDLE' | 'CHECKING' | 'DOWNLOADING' | 'VERIFYING' | 'READY_TO_INSTALL' | 'ERROR';
+
+export interface UpdateStateInfo {
+    status: UpdateStatus;
+    progress: number; // 0-100
+    currentStep?: string;
+    error?: string;
+    targetVersion?: string;
+}
 
 type UpdateLevel = 'MAJOR' | 'MINOR' | 'PATCH';
 
@@ -17,6 +33,7 @@ interface VersionInfo {
     priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     breaking?: boolean;
     minNodeVersion?: string;
+    minAgentVersion?: string;
 }
 
 interface UpdateCheckResult {
@@ -28,6 +45,7 @@ interface UpdateCheckResult {
     priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     breaking?: boolean;
     incompatible?: boolean;
+    incompatibleNodes?: { id: string; name: string; version: string }[];
     level?: UpdateLevel;
     error?: string;
 }
@@ -43,6 +61,12 @@ class UpdateService {
     private cachedResult: UpdateCheckResult | null = null;
     private CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
     private checkIntervalId: NodeJS.Timeout | null = null;
+
+    // Phase 2: Update Lifecycle State
+    private updateStatus: UpdateStateInfo = { status: 'IDLE', progress: 0 };
+    private TEMP_DIR = path.join(process.cwd(), '../temp_update');
+    private EXTRACT_DIR = path.join(process.cwd(), '../temp_update', 'extracted');
+    private PLAN_FILE = path.join(process.cwd(), '../update-plan.json');
 
     public initialize() {
         // Initial check after short delay to allow server to fully boot
@@ -83,9 +107,31 @@ class UpdateService {
             const level = this.getUpdateLevel(currentVersion, remoteData.version);
             const available = level !== null;
 
-            const incompatible = remoteData.minNodeVersion 
+            // Check Distributed Nodes Compatibility
+            const nodes = nodeRegistryService.getAllNodes();
+            const incompatibleNodes: { id: string; name: string; version: string }[] = [];
+            
+            if (remoteData.minAgentVersion) {
+                 for (const node of nodes) {
+                    // Local node shares version with backend, so it's always compatible after update
+                    if (node.id === 'local') continue; 
+                    
+                    if (node.agentVersion && this.compareVersions(node.agentVersion, remoteData.minAgentVersion) < 0) {
+                        incompatibleNodes.push({ 
+                            id: node.id, 
+                            name: node.name, 
+                            version: node.agentVersion 
+                        });
+                    }
+                 }
+            }
+
+            const isNodeIncompatible = incompatibleNodes.length > 0;
+            const isSystemIncompatible = remoteData.minNodeVersion 
                 ? this.compareVersions(process.versions.node, remoteData.minNodeVersion) < 0 
                 : false;
+
+            const incompatible = isSystemIncompatible || isNodeIncompatible;
 
             // Smart Breaking: Major and Minor jumps are always considered breaking
             const breaking = (level === 'MAJOR' || level === 'MINOR') || (remoteData.breaking || false);
@@ -98,7 +144,8 @@ class UpdateService {
                 notes: remoteData.notes,
                 priority: remoteData.priority || (level === 'MAJOR' ? 'CRITICAL' : (level === 'MINOR' ? 'HIGH' : 'LOW')),
                 breaking,
-                incompatible,
+                incompatible, // General flag
+                incompatibleNodes, // Specific details
                 level: level || undefined
             };
             this.lastCheck = now;
@@ -140,15 +187,19 @@ class UpdateService {
         let lastError: any;
         for (let i = 0; i < retries; i++) {
             try {
-                const response = await axios.get<VersionInfo>(REMOTE_VERSION_URL, { timeout: 8000 });
-                if (response.data && typeof response.data.version === 'string') {
-                    return response.data;
+                const response = await axios.get(REMOTE_VERSION_URL, { timeout: 8000 });
+                const data = response.data as VersionInfo;
+                if (data && typeof data.version === 'string') {
+                    return data;
                 }
                 throw new Error('Malformed remote version metadata');
             } catch (e: any) {
                 lastError = e;
                 if (i < retries - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+                    // Exponential backoff: 2s, 4s, 8s...
+                    const delay = 2000 * Math.pow(2, i);
+                    logger.warn(`[UpdateService] Check failed, retrying in ${delay / 1000}s...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
         }
@@ -175,7 +226,7 @@ class UpdateService {
             
             description += `\n**Changelog**: ${result.title || 'General improvements'}`;
 
-            await (discordService as any).sendNotification(
+            await discordService.sendNotification(
                 `System Update: ${result.priority} Priority`,
                 description,
                 priorityColor
@@ -187,19 +238,7 @@ class UpdateService {
         }
         
         try {
-             // System Notification (In-App)
-             // Send to ALL users or just admins? Since we don't have easy role-based targeting yet in NotificationService 
-             // (it takes userId or 'ALL'), we might spam normal users.
-             // But usually updates are relevant to everyone or at least the owner.
-             // Ideally we'd have `notificationService.create('ADMINS', ...)` or broadcast to a role room.
-             // For now, let's send to 'ALL' but maybe we can filter on frontend or backend later.
-             // Actually, `getForUser` filters.
-             // Let's implement a simple loop for now if we want to target only admins, OR just send to all if that's the requirement.
-             // The user said "appear in notification always there", implying visibility.
-             // Given it's a structural update, let's send to 'ALL' for now, or if we can get a list of admins.
-             // NotificationService.create takes userId. 'ALL' broadcasts to everyone.
-             
-             // Determine Notification Type & Persistence based on Semantic Level
+             // System Notification (In-App) - Target Admins/Owners ONLY
              let notifType = 'INFO';
              let dismissible = true;
 
@@ -210,15 +249,30 @@ class UpdateService {
                  notifType = 'WARNING';
              }
 
-             await notificationService.create(
-                'ALL', 
-                notifType as any, 
-                `System Update: v${result.latestVersion}`, 
-                `A new ${result.level || 'PATCH'} update is available.\n${result.title || ''}`,
-                { version: result.latestVersion, breaking: result.breaking, level: result.level },
-                '/admin/settings', // Link to settings page to update
-                { dismissible }
-            );
+             // Fetch all users and filter for high-privilege roles
+             // We import userRepository here to avoid circular dependency issues at top level if any
+             const { userRepository } = await import('../../storage/UserRepository');
+             const allUsers = userRepository.findAll();
+             const targetUsers = allUsers.filter(u => u.role === 'OWNER' || u.role === 'ADMIN');
+
+             if (targetUsers.length === 0) {
+                 logger.debug('[UpdateService] No admins found to notify.');
+                 return;
+             }
+
+             logger.info(`[UpdateService] Sending update notification to ${targetUsers.length} administrators.`);
+
+             for (const user of targetUsers) {
+                await notificationService.create(
+                    user.id, 
+                    notifType as any, 
+                    `System Update: v${result.latestVersion}`, 
+                    `A new ${result.level || 'PATCH'} update is available.\n${result.title || ''}`,
+                    { version: result.latestVersion, breaking: result.breaking, level: result.level },
+                    '/settings/system', // Internal link to Global Settings > Update System
+                    { dismissible, actionLabel: 'Review & Install' }
+                );
+             }
 
         } catch (e) {
             logger.error(`[UpdateService] System Notification failed: ${e}`);
@@ -253,6 +307,193 @@ class UpdateService {
         } catch (e) {}
     }
 
+
+
+    // ========================================================================
+    // PHASE 2: UPDATE EXECUTION (Download -> Verify -> Prepare)
+    // ========================================================================
+
+    public getStatus(): UpdateStateInfo {
+        return this.updateStatus;
+    }
+
+    public resetStatus() {
+        this.updateStatus = { status: 'IDLE', progress: 0 };
+    }
+
+    /**
+     * Step 1: Download the update bundle and signature from GitHub
+     */
+    public async downloadUpdate(version: string): Promise<void> {
+        if (this.updateStatus.status !== 'IDLE' && this.updateStatus.status !== 'ERROR') {
+            throw new Error('Update already in progress.');
+        }
+
+        this.updateStatus = { 
+            status: 'DOWNLOADING', 
+            progress: 0, 
+            targetVersion: version,
+            currentStep: 'Fetching release metadata...' 
+        };
+
+        try {
+            // 1. Get Release Assets
+            const releaseUrl = `${GITHUB_RELEASES_API}/v${version}`;
+            logger.info(`[UpdateService] Fetching release metadata from ${releaseUrl}`);
+            
+            const metaResponse = await axios.get(releaseUrl, { 
+                headers: { 'User-Agent': 'CraftCommand-Backend' } 
+            });
+            
+            const assets = (metaResponse.data as any).assets;
+            if (!assets) throw new Error('No assets found for this release.');
+
+            const bundleAsset = assets.find((a: any) => a.name.endsWith('.zip'));
+            const manifestAsset = assets.find((a: any) => a.name === 'manifest.json');
+            const signatureAsset = assets.find((a: any) => a.name === 'manifest.sig');
+
+            if (!bundleAsset || !manifestAsset || !signatureAsset) {
+                throw new Error('Release is missing required artifacts (bundle, manifest, or signature).');
+            }
+
+            // 2. Clear Temp
+            await fs.emptyDir(this.TEMP_DIR);
+
+            // 3. Download Artifacts
+            this.updateStatus.currentStep = 'Downloading manifest...';
+            await this.downloadFile(manifestAsset.browser_download_url, path.join(this.TEMP_DIR, 'manifest.json'));
+
+            this.updateStatus.currentStep = 'Downloading signature...';
+            await this.downloadFile(signatureAsset.browser_download_url, path.join(this.TEMP_DIR, 'manifest.sig'));
+
+            this.updateStatus.currentStep = 'Downloading bundle...';
+            this.updateStatus.progress = 10;
+            // Pass progress callback if we want granular progress
+            await this.downloadFile(bundleAsset.browser_download_url, path.join(this.TEMP_DIR, 'update.zip'));
+            
+            this.updateStatus.progress = 50;
+            this.updateStatus.status = 'VERIFYING';
+            this.updateStatus.currentStep = 'Verifying signature...';
+
+            await this.verifyUpdate(path.join(this.TEMP_DIR, 'update.zip'));
+
+        } catch (e: any) {
+            logger.error(`[UpdateService] Download failed: ${e.message}`);
+            this.updateStatus = { 
+                status: 'ERROR', 
+                progress: 0, 
+                error: e.message,
+                targetVersion: version 
+            };
+            throw e;
+        }
+    }
+
+    /**
+     * Step 2: Verify integrity and signature
+     */
+    private async verifyUpdate(bundlePath: string): Promise<void> {
+        try {
+            const manifestPath = path.join(this.TEMP_DIR, 'manifest.json');
+            const sigPath = path.join(this.TEMP_DIR, 'manifest.sig');
+
+            if (!fs.existsSync(manifestPath) || !fs.existsSync(sigPath)) {
+                throw new Error('Manifest or signature file missing.');
+            }
+
+            // 1. Verify Signature
+            const manifestContent = await fs.readFile(manifestPath); // Buffer
+            const signatureBase64 = await fs.readFile(sigPath, 'utf-8');
+
+            const isValid = updateVerifier.verifySignature(manifestContent, signatureBase64);
+            if (!isValid) {
+                throw new Error('CRITICAL: Manifest signature verification failed! The update may be tampered with.');
+            }
+            logger.info('[UpdateService] Manifest signature VERIFIED.');
+
+            // 2. Parse Manifest
+            const manifest = updateVerifier.parseManifest(manifestContent.toString());
+            
+            // 3. Verify Bundle Hash
+            // Assuming manifest.files contains keys like "craftcommand-v1.2.0.zip"
+            // We need to match the downloaded 'update.zip' against the hash in manifest
+            // For simplicity, we assume the manifest has one zip entry or we blindly check values.
+            // Better: Check based on filename. But we renamed to update.zip.
+            // Let's check if manifest has ANY zip file hash that matches our file.
+            
+            const bundleBuffer = await fs.readFile(bundlePath);
+            const bundleHash = crypto.createHash('sha256').update(bundleBuffer).digest('hex');
+            
+            const match = Object.values(manifest.files).find(h => h.toLowerCase() === bundleHash.toLowerCase());
+            
+            if (!match) {
+                 throw new Error(`Bundle hash mismatch! Computed: ${bundleHash}`);
+            }
+            logger.info('[UpdateService] Bundle hash VERIFIED.');
+
+            this.updateStatus.progress = 75;
+            this.updateStatus.status = 'READY_TO_INSTALL';
+            this.updateStatus.currentStep = 'Ready to install.';
+
+            // Prepare Plan automatically?
+            await this.prepareUpdate(manifest);
+
+        } catch (e: any) {
+             logger.error(`[UpdateService] Verification failed: ${e.message}`);
+             this.updateStatus = { 
+                status: 'ERROR', 
+                progress: 0, 
+                error: e.message 
+            };
+            throw e;
+        }
+    }
+
+    /**
+     * Step 3: Prepare for Launcher
+     */
+    private async prepareUpdate(manifest: any): Promise<void> {
+        try {
+            this.updateStatus.currentStep = 'Preparing update plan...';
+            
+            // Unzip to extracted
+            const zip = new AdmZip(path.join(this.TEMP_DIR, 'update.zip'));
+            zip.extractAllTo(this.EXTRACT_DIR, true);
+
+            // Create Plan
+            const plan = {
+                version: manifest.version,
+                sourceDir: this.EXTRACT_DIR,
+                backupDir: path.join(process.cwd(), '../backups', `v${this.getLocalVersion()}`),
+                restart: true
+            };
+
+            await fs.writeJSON(this.PLAN_FILE, plan, { spaces: 2 });
+            logger.info('[UpdateService] Update plan written to ' + this.PLAN_FILE);
+
+            this.updateStatus.progress = 100;
+            this.updateStatus.currentStep = 'Waiting for user to restart.';
+        } catch (e: any) {
+             throw new Error(`Failed to prepare update: ${e.message}`);
+        }
+    }
+
+    private async downloadFile(url: string, dest: string): Promise<void> {
+        const writer = fs.createWriteStream(dest);
+        const response = await axios({
+            url,
+            method: 'GET',
+            responseType: 'stream'
+        });
+        
+        (response.data as NodeJS.ReadableStream).pipe(writer);
+
+        return new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+    }
+
     private compareVersions(v1: string, v2: string): number {
         const clean1 = v1.replace(/^v/, '').split('-')[0];
         const clean2 = v2.replace(/^v/, '').split('-')[0];
@@ -269,6 +510,14 @@ class UpdateService {
         }
         
         return 0;
+    }
+
+    shutdown() {
+        if (this.checkIntervalId) {
+            clearInterval(this.checkIntervalId);
+            this.checkIntervalId = null;
+        }
+        logger.info('[UpdateService] Service stopped.');
     }
 }
 

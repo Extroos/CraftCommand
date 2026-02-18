@@ -4,11 +4,14 @@ import net from 'net';
 import { runnerFactory } from './runners/RunnerFactory';
 import { IServerRunner } from './runners/IServerRunner';
 import { NetUtils } from '../../utils/NetUtils';
+import { logger } from '../../utils/logger';
+import { statsRingBuffer } from '../diagnosis/StatsRingBuffer';
 
 class ProcessManager extends EventEmitter {
     private activeRunners: Map<string, IServerRunner> = new Map();
     private logHistory: Map<string, string[]> = new Map();
     private startTimes: Map<string, number> = new Map();
+    private onlineTimes: Map<string, number> = new Map();
     private statusCache: Map<string, any> = new Map();
     private stoppingServers: Set<string> = new Set();
     private updatingStatuses: Set<string> = new Set();
@@ -16,6 +19,9 @@ class ProcessManager extends EventEmitter {
     private players: Map<string, Set<string>> = new Map();
     private readonly MAX_LOGS = 1000;
     private lastEmittedStatus: Map<string, string> = new Map();
+    private activityHistory: Map<string, any[]> = new Map();
+    private readonly MAX_ACTIVITY_HISTORY = 100;
+    private runnerListeners: Map<string, { log: any, close: any }> = new Map();
 
     constructor() {
         super();
@@ -24,7 +30,7 @@ class ProcessManager extends EventEmitter {
     }
 
     private startSyncLoop() {
-        // Periodic sync to detect external/unmanaged processes every 15s
+        // Periodic sync to detect external/unmanaged processes and recover stuck STARTING states
         setInterval(async () => {
              try {
                 const { getServers } = await import('../servers/ServerService');
@@ -36,12 +42,24 @@ class ProcessManager extends EventEmitter {
                     const cached = this.statusCache.get(id);
                     const currentStatus = cached?.status || server.status;
 
+                    // 1. RECOVERY: If server is STARTING/RESTARTING but port is reachable, it's ONLINE!
+                    // This acts as a redundant check to log-based triggers.
+                    if ((currentStatus === 'STARTING' || currentStatus === 'RESTARTING') && !this.stoppingServers.has(id)) {
+                        const isPortBound = await NetUtils.checkPort(server.port);
+                        if (isPortBound) {
+                            logger.info(`[ProcessManager:${id}] Reachability Sync: Detected responsive port ${server.port}. Forcing ONLINE.`);
+                            this.startupLocks.delete(id);
+                            this.updateCachedStatus(id, { online: true, status: 'ONLINE' });
+                        }
+                    }
+
+                    // 2. Unmanaged / Managed Detection
                     if (!isManaged) {
                         const isPortBound = await NetUtils.checkPort(server.port);
                         
                         if (isPortBound) {
-                            if (currentStatus !== 'UNMANAGED' && currentStatus !== 'STARTING') {
-                                console.warn(`[ProcessManager:${id}] Unmanaged process detected on port ${server.port}.`);
+                            if (currentStatus !== 'UNMANAGED' && currentStatus !== 'STARTING' && currentStatus !== 'RESTARTING') {
+                                logger.warn(`[ProcessManager:${id}] Unmanaged process detected on port ${server.port}.`);
                                 this.updateCachedStatus(id, { 
                                     online: true, 
                                     status: 'UNMANAGED', 
@@ -53,7 +71,7 @@ class ProcessManager extends EventEmitter {
                             // If we thought it was online but port is dead, it's offline
                             if (cached?.online || server.status === 'ONLINE' || server.status === 'UNMANAGED') {
                                 if (!this.startupLocks.has(id)) {
-                                    console.log(`[ProcessManager:${id}] External/Unmanaged process lost. Syncing to OFFLINE.`);
+                                    logger.info(`[ProcessManager:${id}] External/Unmanaged process lost. Syncing to OFFLINE.`);
                                     this.handleServerClose(id, 0);
                                 }
                             }
@@ -63,7 +81,7 @@ class ProcessManager extends EventEmitter {
              } catch (err) {
                  // Prevent interval crash
              }
-        }, 15000);
+        }, 10000); // Increased frequency to 10s for faster recovery
     }
 
 
@@ -73,32 +91,57 @@ class ProcessManager extends EventEmitter {
             const tasks = Array.from(this.activeRunners.entries()).map(async ([id, runner]) => {
                 try {
                     const stats = await runner.getStats(id);
-                    const tps = this.getTPS(id);
+                    const tps = await this.getTPS(id);
                     const uptime = this.getUptime(id);
                     
-                    if (stats.cpu > 0 || stats.memory > 0) {
-                        console.log(`[ProcessManager:${id}] Stats: CPU ${stats.cpu}%, Memory ${stats.memory}MB, PID ${stats.pid}`);
-                    } else {
-                        // Log every 10th failure to avoid spam
-                        if (Math.random() < 0.1) {
-                            console.warn(`[ProcessManager:${id}] Stats report zero. Runner: ${runner.constructor.name}`);
+                    // --- Bedrock-Specific Query ---
+                    const { getServer } = await import('../servers/ServerService');
+                    const server = getServer(id);
+                    if (server?.software === 'Bedrock') {
+                        const query = await NetUtils.queryBedrock(server.port);
+                        if (query) {
+                            this.updateCachedStatus(id, {
+                                online: true,
+                                players: query.players,
+                                maxPlayers: query.maxPlayers,
+                                latency: query.ping,
+                                softwareVersion: query.version
+                            });
                         }
                     }
 
-                    this.emit('stats', { id, ...stats, tps, uptime });
+                    const latency = this.statusCache.get(id)?.latency || 0;
+                    const players = this.statusCache.get(id)?.players || 0;
+
+                    if (stats.cpu > 0 || stats.memory > 0) {
+                        logger.debug(`[ProcessManager:${id}] Stats: CPU ${stats.cpu}% | RAM ${stats.memory}MB | Players ${players} | Latency ${latency}ms`);
+                    }
+
+                    this.emit('stats', { id, ...stats, tps, uptime, latency, players });
+
+                    // Feed predictive diagnosis engine
+                    statsRingBuffer.push(id, {
+                        cpu: stats.cpu,
+                        memory: stats.memory,
+                        tps: parseFloat(tps),
+                        players,
+                        timestamp: Date.now()
+                    });
                     this.updateCachedStatus(id, { 
                         cpu: stats.cpu,
                         memory: stats.memory,
                         uptime,
-                        tps
+                        tps,
+                        latency,
+                        players
                     });
                 } catch (e) {
-                    console.error(`[ProcessManager] Stats failed for ${id}:`, e);
+                    logger.error(`[ProcessManager] Stats failed for ${id}: ${e}`);
                 }
             });
 
             await Promise.all(tasks);
-        }, 3000);
+        }, 1000); // Live high-frequency updates (1s)
     }
 
     async startServer(id: string, runCommand: string, cwd: string, env: any = {}) {
@@ -109,10 +152,10 @@ class ProcessManager extends EventEmitter {
         // --- PORT PROTECTION ENGINE ---
         const port = env.SERVER_PORT;
         if (port) {
-            console.log(`[ProcessManager] Integrity Check: Verifying port ${port} availability...`);
+            logger.info(`[ProcessManager] Integrity Check: Verifying port ${port} availability...`);
             const killed = await this.killProcessOnPort(port);
             if (killed) {
-                console.warn(`[ProcessManager] Ghost process detected on port ${port}. Forcefully purged.`);
+                logger.warn(`[ProcessManager] Ghost process detected on port ${port}. Forcefully purged.`);
                 await new Promise(r => setTimeout(r, 1000)); // Grace period for OS to release handle
             }
         }
@@ -122,7 +165,7 @@ class ProcessManager extends EventEmitter {
         
         this.stoppingServers.delete(id);
         this.startupLocks.add(id);
-        console.log(`[ProcessManager] Initializing server ${id} using ${engine} engine.`);
+        logger.info(`[ProcessManager] Initializing server ${id} using ${engine} engine.`);
 
         // Setup Event Handlers for this specific server/runner combo
         const logHandler = (data: { id: string, line: string, type: 'stdout' | 'stderr' }) => {
@@ -132,28 +175,37 @@ class ProcessManager extends EventEmitter {
 
         const closeHandler = (data: { id: string, code: number }) => {
             if (data.id !== id) return;
+            this.cleanupRunner(id); // Comprehensive cleanup
             this.handleServerClose(id, data.code);
-            runner.off('log', logHandler);
-            runner.off('close', closeHandler);
         };
 
+        // Store listeners for explicit cleanup if needed
+        this.runnerListeners.set(id, { log: logHandler, close: closeHandler });
+
+        this.statusCache.set(id, { online: false, status: 'STARTING', players: 0, playerList: [], uptime: 0, tps: "0.00" });
+        this.logHistory.set(id, []);
+        this.activityHistory.set(id, []);
+        this.players.set(id, new Set());
+        this.activeRunners.set(id, runner);
+        this.startTimes.set(id, Date.now());
+
+        // Attach listeners BEFORE starting to catch early logs
         runner.on('log', logHandler);
         runner.on('close', closeHandler);
 
-        await runner.start(id, runCommand, cwd, env);
-        
-        this.activeRunners.set(id, runner);
-        this.startTimes.set(id, Date.now());
-        this.statusCache.set(id, { online: false, status: 'STARTING', players: 0, playerList: [], uptime: 0, tps: "0.00" });
-        this.logHistory.set(id, []);
-        this.players.set(id, new Set());
+        try {
+            await runner.start(id, runCommand, cwd, env);
+        } catch (err) {
+            this.cleanupRunner(id);
+            throw err;
+        }
 
         this.maybeEmitStatus(id, 'STARTING');
 
         // Startup Timeout Watchdog
         setTimeout(() => {
             if (this.startupLocks.has(id)) {
-                console.error(`[ProcessManager] ${id} Startup timed out.`);
+                logger.error(`[ProcessManager] ${id} Startup timed out.`);
                 this.startupLocks.delete(id);
                 this.maybeEmitStatus(id, 'OFFLINE');
             }
@@ -200,6 +252,7 @@ class ProcessManager extends EventEmitter {
             this.players.set(id, set);
             this.updateCachedStatus(id, { players: set.size, playerList: Array.from(set) });
             this.emit('player:join', { serverId: id, name: joinName, onlinePlayers: set.size });
+            this.addActivity(id, { type: 'join', player: joinName, message: `${joinName} joined the game` });
         }
         
         if (leaveName) {
@@ -208,26 +261,76 @@ class ProcessManager extends EventEmitter {
                 set.delete(leaveName);
                 this.updateCachedStatus(id, { players: set.size, playerList: Array.from(set) });
                 this.emit('player:leave', { serverId: id, name: leaveName, onlinePlayers: set.size });
+                this.addActivity(id, { type: 'leave', player: leaveName, message: `${leaveName} left the game` });
+                logger.info(`[ProcessManager:${id}] Player Left: ${leaveName}`);
             }
+        }
+
+        // --- ENHANCED ACTIVITY PARSING ---
+        
+        // 1. Deaths
+        const deathMatch = line.match(/(?:\[.*\]:\s+|:\s+|^)([\w\d_]{3,16})\s+((was slain by|fell from|blew up|burned to death|drowned|hit the ground too hard|tried to swim in lava|was shot by|was blown up by|was pricked to death|was squashed by|was killed by|withered away|walked into a campfire|suffocated in a wall|starved to death).*)/i);
+        if (deathMatch) {
+            this.addActivity(id, { type: 'death', player: deathMatch[1], message: `${deathMatch[1]} ${deathMatch[2]}` });
+        }
+
+        // 2. Achievements/Advancements
+        const advMatch = line.match(/(?:\[.*\]:\s+|:\s+|^)([\w\d_]{3,16})\s+has\s+made\s+the\s+advancement\s+\[(.*?)\]/i);
+        if (advMatch) {
+            this.addActivity(id, { type: 'achievement', player: advMatch[1], metadata: { achievement: advMatch[2] }, message: `${advMatch[1]} achieved [${advMatch[2]}]` });
+        }
+
+        // 3. Commands & Teleports
+        const cmdMatch = line.match(/(?:\[.*\]:\s+|:\s+|^)([\w\d_]{3,16})\s+issued\s+server\s+command:\s+\/(.*)/i);
+        if (cmdMatch) {
+            const cmd = cmdMatch[2].toLowerCase();
+            const type = (cmd.startsWith('tp') || cmd.startsWith('teleport')) ? 'teleport' : 'command';
+            this.addActivity(id, { 
+                type, 
+                player: cmdMatch[1], 
+                metadata: { command: cmdMatch[2] },
+                message: `${cmdMatch[1]} used /${cmdMatch[2]}` 
+            });
         }
     }
 
+    private addActivity(id: string, activity: any) {
+        const history = this.activityHistory.get(id) || [];
+        const entry = {
+            ...activity,
+            timestamp: new Date().toISOString(),
+            id: Math.random().toString(36).substr(2, 9)
+        };
+        
+        history.unshift(entry);
+        if (history.length > this.MAX_ACTIVITY_HISTORY) history.pop();
+        this.activityHistory.set(id, history);
+        
+        this.emit('player:activity', { serverId: id, activity: entry });
+    }
+
+    getActivityHistory(id: string) {
+        return this.activityHistory.get(id) || [];
+    }
+
     private handleServerClose(id: string, code: number) {
-        console.log(`[ProcessManager] Server ${id} closed with code ${code}`);
+        logger.info(`[ProcessManager] Server ${id} closed with code ${code}`);
         this.startupLocks.delete(id);
 
         const isIntentional = this.stoppingServers.has(id);
         const finalStatus = (!isIntentional && code !== 0 && code !== null) ? 'CRASHED' : 'OFFLINE';
 
         this.stoppingServers.delete(id);
-        this.activeRunners.delete(id);
-        this.startTimes.delete(id);
-        this.statusCache.delete(id);
 
         const { getServer, saveServer } = require('../servers/ServerService');
         const server = getServer(id);
         if (server) {
-            delete server.startTime;
+            // Only wipe startTime if it was intentional or a crash
+            // Persistence Guard: Only wipe timing metadata if intentional or crash
+            if (isIntentional || finalStatus === 'CRASHED') {
+                delete server.startTime;
+                this.onlineTimes.delete(id);
+            }
             server.status = finalStatus;
             saveServer(server);
         }
@@ -258,13 +361,13 @@ class ProcessManager extends EventEmitter {
                 // Wait 10s for stdin 'stop' to work
                 setTimeout(async () => {
                     if (this.activeRunners.get(id) === runner) {
-                        console.log(`[ProcessManager] ${id} (Bedrock) did not stop via stdin. Escalating to SIGINT...`);
+                        logger.info(`[ProcessManager] ${id} (Bedrock) did not stop via stdin. Escalating to SIGINT...`);
                         await runner.kill?.(id, 'SIGINT');
 
                         // Wait another 10s for SIGINT
                         setTimeout(async () => {
                             if (this.activeRunners.get(id) === runner) {
-                                console.log(`[ProcessManager] ${id} (Bedrock) still alive after SIGINT. Force killing...`);
+                                logger.info(`[ProcessManager] ${id} (Bedrock) still alive after SIGINT. Force killing...`);
                                 await runner.kill?.(id, 'SIGKILL');
                             }
                         }, 10000);
@@ -287,6 +390,10 @@ class ProcessManager extends EventEmitter {
         this.stopServer(id, true);
     }
 
+    isStopping(id: string): boolean {
+        return this.stoppingServers.has(id);
+    }
+
     sendCommand(id: string, command: string) {
         const runner = this.activeRunners.get(id);
         if (runner) runner.sendCommand(id, command);
@@ -301,20 +408,38 @@ class ProcessManager extends EventEmitter {
     }
 
     getUptime(id: string): number {
-        let startTime = this.startTimes.get(id);
-        if (!startTime) {
+        const cached = this.statusCache.get(id);
+        const status = cached?.status;
+        
+        let onlineTime = this.onlineTimes.get(id);
+        if (!onlineTime) {
             const { getServer } = require('../servers/ServerService');
             const server = getServer(id);
-            if (server && server.startTime) startTime = server.startTime;
+            if (server && server.startTime) onlineTime = server.startTime;
         }
-        if (!startTime || (!this.isRunning(id) && !this.statusCache.get(id)?.online)) return 0;
-        return Math.floor((Date.now() - startTime) / 1000);
+
+        // If we have an onlineTime, it means the server has reached ONLINE state.
+        // We only stop showing uptime if the process is completely gone or intentional stop.
+        if (!onlineTime) return 0;
+
+        // --- RENDER GUARD ---
+        // If status is OFFLINE or CRASHED, definitely return 0.
+        // But if it's STARTING, RESTARTING, or momentarily EMPTY, we KEEP the uptime 
+        // IF and only if the process is still managed/running.
+        if (status === 'OFFLINE' || status === 'CRASHED') return 0;
+        
+        return Math.floor((Date.now() - onlineTime) / 1000);
     }
 
-    getTPS(id: string): string {
+    async getTPS(id: string): Promise<string> {
         const { getServer } = require('../servers/ServerService');
         const server = getServer(id);
-        if (server?.software === 'Bedrock') return "N/A";
+        
+        if (server?.software === 'Bedrock') {
+            const cached = this.statusCache.get(id);
+            // For Bedrock, we use "Stable" or "Responsive" as a TPS proxy since we can't query actual TPS via RCON/RakNet
+            return cached?.online ? "20.0" : "0.0";
+        }
 
         const logs = this.logHistory.get(id) || [];
         for (let i = logs.length - 1; i >= Math.max(0, logs.length - 50); i--) {
@@ -355,6 +480,7 @@ class ProcessManager extends EventEmitter {
 
         if (data.online && current.status === 'STARTING') {
             data.status = 'ONLINE';
+            this.onlineTimes.set(id, Date.now());
             this.startupLocks.delete(id);
         }
         if (data.status) this.maybeEmitStatus(id, data.status);
@@ -363,7 +489,7 @@ class ProcessManager extends EventEmitter {
 
     getCachedStatus(id: string) {
         return this.statusCache.get(id) || {
-            online: false, players: 0, playerList: [], uptime: this.getUptime(id), tps: this.getTPS(id)
+            online: false, players: 0, playerList: [], uptime: this.getUptime(id), tps: "0.00", latency: 0
         };
     }
 
@@ -390,6 +516,45 @@ class ProcessManager extends EventEmitter {
         if (this.lastEmittedStatus.get(id) === status) return;
         this.lastEmittedStatus.set(id, status);
         this.emit('status', { id, status });
+    }
+
+    private cleanupRunner(id: string) {
+        const runner = this.activeRunners.get(id);
+        const listeners = this.runnerListeners.get(id);
+
+        if (runner && listeners) {
+            runner.off('log', listeners.log);
+            runner.off('close', listeners.close);
+        }
+
+        this.activeRunners.delete(id);
+        this.runnerListeners.delete(id);
+        this.startTimes.delete(id);
+        this.onlineTimes.delete(id);
+        this.statusCache.delete(id);
+        statsRingBuffer.clear(id); // Clear predictive history on stop
+        // We keep logHistory/activityHistory as they are needed for UI after close
+    }
+    async shutdown() {
+        logger.info('[ProcessManager] Shutting down all active servers...');
+        
+        // 1. Stop Sync Loops
+        // (We can't easily stop the private intervals without refactoring to store their IDs, 
+        // but since the process is exiting, we just need to stop spawning NEW things)
+        this.startupLocks.clear();
+
+        // 2. Kill all Active Runners
+        const killPromises = Array.from(this.activeRunners.keys()).map(async (id) => {
+            try {
+                logger.info(`[ProcessManager] Killing server ${id}...`);
+                await this.stopServer(id, true); // Force kill
+            } catch (e) {
+                logger.error(`[ProcessManager] Failed to kill ${id}: ${e}`);
+            }
+        });
+
+        await Promise.all(killPromises);
+        logger.info('[ProcessManager] All servers stopped.');
     }
 }
 

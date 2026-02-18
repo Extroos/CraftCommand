@@ -10,7 +10,9 @@ import { useToast } from '../ui/Toast';
 import { API } from '@core/services/api';
 import { socketService } from '@core/services/socket';
 import { useServers } from '@features/servers/context/ServerContext';
+import { usePermissions } from '@features/auth/hooks/usePermissions';
 import { motion, AnimatePresence } from 'framer-motion';
+import AccessDenied from '@features/auth/components/AccessDenied';
 
 interface BackupManagerProps {
     serverId: string;
@@ -18,6 +20,7 @@ interface BackupManagerProps {
 
 const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
     const { addToast } = useToast();
+    const { can } = usePermissions();
     const [filter, setFilter] = useState<'ALL' | 'MANUAL' | 'SCHEDULED' | 'LOCKED'>('ALL');
     
     // Workflow States
@@ -28,6 +31,8 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
     const [isAutoBackupEnabled, setIsAutoBackupEnabled] = useState(false);
     const [worldOnlyBackup, setWorldOnlyBackup] = useState(false); // NEW: world-only toggle state
     const [autoBackupWorldOnly, setAutoBackupWorldOnly] = useState(false); // NEW: automated backup mode preference
+    const [deletedBackupIds, setDeletedBackupIds] = useState<Set<string>>(new Set());
+    const [pendingLockIds, setPendingLockIds] = useState<Set<string>>(new Set());
 
     const { backups: globalBackups, refreshServerData, loading, servers } = useServers();
     const backups = globalBackups[serverId] || [];
@@ -81,13 +86,15 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
     const usagePercent = (Number(totalUsage) / maxStorage) * 100;
 
     const filteredBackups = useMemo(() => {
-        return backups.filter(b => {
-            if (filter === 'LOCKED') return b.locked;
-            if (filter === 'MANUAL') return b.type === 'Manual';
-            if (filter === 'SCHEDULED') return b.type === 'Scheduled';
-            return true;
-        });
-    }, [backups, filter]);
+        return backups
+            .filter(b => !deletedBackupIds.has(b.id))
+            .filter(b => {
+                if (filter === 'LOCKED') return b.locked;
+                if (filter === 'MANUAL') return b.type === 'Manual';
+                if (filter === 'SCHEDULED') return b.type === 'Scheduled';
+                return true;
+            });
+    }, [backups, filter, deletedBackupIds]);
 
     // Actions
     const startCreation = () => {
@@ -96,6 +103,10 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
     };
 
     const confirmCreation = async () => {
+        if (!can('server.backups.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions to create backups');
+            return;
+        }
         setCreationState('CREATING');
         setProgress(0);
         
@@ -114,27 +125,48 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
     };
 
     const toggleLock = async (id: string) => {
+        if (!can('server.backups.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions to modify backup lock');
+            return;
+        }
+        setPendingLockIds(prev => new Set(prev).add(id));
         try {
             const res = await API.toggleBackupLock(serverId, id);
             await refreshServerData(serverId); // Refresh context
             addToast('success', res.locked ? 'Snapshot Locked' : 'Snapshot Unlocked', res.locked ? 'Backup is safe from auto-cleanup.' : 'Backup can now be deleted.');
         } catch (e) {
             addToast('error', 'Action Failed', 'Could not toggle lock status.');
+        } finally {
+            setPendingLockIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
     const deleteBackup = async (id: string, locked?: boolean) => {
+        if (!can('server.backups.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions to delete backups');
+            return;
+        }
         if (locked) {
             addToast('error', 'Backup Locked', 'Unlock this snapshot before deleting it.');
             return;
         }
 
         if (confirm('Are you sure you want to delete this backup? This action cannot be undone.')) {
+            setDeletedBackupIds(prev => new Set(prev).add(id));
             try {
                 await API.deleteBackup(serverId, id);
                 addToast('info', 'Backup Deleted', 'The archive was removed from storage.');
                 await fetchBackups();
             } catch (e) {
+                setDeletedBackupIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(id);
+                    return next;
+                });
                 addToast('error', 'Delete Failed', 'Failed to delete backup');
             }
         }
@@ -146,6 +178,10 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
 
     const confirmRestore = async () => {
         if (!restoreId) return;
+        if (!can('server.backups.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions to restore backups');
+            return;
+        }
         addToast('warning', 'Restoration Started', 'Server is stopping for file restoration...');
         
         try {
@@ -157,6 +193,15 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
             setRestoreId(null);
         }
     };
+
+    if (!can('server.backups.read', serverId)) {
+        return (
+            <AccessDenied 
+                title="Backup Access Restricted"
+                description="You do not have permission to view or manage backups for this server. Please contact an administrator for access."
+            />
+        );
+    }
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-120px)] animate-fade-in relative">
@@ -217,9 +262,15 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                                 key="btn"
                                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                 onClick={startCreation}
-                                className="w-full py-4 border-2 border-dashed border-border rounded-xl text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-secondary/20 transition-all flex flex-col items-center justify-center gap-2 group"
+                                disabled={!can('server.backups.manage', serverId)}
+                                title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : ''}
+                                className={`w-full py-4 border-2 border-dashed border-border rounded-xl transition-all flex flex-col items-center justify-center gap-2 group ${
+                                    can('server.backups.manage', serverId)
+                                    ? 'text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-secondary/20'
+                                    : 'opacity-50 cursor-not-allowed text-zinc-600'
+                                }`}
                             >
-                                <Plus size={24} className="group-hover:scale-110 transition-transform" />
+                                <Plus size={24} className={can('server.backups.manage', serverId) ? "group-hover:scale-110 transition-transform" : ""} />
                                 <span className="font-medium text-sm">Create New Snapshot</span>
                             </motion.button>
                         )}
@@ -265,7 +316,11 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
 
                                 <div className="flex gap-2">
                                     <button onClick={() => setCreationState('IDLE')} className="flex-1 py-2 text-xs font-medium hover:bg-secondary rounded-lg transition-colors">Cancel</button>
-                                    <button onClick={confirmCreation} className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+                                    <button 
+                                        onClick={confirmCreation} 
+                                        disabled={!can('server.backups.manage', serverId)}
+                                        className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
                                         <Save size={14} /> Start Backup
                                     </button>
                                 </div>
@@ -341,6 +396,10 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                         </div>
                         <button
                             onClick={async () => {
+                                if (!can('server.backups.manage', serverId)) {
+                                    addToast('error', 'Permissions', 'Insufficient permissions to manage automation');
+                                    return;
+                                }
                                 try {
                                     if (isAutoBackupEnabled) {
                                         await API.deleteSchedule(serverId, 'auto-backup-2h');
@@ -361,7 +420,9 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                                     addToast('error', 'Action Failed', 'Could not toggle auto-backup.');
                                 }
                             }}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${isAutoBackupEnabled ? 'bg-primary' : 'bg-secondary'}`}
+                            disabled={!can('server.backups.manage', serverId)}
+                            title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : ''}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${isAutoBackupEnabled ? 'bg-primary' : 'bg-secondary'} ${!can('server.backups.manage', serverId) ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             <span className="sr-only">Enable auto-backup</span>
                              <div className={`h-4 w-4 transform rounded-full bg-white transition-transform ${isAutoBackupEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
@@ -380,6 +441,10 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                         </div>
                         <button
                             onClick={async () => {
+                                if (!can('server.backups.manage', serverId)) {
+                                    addToast('error', 'Permissions', 'Insufficient permissions to manage automation');
+                                    return;
+                                }
                                 try {
                                     const newValue = !autoBackupWorldOnly;
                                     await API.updateServer(serverId, {
@@ -392,7 +457,9 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                                     addToast('error', 'Update Failed', 'Could not save backup preference.');
                                 }
                             }}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${autoBackupWorldOnly ? 'bg-primary' : 'bg-secondary'}`}
+                            disabled={!can('server.backups.manage', serverId)}
+                            title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : ''}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${autoBackupWorldOnly ? 'bg-primary' : 'bg-secondary'} ${!can('server.backups.manage', serverId) ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             <span className="sr-only">Toggle automated backup mode</span>
                              <div className={`h-4 w-4 transform rounded-full bg-white transition-transform ${autoBackupWorldOnly ? 'translate-x-6' : 'translate-x-1'}`} />
@@ -471,8 +538,9 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
 
                                 <div className="flex items-center gap-1 w-full sm:w-auto justify-end border-t sm:border-t-0 border-border pt-3 sm:pt-0">
                                     <button 
-                                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors" 
-                                        title="Download Archive"
+                                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
+                                        title={!can('server.files.read', serverId) ? 'Insufficient Permissions' : 'Download Archive'}
+                                        disabled={!can('server.files.read', serverId)}
                                         onClick={() => API.downloadBackup(serverId, backup.id)}
                                     >
                                         <Download size={16} />
@@ -480,24 +548,33 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
 
                                     <button 
                                         onClick={() => toggleLock(backup.id)}
-                                        className={`p-2 rounded-lg transition-colors ${backup.locked ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`} 
-                                        title={backup.locked ? "Unlock Snapshot" : "Lock Snapshot"}
+                                        disabled={pendingLockIds.has(backup.id) || !can('server.backups.manage', serverId)}
+                                        className={`p-2 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${backup.locked ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`} 
+                                        title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : (backup.locked ? "Unlock Snapshot" : "Lock Snapshot")}
                                     >
-                                        {backup.locked ? <Lock size={16} /> : <Unlock size={16} />}
+                                        {pendingLockIds.has(backup.id) ? (
+                                            <Loader2 size={16} className="animate-spin" />
+                                        ) : backup.locked ? (
+                                            <Lock size={16} />
+                                        ) : (
+                                            <Unlock size={16} />
+                                        )}
                                     </button>
                                     
                                     <button 
                                         onClick={() => handleRestore(backup.id)}
-                                        className="p-2 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" 
-                                        title="Restore Server"
+                                        disabled={!can('server.backups.manage', serverId)}
+                                        className="p-2 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
+                                        title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : 'Restore Server'}
                                     >
                                         <RotateCcw size={16} />
                                     </button>
                                     
                                     <button 
                                         onClick={() => deleteBackup(backup.id, backup.locked)}
-                                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors" 
-                                        title="Delete Backup"
+                                        disabled={!can('server.backups.manage', serverId)}
+                                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
+                                        title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : 'Delete Backup'}
                                     >
                                         <Trash2 size={16} />
                                     </button>

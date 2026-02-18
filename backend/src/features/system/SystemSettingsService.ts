@@ -44,6 +44,9 @@ export interface SystemSettings {
             ioThrottlingThreshold: number; // 0-100 percentage
             healthSnapshotInterval: number; // minutes
         };
+        security?: {
+            forceAdmin2FA: boolean;
+        };
     };
 }
 
@@ -70,7 +73,7 @@ class SystemSettingsService extends EventEmitter {
                     },
                     app: {
                         theme: 'dark',
-                        autoUpdate: true,
+                        autoUpdate: false,
                         hostMode: true, // Default to Host Mode for now
                         remoteAccess: { enabled: false },
                         https: { enabled: false, keyPath: '', certPath: '' },
@@ -82,6 +85,9 @@ class SystemSettingsService extends EventEmitter {
                             driftDetectionEnabled: true,
                             ioThrottlingThreshold: 80,
                             healthSnapshotInterval: 5
+                        },
+                        security: {
+                            forceAdmin2FA: false
                         }
                     }
                 };
@@ -110,13 +116,18 @@ class SystemSettingsService extends EventEmitter {
                         healthSnapshotInterval: 5
                     };
                 }
+                if (loaded.app.security === undefined) {
+                    loaded.app.security = {
+                        forceAdmin2FA: false
+                    };
+                }
             }
             return loaded;
         } catch (e) {
             console.error('Failed to load settings.json, using defaults', e);
             return {
                 discordBot: { enabled: false, token: '', clientId: '', guildId: '', commandRoles: [], notificationChannel: '' },
-                app: { theme: 'dark', autoUpdate: true, hostMode: true }
+                app: { theme: 'dark', autoUpdate: false, hostMode: true }
             } as any;
         }
     }

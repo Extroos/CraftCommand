@@ -16,11 +16,6 @@ export class DiagnosisService {
         console.log(`[Diagnosis] Registered rule: ${rule.name} (${rule.id})`);
     }
 
-    private registerDefaultRules() {
-        CoreRules.forEach(rule => this.registerRule(rule));
-        console.log(`[Diagnosis] Initialized with ${this.rules.size} default rules.`);
-    }
-
     /**
      * Run all applicable rules against the server state using the Intelligence Brain
      */

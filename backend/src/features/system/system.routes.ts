@@ -128,37 +128,6 @@ router.post('/discord/sync-commands', verifyToken, requireRole(['OWNER', 'ADMIN'
     }
 });
 
-import { updateService } from './UpdateService';
-
-// Updates
-router.get('/updates/check', verifyToken, requireRole(['OWNER', 'ADMIN']), async (req, res) => {
-    const { force } = req.query;
-    const result = await updateService.checkForUpdates(force === 'true');
-    res.json(result);
-});
-
-import { webUpdateService } from './WebUpdateService';
-
-// Web Updates (BETA)
-router.get('/update-web/status', verifyToken, requireRole(['OWNER', 'ADMIN']), async (req, res) => {
-    res.json(webUpdateService.getStatus());
-});
-
-router.post('/update-web/check', verifyToken, requireRole(['OWNER', 'ADMIN']), async (req, res) => {
-    const result = await webUpdateService.checkForUpdate();
-    res.json(result);
-});
-
-router.post('/update-web/run', verifyToken, requireRole(['OWNER', 'ADMIN']), async (req, res) => {
-    const result = await webUpdateService.runUpdate();
-    res.json(result);
-});
-
-router.post('/update-web/rollback', verifyToken, requireRole(['OWNER', 'ADMIN']), async (req, res) => {
-    const result = await webUpdateService.rollback();
-    res.json(result);
-});
-
 import { remoteAccessService } from './RemoteAccessService';
 
 // Remote Access Status

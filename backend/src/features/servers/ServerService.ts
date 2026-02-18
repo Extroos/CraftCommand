@@ -10,8 +10,10 @@ import { systemService } from '../system/SystemService';
 import { startupManager } from './StartupManager';
 
 import { serverRepository } from '../../storage/ServerRepository';
-import {  ServerConfig  } from '@shared/types';
+import { ServerConfig, ServerStatus } from '@shared/types';
 import { DATA_DIR, SERVERS_ROOT } from '../../constants';
+// uuid is available via Node's crypto or we can use a simpler ID for discovery
+import { randomUUID } from 'crypto';
 
 const operationLocks = new Set<string>();
 
@@ -64,6 +66,8 @@ export const saveServer = (server: ServerConfig) => {
 
 import { installerService } from '../installer/InstallerService';
 
+import { SafeFileOperation } from '../../utils/fs';
+
 export const deleteServer = async (id: string) => {
     logger.info(`[ServerService] Deleting server ${id}...`);
 
@@ -87,19 +91,8 @@ export const deleteServer = async (id: string) => {
         if (await fs.pathExists(server.workingDirectory)) {
             logger.info(`[ServerService] Removing directory: ${server.workingDirectory}`);
             
-            // Retry logic for EBUSY (Windows file locks)
-            try {
-                await fs.remove(server.workingDirectory);
-            } catch (e: any) {
-                console.warn(`[ServerService] Deletion Error: ${e.code}. waiting...`);
-                if (e.code === 'EBUSY' || e.code === 'EPERM') {
-                    logger.warn(`[ServerService] EBUSY encountered. Waiting 2s and retrying...`);
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    await fs.remove(server.workingDirectory);
-                } else {
-                    throw e;
-                }
-            }
+            // Phase 56.1: Use SafeFileOperation to handle Windows EBUSY/EPERM
+            await SafeFileOperation.remove(server.workingDirectory);
         }
     }
     
@@ -108,6 +101,87 @@ export const deleteServer = async (id: string) => {
 
 // Maintain compatibility if something imports removeServer
 export const removeServer = deleteServer;
+/**
+ * Bootstrap Discovery Service (v1.11.0)
+ * Scans SERVERS_ROOT and re-registers servers missing from metadata.
+ */
+export const bootstrapDiscovery = async () => {
+    logger.info('[Discovery] Running server metadata discovery...');
+    try {
+        await fs.ensureDir(SERVERS_ROOT);
+        const entries = await fs.readdir(SERVERS_ROOT);
+        const existingServers = serverRepository.findAll();
+        const existingPaths = new Set(existingServers.map(s => path.resolve(s.workingDirectory)));
+
+        let discoveredCount = 0;
+
+        for (const entry of entries) {
+            const fullPath = path.join(SERVERS_ROOT, entry);
+            const stats = await fs.stat(fullPath);
+
+            if (stats.isDirectory() && entry.startsWith('local-')) {
+                const resolvedPath = path.resolve(fullPath);
+                
+                if (!existingPaths.has(resolvedPath)) {
+                    logger.info(`[Discovery] Found unregistered server directory: ${entry}`);
+                    
+                    // Basic heuristic: check for server.properties or world folders
+                    const propsPath = path.join(fullPath, 'server.properties');
+                    const isBedrock = await fs.pathExists(path.join(fullPath, 'bedrock_server.exe')) || await fs.pathExists(path.join(fullPath, 'bedrock_server'));
+                    
+                    // Determine Software
+                    let software = 'Vanilla';
+                    if (isBedrock) software = 'Bedrock';
+                    else if (await fs.pathExists(path.join(fullPath, 'libraries'))) software = 'Forge';
+                    else if (await fs.pathExists(path.join(fullPath, 'velocity.toml'))) software = 'Velocity';
+                    else if (await fs.pathExists(path.join(fullPath, 'paper.yml')) || await fs.pathExists(path.join(fullPath, 'config', 'paper-global.yml'))) software = 'Paper';
+
+                    // Scan for port in server.properties if available
+                    let port = 25565;
+                    if (await fs.pathExists(propsPath)) {
+                        const props = await fs.readFile(propsPath, 'utf8');
+                        const portMatch = props.match(/^server-port\s*=\s*(\d+)/m);
+                        if (portMatch) port = parseInt(portMatch[1]);
+                    } else if (software === 'Velocity') {
+                        const velocityPath = path.join(fullPath, 'velocity.toml');
+                        const velo = await fs.readFile(velocityPath, 'utf8');
+                        const bindMatch = velo.match(/^bind\s*=\s*".*?:(\d+)"/m);
+                        if (bindMatch) port = parseInt(bindMatch[1]);
+                    }
+
+                    const newServer: ServerConfig = {
+                        id: entry.replace('local-', '') || randomUUID(),
+                        name: `Discovered: ${entry.split('-').slice(1).join('-') || entry}`,
+                        software: software as any,
+                        version: 'Auto-Detected',
+                        port,
+                        ip: '127.0.0.1',
+                        status: ServerStatus.OFFLINE,
+                        workingDirectory: resolvedPath,
+                        executable: isBedrock ? (process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server') : 'server.jar',
+                        ram: 4,
+                        javaVersion: 'Java 17', // Default for discovered Java servers
+                        executionEngine: 'native',
+                        executionCommand: '' // Will be generated by sanitizeServerConfig
+                    };
+
+                    serverRepository.create(newServer);
+                    discoveredCount++;
+                }
+            }
+        }
+
+        if (discoveredCount > 0) {
+            logger.success(`[Discovery] Successfully recovered ${discoveredCount} servers.`);
+        } else {
+            logger.info('[Discovery] No new servers found in physical storage.');
+        }
+    } catch (e) {
+        logger.error(`[Discovery] Failed to run discovery: ${e instanceof Error ? e.message : String(e)}`);
+    }
+};
+
+bootstrapDiscovery(); // Auto-run on load
 
 export const updateServer = async (id: string, updates: any) => {
     // Acquire lock to prevent concurrent updates
@@ -161,10 +235,56 @@ export const updateServer = async (id: string, updates: any) => {
             }
         }
 
+        // 3. Proxy Relationship Synchronization
+        if (newServer.software === 'Velocity' && updates.network?.proxyConfig?.links) {
+            const oldLinks = oldServer.network?.proxyConfig?.links || [];
+            const newLinks = updates.network.proxyConfig.links;
+
+            const oldRelatedIds = new Set(oldLinks.map((l: any) => l.serverId));
+            const newRelatedIds = new Set(newLinks.map((l: any) => l.serverId));
+
+            // Newly Linked: Servers in new but not in old
+            for (const sid of [...newRelatedIds].filter(x => !oldRelatedIds.has(x))) {
+                const target = serverRepository.findById(sid as string);
+                if (target) {
+                    serverRepository.update(sid as string, { ...target, linkedProxyId: id });
+                    logger.info(`[ServerService] Linked server ${sid} to proxy ${id}`);
+                }
+            }
+
+            // Unlinked: Servers in old but not in new
+            for (const sid of [...oldRelatedIds].filter(x => !newRelatedIds.has(x))) {
+                const target = serverRepository.findById(sid as string);
+                if (target && target.linkedProxyId === id) {
+                    serverRepository.update(sid as string, { ...target, linkedProxyId: undefined });
+                    logger.info(`[ServerService] Unlinked server ${sid} from proxy ${id}`);
+                }
+            }
+        }
+
         serverRepository.update(id, { ...updates, executable: newServer.executable });
         return newServer;
     } finally {
         releaseLock(id);
+    }
+};
+
+/**
+ * Reset any servers stuck in INSTALLING state to OFFLINE.
+ * Called on backend startup for stabilization.
+ */
+export const cleanupInstallState = () => {
+    logger.info(`[ServerService] Running installation state cleanup...`);
+    const servers = serverRepository.findAll();
+    let count = 0;
+    for (const server of servers) {
+        if (server.status === 'INSTALLING') {
+            serverRepository.update(server.id, { ...server, status: 'OFFLINE' });
+            count++;
+        }
+    }
+    if (count > 0) {
+        logger.warn(`[ServerService] Cleaned up ${count} servers stuck in INSTALLING state.`);
     }
 };
 
@@ -179,6 +299,15 @@ export const startServer = async (id: string, force: boolean = false) => {
     acquireLock(id, 'START');
 
     try {
+        // 0. specialized Safety Guards (v1.10.1)
+        if (server.software === 'Velocity') {
+            const linkCount = server.network?.proxyConfig?.links?.length || 0;
+            if (linkCount === 0) {
+                logger.error(`[Server:${id}] Blocked startup: 0 backend links configured.`);
+                throw new Error('Velocity requires at least one linked backend server to start correctly. Please add a server in the Proxy Network tab.');
+            }
+        }
+
         logger.info(`[ServerService] Orchestrating startup for ${server.name} via StartupManager...`);
         
         await startupManager.startServer(server, (updatedServer) => {
@@ -224,6 +353,6 @@ export const diagnoseServer = async (id: string) => {
     return diagnosisService.diagnose(server, recentLogs, {
         totalMemory: stats.mem.total,
         freeMemory: stats.mem.free,
-        javaVersion: 'unknown' // Placeholder for Phase 2
+        javaVersion: server.javaVersion || 'unknown'
     });
 };

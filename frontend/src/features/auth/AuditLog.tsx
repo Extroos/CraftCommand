@@ -3,8 +3,10 @@ import { API } from '@core/services/api';
 import { AuditLog as AuditLogType, AuditAction } from '@shared/types';
 import { useToast } from '../ui/Toast';
 import { useUser } from '@features/auth/context/UserContext';
-import { Clock, User, Activity, Search, Filter } from 'lucide-react';
+import { Clock, User, Activity, Search, Filter, Shield } from 'lucide-react';
+import { usePermissions } from './hooks/usePermissions';
 import { motion } from 'framer-motion';
+import AccessDenied from './components/AccessDenied';
 
 
 
@@ -20,11 +22,15 @@ const AuditLog: React.FC = () => {
 
     const { user } = useUser();
     const { addToast } = useToast();
+    const { can } = usePermissions();
+    const canViewAudit = can('system.audit.view');
 
     useEffect(() => {
-        const timer = setTimeout(() => loadLogs(), 300);
-        return () => clearTimeout(timer);
-    }, [filterAction, filterUser, search, page]);
+        if (canViewAudit) {
+            const timer = setTimeout(() => loadLogs(), 300);
+            return () => clearTimeout(timer);
+        }
+    }, [filterAction, filterUser, search, page, canViewAudit]);
 
     const loadLogs = async () => {
         setIsLoading(true);
@@ -111,6 +117,15 @@ const AuditLog: React.FC = () => {
 
         return JSON.stringify(meta).slice(0, 60) + (JSON.stringify(meta).length > 60 ? '...' : '');
     };
+
+    if (!canViewAudit) {
+        return (
+            <AccessDenied 
+                title="Audit Logs Restricted"
+                description="You do not have the required permissions to view the system audit logs. Please contact the system owner for elevation."
+            />
+        );
+    }
 
     return (
         <div className="h-[calc(100vh-140px)] flex flex-col gap-6 font-sans">

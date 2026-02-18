@@ -3,6 +3,7 @@ import { auditService } from './AuditService';
 import { logger } from '../../utils/logger';
 import { ConnectivityProvider } from '../networking/ConnectivityProvider';
 import { DirectProvider } from '../networking/DirectProvider';
+import { UPnPProvider } from '../networking/UPnPProvider';
 import {  ConnectionStatus, ConnectivityMethod  } from '@shared/types';
 
 import os from 'os';
@@ -15,6 +16,7 @@ export class RemoteAccessService {
     constructor() {
         // Register available providers
         this.registerProvider(new DirectProvider());
+        this.registerProvider(new UPnPProvider());
         // Future: this.registerProvider(new VpnProvider());
         // Future: this.registerProvider(new CloudflareProvider());
     }

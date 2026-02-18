@@ -30,6 +30,12 @@ export interface NetworkState {
     reachability: PortReachability[];
 }
 
+export interface ProxyLink {
+    serverId: string; // The ID of the backend server
+    alias: string;    // The name Velocity will use (e.g. "lobby")
+    restricted?: boolean;
+}
+
 export interface NetworkConfig {
     hostname?: string;
     provider?: DdnsProvider;
@@ -37,4 +43,12 @@ export interface NetworkConfig {
     updateEnabled: boolean;
     monitoringEnabled: boolean;
     updateInterval: number; // minutes
+    
+    // Velocity Proxy Features
+    proxyConfig?: {
+        links: ProxyLink[];
+        forcedHosts?: Record<string, string[]>;
+        forwardingMode?: 'none' | 'legacy' | 'bungeeguard' | 'modern';
+        secret?: string;
+    };
 }

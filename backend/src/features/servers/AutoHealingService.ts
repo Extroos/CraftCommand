@@ -60,7 +60,12 @@ class AutoHealingService {
         }
     }
 
+    private isInitialized = false;
+
     public initialize() {
+        if (this.isInitialized) return;
+        this.isInitialized = true;
+
         setTimeout(() => {
             this.startMonitoring();
             this.listenToProcessEvents();
@@ -93,6 +98,9 @@ class AutoHealingService {
                 // 2. Drift Detection (v3) - Always active if Auto-Healing is ON
                 const isDriftFixActive = v3Settings?.driftDetectionEnabled !== false; // Default to true
                 if (isDriftFixActive && server.status === 'ONLINE' && !processManager.isRunning(server.id)) {
+                    // CRITICAL: Skip if we are intentionally stopping!
+                    if (processManager.isStopping(server.id)) continue;
+
                     logger.warn(`[AutoHealing] Drift Detected for ${server.id} (Status ONLINE but PID missing). Triggering repair.`);
                     this.initiateRecovery(server.id, 'DRIFT_REPAIR');
                     continue;
@@ -158,6 +166,9 @@ class AutoHealingService {
         const isRunning = processManager.isRunning(server.id);
         
         if (!isRunning && server.autoStart) {
+            // CRITICAL: Skip if we are intentionally stopping!
+            if (processManager.isStopping(server.id)) return;
+
             this.initiateRecovery(server.id, 'ZOMBIE_REPAIR');
             return;
         }
@@ -189,6 +200,15 @@ class AutoHealingService {
             attempts: marker.consecutiveCrashes + 1,
             stabilityScore: marker.score
         };
+
+        // LOOP PREVENTION: If we've attempted recovery 5 times in the last 10 minutes, enter Safe Mode
+        const recentCrashes = marker.consecutiveCrashes;
+        if (recentCrashes >= 5) {
+            logger.error(`[AutoHealing:${serverId}] Recovery loop detected. Entering Safe Mode.`);
+            marker.isSafeMode = true;
+            this.saveStabilityMarkers();
+            return;
+        }
 
         this.activeRecoveries.set(serverId, state);
         this.processPipeline(state);

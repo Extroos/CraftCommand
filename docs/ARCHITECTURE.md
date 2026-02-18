@@ -1,57 +1,52 @@
-# CraftCommand Architecture
+# CraftCommand Architecture: Technical Deep-Dive
 
-## Overview
+CraftCommand is engineered as a **Hybrid Orchestration Platform**, designed to bridge the gap between simple local launchers and enterprise-scale Minecraft infrastructures. This document details the core engines and data flows that power the platform.
 
-CraftCommand is a Minecraft Server Management Solution built with a **Hybrid Orchestration** model, bridging the gap between simple local launchers and complex enterprise infrastructure.
+## 1. The Core Philosophy: "Stateful Portability"
 
-### Tech Stack
+Unlike traditional panels that rely on centralized databases (MySQL/PostgreSQL), CraftCommand uses a **Hybrid Dual-Storage Model**.
 
-- **Frontend**: React 19, Vite, TailwindCSS, Framer Motion
-- **Backend**: Node.js, Express, Socket.IO, TypeScript
-- **Shared**: TypeScript Types (`@shared/types`)
-- **Storage**: Hybrid Dual-Storage (SQLite for teams, JSON for solo portability)
+- **Solo Mode**: Uses atomic JSON storage for maximum portability. Move the folder, and the whole panel moves with you.
+- **Node Mode**: Leverages an embedded SQLite engine for high-concurrency permission checks and audit logging.
 
-## Core Systems & High-Order Automation
+## 2. Advanced System Engines
 
-### 1. Advanced Process Management Engine (`ProcessManager.ts`)
+### A. Intelligent Process Management (`ProcessManager.ts`)
 
-- **Multi-Engine Spawning**: Abstraction between `native` (local child_process) and `docker`.
-- **Port Protection**: Automatically scans for and resolves "Ghost Processes" holding server ports.
-- **State Recovery**: Synchronous status checks to detect external crashes or manual stops.
+The heartbeat of the platform. It handles the lifecycle of Minecraft instances through:
 
-### 2. Intelligent Auto-Healing (`DiagnosisService.ts`)
+- **Abstraction Layer**: Supports both `native` (Child_Process) and `containerized` (Docker) engines seamlessly.
+- **Ghost Protection**: Dynamically scans for "zombie" processes holding server ports and provides auto-cleanup logic.
+- **Standard Input Pipeline**: A buffered WebSocket stream ensures console inputs are delivered reliably even under heavy CPU load.
 
-- **Predictive Diagnostics**: Log-based analysis for JVM version mismatches, Heap/RAM issues, and NBT overflows.
-- **Corruption Sentry**: Scans crash reports for world data corruption and triggers backup warnings.
+### B. Heuristic Installation Pipeline (`InstallerService.ts`)
 
-### 3. Smart Software Pipeline (`InstallerService.ts`)
+Designed to solve the "Nesting Problem" common in community modpacks.
 
-- **Heuristic Installation**: Analyzes ZIP files to identify pack types (CurseForge, Modrinth).
-- **In-Place Flattening**: Fixes "user nesting errors" in ZIPs automatically.
+- **Deep ZIP Analysis**: Recursively scans archive structures to identify the true `root` of a server pack.
+- **Auto-Flattening**: Automatically standardizes directories (e.g., removing a wrapper `ServerPack_1.0/` folder) to prevent startup failures.
 
-## Structure
+### C. "The Doctor" Diagnostic Engine (`DiagnosisService.ts`)
 
-```
-/
-├── frontend/           # React Application
-│   ├── src/
-│   │   ├── components/ # UI Components
-│   │   ├── features/   # Feature-grouped Components
-│   │   └── lib/        # API and Utilities
-│   └── dist/           # Built static files
-│
-├── backend/            # Node.js Server
-│   ├── src/
-│   │   ├── services/   # Business Logic (Auth, Servers, System)
-│   │   ├── storage/    # Data Access Layer (Repositories)
-│   │   ├── sockets/    # Real-time Event Handlers
-│   │   └── server.ts   # Entry Point
-│   └── data/           # Runtime Data (JSON files)
-│
-└── shared/             # Shared Code
-    └── types/          # TypeScript Interfaces
-```
+A log-based pattern matching system.
 
-## Real-time Communication
+- **Predictive Matching**: Analyzes crash logs using RegEx patterns to identify common failures (JVM OOM, Class Mismatches, EULA refusal).
+- **One-Click Remediation**: Suggests and executes fixes (e.g., updating Java version or Accepting EULA) directly from the telemetry data.
 
-Socket.IO is used for console streaming, status updates, and real-time telemetry (CPU/RAM).
+## 3. Communication & Telemetry Hierarchy
+
+1.  **Transport**: Socket.IO for binary-efficient real-time streaming.
+2.  **Telemetry**: High-fidelity OS monitoring (using `systeminformation`) provides sub-second CPU/RAM metrics to the frontend.
+3.  **State Sync**: Redux (on frontend) and the Repository Layer (on backend) maintain a synchronized view of server health across all connected clients.
+
+## 4. Multi-Node distributed Model (v1.10+)
+
+CraftCommand supports a **Primary/Worker** architecture.
+
+- **Primary Node**: Hosts the UI and global user database.
+- **Worker Nodes**: Lightweight agents that manage local server files and execute process commands.
+- **Bootstrap Enrollment**: New nodes are added via a secure ZIP package containing a pre-shared encrypted token for instant pairing.
+
+---
+
+_Next: See [Networking & Connectivity](networking/OVERVIEW.md) for details on the communication bridge._

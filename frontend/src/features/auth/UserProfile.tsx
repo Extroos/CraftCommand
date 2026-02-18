@@ -7,13 +7,14 @@ import { useToast } from '../ui/Toast';
 import { 
     User, Lock, Palette, Bell, Key, Eye, EyeOff, Save, Loader2, 
     Mail, Check, AlertTriangle, Code, RefreshCw, Copy, Gamepad2, Link,
-    Terminal, Monitor, BellRing, Type, Volume2, Disc, Camera
+    Terminal, Monitor, BellRing, Type, Volume2, Disc, Camera, ShieldCheck, QrCode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser } from '@features/auth/context/UserContext';
 import { API } from '@core/services/api';
 import { HardDrive, Trash2, Archive, Database, Image as ImageIcon } from 'lucide-react';
 import BackgroundManagerModal from '../ui/BackgroundManagerModal';
+import TwoFactorSetupWizard from './components/TwoFactorSetupWizard';
 
 const SystemCacheManager = ({ theme }: { theme: any }) => {
     const { user } = useUser();
@@ -176,6 +177,7 @@ const UserProfileView: React.FC = () => {
     const [avatarInput, setAvatarInput] = useState(user?.avatarUrl || '');
     const [isSaving, setIsSaving] = useState(false);
     const [showBackgroundModal, setShowBackgroundModal] = useState(false);
+    const [show2FAWizard, setShow2FAWizard] = useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,6 +283,28 @@ const UserProfileView: React.FC = () => {
         }
     };
 
+    const handleDisable2FA = async () => {
+        const password = prompt('Please enter your password to disable 2FA:');
+        if (!password) return;
+        
+        const code = prompt('Please enter a valid 2FA code or recovery code:');
+        if (!code) return;
+
+        setIsSaving(true);
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) throw new Error('Session expired');
+            
+            await API.disable2FA(password, code, token);
+            await updateUser({}); // Trigger refresh from memory or re-fetch
+            addToast('success', '2FA Disabled', 'Two-factor authentication has been removed.');
+        } catch (err: any) {
+            addToast('error', 'Failed', err.message || 'Could not disable 2FA.');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
 
 
     const handleGenerateKey = () => {
@@ -295,8 +319,15 @@ const UserProfileView: React.FC = () => {
     const handlePreferenceUpdate = (category: keyof UserProfile['preferences'], key: string, value: any) => {
         // Quality Mode Boost: Initialize default backgrounds if first time
         if (key === 'visualQuality' && value === true) {
-            updatePreferences({ visualQuality: true });
-            addToast('success', 'Quality Mode Enabled', 'Visual effects are now active!');
+            updatePreferences({ visualQuality: true, reducedMotion: false }); // Force Reduced Motion OFF
+            addToast('success', 'Quality Mode Enabled', 'Visual effects are now active! Reduced Motion has been disabled for full visual fidelity.');
+            return;
+        }
+
+        // Reduced Motion Boost: Kill Quality Mode
+        if (key === 'reducedMotion' && value === true) {
+            updatePreferences({ reducedMotion: true, visualQuality: false }); // Force Quality Mode OFF
+            addToast('info', 'Performance Mode Active', 'Animations and glass effects are now disabled. Quality Mode has been turned off.');
             return;
         }
 
@@ -538,6 +569,54 @@ const UserProfileView: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
+                            {/* 2FA Security */}
+                            <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                                <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                    <ShieldCheck size={18} className={theme.text} /> Two-Factor Authentication
+                                </h2>
+                                
+                                <div className="flex items-start gap-6">
+                                    <div className={`p-4 rounded-2xl ${user.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'} shrink-0`}>
+                                        {user.twoFactorEnabled ? <ShieldCheck size={32} /> : <AlertTriangle size={32} />}
+                                    </div>
+                                    
+                                    <div className="flex-1 space-y-4">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="font-bold text-sm">
+                                                    Status: {user.twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                                                </h3>
+                                                {user.twoFactorEnabled && (
+                                                    <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Secure</span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                                {user.twoFactorEnabled 
+                                                    ? 'Your account is protected with an additional layer of security. An authenticator code is required for every login.'
+                                                    : 'Protect your account from unauthorized access by requiring a second verification step during login.'}
+                                            </p>
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            {user.twoFactorEnabled ? (
+                                                <button 
+                                                    onClick={handleDisable2FA}
+                                                    className="text-xs font-bold uppercase tracking-widest text-rose-500 hover:text-rose-400 transition-colors py-2"
+                                                >
+                                                    Disable 2FA
+                                                </button>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => setShow2FAWizard(true)}
+                                                    className={`px-4 py-2 text-xs font-bold rounded-lg border border-border transition-all shadow-sm ${theme.bg} text-foreground hover:scale-105 active:scale-95 flex items-center gap-2`}
+                                                >
+                                                    <QrCode size={14} /> Enable 2FA
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </motion.div>
                     )}
 
@@ -561,15 +640,21 @@ const UserProfileView: React.FC = () => {
                                         )}
                                     </div>
                                     <button
-                                        onClick={() => setShowBackgroundModal(true)}
-                                        disabled={!user.preferences.visualQuality}
+                                        onClick={() => {
+                                            if (user.preferences.visualQuality) {
+                                                setShowBackgroundModal(true);
+                                            } else {
+                                                addToast('info', 'Quality Mode Required', 'Enable Quality Mode below to unlock background customization.');
+                                            }
+                                        }}
                                         className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg border border-border transition-all shadow-sm ${
                                             user.preferences.visualQuality 
                                             ? `${theme.bg} text-foreground hover:scale-105 active:scale-95` 
-                                            : 'bg-secondary text-muted-foreground opacity-50 cursor-not-allowed'
+                                            : 'bg-secondary text-muted-foreground'
                                         }`}
                                     >
-                                        <ImageIcon size={14} /> Manage Backgrounds
+                                        <ImageIcon size={14} /> 
+                                        {user.preferences.visualQuality ? 'Manage Backgrounds' : 'Unlock Backgrounds'}
                                     </button>
                                 </div>
 
@@ -934,6 +1019,16 @@ const UserProfileView: React.FC = () => {
                             updatePreferences({ backgrounds: newBackgrounds });
                             setShowBackgroundModal(false);
                             addToast('success', 'Backgrounds Updated', 'Your custom backgrounds have been applied.');
+                        }}
+                    />
+                )}
+                {show2FAWizard && (
+                    <TwoFactorSetupWizard 
+                        onClose={() => setShow2FAWizard(false)}
+                        onComplete={() => {
+                            setShow2FAWizard(false);
+                            // Refresh logic is already handled by context if needed, 
+                            // but we can trigger a re-fetch of user data here if API provides it.
                         }}
                     />
                 )}

@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { API } from '@core/services/api';
 import { useServers } from '@features/servers/context/ServerContext';
+import { usePermissions } from '@features/auth/hooks/usePermissions';
+import AccessDenied from '@features/auth/components/AccessDenied';
 
 interface PluginManagerProps {
     serverId: string;
@@ -17,6 +19,7 @@ type Tab = 'installed' | 'marketplace' | 'updates';
 
 const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
     const { currentServer, refreshServers } = useServers();
+    const { can } = usePermissions();
     const [activeTab, setActiveTab] = useState<Tab>('marketplace');
     
     // Marketplace state
@@ -37,7 +40,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
     
     // Action state
-    const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+    const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     
@@ -128,50 +131,77 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
 
     // --- Actions ---
     const handleInstall = async (plugin: MarketplacePlugin) => {
-        setActionInProgress(plugin.sourceId);
+        if (!can('server.plugins.manage', serverId)) return;
+        setPendingActions(prev => new Set(prev).add(plugin.sourceId));
         setError(null);
         try {
             const result = await API.installPlugin(serverId, plugin.sourceId, plugin.source);
-            // Optimistic update: add to installed list immediately so button changes to "Installed"
+            // Dynamic update: add to installed list immediately so button changes to "Installed"
             setInstalledPlugins(prev => [...prev.filter(p => p.sourceId !== plugin.sourceId), result]);
             setSuccessMessage(`${plugin.name} installed successfully! Restart the server for changes to take effect.`);
             refreshServers(); // Refresh to get needsRestart flag
         } catch (err: any) {
             setError(err.message);
         } finally {
-            setActionInProgress(null);
+            setPendingActions(prev => {
+                const next = new Set(prev);
+                next.delete(plugin.sourceId);
+                return next;
+            });
         }
     };
 
     const handleUninstall = async (plugin: InstalledPlugin) => {
+        if (!can('server.plugins.manage', serverId)) return;
         if (!confirm(`Uninstall ${plugin.name}? The plugin JAR will be deleted.`)) return;
-        setActionInProgress(plugin.id);
+        
+        // Optimistic Deletion
+        const originalPlugins = [...installedPlugins];
+        setInstalledPlugins(prev => prev.filter(p => p.id !== plugin.id));
+        setPendingActions(prev => new Set(prev).add(plugin.id));
+        
         try {
             await API.uninstallPlugin(serverId, plugin.id);
             setSuccessMessage(`${plugin.name} uninstalled.`);
-            loadInstalled();
+            // No need to reload, we already removed it optimistically
         } catch (err: any) {
+            setInstalledPlugins(originalPlugins);
             setError(err.message);
         } finally {
-            setActionInProgress(null);
+            setPendingActions(prev => {
+                const next = new Set(prev);
+                next.delete(plugin.id);
+                return next;
+            });
         }
     };
 
     const handleToggle = async (plugin: InstalledPlugin) => {
-        setActionInProgress(plugin.id);
+        if (!can('server.plugins.manage', serverId)) return;
+        // Optimistic Toggle
+        const originalPlugins = [...installedPlugins];
+        setInstalledPlugins(prev => prev.map(p => p.id === plugin.id ? { ...p, enabled: !p.enabled } : p));
+        setPendingActions(prev => new Set(prev).add(plugin.id));
+        
         try {
             const updated = await API.togglePlugin(serverId, plugin.id);
             setInstalledPlugins(prev => prev.map(p => p.id === plugin.id ? updated : p));
             setSuccessMessage(`${plugin.name} ${updated.enabled ? 'enabled' : 'disabled'}. Restart the server for changes to take effect.`);
         } catch (err: any) {
+            setInstalledPlugins(originalPlugins);
             setError(err.message);
         } finally {
-            setActionInProgress(null);
+            setPendingActions(prev => {
+                const next = new Set(prev);
+                next.delete(plugin.id);
+                return next;
+            });
         }
     };
 
     const handleUpdate = async (update: PluginUpdateInfo) => {
-        setActionInProgress(update.pluginId);
+        if (!can('server.plugins.manage', serverId)) return;
+        setPendingActions(prev => new Set(prev).add(update.pluginId));
         try {
             await API.updatePlugin(serverId, update.pluginId);
             setSuccessMessage(`${update.name} updated to ${update.latestVersion}! Restart the server for changes to take effect.`);
@@ -180,7 +210,11 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
         } catch (err: any) {
             setError(err.message);
         } finally {
-            setActionInProgress(null);
+            setPendingActions(prev => {
+                const next = new Set(prev);
+                next.delete(update.pluginId);
+                return next;
+            });
         }
     };
 
@@ -194,6 +228,15 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
         { id: 'installed', label: 'Installed', icon: <Package size={16} />, badge: installedPlugins.length },
         { id: 'updates', label: 'Updates', icon: <ArrowUpCircle size={16} />, badge: updates.length },
     ];
+
+    if (!can('server.plugins.read', serverId)) {
+        return (
+            <AccessDenied 
+                title="Plugin Access Restricted"
+                description="You do not have permission to view or manage plugins for this server. Please contact an administrator for access."
+            />
+        );
+    }
 
     return (
         <div className="h-[calc(100vh-120px)] flex flex-col gap-4 animate-fade-in">
@@ -316,7 +359,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                                 {searchResults.map(plugin => {
                                     const installed = isAlreadyInstalled(plugin.sourceId);
-                                    const installing = actionInProgress === plugin.sourceId;
+                                    const installing = pendingActions.has(plugin.sourceId);
                                     return (
                                         <div 
                                             key={`${plugin.source}-${plugin.sourceId}`}
@@ -366,7 +409,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                                                     )}
                                                     <button
                                                         onClick={() => handleInstall(plugin)}
-                                                        disabled={installed || installing}
+                                                        disabled={installed || installing || !can('server.plugins.manage', serverId)}
                                                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                                                             installed 
                                                                 ? 'bg-emerald-500/10 text-emerald-400 cursor-default' 
@@ -425,7 +468,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                         ) : (
                             <div className="flex flex-col gap-2">
                                 {installedPlugins.map(plugin => {
-                                    const busy = actionInProgress === plugin.id;
+                                    const busy = pendingActions.has(plugin.id);
                                     return (
                                         <div 
                                             key={plugin.id}
@@ -458,8 +501,8 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                                                 {/* Toggle */}
                                                 <button
                                                     onClick={() => handleToggle(plugin)}
-                                                    disabled={busy}
-                                                    title={plugin.enabled ? 'Disable' : 'Enable'}
+                                                    disabled={busy || !can('server.plugins.manage', serverId)}
+                                                    title={can('server.plugins.manage', serverId) ? (plugin.enabled ? 'Disable' : 'Enable') : 'Insufficient Permissions'}
                                                     className={`p-2 rounded-lg text-xs transition-all ${
                                                         plugin.enabled 
                                                             ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' 
@@ -471,9 +514,9 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                                                 {/* Uninstall */}
                                                 <button
                                                     onClick={() => handleUninstall(plugin)}
-                                                    disabled={busy}
-                                                    title="Uninstall"
-                                                    className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                                    disabled={busy || !can('server.plugins.manage', serverId)}
+                                                    title={can('server.plugins.manage', serverId) ? 'Uninstall' : 'Insufficient Permissions'}
+                                                    className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-30 disabled:hover:bg-transparent"
                                                 >
                                                     <Trash2 size={14} />
                                                 </button>
@@ -518,7 +561,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                         ) : (
                             <div className="flex flex-col gap-2">
                                 {updates.map(update => {
-                                    const busy = actionInProgress === update.pluginId;
+                                    const busy = pendingActions.has(update.pluginId);
                                     return (
                                         <div
                                             key={update.pluginId}
@@ -540,8 +583,8 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
 
                                             <button
                                                 onClick={() => handleUpdate(update)}
-                                                disabled={busy}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all shadow-sm"
+                                                disabled={busy || !can('server.plugins.manage', serverId)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all shadow-sm disabled:opacity-50 disabled:bg-blue-500/50"
                                             >
                                                 {busy ? (
                                                     <><Loader2 size={12} className="animate-spin" /> Updating...</>

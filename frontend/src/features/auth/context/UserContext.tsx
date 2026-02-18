@@ -21,6 +21,8 @@ type UserContextType = {
     updatePreferences: (prefs: Partial<UserProfile['preferences']>) => void;
     updateUser: (updates: Partial<UserProfile>) => Promise<void>;
     refreshUser: () => Promise<void>;
+    verify2FA: (code: string, isRecovery?: boolean) => Promise<boolean>;
+    twoFactorRequired: boolean;
     guestPrefs: { reducedMotion: boolean; visualQuality: boolean };
 };
 
@@ -40,6 +42,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [user, setUser] = useState<UserProfile | null>(null);
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [twoFactorRequired, setTwoFactorRequired] = useState<boolean>(false);
 
     // Guest Preference State (Pre-authentication)
     const [guestPrefs, setGuestPrefs] = useState({
@@ -56,9 +59,17 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     setUser(u);
                     setIsAuthenticated(true);
                     socketService.connect(); // Connect Socket
-                } catch (e) {
-                    console.error("Auth Token Invalid:", e);
-                    logout(); // Clear invalid token
+                } catch (e: any) {
+                    console.error("Auth Token Verification failed:", e);
+                    
+                    // If backend says 2FA required (401 with mfaRequired), DON'T logout.
+                    // Instead, set twoFactorRequired to true so UI knows where to go.
+                    if (e.response?.status === 401 && e.response?.data?.mfaRequired) {
+                        setTwoFactorRequired(true);
+                        setIsAuthenticated(false);
+                    } else {
+                        logout(); // Clear genuinely invalid token
+                    }
                 }
             } else {
                 setIsAuthenticated(false);
@@ -93,12 +104,18 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const login = async (email: string, pass: string) => {
         try {
             const data = await API.login(email, pass);
+            if (data.twoFactorRequired) {
+                setToken(data.token); // This is a partial token
+                setTwoFactorRequired(true);
+                return false; // Not fully authenticated yet
+            }
             if (data.token) {
                 localStorage.setItem('cc_token', data.token);
                 setToken(data.token);
                 setUser(data.user);
                 setIsAuthenticated(true);
-                socketService.connect(); // Connect Socket
+                setTwoFactorRequired(false);
+                socketService.connect();
                 return true;
             }
             return false;
@@ -113,7 +130,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setToken(null);
         setUser(null);
         setIsAuthenticated(false);
-        socketService.disconnect(); // Disconnect Socket
+        setTwoFactorRequired(false);
+        socketService.disconnect();
         window.dispatchEvent(new Event('cc_logout'));
     };
 
@@ -160,6 +178,26 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.error("Failed to update user:", e);
             setUser(previousUser); // Rollback
             throw e;
+        }
+    };
+
+    const verify2FA = async (code: string, isRecovery: boolean = false) => {
+        if (!token) return false;
+        try {
+            const data = await API.verify2FA(code, token, isRecovery);
+            if (data.success && data.token) {
+                localStorage.setItem('cc_token', data.token);
+                setToken(data.token);
+                setUser(data.user!);
+                setIsAuthenticated(true);
+                setTwoFactorRequired(false);
+                socketService.connect();
+                return true;
+            }
+            return false;
+        } catch (e) {
+            console.error("2FA Verification failed:", e);
+            return false;
         }
     };
 
@@ -225,6 +263,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updatePreferences,
         updateUser,
         refreshUser,
+        verify2FA,
+        twoFactorRequired,
         guestPrefs
     };
 

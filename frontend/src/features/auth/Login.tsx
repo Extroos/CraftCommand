@@ -5,6 +5,7 @@ import { Command, Mail, Lock, ArrowRight, Loader2, Info, Globe } from 'lucide-re
 
 import { useToast } from '../ui/Toast';
 import { useUser } from '@features/auth/context/UserContext';
+import TwoFactorChallenge from './components/TwoFactorChallenge';
 
 
 interface LoginProps {
@@ -17,7 +18,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
     const [isHolding, setIsHolding] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const { login, user, guestPrefs, theme } = useUser();
+    const { login, logout, user, guestPrefs, theme, twoFactorRequired } = useUser();
     const { addToast } = useToast();
 
     const isQuality = user ? user.preferences.visualQuality : guestPrefs.visualQuality;
@@ -32,9 +33,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
             if (success) {
                 addToast('success', 'Welcome', 'Access granted.');
                 onLogin();
-            } else {
+            } else if (!twoFactorRequired) {
+                // If login returns false and 2FA is NOT required, it means credentials failed
                 addToast('error', 'Access Denied', 'Invalid email or password.');
             }
+            // If twoFactorRequired is true, the UI will pivot via the state change
         } catch (e) {
             addToast('error', 'Error', 'Connection failed.');
         } finally {
@@ -42,8 +45,12 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
         }
     };
 
+    const cachedBg = localStorage.getItem('cc_backgrounds');
+    const hasBg = cachedBg ? JSON.parse(cachedBg).global || JSON.parse(cachedBg).login : false;
+    const bgClass = hasBg ? 'bg-transparent-if-bg' : (isQuality ? 'bg-zinc-950/40' : 'bg-[#09090b]');
+
     return (
-        <div className={`min-h-screen flex flex-col items-center justify-center relative overflow-hidden p-6 font-sans transition-colors duration-700 ${isQuality ? 'bg-zinc-950/40' : 'bg-[#09090b]'}`}>
+        <div className={`min-h-screen flex flex-col items-center justify-center relative overflow-y-auto p-6 font-sans transition-colors duration-700 ${bgClass}`}>
             
             {/* Minimalist Accents - Matching ServerSelection's subtle look */}
             <div className={`absolute top-0 left-0 w-full h-full bg-zinc-950/20 pointer-events-none ${isQuality ? 'block' : 'hidden'}`}></div>
@@ -112,51 +119,74 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                     }}
                     className={`${isQuality ? 'glass-morphism quality-shadow' : 'bg-[#111111]'} border border-white/[0.08] rounded-2xl shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] p-8 relative overflow-hidden`}
                 >
-                    <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-[#71717a] uppercase tracking-widest ml-1">Account Identifier</label>
-                            <div className="relative group/input">
-                                <input 
-                                    type="email" 
-                                    required
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className={`w-full bg-[#18181b] border border-white/[0.05] rounded-xl py-3 px-4 text-sm text-white placeholder:text-[#52525b] focus:outline-none focus:border-white/20 focus:ring-1 ${theme.ring} transition-all duration-300`}
-                                    placeholder="user@localhost"
-                                />
-                            </div>
-                        </div>
-                        
-                        <div className="space-y-1.5">
-                            <div className="flex items-center justify-between ml-1">
-                                <label className="text-[10px] font-bold text-[#71717a] uppercase tracking-widest">Access Key</label>
-                            </div>
-                            <div className="relative group/input">
-                                <input 
-                                    type="password" 
-                                    required
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className={`w-full bg-[#18181b] border border-white/[0.05] rounded-xl py-3 px-4 text-sm text-white placeholder:text-[#52525b] focus:outline-none focus:border-white/20 focus:ring-1 ${theme.ring} transition-all duration-300`}
-                                    placeholder="••••••••"
-                                />
-                            </div>
-                        </div>
+                    <AnimatePresence mode="wait">
+                        {!twoFactorRequired ? (
+                            <motion.form 
+                                key="login-form"
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: 20 }}
+                                onSubmit={handleSubmit} 
+                                className="space-y-6 relative z-10"
+                            >
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-[#71717a] uppercase tracking-widest ml-1">Account Identifier</label>
+                                    <div className="relative group/input">
+                                        <input 
+                                            type="email" 
+                                            required
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            className={`w-full bg-[#18181b] border border-white/[0.05] rounded-xl py-3 px-4 text-sm text-white placeholder:text-[#52525b] focus:outline-none focus:border-white/20 focus:ring-1 ${theme.ring} transition-all duration-300`}
+                                            placeholder="user@localhost"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between ml-1">
+                                        <label className="text-[10px] font-bold text-[#71717a] uppercase tracking-widest">Access Key</label>
+                                    </div>
+                                    <div className="relative group/input">
+                                        <input 
+                                            type="password" 
+                                            required
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className={`w-full bg-[#18181b] border border-white/[0.05] rounded-xl py-3 px-4 text-sm text-white placeholder:text-[#52525b] focus:outline-none focus:border-white/20 focus:ring-1 ${theme.ring} transition-all duration-300`}
+                                            placeholder="••••••••"
+                                        />
+                                    </div>
+                                </div>
 
-                        <button 
-                            type="submit" 
-                            disabled={isLoading}
-                            className={`w-full bg-foreground text-background font-bold uppercase text-[11px] tracking-[0.2em] py-4 rounded-xl hover:bg-foreground/90 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 mt-4 shadow-xl shadow-black/40 disabled:opacity-50`}
-                        >
-                            {isLoading ? (
-                                <Loader2 className="animate-spin h-4 w-4" />
-                            ) : (
-                                <>
-                                    Establish Connection <ArrowRight size={14} />
-                                </>
-                            )}
-                        </button>
-                    </form>
+                                <button 
+                                    type="submit" 
+                                    disabled={isLoading}
+                                    className={`w-full bg-foreground text-background font-bold uppercase text-[11px] tracking-[0.2em] py-4 rounded-xl hover:bg-foreground/90 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 mt-4 shadow-xl shadow-black/40 disabled:opacity-50`}
+                                >
+                                    {isLoading ? (
+                                        <Loader2 className="animate-spin h-4 w-4" />
+                                    ) : (
+                                        <>
+                                            Establish Connection <ArrowRight size={14} />
+                                        </>
+                                    )}
+                                </button>
+                            </motion.form>
+                        ) : (
+                            <motion.div
+                                key="mfa-form"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                            >
+                                <TwoFactorChallenge 
+                                    onSuccess={onLogin}
+                                    onCancel={() => logout()}
+                                />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </motion.div>
 
                 {/* Footer: Subtle & Clean */}

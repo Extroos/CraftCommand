@@ -11,9 +11,10 @@ import { getServerCapabilities } from '../../../shared/utils/CapabilityUtils';
 export const verifyToken = (req: Request, res: Response, next: NextFunction) => {
     // Check if Host Mode is disabled (Personal Mode)
     const settings = systemSettingsService.getSettings();
-    console.log(`[AuthMiddleware] verifyToken for ${req.path} (HostMode: ${settings.app.hostMode})`);
+    const hostMode = settings?.app?.hostMode ?? true;
+    console.log(`[AuthMiddleware] verifyToken for ${req.path} (HostMode: ${hostMode})`);
     
-    if (!settings.app.hostMode) {
+    if (!hostMode) {
         // Personal Mode: Bypass authentication, create a mock admin user
         (req as any).user = {
             id: 'personal-mode',
@@ -68,9 +69,24 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
 
         // Attach user to request
         (req as any).user = user;
+
+        // Phase 6: Enforce 2FA Policy for Administrators
+        // ... (policy enforcement omitted for brevity, but stays below)
+        const isAppAdmin = user.role === 'ADMIN' || user.role === 'OWNER';
+        const force2FA = settings?.app?.security?.forceAdmin2FA ?? false;
+        
+        if (force2FA && isAppAdmin && !user.twoFactorEnabled) {
+            console.warn(`[AuthMiddleware] User ${user.email} blocked by forceAdmin2FA policy.`);
+            return res.status(403).json({ 
+                error: 'Two-Factor Authentication Required', 
+                policyEnforced: true,
+                message: 'Your administrator account requires Two-Factor Authentication to be enabled. Please enable it in your profile settings.'
+            });
+        }
+
         next();
     } catch (e: any) {
-        console.error(`[AuthMiddleware] JWT Verification Failed: ${e.message}`);
+        console.error(`[AuthMiddleware] JWT Verification Failed: ${e.message}`, e.stack);
         res.status(401).json({ error: 'Invalid or expired token' });
     }
 };

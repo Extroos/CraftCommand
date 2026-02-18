@@ -20,7 +20,7 @@ export const useTheme = () => {
 };
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const { user } = useUser();
+    const { user, updatePreferences } = useUser();
     const [theme, setThemeState] = useState<ThemeMode>('dark');
     const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>('dark');
 
@@ -81,10 +81,10 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setThemeState(newTheme);
         localStorage.setItem('cc_theme', newTheme);
         
-        // TODO: Sync to user preferences via API
-        // if (user) {
-        //     API.updateUserPreferences({ theme: newTheme });
-        // }
+        // Sync to user preferences via API
+        if (user) {
+            updatePreferences({ theme: newTheme } as any);
+        }
     };
 
     // Toggle between dark and light (useful for quick theme switching)

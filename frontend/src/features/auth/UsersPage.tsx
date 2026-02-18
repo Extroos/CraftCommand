@@ -5,10 +5,14 @@ import { API } from '@core/services/api';
 import { UserProfile, UserRole } from '@shared/types';
 import { Trash2, Shield, User, UserPlus, Save, X, Mail, Lock } from 'lucide-react';
 import { useToast } from '../ui/Toast';
+import { usePermissions } from './hooks/usePermissions';
+import AccessDenied from './components/AccessDenied';
 
 const UsersPage: React.FC = () => {
     const { user, token, theme, isLoading } = useUser();
     const { addToast } = useToast();
+    const { can } = usePermissions();
+    const canManageUsers = can('users.manage');
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
@@ -23,10 +27,10 @@ const UsersPage: React.FC = () => {
     });
 
     useEffect(() => {
-        if (user?.role === 'OWNER' || user?.role === 'ADMIN') {
+        if (canManageUsers) {
             loadUsers();
         }
-    }, [user]);
+    }, [canManageUsers]);
 
     const loadUsers = async () => {
         if (!token || !user) return;
@@ -56,6 +60,12 @@ const UsersPage: React.FC = () => {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!token) return;
+        
+        if (!canManageUsers) {
+            addToast('error', 'Access Denied', 'You do not have permission to create users.');
+            return;
+        }
+
         try {
             await API.createUser(newUser, token);
             addToast('success', 'User created');
@@ -70,6 +80,12 @@ const UsersPage: React.FC = () => {
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure you want to delete this user?')) return;
         if (!token) return;
+
+        if (!canManageUsers) {
+            addToast('error', 'Access Denied', 'You do not have permission to delete users.');
+            return;
+        }
+
         try {
             await API.deleteUser(id, token);
             addToast('success', 'User deleted');
@@ -81,6 +97,12 @@ const UsersPage: React.FC = () => {
 
     const handleUpdateAlias = async (userId: string, alias: string) => {
         if (!token) return;
+
+        if (!canManageUsers) {
+            addToast('error', 'Access Denied', 'You do not have permission to update users.');
+            return;
+        }
+
         try {
             await API.updateUserAdmin(userId, { customRoleName: alias }, token);
             addToast('success', 'Alias updated');
@@ -102,8 +124,13 @@ const UsersPage: React.FC = () => {
         );
     }
 
-    if (!user || (user.role !== 'OWNER' && user.role !== 'ADMIN')) {
-        return <div className="p-10 text-center text-red-500 font-mono">ACCESS DENIED</div>;
+    if (!canManageUsers) {
+        return (
+            <AccessDenied 
+                title="Personnel Management Restricted"
+                description="You do not have the required permissions to manage system users. Please contact the system owner for elevation."
+            />
+        );
     }
 
     return (

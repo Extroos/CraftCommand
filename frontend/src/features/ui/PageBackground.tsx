@@ -7,9 +7,11 @@ interface PageBackgroundProps {
 }
 
 import { useUser } from '@features/auth/context/UserContext';
+import { useTheme } from '@features/ui/context/ThemeContext';
 
 const PageBackground: React.FC<PageBackgroundProps> = ({ settings }) => {
     const { user } = useUser();
+    const { resolvedTheme } = useTheme();
     const [loadedUrl, setLoadedUrl] = React.useState<string | null>(null);
     const [activeSettings, setActiveSettings] = React.useState<BackgroundSettings | null>(null);
 
@@ -40,39 +42,8 @@ const PageBackground: React.FC<PageBackgroundProps> = ({ settings }) => {
         };
     }, [settings?.url, settings?.enabled]);
 
-    // Performance Mode: Render nothing if Quality Mode is disabled OR Reduced Motion is enabled
-    // Must be AFTER hooks to comply with React rules
-    if (!user?.preferences.visualQuality || user?.preferences.reducedMotion) {
-        return null;
-    }
-
-    return (
-        <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden bg-zinc-950">
-            <AnimatePresence>
-                {loadedUrl && activeSettings && (
-                    <motion.div
-                        key={loadedUrl}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: activeSettings.opacity }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 1.2, ease: "easeInOut" }}
-                        className="absolute inset-0 page-background-image"
-                    >
-                        <div 
-                            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-                            style={{
-                                backgroundImage: `url(${loadedUrl})`,
-                                filter: `blur(${activeSettings.blur}px)`,
-                                transform: 'scale(1.05)', // Prevent edge blur artifacts
-                            }}
-                        />
-                        {/* Dark overlay for UI consistency */}
-                        <div className="absolute inset-0 bg-black/25" />
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
-    );
-};
+    // Absolute Reset: Disable all background images and effects
+    return null;
+}
 
 export default PageBackground;
