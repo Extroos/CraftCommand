@@ -24,7 +24,7 @@ set "CB=%E%[94m"
 set "BOLD=%E%[1m"
 
 :: --- VERSION SYNC ---
-set "CC_VERSION=1.11.0"
+set "CC_VERSION=1.11.1"
 if exist "version.json" (
     for /f "tokens=2 delims=:," %%a in ('findstr "version" version.json') do (
         set "VERSION_VAL=%%~a"
@@ -36,7 +36,18 @@ if exist "version.json" (
 
 title CraftCommand v%CC_VERSION%
 
-:: --- ENVIRONMENT AUDIT ---
+:: --- CONFIG AUTOMATION ---
+if not exist ".env" (
+    echo.
+    echo   %CY%%BOLD% FIRST RUN DETECTED %R%
+    echo   %CD%Generating secure environment configuration...%R%
+    copy ".env.example" ".env" >nul
+    
+    :: Generate proper random secret
+    powershell -Command "$s=(-join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | %% {[char]$_})); (Get-Content .env) -replace 'JWT_SECRET=.*', ('JWT_SECRET=' + $s) | Set-Content .env"
+    
+    echo   %CG%%BOLD%+%R%  Created .env with secure JWT_SECRET
+)
 if not exist "backend" (
     echo.
     echo   %CR%%BOLD% FATAL %R%  Directory 'backend' not found.
@@ -127,7 +138,7 @@ if not exist "backend\data\settings.json" goto SKIP_ASSET_SYNC
 <nul set /p "=%CD%  Syncing assets... %R%"
 powershell -NoProfile -Command "$s = Get-Content 'backend\data\settings.json' -Raw | ConvertFrom-Json; if ($s.app.updateWeb -eq $true) { exit 1 } else { exit 0 }"
 if !errorlevel! equ 1 (
-    node scripts/update-web-cli.js
+    node scripts/update-web-cli.cjs
 ) else (
     echo %CD%Skipped.%R%
 )
@@ -230,12 +241,23 @@ echo  %CD%----------------------------------------------------------------------
 echo.
 
 :: Check Node.js
+:: Check Node.js
+set "NODE_PATH=.runtimes\node\node.exe"
 where node >nul 2>nul
-if !errorlevel! neq 0 (
-    echo   %CR%%BOLD%X%R%  Node.js not found. Install v18+ to continue.
-    echo.
-    pause
-    goto MENU
+if %errorlevel% neq 0 (
+    if exist "%NODE_PATH%" (
+        set "PATH=%CD%\.runtimes\node;%PATH%"
+    ) else (
+        echo.
+        echo   %CY%%BOLD%!%R%  Node.js not found. Bootstrapping portable runtime...
+        powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\bootstrap-runtime.ps1"
+        if !errorlevel! neq 0 (
+            echo   %CR%Failed to download Node.js. Please install manually.%R%
+            pause
+            exit /b 1
+        )
+        set "PATH=%CD%\.runtimes\node;%PATH%"
+    )
 )
 
 for /f "delims=" %%v in ('node -v') do set "NODE_V=%%v"
@@ -321,23 +343,23 @@ echo.
 set /p r_choice=""
 
 if "%r_choice%"=="1" (
-    call node scripts/ops/cli-remote-setup.js vpn
+    call node scripts/ops/cli-remote-setup.cjs vpn
     goto START
 )
 if "%r_choice%"=="2" (
-    call node scripts/ops/cli-remote-setup.js proxy
-    call node scripts/ops/install-proxy.js
+    call node scripts/ops/cli-remote-setup.cjs proxy
+    call node scripts/ops/install-proxy.cjs
     taskkill /f /im playit.exe >nul 2>nul
-    start "CraftCommand - Tunnel Bridge" "proxy\playit.exe" run
+    echo   %CG%Configured for Zero-Config Tunnel.%R%
     goto START
 )
 if "%r_choice%"=="3" (
-    start "CraftCommand - Web Share" node scripts/ops/share-website.js
+    start "CraftCommand - Web Share" node scripts/ops/share-website.cjs
     timeout /t 3 >nul
     goto START
 )
 if "%r_choice%"=="4" (
-    call node scripts/ops/cli-remote-setup.js direct
+    call node scripts/ops/cli-remote-setup.cjs direct
     goto START
 )
 if "%r_choice%"=="5" goto REMOTE_DISABLE
@@ -367,7 +389,7 @@ set /p h_choice=""
 if "%h_choice%"=="1" goto PROTOCOL_PROXY
 if "%h_choice%"=="2" goto PROTOCOL_DIRECT
 if "%h_choice%"=="3" (
-    call node scripts/ops/manage-caddy.js disable
+    call node scripts/ops/manage-caddy.cjs disable
     taskkill /f /im caddy.exe >nul 2>nul
     pause
     goto MENU
@@ -385,9 +407,10 @@ echo.
 <nul set /p "=  Domain %CD%(e.g. panel.example.com)%CW%: %R%"
 set /p DOMAIN=""
 echo.
-call node scripts/ops/install-caddy.js
-call node scripts/ops/manage-caddy.js setup !DOMAIN!
-taskkill /f /im caddy.exe >nul 2>nul
+call node scripts/ops/install-caddy.cjs
+call node scripts/ops/manage-caddy.cjs setup !DOMAIN!
+taskkill /f /im caddy.exe >nul 2>&1
+timeout /t 1 >nul
 start "CraftCommand - HTTPS Bridge" proxy\caddy.exe run --config proxy\Caddyfile --adapter caddyfile
 echo.
 echo   %CG%%BOLD%+%R%  HTTPS active for %CC%!DOMAIN!%R%
@@ -407,7 +430,7 @@ set /p KEY_PATH=""
 <nul set /p "=  Passphrase (optional):   "
 set /p PASSPHRASE=""
 echo.
-call node scripts/maintenance/setup-https.js "!CERT_PATH!" "!KEY_PATH!" "!PASSPHRASE!"
+call node scripts/maintenance/setup-https.cjs "!CERT_PATH!" "!KEY_PATH!" "!PASSPHRASE!"
 pause
 goto MENU
 
@@ -426,7 +449,7 @@ taskkill /f /im playit.exe >nul 2>nul
 taskkill /f /im cloudflared.exe >nul 2>nul
 echo.
 echo   Updating security registry...
-call node scripts/ops/emergency-disable-remote.js
+call node scripts/ops/emergency-disable-remote.cjs
 if %errorlevel% neq 0 (
     echo.
     echo   %CR%%BOLD%X%R%  Isolation failed. Check settings.json.

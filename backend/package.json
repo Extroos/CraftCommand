@@ -1,6 +1,6 @@
 {
   "name": "craftcommand-backend",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "license": "AGPL-3.0-only",
   "author": "Extroos",
   "description": "Backend service for CraftCommand",

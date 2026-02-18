@@ -56,6 +56,26 @@ class SystemSettingsService extends EventEmitter {
     constructor() {
         super();
         this.settings = this.loadSettings();
+        this.watchSettings();
+    }
+
+    private watchSettings() {
+        try {
+            fs.watch(SETTINGS_FILE, (eventType) => {
+                if (eventType === 'change') {
+                    console.log('[SystemSettingsService] Settings file changed, reloading...');
+                    try {
+                        const newSettings = fs.readJSONSync(SETTINGS_FILE);
+                        this.settings = { ...this.settings, ...newSettings };
+                        this.emit('updated', this.settings);
+                    } catch (e) {
+                         console.error('[SystemSettingsService] Failed to reload settings:', e);
+                    }
+                }
+            });
+        } catch (e) {
+            console.error('[SystemSettingsService] Failed to watch settings file:', e);
+        }
     }
 
     private loadSettings(): SystemSettings {

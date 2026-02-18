@@ -4,6 +4,7 @@ import { logger } from '../../utils/logger';
 import { ConnectivityProvider } from '../networking/ConnectivityProvider';
 import { DirectProvider } from '../networking/DirectProvider';
 import { UPnPProvider } from '../networking/UPnPProvider';
+import { PlayitProvider } from '../networking/PlayitProvider';
 import {  ConnectionStatus, ConnectivityMethod  } from '@shared/types';
 
 import os from 'os';
@@ -17,6 +18,12 @@ export class RemoteAccessService {
         // Register available providers
         this.registerProvider(new DirectProvider());
         this.registerProvider(new UPnPProvider());
+        this.registerProvider(new PlayitProvider());
+        
+        // Alias 'vpn' to DirectProvider for now (manual IP binding)
+        const vpnProvider = new DirectProvider();
+        vpnProvider.id = 'vpn';
+        this.registerProvider(vpnProvider);
         // Future: this.registerProvider(new VpnProvider());
         // Future: this.registerProvider(new CloudflareProvider());
     }
@@ -73,7 +80,8 @@ export class RemoteAccessService {
 
         const provider = this.providers.get(method);
         if (!provider) {
-            throw new Error(`Provider for method '${method}' not found.`);
+            logger.warn(`[RemoteAccess] Provider for method '${method}' not found. Remote access features may be limited.`);
+            return false;
         }
 
         logger.info(`[RemoteAccess] Enabling remote access via ${method}...`);

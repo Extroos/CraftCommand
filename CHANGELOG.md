@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.11.1] - 2026-02-18 - Hotfix: Remote Access & HTTPS
+
+### Fixed
+
+- **Critical Remote Access Failure**: Rewrote `install-caddy.cjs`, `install-proxy.cjs`, and `share-website.cjs` to use robust PowerShell-based downloading, fixing 0-byte corrupt executables.
+- **Caddy Launch Error**: Resolved "This app can't run on your PC" error by enforcing GitHub Release verification and unblocking binaries via PowerShell.
+- **HTTPS Port Conflict**: Added domain sanitization to `manage-caddy.cjs` to automatically strip port 3000 from user input, preventing app crashes.
+- **Panic Kill Persistence**: Implemented real-time file watching in `SystemSettingsService` ensuring "Panic Kill" immediately isolates the network without requiring a restart.
+- **Zero-Config Tunnel Spec**: Corrected `PlayitProvider` to use the valid `start` command instead of the deprecated `run` argument.
+
 ## [1.11.0] - 2026-02-18 - Network Fabric & Systems Integrity
 
 ### Added

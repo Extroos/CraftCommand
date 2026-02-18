@@ -4,11 +4,11 @@
 
 The following versions of CraftCommand are currently supported with security updates:
 
-| Version | Supported                   |
-| ------- | --------------------------- |
-| 1.10.x  | :white_check_mark: (Stable) |
-| 1.9.x   | :warning: (Legacy)          |
-| < 1.9   | :x:                         |
+| Version         | Supported                    |
+| --------------- | ---------------------------- |
+| 1.11.x (Stable) | :white_check_mark: (Current) |
+| 1.10.x          | :warning: (Maintenance)      |
+| < 1.10          | :x:                          |
 
 ## Reporting a Vulnerability
 
@@ -30,6 +30,9 @@ CraftCommand implements several layers of defense-in-depth:
 - **Trio-State RBAC Engine**: Granular permissions (Inherit, Allow, Deny) with strict role isolation: **Owner > Admin > Manager > Viewer**.
 - **Hierarchical Guard System**: Prevents staff from elevating their own privileges or modifying accounts higher in the hierarchy.
 - **Network Isolation**: Backend services bind to `127.0.0.1` by default. Remote exposure requires explicit opt-in and owner-level "Remote Access Mode" activation.
+- **Network Isolation (Panic Kill)**: Immediate, hard-termination of all external bridges (tunnels, proxies) via the "Panic Kill" protocol.
+- **Systems Integrity Engine**: All updates are cryptographically signed with **Ed25519** and verified via SHA256 hashing to prevent supply-chain attacks.
+- **Resource Stewardship**: Active `ProcessLimiter` and `MemoryScalerService` prevent Denial-of-Service (DoS) via resource exhaustion.
 - **Zero-Config SSL**: Automated self-signed certificate generation protects local LAN traffic with HTTPS/TLS.
 - **Atomic Persistence Layer**: Database and configuration writes use atomic operations to prevent data corruption or partial state injection during system crashes.
 - **Audit Synchronization**: Immutable logging of all sensitive actions (Permission changes, Logins, Server management) with high-fidelity timestamps.

@@ -4,7 +4,7 @@
 
 **The Professional Hybrid Cloud Platform for Java & Bedrock Infrastructure**
 
-![version](https://img.shields.io/badge/version-v1.11.0-emerald)
+![version](https://img.shields.io/badge/version-v1.11.1-emerald)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-AGPLv3-blue.svg)
 
@@ -28,7 +28,7 @@ Most hosting solutions are either **too fragile** (Basic `.bat` files) or **too 
 
 ### Honest Comparison Matrix
 
-| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.11.0)**       |
+| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.11.1)**       |
 | :------------------- | :----------------: | :------------------------: | :-----------------------------------: |
 | **Ideal For**        |      Testing       | Reselling & Large Networks |    **Home Hosting & Private Use**     |
 | **Setup Time**       |      Instant       |     Hours (Linux req.)     |       **Instant (Zero-Config)**       |
@@ -84,7 +84,7 @@ _High-performance network management_
 - **Stateful Recovery Pipeline**: Multi-stage repair logic (Triage -> Scrap -> Start -> Verify) with stability scoring.
 - **Safe Mode Protection**: Panic control system that isolates failing instances to prevent host exhaustion.
 
-### 5. Systems Integrity Engine (v1.11.0)
+### 5. Systems Integrity Engine (v1.11.1)
 
 _Production-grade safety for your cluster_
 
@@ -101,7 +101,7 @@ _Unified Java & Bedrock gameplay_
 - **Automated Networking**: Intelligent UDP port management and real-time connectivity diagnostics.
 - **Floodgate Optimization**: Zero-config authentication mapping for unified player identities across platforms.
 
-### 7. Global Access & Infrastructure (v1.11.0)
+### 7. Global Access & Infrastructure (v1.11.1)
 
 _Zero-config remote connectivity_
 
@@ -204,6 +204,7 @@ Some common quick fixes:
 - **E_JAVA_MISSING**: Use the **Heuristic Fix (Wand Icon)** in the GOC to auto-install the correct Java version.
 - **E_PORT_IN_USE**: Port conflict detected. Use the **Environment Doctor** to identify the conflicting process.
 - **Can't Connect**: Ensure your DuckDNS synchronization is active in Global Settings.
+- **Access Denied**: If seen during Caddy setup, this is a benign launcher error and has been suppressed in v1.11.1.
 
 ---
 
