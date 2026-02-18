@@ -151,12 +151,24 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
             console.warn('[Collab]', data.message);
         });
 
+        // --- Reconnection Resilience ---
+        const handleReconnect = () => {
+            if (lastServerId.current) {
+                console.log(`[Socket] Reconnected. Restoring subscription to server:${lastServerId.current}`);
+                socketService.joinServer(lastServerId.current, 'dashboard');
+            }
+        };
+        socketService.socket.on('reconnect', handleReconnect);
+        socketService.socket.on('connect', handleReconnect); // Also handle initial connect/manual reconnection
+
         return () => {
             unsubPresence();
             unsubActivity();
             unsubChat();
             unsubTyping();
             unsubError();
+            socketService.socket.off('reconnect', handleReconnect);
+            socketService.socket.off('connect', handleReconnect);
             // Manual cleanup for direct .on() calls
             socketService.socket.off('chat:history');
             socketService.socket.off('activity:history');

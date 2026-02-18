@@ -45,54 +45,44 @@ export class ServerConfigService {
         if (await fs.pathExists(propsPath)) {
             const props = await this.parseProperties(propsPath);
 
-            // 1. Port Check
-            const diskPort = parseInt(props['server-port'] || '25565');
-            if (diskPort !== server.port) {
-                report.mismatches.push({
-                    setting: 'port',
-                    diskValue: diskPort,
-                    dbValue: server.port,
-                    severity: 'high'
-                });
+            // Mapping for detection
+            const mappings: { key: keyof ServerConfig; prop: string; type: 'int' | 'bool' | 'string'; severity: 'high' | 'medium' | 'low' }[] = [
+                { key: 'port', prop: 'server-port', type: 'int', severity: 'high' },
+                { key: 'onlineMode', prop: 'online-mode', type: 'bool', severity: 'medium' },
+                { key: 'maxPlayers', prop: 'max-players', type: 'int', severity: 'low' },
+                { key: 'motd', prop: 'motd', type: 'string', severity: 'low' },
+                { key: 'difficulty', prop: 'difficulty', type: 'string', severity: 'low' },
+                { key: 'gamemode', prop: 'gamemode', type: 'string', severity: 'low' },
+                { key: 'viewDistance', prop: 'view-distance', type: 'int', severity: 'low' },
+                { key: 'pvp', prop: 'pvp', type: 'bool', severity: 'low' },
+                { key: 'hardcore', prop: 'hardcore', type: 'bool', severity: 'low' },
+                { key: 'allowFlight', prop: 'allow-flight', type: 'bool', severity: 'low' },
+                { key: 'spawnMonsters', prop: 'spawn-monsters', type: 'bool', severity: 'low' },
+                { key: 'spawnAnimals', prop: 'spawn-animals', type: 'bool', severity: 'low' },
+                { key: 'levelSeed', prop: 'level-seed', type: 'string', severity: 'low' }
+            ];
+
+            for (const m of mappings) {
+                const dbValue = server[m.key];
+                if (dbValue === undefined || typeof dbValue === 'object') continue;
+
+                const rawDiskValue = props[m.prop];
+                let diskValue: any = rawDiskValue;
+
+                if (m.type === 'int') diskValue = parseInt(rawDiskValue || '0');
+                if (m.type === 'bool') diskValue = rawDiskValue === 'true';
+
+                if (diskValue !== dbValue) {
+                    report.mismatches.push({
+                        setting: m.key as string,
+                        diskValue: (diskValue as string | number | boolean) ?? 'MISSING',
+                        dbValue: dbValue as string | number | boolean,
+                        severity: m.severity
+                    });
+                }
             }
 
-            // 2. Online Mode Check
-            const diskOnline = props['online-mode'] === 'true';
-            // server.onlineMode might be undefined for older servers, default to true or flexible?
-            // Assuming DB always has value if managed properly.
-            if (server.onlineMode !== undefined && diskOnline !== server.onlineMode) {
-                report.mismatches.push({
-                    setting: 'onlineMode',
-                    diskValue: diskOnline,
-                    dbValue: server.onlineMode,
-                    severity: 'medium'
-                });
-            }
-
-            // 3. Max Players Check
-            const diskMaxPlayers = parseInt(props['max-players'] || '20');
-            if (server.maxPlayers !== undefined && diskMaxPlayers !== server.maxPlayers) {
-                report.mismatches.push({
-                    setting: 'maxPlayers',
-                    diskValue: diskMaxPlayers,
-                    dbValue: server.maxPlayers,
-                    severity: 'low'
-                });
-            }
-
-            // 4. MOTD / Server Name Check
-            const diskMotd = props['motd'] || '';
             const isBedrock = server.software === 'Bedrock';
-            
-            if (server.motd !== undefined && diskMotd !== server.motd) {
-                report.mismatches.push({
-                    setting: 'motd',
-                    diskValue: diskMotd,
-                    dbValue: server.motd,
-                    severity: 'low'
-                });
-            }
-
             // Bedrock Specific: server-name should also match motd
             if (isBedrock && server.motd !== undefined) {
                 const diskServerName = props['server-name'] || '';
@@ -106,18 +96,7 @@ export class ServerConfigService {
                 }
             }
 
-            // 5. Difficulty Check
-            const diskDifficulty = props['difficulty'] || 'easy';
-            if (server.difficulty !== undefined && diskDifficulty !== server.difficulty) {
-                report.mismatches.push({
-                    setting: 'difficulty',
-                    diskValue: diskDifficulty,
-                    dbValue: server.difficulty,
-                    severity: 'low'
-                });
-            }
-
-            // 6. Bedrock PortV6 Check
+            // Bedrock Specific: PortV6 Check
             if (isBedrock) {
                 const diskPortV6 = parseInt(props['server-portv6'] || '0');
                 const targetPortV6 = server.port + 1;
@@ -148,93 +127,52 @@ export class ServerConfigService {
         }
         
         const propsPath = path.join(server.workingDirectory, 'server.properties');
-        if (!(await fs.pathExists(propsPath))) return; // Don't create if not exists (Wait for first run?)
-        // Actually, we usually want to ensure it exists if we are enforcing. But let's stick to update logic.
+        if (!(await fs.pathExists(propsPath))) return; 
 
         let content = await fs.readFile(propsPath, 'utf-8');
         let modified = false;
 
-        // update port
-        const portRegex = /^server-port=.*/m;
-        if (content.match(portRegex)) {
-            content = content.replace(portRegex, `server-port=${server.port}`);
-            modified = true;
-        } else {
-            content += `\nserver-port=${server.port}`;
-            modified = true;
-        }
+        const syncProperty = (key: keyof ServerConfig, propName: string) => {
+            const val = server[key];
+            if (val === undefined || typeof val === 'object') return;
 
-        // update portv6 (Bedrock)
+            const regex = new RegExp(`^${propName}=.*$`, 'm');
+            const stringVal = String(val);
+
+            if (content.match(regex)) {
+                content = content.replace(regex, `${propName}=${stringVal}`);
+            } else {
+                content += `\n${propName}=${stringVal}`;
+            }
+            modified = true;
+        };
+
+        // Standard Properties
+        syncProperty('port', 'server-port');
+        syncProperty('onlineMode', 'online-mode');
+        syncProperty('maxPlayers', 'max-players');
+        syncProperty('motd', 'motd');
+        syncProperty('difficulty', 'difficulty');
+        syncProperty('gamemode', 'gamemode');
+        syncProperty('viewDistance', 'view-distance');
+        syncProperty('pvp', 'pvp');
+        syncProperty('hardcore', 'hardcore');
+        syncProperty('allowFlight', 'allow-flight');
+        syncProperty('spawnMonsters', 'spawn-monsters');
+        syncProperty('spawnAnimals', 'spawn-animals');
+        syncProperty('levelSeed', 'level-seed');
+
+        // Bedrock Specifics
         if (server.software === 'Bedrock') {
-            const portV6Regex = /^server-portv6=.*/m;
+            syncProperty('motd', 'server-name');
             const targetV6 = server.port + 1;
+            const portV6Regex = /^server-portv6=.*/m;
             if (content.match(portV6Regex)) {
                 content = content.replace(portV6Regex, `server-portv6=${targetV6}`);
-                modified = true;
             } else {
                 content += `\nserver-portv6=${targetV6}`;
-                modified = true;
             }
-        }
-
-        // update online-mode
-        if (server.onlineMode !== undefined) {
-             const onlineRegex = /^online-mode=.*/m;
-             if (content.match(onlineRegex)) {
-                content = content.replace(onlineRegex, `online-mode=${server.onlineMode}`);
-                modified = true;
-            } else {
-                content += `\nonline-mode=${server.onlineMode}`;
-                modified = true;
-            }
-        }
-
-        // update max-players
-        if (server.maxPlayers !== undefined) {
-            const maxPlayersRegex = /^max-players=.*/m;
-            if (content.match(maxPlayersRegex)) {
-                content = content.replace(maxPlayersRegex, `max-players=${server.maxPlayers}`);
-                modified = true;
-            } else {
-                content += `\nmax-players=${server.maxPlayers}`;
-                modified = true;
-            }
-        }
-
-        // update motd / server-name
-        if (server.motd !== undefined) {
-            const motdRegex = /^motd=.*/m;
-            if (content.match(motdRegex)) {
-                content = content.replace(motdRegex, `motd=${server.motd}`);
-                modified = true;
-            } else {
-                content += `\nmotd=${server.motd}`;
-                modified = true;
-            }
-
-            // Bedrock Specific: Also sync server-name
-            if (server.software === 'Bedrock') {
-                const serverNameRegex = /^server-name=.*/m;
-                if (content.match(serverNameRegex)) {
-                    content = content.replace(serverNameRegex, `server-name=${server.motd}`);
-                    modified = true;
-                } else {
-                    content += `\nserver-name=${server.motd}`;
-                    modified = true;
-                }
-            }
-        }
-
-        // update difficulty
-        if (server.difficulty !== undefined) {
-            const diffRegex = /^difficulty=.*/m;
-            if (content.match(diffRegex)) {
-                content = content.replace(diffRegex, `difficulty=${server.difficulty}`);
-                modified = true;
-            } else {
-                content += `\ndifficulty=${server.difficulty}`;
-                modified = true;
-            }
+            modified = true;
         }
 
         if (modified) {

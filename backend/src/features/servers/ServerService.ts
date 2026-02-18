@@ -207,31 +207,15 @@ export const updateServer = async (id: string, updates: any) => {
             }
         }
 
-        // 2. properties Sync (Online Mode, Port)
-        if (newServer.workingDirectory && (updates.onlineMode !== undefined || updates.port !== undefined)) {
-            const propsFile = path.join(newServer.workingDirectory, 'server.properties');
+        // 2. properties Sync (Online Mode, Port, Gameplay, etc.)
+        if (newServer.workingDirectory) {
             try {
-                if (await fs.pathExists(propsFile)) {
-                    let props = await fs.readFile(propsFile, 'utf-8');
-                    let changed = false;
-
-                    if (updates.onlineMode !== undefined && updates.onlineMode !== oldServer.onlineMode) {
-                        props = props.replace(/^online-mode=.*$/m, `online-mode=${updates.onlineMode}`);
-                        changed = true;
-                    }
-                    
-                    if (updates.port !== undefined && updates.port !== oldServer.port) {
-                        props = props.replace(/^server-port=.*$/m, `server-port=${updates.port}`);
-                        changed = true;
-                    }
-
-                    if (changed) {
-                        await fs.writeFile(propsFile, props);
-                        logger.info(`[ServerService] Updated server.properties for ${id}`);
-                    }
-                }
+                // Phase 14: Use the comprehensive ConfigService to sync all properties to disk
+                const { serverConfigService } = require('./ServerConfigService');
+                await serverConfigService.enforceConfig(newServer);
+                logger.info(`[ServerService] Synchronized server.properties for ${id}`);
             } catch (e) {
-                console.error(`[ServerService] Failed to update server.properties: ${e}`);
+                console.error(`[ServerService] Failed to synchronize server.properties: ${e}`);
             }
         }
 
@@ -324,14 +308,17 @@ export const startServer = async (id: string, force: boolean = false) => {
 };
 
 export const stopServer = async (id: string, force: boolean = false) => {
-    if (!processManager.isRunning(id)) return;
+    if (!processManager.isRunning(id)) {
+        logger.info(`[ServerService] Stop requested for server ${id} but it is not running.`);
+        return;
+    }
     
     acquireLock(id, 'STOP');
     try {
-        processManager.stopServer(id, force);
-
+        await processManager.stopServer(id, force);
     } finally {
         // Release slightly after to prevent spam-clicks during shutdown sequence
+        // but now we actually AWAIT the shutdown first, so this is much safer.
         setTimeout(() => releaseLock(id), 1000);
     }
 };

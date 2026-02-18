@@ -547,11 +547,18 @@ router.post('/:id/stop', requirePermission('server.stop'), async (req, res) => {
         res.json({ success: true, status: 'STOPPING' });
         auditService.log((req as any).user.id, 'SERVER_STOP', id, { force: !!force });
     } catch (e: any) {
+        logger.error(`[Server:${id}] Stop Route failed: ${e.message} ${e.stack || ''}`);
         if (e.message.includes('Server is initializing')) {
             return res.status(423).json({
                 error: 'Startup Protection: Server is initializing.',
                 message: e.message,
                 softError: true
+            });
+        }
+        if (e.message.includes('already in progress')) {
+            return res.status(409).json({
+                error: 'Conflict: An operation is already in progress for this server.',
+                message: e.message
             });
         }
         res.status(500).json({ error: e.message });

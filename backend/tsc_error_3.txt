@@ -1,3 +1,0 @@
-scripts/reproduce_bedrock_binary_issue.ts(21,32): error TS2554: Expected 3-4 arguments, but got 2.
-scripts/verify_and_run_bedrock.ts(35,32): error TS2554: Expected 3-4 arguments, but got 2.
-src/scripts/debug_modrinth.ts(2,7): error TS2451: Cannot redeclare block-scoped variable 'axios'.

@@ -53,7 +53,7 @@ const Sparkline: React.FC<{ data: number[], color: string, height?: number, max?
 };
 
 const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
-    const { servers, stats: allStats, logs } = useServers();
+    const { servers, stats: allStats, logs, players } = useServers();
     const { user } = useUser();
     const { can } = usePermissions();
     const server = servers.find(s => s.id === serverId);
@@ -275,14 +275,17 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                             {m.sub && (
                                 <div className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1.5">{m.sub}</div>
                             )}
-                            {m.heads && stats.players > 0 && (
+                            {m.heads && (players[serverId] || []).length > 0 && (
                                 <div className="flex -space-x-2 pt-4">
-                                    {['Steve', 'Alex', 'Notch', 'Herobrine', 'Dinnerbone', 'Grumm'].slice(0, Math.min(6, stats.players)).map((name, idx) => (
-                                        <div key={name} className="relative transition-transform hover:-translate-y-1 hover:z-10" style={{ zIndex: 6 - idx }}>
+                                    {(players[serverId] || []).slice(0, 6).map((p, idx) => (
+                                        <div key={p.uuid} className="relative transition-transform hover:-translate-y-1 hover:z-10" style={{ zIndex: 6 - idx }}>
                                             <img 
-                                                src={`https://mc-heads.net/avatar/${name}/32`} 
+                                                src={p.skinUrl || `https://mc-heads.net/avatar/${p.name}/32`} 
                                                 className={`w-6 h-6 rounded-[2px] border border-black/50 ring-1 ring-white/10 shadow-lg ${user?.preferences.visualQuality ? 'bg-black/40' : ''}`}
-                                                alt={name}
+                                                alt={p.name}
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).src = `https://mc-heads.net/avatar/Steve/32`;
+                                                }}
                                             />
                                         </div>
                                     ))}

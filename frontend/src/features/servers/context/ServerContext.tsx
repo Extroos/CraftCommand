@@ -327,6 +327,48 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
              refreshServers();
         };
 
+        const handlePlayerJoin = (data: { serverId: string, name: string, onlinePlayers: number }) => {
+            console.log(`[Socket] Player Joined: ${data.name} to ${data.serverId} (${data.onlinePlayers})`);
+            // 1. Immediate stats update for count
+            setStats(prev => {
+                const current = prev[data.serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0 };
+                return {
+                    ...prev,
+                    [data.serverId]: { ...current, players: data.onlinePlayers }
+                };
+            });
+            // 2. Refresh detailed list (skins, etc) - This will update the 'players' state
+            refreshServerData(data.serverId);
+        };
+
+        const handlePlayerLeave = (data: { serverId: string, name: string, onlinePlayers: number }) => {
+            console.log(`[Socket] Player Left: ${data.name} from ${data.serverId} (${data.onlinePlayers})`);
+            
+            // 1. Immediate stats update for count
+            setStats(prev => {
+                const current = prev[data.serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0 };
+                const newCount = Math.max(0, data.onlinePlayers);
+                return {
+                    ...prev,
+                    [data.serverId]: { ...current, players: newCount }
+                };
+            });
+
+            // 2. Optimistic removal from players list to prevent PFP lag
+            setPlayers(prev => {
+                const currentList = prev[data.serverId] || [];
+                const updatedList = currentList.filter(p => p.name !== data.name);
+                
+                // If count is 0, ensure the list is definitely empty
+                if (data.onlinePlayers <= 0) return { ...prev, [data.serverId]: [] };
+                
+                return { ...prev, [data.serverId]: updatedList };
+            });
+
+            // 3. Final sync with server (handles any edge cases)
+            refreshServerData(data.serverId);
+        };
+
         const unsubStatus = socketService.onStatus(handleStatus);
         const unsubStats = socketService.onStats(handleStats);
         const unsubLog = socketService.onLog(handleLog);
@@ -334,6 +376,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const unsubInstallProgress = socketService.onInstallProgress(handleInstallProgress);
         const unsubInstallError = socketService.onInstallError(handleInstallError);
         const unsubInstallComplete = socketService.onInstallComplete(handleInstallComplete);
+        const unsubPlayerJoin = socketService.onPlayerJoin(handlePlayerJoin);
+        const unsubPlayerLeave = socketService.onPlayerLeave(handlePlayerLeave);
 
         return () => {
              unsubStatus();
@@ -343,6 +387,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
              unsubInstallProgress();
              unsubInstallError();
              unsubInstallComplete();
+             unsubPlayerJoin();
+             unsubPlayerLeave();
         };
     }, []);
 

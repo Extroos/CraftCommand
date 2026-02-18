@@ -9,8 +9,18 @@ CraftCommand uses a **Decoupled Connectivity Layer**. This means the backend han
 ### Core Modules
 
 1.  **[Dynamic DNS (DDNS)](DDNS.md)**: Tools for assigning professional hostnames (DuckDNS, No-IP, etc.) to your servers.
-2.  **[Remote Access & Proxies](REMOTE_ACCESS.md)**: Guides on how to securely expose the panel using Playit.gg, Tailscale, or Nginx.
-3.  **Real-time Binary Stream**: Details on how WebSocket (Socket.IO) is used to deliver console logs and telemetry with minimal overhead.
+2.  **[Remote Access & Tunnels](TUNNELS.md)**: **Recommended** - Zero-config connectivity via Cloudflare.
+3.  **[Traditional Security & Proxies](REMOTE_ACCESS.md)**: Details on Caddy, Nginx, and manual port forwarding.
+4.  **[Cross-Play Ecosystem](CROSSPLAY.md)**: Managing Java & Bedrock (Geyser/Floodgate)
+
+### Option B: Built-in Reverse Tunneling (Cloudflare)
+
+**Best for**: Instant, zero-config global access.
+
+1.  See the dedicated [**Cloudflare Tunnels Guide**](TUNNELS.md).
+2.  Provides automated TLS (HTTPS) and custom domain provisioning.
+
+### Option C: Legacy Reverse Tunneling (Playit.gg)
 
 ## Key Concepts
 
