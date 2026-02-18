@@ -84,7 +84,32 @@ _High-performance network management_
 - **Stateful Recovery Pipeline**: Multi-stage repair logic (Triage -> Scrap -> Start -> Verify) with stability scoring.
 - **Safe Mode Protection**: Panic control system that isolates failing instances to prevent host exhaustion.
 
-### 5. Developer Experience (DevX)
+### 5. Systems Integrity Engine (v1.11.0)
+
+_Production-grade safety for your cluster_
+
+- **Industry-Standard Security**: Integrated Ed25519 signature verification and SHA256 hashing for all system updates.
+- **Atomic State Transitions**: Safe file swapping with automated backup and rollback pathways to prevent data corruption.
+- **Maintenance Dashboard**: Professional embedded update interface with real-time progress and diagnostic feedback.
+- **Protocol Guardians**: Intelligent checks that ensure distributed nodes and proxies remain compatible during upgrades.
+
+### 6. Cross-Play Ecosystem (v1.11.0)
+
+_Unified Java & Bedrock gameplay_
+
+- **One-Click Integration**: Native Geyser and Floodgate orchestration for seamless Bedrock client connections.
+- **Automated Networking**: Intelligent UDP port management and real-time connectivity diagnostics.
+- **Floodgate Optimization**: Zero-config authentication mapping for unified player identities across platforms.
+
+### 7. Global Access & Infrastructure (v1.11.0)
+
+_Zero-config remote connectivity_
+
+- **Cloudflare Tunnels**: Integrated one-click provisioning for secure global access without manual port forwarding.
+- **Dynamic DNS (DDNS)**: Native DuckDNS synchronization and real-time propagation monitoring.
+- **Hosting OS Mode**: Specialized service layer for bare-metal resource isolation and disk quota enforcement.
+
+### 8. Developer Experience (DevX)
 
 - **Embedded Monaco IDE**: The power of VS Code in your browser with full syntax highlighting for Minecraft configurations.
 - **Plugin Marketplace**: Integrated Modrinth/Spiget search with automated dependency resolution.
@@ -92,7 +117,7 @@ _High-performance network management_
 - **Immutable Audit Ledger**: Cluster-wide audit trail for Every command, import, and configuration change.
 
 ![Dashboard](assets/Dashboard.png)
-_Real-time monitoring with Auto-Healing v3 and World Intelligence controls._
+_Real-time monitoring with Auto-Healing v3, World Intelligence, and Systems Integrity controls._
 
 ---
 
@@ -158,6 +183,7 @@ _Best for: Contributing to CraftCommand._
 
 **Secure by Default, Explicit by Choice.**
 
+- **Systems Integrity**: Cryptographically signed updates (Ed25519) with SHA256 integrity verification.
 - **RBAC (Hierarchy Guard)**: Strict role isolation (Owner > Admin > Manager).
 - **Network Isolation**: Local-only binding by default; remote exposure requires owner-level approval.
 - **Token Hardening**: JWT-based sessions with industry-standard bcrypt hashing.
@@ -185,7 +211,7 @@ Some common quick fixes:
 
 - **Core**: React 19, TypeScript, Node.js, Express, Socket.IO.
 - **Styling**: Framer Motion (60FPS), Vanilla CSS, Glassmorphism (Premium Aesthetic).
-- **Orchestration**: Auto-Healing v3 (Sentinel) Engine with Native Process Spawning & Docker Support.
+- **Orchestration**: Systems Integrity Engine with Auto-Healing v3 (Sentinel) & Cross-Play Support.
 - **Storage**: Hybrid Dual-Storage (SQLite for teams, JSON for solo portability).
 - **License**: [GNU Affero General Public License v3.0](LICENSE)
 
