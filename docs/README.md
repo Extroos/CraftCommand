@@ -4,15 +4,21 @@ Welcome to the technical documentation library for CraftCommand. This library pr
 
 ## 🏁 Getting Started & Operations
 
-- **[Architecture Deep-Dive](ARCHITECTURE.md)**: Technical analysis of the hybrid orchestration model.
-- **[Upgrading Guide](UPGRADING.md)**: Safe procedures for moving between versions.
-- **[Testing Standards](testing.md)**: Mandatory quality metrics and validation procedures.
+| Guide                                                           | Description                                 |
+| :-------------------------------------------------------------- | :------------------------------------------ |
+| [**Architecture**](ARCHITECTURE.md)                             | Technical deep-dive into the hybrid engine. |
+| [**Upgrading**](UPGRADING.md)                                   | Safe transition guide for v1.x releases.    |
+| [**Security: Systems Integrity**](security/SYSTEM_INTEGRITY.md) | Ed25519 & SHA256 safety model.              |
+| [**Networking: Cross-Play**](networking/CROSSPLAY.md)           | Java & Bedrock (Geyser/Floodgate) setup.    |
+| [**Networking: Tunnels**](networking/TUNNELS.md)                | Zero-config Cloudflare provisioning.        |
+| [**Networking: DDNS**](networking/DDNS.md)                      | Dynamic DNS (DuckDNS) synchronization.      |
+| [**Troubleshooting**](support/TROUBLESHOOTING.md)               | Error code library and heuristic fixes.     |
+| [**Testing**](testing.md)                                       | Automated and manual verification suites.   |
 
 ## 🌐 Networking & Connectivity
 
 - **[Networking Overview](networking/OVERVIEW.md)**: Core concepts of internal and external communication.
 - **[Remote Access & Proxies](networking/REMOTE_ACCESS.md)**: Security protocols for exposing your panel safely.
-- **[Dynamic DNS (DDNS)](networking/DDNS.md)**: Guide to assigning professional hostnames.
 
 ## 🩺 Support & Reliability
 

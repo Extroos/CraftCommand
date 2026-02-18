@@ -33,6 +33,22 @@ A log-based pattern matching system.
 - **Predictive Matching**: Analyzes crash logs using RegEx patterns to identify common failures (JVM OOM, Class Mismatches, EULA refusal).
 - **One-Click Remediation**: Suggests and executes fixes (e.g., updating Java version or Accepting EULA) directly from the telemetry data.
 
+### D. Systems Integrity Engine (`UpdateService.ts`)
+
+Ensures the panel's own longevity and security through a production-grade update lifecycle.
+
+- **Cryptographic Assurance**: All updates must be signed with an Ed25519 private key. The backend verifies the `manifest.sig` against a local public key before any files are touched.
+- **Supply Chain Security**: SHA256 hashes for every file in the bundle are cross-referenced during the extraction phase to prevent binary tampering.
+- **Rollback Pathways**: The update applicator automatically preserves the previous version's state, allowing for one-click recovery if post-update health checks fail.
+
+### E. Network Fabric Orchestration (`NetworkTemplateService.ts`)
+
+A sophisticated layer that synchronizes connectivity across distributed clusters.
+
+- **Forwarding Secret Automation**: Automatically manages and distributes modern/legacy forwarding secrets (and BungeeGuard tokens) to backend servers.
+- **Cross-Play Bridging**: Orchestrates UDP port allocation for Geyser/Floodgate, ensuring a unified entry point for Bedrock and Java clients.
+- **Cloudflare Lifecycle**: Managed provisioning of Cloudflare Tunnels for zero-config remote access without firewall exposure.
+
 ## 3. Communication & Telemetry Hierarchy
 
 1.  **Transport**: Socket.IO for binary-efficient real-time streaming.
@@ -46,6 +62,7 @@ CraftCommand supports a **Primary/Worker** architecture.
 - **Primary Node**: Hosts the UI and global user database.
 - **Worker Nodes**: Lightweight agents that manage local server files and execute process commands.
 - **Bootstrap Enrollment**: New nodes are added via a secure ZIP package containing a pre-shared encrypted token for instant pairing.
+- **Compatibility Guardians**: (v1.11+) Nodes advertise their `agentVersion` during handshake. The Primary will prevent updates that would break communication with outdated worker nodes.
 
 ---
 

@@ -45,6 +45,21 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 - **Check Firewalls**: Ensure your host machine allows the Minecraft port (default: 25565) and the Panel port (default: 3000) through Windows Firewall.
 - **Port Forwarding**: Verify your router configuration. Your public IP should be reachable at the specified port.
 - **Remote Access Mode**: Ensure the global toggle is **ON** in System Settings if you are not using a tunnel like Playit.gg.
+- **Can't Connect**: Ensure your DuckDNS synchronization is active in Global Settings.
+
+### v1.11.0 Systems Integrity Errors
+
+| Error Code                  | Meaning                                                  | Resolution                                                                                             |
+| :-------------------------- | :------------------------------------------------------- | :----------------------------------------------------------------------------------------------------- |
+| `UPDATE_SIGNATURE_INVALID`  | The update bundle failed Ed25519 verification.           | Ensure `keys/update_public_key.pem` is present and untampered. Do not use unofficial update sources.   |
+| `UPDATE_APPLY_FAILED`       | The atomic swap failed (likely file locks).              | Stop all servers and run `scripts/verify-shutdown.cjs` before retrying.                                |
+| `NODE_VERSION_INCOMPATIBLE` | Your worker node agent is too old for the primary panel. | Go to Nodes settings, generate a new Bootstrap ZIP, and update your node.                              |
+| `MIGRATION_FAILED`          | The SQLite/JSON schema upgrade failed.                   | Check the `backend/data/migrations` logs. Restore from the automatic backup created during the update. |
+
+### Distributed Node Connectivity
+
+- **E_NODE_OFFLINE**: Background worker is detached. Restart `run_locally.bat`.
+- **E_PORT_IN_USE**: Port conflict detected. Use the **Environment Doctor** to identify the conflicting process.
 
 ### 2. DNS Resolution Failures
 
