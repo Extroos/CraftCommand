@@ -1,7 +1,8 @@
 {
-  "version": "1.11.1",
-  "title": "CraftCommand: Network Fabric & Systems Integrity (Hotfix)",
+  "version": "1.11.2",
+  "title": "CraftCommand: Network Fabric & Systems Integrity (Hotfix 2)",
   "notes": [
+    "Hotfix: Resolved missing dependencies for Distributed Node Agent.",
     "Hotfix: Resolved critical download corruption for Remote Access tools.",
     "Hotfix: Fixed Caddy HTTPS launch errors and port conflicts.",
     "Network Fabric: Native Velocity and Cross-Play integration for unified connectivity.",

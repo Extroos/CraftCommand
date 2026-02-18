@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.11.2] - 2026-02-18 - Hotfix: Agent Dependencies
+
+### Fixed
+
+- **Distributed Node Crash**: Verified and fixed missing `systeminformation` dependency in the Agent workspace that caused the embedded node engine to fail on startup.
+- **Launcher Automation**: Updated `run_locally.bat` to automatically detect and install missing dependencies for the `agent` directory alongside backend/frontend.
+
 ## [1.11.1] - 2026-02-18 - Hotfix: Remote Access & HTTPS
 
 ### Fixed

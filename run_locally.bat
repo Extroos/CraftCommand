@@ -24,7 +24,7 @@ set "CB=%E%[94m"
 set "BOLD=%E%[1m"
 
 :: --- VERSION SYNC ---
-set "CC_VERSION=1.11.1"
+set "CC_VERSION=1.11.2"
 if exist "version.json" (
     for /f "tokens=2 delims=:," %%a in ('findstr "version" version.json') do (
         set "VERSION_VAL=%%~a"
@@ -269,6 +269,7 @@ set MISSING_DEPS=0
 if not exist "node_modules" set MISSING_DEPS=1
 if not exist "backend\node_modules" set MISSING_DEPS=1
 if not exist "frontend\node_modules" set MISSING_DEPS=1
+if not exist "agent\node_modules" set MISSING_DEPS=1
 
 if "%MISSING_DEPS%"=="1" (
     echo.
@@ -278,8 +279,10 @@ if "%MISSING_DEPS%"=="1" (
     cd frontend && call npm install >nul 2>nul && cd ..
     echo     %CD%[2/3]%R% Backend
     cd backend && call npm install >nul 2>nul && cd ..
-    echo     %CD%[3/3]%R% Root
+    echo     %CD%[3/4]%R% Root
     call npm install >nul 2>nul
+    echo     %CD%[4/4]%R% Node Agent
+    cd agent && call npm install >nul 2>nul && cd ..
     echo.
     echo   %CG%%BOLD%+%R%  Dependencies resolved
 )
