@@ -1,6 +1,6 @@
 {
   "name": "craftcommand-node-agent",
-  "version": "1.10.0",
+  "version": "1.11.8",
   "license": "AGPL-3.0-only",
   "description": "CraftCommand Node Agent — runs on remote hosts to manage Minecraft servers on behalf of the panel.",
   "main": "dist/index.js",

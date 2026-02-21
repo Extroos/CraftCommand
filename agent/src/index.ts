@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CraftCommand Node Agent — v1.1.0 (Stabilized)
+ * CraftCommand Node Agent — v1.11.8 (Stabilized)
  * 
  * Standalone process that runs on remote hosts.
  * Connects to the CraftCommand panel and manages Minecraft servers locally.
@@ -35,7 +35,7 @@ import { getCapabilities } from './capabilities';
 // Constants
 // ──────────────────────────────────────────────
 
-const AGENT_VERSION = '1.1.0';
+const AGENT_VERSION = '1.11.8';
 const PROTOCOL_VERSION = '1';
 const LOG_BATCH_INTERVAL_MS = 50;
 const LOG_BATCH_MAX_LINES = 20;
