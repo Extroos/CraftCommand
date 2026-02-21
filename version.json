@@ -1,10 +1,10 @@
 {
-  "version": "1.11.4",
-  "title": "CraftCommand: Technical Stabilization & Core Resilience",
+  "version": "1.11.5",
+  "title": "CraftCommand: Universal Core Stabilization",
   "notes": [
-    "Core Stabilization: Hardened diagnostic rules to eliminate false positives on first launch.",
-    "Intelligence Resilience: Integrated context-aware status guards for EULA and JAR validation.",
-    "Technical Hardening: Suppressed noise from transient startup sequence errors (Fabric 1.21+).",
-    "Backup Hardening: Verified randomized ID generation and concurrency locks for v1.11.x."
+    "Universal Intelligence: Diagnostic rules now support Vanilla, Forge, Bedrock, and Proxy software (Velocity/Bungee).",
+    "Forge Optimization: Refined startup detection to handle modded DedicatedServer success patterns.",
+    "Bedrock Hardening: Suppressed Java-specific diagnostics for C++ servers and integrated Bedrock success signals.",
+    "Core Resilience: Status-aware guards fully synchronized across all major software types."
   ]
 }

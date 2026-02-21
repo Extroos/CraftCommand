@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.11.5] - 2026-02-21 - Universal Core Stabilization
+
+### Improved
+
+- **Universal Diagnostic Compatibility**: Expanded core diagnostic rules to be fully software-agnostic.
+  - **Multi-Software Detection**: Refined `BadConfigRule` to support success patterns for Forge, Bedrock, Velocity, and BungeeCord.
+  - **Platform Hardening**: Explicitly suppresses Java-specific diagnostics (like Java Version mismatches) for C++ based Bedrock servers to prevent irrelevant alerts.
+  - **Stability Guards**: System-wide synchronization of `ONLINE` status guards across all supported software types.
+
 ## [1.11.4] - 2026-02-21 - Technical Stabilization & Core Resilience
 
 ### Improved

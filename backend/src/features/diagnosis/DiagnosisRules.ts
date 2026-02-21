@@ -237,6 +237,7 @@ export const JavaVersionRule: DiagnosisRule = {
     defaultConfidence: 95,
     isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
+        if (server.software === 'Bedrock') return null;
         if (server.status === ServerStatus.ONLINE) return null;
         const logContent = logs.join('\n').toLowerCase();
         const hasError = /unsupportedclassversionerror|compiled by a more recent version|unsupported java version|java \d+ is required/i.test(logContent);
@@ -366,6 +367,7 @@ export const MissingJarRule: DiagnosisRule = {
     tier: 1,
     defaultConfidence: 100,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
+        if (server.software === 'Bedrock') return null;
         if (server.status === ServerStatus.ONLINE) return null;
 
         // Universal Check: Logs OR Direct Filesystem check
@@ -413,15 +415,21 @@ export const BadConfigRule: DiagnosisRule = {
         
         if (hasBadConfigLog) {
             // 2. FALSE POSITIVE GUARD: Check if the server successfully started anyway
-            // Some versions (Fabric 1.21+) throw "Failed to load" if the file is missing but then immediately create it and continue.
-            const successfulStartup = logs.some(l => 
-                /Done \(\d+\.\d+s\)!/i.test(l) || 
-                /Starting Minecraft server on/i.test(l) ||
-                /Loading properties/i.test(l) // If it logs "Loading properties" AFTER the error, it's a retry/recovery
-            );
+            // We use universal patterns to support Vanilla, Forge, Bedrock, and Proxies.
+            const sLog = logs.join('\n');
+            const successfulStartup = 
+                /Done \(\d+\.\d+s\)!/i.test(sLog) ||               // Vanilla/Fabric (Standard)
+                /Done/i.test(sLog) && /type "help"/i.test(sLog) || // Forge (Inclusive)
+                /Server started/i.test(sLog) ||                    // Bedrock
+                /Listening on/i.test(sLog) ||                      // Proxies (Velocity/Bungee)
+                /Starting Minecraft server on/i.test(sLog) ||
+                /Loading properties/i.test(sLog);
 
             // 3. NO-SUCH-FILE GUARD: Is it just a missing file that will be auto-generated?
-            const isMissingFileOnly = logs.some(l => /java\.nio\.file\.NoSuchFileException: server\.properties/i.test(l));
+            const isMissingFileOnly = logs.some(l => 
+                /java\.nio\.file\.NoSuchFileException: server\.properties/i.test(l) ||
+                /Failed to load server\.properties/i.test(l) && server.software === 'Bedrock' // Bedrock missing check
+            );
 
             // If it started successfully OR it's just a missing file (which is handled by server init), suppress the rule.
             if (successfulStartup || isMissingFileOnly) {
