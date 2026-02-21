@@ -2,7 +2,7 @@
 import { statsRingBuffer } from './StatsRingBuffer';
 import { getServer, getServers } from '../servers/ServerService';
 import { logger } from '../../utils/logger';
-import { ServerConfig } from '@shared/types';
+import { ServerConfig, ServerStatus } from '@shared/types';
 import os from 'os';
 
 /**
@@ -195,7 +195,7 @@ class LoadSimulatorService {
     async simulateAll(totalTargetPlayers: number): Promise<SimulationResult> {
         const servers = getServers();
         const onlineServers = servers.filter(s =>
-            s.status === 'ONLINE' && s.software !== 'Velocity'
+            s.status === ServerStatus.ONLINE && s.software !== 'Velocity'
         );
 
         const projections: CapacityProjection[] = [];

@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import os from 'os';
 import util from 'util';
-import { NodeCapabilities } from '../../shared/types';
+import { NodeCapabilities } from './types';
 
 const execAsync = util.promisify(exec);
 

@@ -3,6 +3,7 @@ import { DiagnosisRule, DiagnosisResult, ServerConfig } from './types';
 import fs from 'fs-extra';
 import path from 'path';
 import { getServer } from '../servers/ServerService';
+import { ServerStatus } from '@shared/types';
 
 /**
  * Checks if a Velocity proxy has no backend servers linked.
@@ -44,14 +45,14 @@ export const VelocityBackendOfflineRule: DiagnosisRule = {
     tier: 2,
     defaultConfidence: 90,
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
-        if (server.software !== 'Velocity' || server.status !== 'ONLINE') return null;
+        if (server.software !== 'Velocity' || server.status !== ServerStatus.ONLINE) return null;
 
         const links = server.network?.proxyConfig?.links || [];
         const offlineLinks: string[] = [];
 
         for (const link of links) {
             const backend = getServer(link.serverId);
-            if (!backend || backend.status === 'OFFLINE' || backend.status === 'CRASHED') {
+            if (!backend || backend.status === ServerStatus.OFFLINE || backend.status === ServerStatus.CRASHED) {
                 offlineLinks.push(link.alias);
             }
         }

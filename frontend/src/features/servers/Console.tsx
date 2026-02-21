@@ -17,9 +17,8 @@ interface ConsoleProps {
 }
 
 import { useServers } from '@features/servers/context/ServerContext';
-
 const Console: React.FC<ConsoleProps> = ({ serverId }) => {
-    const { servers, javaDownloadStatus } = useServers();
+    const { servers, javaDownloadStatus, updateServerStatus } = useServers();
     const server = servers.find(s => s.id === serverId);
     const status = server?.status || ServerStatus.OFFLINE;
     
@@ -132,28 +131,38 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
     };
 
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {
-        if (action === 'start') {
-            if (!canStart) {
-                addToast('error', 'Permissions', 'Insufficient permissions to start server');
-                return;
+        const previousStatus = status;
+        try {
+            if (action === 'start') {
+                if (!canStart) {
+                    addToast('error', 'Permissions', 'Insufficient permissions to start server');
+                    return;
+                }
+                updateServerStatus(serverId, ServerStatus.STARTING);
+                addToast('info', 'Console', 'Boot sequence initiated.');
+                await API.startServer(serverId);
+            } else if (action === 'stop') {
+                if (!canStop) {
+                    addToast('error', 'Permissions', 'Insufficient permissions to stop server');
+                    return;
+                }
+                updateServerStatus(serverId, ServerStatus.STOPPING);
+                addToast('warning', 'Console', 'Termination signal sent.');
+                await API.stopServer(serverId);
+            } else if (action === 'restart') {
+                if (!canRestart) {
+                    addToast('error', 'Permissions', 'Insufficient permissions to restart server');
+                    return;
+                }
+                updateServerStatus(serverId, ServerStatus.STOPPING);
+                addToast('info', 'Console', 'Restarting process...');
+                await API.stopServer(serverId);
+                updateServerStatus(serverId, ServerStatus.STARTING);
+                setTimeout(() => API.startServer(serverId), 2000);
             }
-            addToast('info', 'Console', 'Boot sequence initiated.');
-            await API.startServer(serverId);
-        } else if (action === 'stop') {
-            if (!canStop) {
-                addToast('error', 'Permissions', 'Insufficient permissions to stop server');
-                return;
-            }
-            addToast('warning', 'Console', 'Termination signal sent.');
-            await API.stopServer(serverId);
-        } else if (action === 'restart') {
-            if (!canRestart) {
-                addToast('error', 'Permissions', 'Insufficient permissions to restart server');
-                return;
-            }
-            addToast('info', 'Console', 'Restarting process...');
-            await API.stopServer(serverId);
-            setTimeout(() => API.startServer(serverId), 2000);
+        } catch (e: any) {
+            updateServerStatus(serverId, previousStatus as ServerStatus);
+            addToast('error', 'Power Action Failed', e.message);
         }
     };
 
@@ -203,7 +212,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         <div className="w-[1px] h-4 bg-border mx-1"></div>
                         <button 
                             onClick={() => handlePower('restart')}
-                            disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING || !canRestart}
+                            disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING || status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING || !canRestart}
                             className={`p-2 rounded-md transition-all duration-200 text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed`}
                             title={!canRestart ? 'Insufficient Permissions' : (status === ServerStatus.STARTING ? "Startup Lock Active" : "Restart Server")}
                         >
@@ -212,7 +221,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         <div className="w-[1px] h-4 bg-border mx-1"></div>
                         <button 
                             onClick={() => handlePower('stop')}
-                            disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING || !canStop}
+                            disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING || status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING || !canStop}
                             className={`p-2 rounded-md transition-all duration-200 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 disabled:cursor-not-allowed`}
                             title={!canStop ? 'Insufficient Permissions' : (status === ServerStatus.STARTING ? "Startup Lock Active" : "Kill Process")}
                         >

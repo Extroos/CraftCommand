@@ -8,6 +8,8 @@ import { autoHealingManager } from '../diagnosis/AutoHealingManager';
 import { NetUtils } from '../../utils/NetUtils';
 import { RecoveryStage, RecoveryState, StabilityMarker } from '@shared/types/health';
 import { systemSettingsService } from '../system/SystemSettingsService';
+import { backupService } from '../backups/BackupService';
+import { ServerConfig, ServerStatus } from '@shared/types';
 
 /**
  * AutoHealing v3: Proactive Health Management
@@ -74,7 +76,7 @@ class AutoHealingService {
 
     private async listenToProcessEvents() {
         processManager.on('status', ({ id, status }) => {
-            if (status === 'CRASHED') {
+            if (status === ServerStatus.CRASHED) {
                 this.initiateRecovery(id, 'CRASH_DETECTED');
             }
         });
@@ -97,7 +99,7 @@ class AutoHealingService {
 
                 // 2. Drift Detection (v3) - Always active if Auto-Healing is ON
                 const isDriftFixActive = v3Settings?.driftDetectionEnabled !== false; // Default to true
-                if (isDriftFixActive && server.status === 'ONLINE' && !processManager.isRunning(server.id)) {
+                if (isDriftFixActive && server.status === ServerStatus.ONLINE && !processManager.isRunning(server.id)) {
                     // CRITICAL: Skip if we are intentionally stopping!
                     if (processManager.isStopping(server.id)) continue;
 
@@ -201,11 +203,11 @@ class AutoHealingService {
             stabilityScore: marker.score
         };
 
-        // LOOP PREVENTION: If we've attempted recovery 5 times in the last 10 minutes, enter Safe Mode
-        const recentCrashes = marker.consecutiveCrashes;
-        if (recentCrashes >= 5) {
-            logger.error(`[AutoHealing:${serverId}] Recovery loop detected. Entering Safe Mode.`);
+        // LOOP PREVENTION: If we've attempted recovery 3 times for the SAME cause, enter Safe Mode
+        if (marker.consecutiveCrashes >= 3) {
+            logger.error(`[AutoHealing:${serverId}] Recovery loop detected (3+ consecutive crashes). Entering Safe Mode.`);
             marker.isSafeMode = true;
+            processManager.updateCachedStatus(serverId, { status: ServerStatus.SAFE_MODE, details: 'Automated recovery failed repeatedly. Manual review required.' });
             this.saveStabilityMarkers();
             return;
         }
@@ -221,7 +223,7 @@ class AutoHealingService {
 
         try {
             state.stage = 'TRIAGE';
-            processManager.updateCachedStatus(serverId, { status: 'RECOVERING', details: 'Triaging crash source...' });
+            processManager.updateCachedStatus(serverId, { status: ServerStatus.RECOVERING, details: 'Triaging crash source...' });
             
             const logs = processManager.getLogs(serverId);
             const env: any = await this.checkHostHealth();
@@ -234,6 +236,20 @@ class AutoHealingService {
 
             if (rootCause?.action?.autoHeal) {
                 state.stage = 'REPAIR';
+                
+                // SAFETY SNAPSHOT: Take a world-only backup before applying automated fix
+                try {
+                    logger.info(`[AutoHealing:${serverId}] Creating safety snapshot before fix: ${rootCause.title}`);
+                    await backupService.createBackup(
+                        server.workingDirectory,
+                        serverId,
+                        `Auto-Save: Pre-fix (${rootCause.ruleId})`,
+                        true // World-only is safer and faster for auto-healing
+                    );
+                } catch (bErr: any) {
+                    logger.warn(`[AutoHealing:${serverId}] Safety snapshot failed, proceeding anyway: ${bErr.message}`);
+                }
+
                 logger.info(`[AutoHealing:${serverId}] PIPELINE: Applying targeted fix: ${rootCause.title}`);
                 await autoHealingManager.executeFix(serverId, rootCause.action.type, rootCause.action.payload);
             }
@@ -243,19 +259,11 @@ class AutoHealingService {
                 await stopServer(serverId, true);
             }
 
-            state.stage = 'START';
-            const host = await this.checkHostHealth();
-            if (host.isOverloaded && state.attempts > 1) {
-                logger.warn(`[AutoHealing:${serverId}] Throttled: Delaying restart due to system pressure.`);
-                state.stage = 'TRIAGE';
-                setTimeout(() => this.processPipeline(state), 30000);
-                return;
-            }
-
             await startServer(serverId);
 
             state.stage = 'VERIFY';
-            logger.info(`[AutoHealing:${serverId}] PIPELINE: Recovery successful. Entering stability watch...`);
+            const backoffMs = Math.min(60000 * Math.pow(2, state.attempts - 1), 300000); // Exponential backoff up to 5m
+            logger.info(`[AutoHealing:${serverId}] PIPELINE: Recovery successful. Entering stability watch (Backoff: ${backoffMs / 1000}s)...`);
             
             setTimeout(async () => {
                 const isStillRunning = processManager.isRunning(serverId);
@@ -264,7 +272,17 @@ class AutoHealingService {
                 } else {
                     this.finalizeRecovery(serverId, false);
                 }
-            }, 60000);
+            }, backoffMs);
+
+            // Log fix to health log
+            if (rootCause) {
+                this.logHealthSnapshot({ 
+                    ...env, 
+                    serverId, 
+                    appliedFix: rootCause.title,
+                    ruleId: rootCause.ruleId
+                });
+            }
 
         } catch (error: any) {
             logger.error(`[AutoHealing:${serverId}] Pipeline FAILED at ${state.stage}: ${error.message}`);
@@ -288,7 +306,7 @@ class AutoHealingService {
             if (marker.consecutiveCrashes >= 3 || marker.score <= 0) {
                 marker.isSafeMode = true;
                 logger.error(`[AutoHealing:${serverId}] Critical Stability Failure. Entering SAFE MODE. Manual intervention required.`);
-                processManager.updateCachedStatus(serverId, { status: 'SAFE_MODE', details: 'Automated recovery failed repeatedly.' });
+                processManager.updateCachedStatus(serverId, { status: ServerStatus.SAFE_MODE, details: 'Automated recovery failed repeatedly.' });
             }
         }
         this.saveStabilityMarkers();

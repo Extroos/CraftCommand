@@ -24,13 +24,26 @@ export const StepVerify: React.FC<Props> = ({ nodeId, onComplete }) => {
                 if (!mounted) return;
                 setNode(data);
 
+                // If fully online, jump to ready immediately (or keep it if already there)
                 if (data.status === 'ONLINE') {
                     setState('ready');
-                } else if (data.lastHeartbeat > data.enrolledAt) {
-                    setState('connected');
-                    // Mock verification delay for UX
-                    setTimeout(() => mounted && setState('verified'), 1500);
-                    setTimeout(() => mounted && setState('ready'), 3000);
+                    return;
+                }
+
+                // If we detect a heartbeat but status isn't ONLINE yet (edge case),
+                // OR if we want to show the fancy animation sequence:
+                if (data.lastHeartbeat > data.enrolledAt) {
+                    // Only start the sequence if we are still in 'waiting'
+                    // This prevents the polling loop from resetting 'verified' back to 'connected'
+                    setState(curr => {
+                        if (curr === 'waiting') {
+                            // Start the visual sequence
+                            setTimeout(() => mounted && setState('verified'), 1500);
+                            setTimeout(() => mounted && setState('ready'), 3000);
+                            return 'connected';
+                        }
+                        return curr; // Keep current state (connected/verified/ready)
+                    });
                 }
             } catch (err: any) {
                 // Ignore 404s initially

@@ -1,5 +1,5 @@
 import { nodeRegistryService } from './NodeRegistryService';
-import {  NodeInfo, NodeHealth  } from '@shared/types';
+import {  NodeInfo, NodeHealth, NodeStatus  } from '@shared/types';
 import { logger } from '../../utils/logger';
 
 /**
@@ -109,7 +109,7 @@ export function findBestNode(ramRequiredGB: number = 2, excludeNodeIds: string[]
     const candidates: SchedulerCandidate[] = [];
 
     const onlineNodes = nodes.filter(n =>
-        n.status === 'ONLINE' &&
+        n.status === NodeStatus.ONLINE &&
         !excludeNodeIds.includes(n.id)
     );
 

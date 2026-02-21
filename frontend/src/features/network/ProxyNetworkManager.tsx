@@ -241,7 +241,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = ({ serverId }) =
                     </div>
                     <h3 className="text-xl font-bold text-foreground/40 tracking-tight">Enterprise Forced Hosts</h3>
                     <p className="text-[10px] text-muted-foreground/30 max-w-xl mt-2 leading-relaxed uppercase tracking-widest font-bold">
-                        Native Host Routing Integration (v1.11.0)
+                        Native Host Routing Integration (v1.11.3)
                     </p>
                 </div>
             </div>

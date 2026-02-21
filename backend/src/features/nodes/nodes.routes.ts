@@ -178,7 +178,6 @@ router.delete('/:id', verifyToken, requireRole(['OWNER']), requireDistributedNod
         }
         res.json({ message: 'Node removed successfully.' });
     } catch (error) {
-        console.error('[Nodes] Failed to remove node:', error);
         res.status(500).json({ error: 'Failed to remove node' });
     }
 });
@@ -259,6 +258,47 @@ router.post('/:id/fix', verifyToken, requireRole(['OWNER']), requireDistributedN
     } catch (error: any) {
         console.error('[Nodes] Failed to trigger fix:', error);
         res.status(500).json({ error: error.message || 'Failed to trigger fix' });
+    }
+});
+
+/**
+ * POST /api/nodes/:id/shutdown — Remote shutdown of a node agent
+ */
+router.post('/:id/shutdown', verifyToken, requireRole(['OWNER']), requireDistributedNodes, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const node = nodeRegistryService.getNode(id);
+        if (!node) {
+            return res.status(404).json({ error: 'Node not found.' });
+        }
+
+        // Hardening: Prevent shutting down the "local" node if it's the host
+        if (id === 'local') {
+             return res.status(403).json({ error: 'Cannot shutdown the Local Node as it is part of the host system.' });
+        }
+
+        if (node.status !== 'ONLINE') {
+            return res.status(409).json({ error: 'Node must be ONLINE to be shutdown.' });
+        }
+
+        logger.info(`[Nodes] Triggering SHUTDOWN for node "${node.name}" (${id})`);
+        
+        // Import sendToAgent dynamically
+        const { sendToAgent } = await import('./NodeAgentHandler');
+        
+        await sendToAgent(id, 'agent:shutdown', {});
+        
+        res.json({ message: 'Shutdown command sent to agent.' });
+
+        auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', id, {
+            action: 'NODE_SHUTDOWN',
+            nodeName: node.name
+        });
+
+    } catch (error: any) {
+        console.error('[Nodes] Failed to shutdown node:', error);
+        res.status(500).json({ error: error.message || 'Failed to shutdown node' });
     }
 });
 

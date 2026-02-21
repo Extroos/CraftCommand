@@ -3,6 +3,8 @@ import { useCollaboration } from '@features/collaboration/context/CollaborationC
 import { useServers } from '@features/servers/context/ServerContext';
 import { useUser } from '@features/auth/context/UserContext';
 import { ChatMessage, ActivityEvent, UserRole } from '@shared/types';
+import { API } from '@core/services/api';
+import { useToast } from '@features/ui/Toast';
 import { 
     MessageCircle, Send, X, Users, Activity as ActivityIcon,
     Play, Square, RotateCcw, Terminal, Puzzle, Archive, FileEdit, 
@@ -60,25 +62,83 @@ const timeAgo = (ts: number) => {
     return new Date(ts).toLocaleDateString();
 };
 
+const renderMessageContent = (content: string, currentUsername: string | undefined, isOwn: boolean) => {
+    if (!content) return null;
+    
+    const tokenRegex = /(```[\s\S]*?```|`[^`]+`|@\w+)/g;
+    const parts = content.split(tokenRegex);
+
+    return parts.map((part, i) => {
+        if (part.startsWith('```') && part.endsWith('```')) {
+            const code = part.slice(3, -3).trim();
+            return (
+                <div key={i} className={`mt-1 mb-1 overflow-x-auto rounded-md p-1.5 text-[10px] font-mono ${isOwn ? 'bg-primary-foreground/10 text-primary-foreground' : 'bg-background border border-border text-muted-foreground'}`}>
+                    <pre><code>{code}</code></pre>
+                </div>
+            );
+        }
+        if (part.startsWith('`') && part.endsWith('`')) {
+            const code = part.slice(1, -1);
+            return <code key={i} className={`px-1 rounded text-[10px] font-mono ${isOwn ? 'bg-primary-foreground/10' : 'bg-background border border-border'}`}>{code}</code>;
+        }
+        if (part.startsWith('@') && part.length > 1) {
+            const username = part.slice(1);
+            const isMe = currentUsername && username.toLowerCase() === currentUsername.toLowerCase();
+            if (isMe) {
+                 return <span key={i} className={`font-bold px-1 rounded-sm ${isOwn ? 'bg-primary-foreground/20' : 'bg-primary/20 text-primary'}`}>{part}</span>;
+            }
+            return <span key={i} className={`font-semibold ${isOwn ? 'text-primary-foreground' : 'text-primary'}`}>{part}</span>;
+        }
+        return <span key={i}>{part}</span>;
+    });
+};
+
 type Tab = 'chat' | 'activity' | 'presence';
+type SuggestionType = 'none' | 'command' | 'server' | 'mention';
+
+const COMMANDS = [
+    { cmd: 'start', desc: 'Start a server', hasArg: true },
+    { cmd: 'stop', desc: 'Stop a server', hasArg: true },
+    { cmd: 'restart', desc: 'Restart a server', hasArg: true },
+    { cmd: 'clear', desc: 'Clear local chat', hasArg: false },
+    { cmd: 'w', desc: 'Private whisper', hasArg: true },
+    { cmd: 'status', desc: 'Host system metrics', hasArg: false },
+];
 
 const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
     // --- Hooks ---
     const { currentServer } = useServers();
+    const { servers, setCurrentServerById } = useServers();
     const { user } = useUser();
     const { chatMessages, typingUsers, sendChat, sendTyping, presence, activities } = useCollaboration();
+    const { addToast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<Tab>('chat');
     const [message, setMessage] = useState('');
     const [unreadCount, setUnreadCount] = useState(0);
+    const [suggestionType, setSuggestionType] = useState<SuggestionType>('none');
+    const [suggestionQuery, setSuggestionQuery] = useState('');
+    const [suggestionIndex, setSuggestionIndex] = useState(0);
+    const [activityFilter, setActivityFilter] = useState<'ALL' | 'SERVER' | 'USER' | 'SYSTEM'>('ALL');
+    const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const lastTypingEmit = useRef(0);
 
-    const id = serverId || currentServer?.id;
-    const messages = id ? (chatMessages[id] || []) : [];
+    const id = 'global';
+    const messages = chatMessages[id] || [];
 
-    // Reset unread on server switch
+    // Helper: jump to a user's current server
+    const handleJumpToServer = (serverId: string | null) => {
+        if (!serverId) return;
+        const target = servers.find(s => s.id === serverId);
+        if (target) {
+            setCurrentServerById(target.id);
+            setIsOpen(false); // Optionally close panel so they can see the view
+        }
+    };
+
+    // Reset unread conceptually (though global ID rarely changes)
     useEffect(() => {
         setUnreadCount(0);
     }, [id]);
@@ -121,28 +181,192 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
     // --- Logic & Returns ---
     if (!id) return null;
 
-    const collab = currentServer?.collabSettings;
-    const canReadChat = ROLE_RANK[user?.role || 'VIEWER'] >= ROLE_RANK[collab?.chat?.minRole || 'VIEWER'];
-    const canSendChat = ROLE_RANK[user?.role || 'VIEWER'] >= ROLE_RANK[collab?.chat?.minSendRole || 'MANAGER'];
-    const chatEnabled = collab?.chat?.enabled !== false;
-    const canSeePresence = ROLE_RANK[user?.role || 'VIEWER'] >= ROLE_RANK[collab?.presence?.minRole || 'VIEWER'];
-    const canSeeActivity = ROLE_RANK[user?.role || 'VIEWER'] >= ROLE_RANK[collab?.activityFeed?.minRole || 'VIEWER'];
+    const canReadChat = true;
+    const canSendChat = true;
+    const chatEnabled = true;
+    const canSeePresence = true;
+    const canSeeActivity = true;
 
-    if (!chatEnabled && !canSeePresence && !canSeeActivity) return null;
+    const typing = typingUsers[id] || [];
+    const users = presence[id] || [];
+    const allEvents = (activities[id] || []).filter(e => ROLE_RANK[user?.role || 'VIEWER'] >= ROLE_RANK[e.visibility]);
 
-    const typing = id ? (typingUsers[id] || []) : [];
-    const users = id ? (presence[id] || []) : [];
-    const events = id ? (activities[id] || []).filter(e => ROLE_RANK[user?.role || 'VIEWER'] >= ROLE_RANK[e.visibility]) : [];
+    const events = allEvents.filter(e => {
+        if (activityFilter === 'ALL') return true;
+        if (activityFilter === 'SERVER') return ['SERVER_START', 'SERVER_STOP', 'SERVER_RESTART'].includes(e.action);
+        if (activityFilter === 'USER') return ['USER_JOINED_PANEL', 'USER_LEFT_PANEL', 'PLAYER_KICKED', 'PLAYER_BANNED'].includes(e.action);
+        if (activityFilter === 'SYSTEM') return ['CONFIG_CHANGED', 'FILE_EDITED', 'PLUGIN_INSTALLED', 'PLUGIN_REMOVED', 'PLUGIN_TOGGLED', 'BACKUP_CREATED', 'BACKUP_RESTORED', 'COMMAND_SENT', 'SCHEDULE_CREATED', 'SCHEDULE_DELETED'].includes(e.action);
+        return true;
+    });
 
-    const handleSend = (e: React.FormEvent) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setMessage(val);
+
+        if (val.startsWith('/')) {
+            const parts = val.split(' ');
+            if (parts.length === 1) {
+                setSuggestionType('command');
+                setSuggestionQuery(parts[0].slice(1).toLowerCase());
+            } else if (parts.length === 2 && ['/start', '/stop', '/restart'].includes(parts[0].toLowerCase())) {
+                setSuggestionType('server');
+                setSuggestionQuery(parts[1].toLowerCase());
+            } else if (parts.length === 2 && parts[0].toLowerCase() === '/w') {
+                setSuggestionType('mention');
+                const rawQ = parts[1].startsWith('@') ? parts[1].slice(1) : parts[1];
+                setSuggestionQuery(rawQ.toLowerCase());
+            } else {
+                setSuggestionType('none');
+            }
+        } else {
+            const words = val.split(' ');
+            const lastWord = words[words.length - 1];
+            if (lastWord.startsWith('@')) {
+                setSuggestionType('mention');
+                setSuggestionQuery(lastWord.slice(1).toLowerCase());
+            } else {
+                setSuggestionType('none');
+            }
+        }
+        setSuggestionIndex(0);
+    };
+
+    let options: { id: string, label: string, sub?: string }[] = [];
+    if (suggestionType === 'command') {
+        options = COMMANDS
+            .filter(c => c.cmd.startsWith(suggestionQuery))
+            .map(c => ({ id: c.cmd, label: `/${c.cmd}`, sub: c.desc }));
+    } else if (suggestionType === 'server') {
+        options = servers
+            .filter(s => s.name.toLowerCase().includes(suggestionQuery) || s.id.toLowerCase().includes(suggestionQuery))
+            .map(s => ({ id: s.id, label: s.name, sub: s.id }));
+    } else if (suggestionType === 'mention') {
+        options = users
+            .filter(u => u.username.toLowerCase().includes(suggestionQuery) && u.userId !== user?.id)
+            .map(u => ({ id: u.username, label: `@${u.username}`, sub: u.role }));
+    }
+
+    const applySuggestion = (optionId: string) => {
+        if (suggestionType === 'command') {
+            const cmd = COMMANDS.find(c => c.cmd === optionId);
+            setMessage(`/${optionId}${cmd?.hasArg ? ' ' : ''}`);
+        } else if (suggestionType === 'server') {
+            const parts = message.split(' ');
+            setMessage(`${parts[0]} ${optionId}`);
+        } else if (suggestionType === 'mention') {
+            const words = message.split(' ');
+            words.pop();
+            setMessage([...words, `@${optionId} `].join(' ').trimStart());
+        }
+        setSuggestionType('none');
+        inputRef.current?.focus();
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (suggestionType !== 'none' && options.length > 0) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSuggestionIndex(prev => (prev + 1) % options.length);
+                return;
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSuggestionIndex(prev => (prev - 1 + options.length) % options.length);
+                return;
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                applySuggestion(options[suggestionIndex].id);
+                return;
+            } else if (e.key === 'Escape') {
+                setSuggestionType('none');
+                return;
+            }
+        }
+    };
+
+    const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!message.trim() || !canSendChat) return;
-        sendChat(id, message.trim());
+        const msg = message.trim();
+        if (!msg || !canSendChat) return;
+
+        if (msg.startsWith('/')) {
+            await handleSlashCommand(msg);
+        } else {
+            sendChat(id, msg);
+        }
+        
         setMessage('');
+        setSuggestionType('none');
         setUnreadCount(0); // Clear unread on own message
         inputRef.current?.focus();
         // Force scroll for own message
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    };
+
+    const handleSlashCommand = async (cmdString: string) => {
+        const parts = cmdString.slice(1).trim().split(/\s+/);
+        const cmd = parts[0]?.toLowerCase();
+        const args = parts.slice(1);
+
+        try {
+            switch (cmd) {
+                case 'start':
+                case 'server-start':
+                    if (!args[0]) throw new Error('Usage: /start <serverId>');
+                    addToast('info', 'Command Execution', `Initiating startup sequence for ${args[0]}...`);
+                    await API.startServer(args[0]);
+                    break;
+                case 'stop':
+                case 'server-stop':
+                    if (!args[0]) throw new Error('Usage: /stop <serverId>');
+                    addToast('warning', 'Command Execution', `Initiating shutdown sequence for ${args[0]}...`);
+                    await API.stopServer(args[0]);
+                    break;
+                case 'restart':
+                case 'server-restart':
+                    if (!args[0]) throw new Error('Usage: /restart <serverId>');
+                    addToast('info', 'Command Execution', `Initiating restart sequence for ${args[0]}...`);
+                    await API.stopServer(args[0]);
+                    setTimeout(() => API.startServer(args[0]), 2000);
+                    break;
+                case 'clear':
+                    addToast('success', 'Clear History', 'Local chat history cleared for this session.');
+                    break;
+                case 'w':
+                    sendChat(id, cmdString);
+                    break;
+                case 'status': {
+                    addToast('info', 'System Stats', 'Fetching host metrics...');
+                    try {
+                        const stats = await API.getSystemStats();
+                        const cpu = stats.cpu + '%';
+                        const memBytes = stats.memory.used;
+                        const memTotal = stats.memory.total;
+                        const mem = (memBytes / 1024 / 1024 / 1024).toFixed(1) + 'GB / ' + (memTotal / 1024 / 1024 / 1024).toFixed(1) + 'GB';
+                        
+                        const sysMsg: ChatMessage = {
+                            id: `local-${Date.now()}`,
+                            serverId: id,
+                            userId: 'system',
+                            username: 'Host System',
+                            role: 'OWNER',
+                            content: `📊 **System Status**\n**CPU:** ${cpu}\n**RAM:** ${mem}`,
+                            timestamp: Date.now(),
+                            type: 'system'
+                        };
+                        setLocalMessages(prev => [...prev, sysMsg]);
+                        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+                    } catch (e: any) {
+                        addToast('error', 'Status Failed', e.message);
+                    }
+                    break;
+                }
+                default:
+                    addToast('error', 'Unknown Command', `The command '${cmd}' is not recognized.`);
+                    throw new Error(`Unknown command: ${cmd}`);
+            }
+        } catch (e: any) {
+            console.error('[Slash Command]', e);
+        }
     };
 
     const handleTyping = () => {
@@ -245,7 +469,9 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                                 ) : messages.map((msg: ChatMessage) => {
                                     const isOwn = msg.userId === user?.id;
                                     const isSystem = msg.type === 'system';
+                                    const isWhisper = msg.type === 'whisper';
                                     const badge = ROLE_BADGE[msg.role];
+                                    const isMentioned = !isOwn && user?.username && new RegExp(`@${user.username}\\b`, 'i').test(msg.content);
 
                                     if (isSystem) {
                                         return (
@@ -279,10 +505,16 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                                                 )}
                                                 <div className={`px-2.5 py-1.5 rounded-xl text-[11px] leading-relaxed break-words ${
                                                     isOwn
-                                                        ? 'bg-primary text-primary-foreground rounded-br-sm'
-                                                        : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+                                                        ? isWhisper 
+                                                            ? 'bg-indigo-600 text-white rounded-br-sm italic shadow-[0_0_10px_rgba(79,70,229,0.2)]'
+                                                            : 'bg-primary text-primary-foreground rounded-br-sm'
+                                                        : isWhisper
+                                                            ? 'bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 rounded-bl-sm italic shadow-[0_0_10px_rgba(79,70,229,0.2)]'
+                                                            : isMentioned
+                                                                ? 'bg-primary/20 border border-primary/30 text-foreground rounded-bl-sm shadow-[0_0_10px_rgba(var(--primary),0.2)]'
+                                                                : 'bg-secondary text-secondary-foreground rounded-bl-sm'
                                                 }`}>
-                                                    {msg.content}
+                                                    {renderMessageContent(msg.content, user?.username, isOwn)}
                                                 </div>
                                                 <span className="text-[8px] text-muted-foreground/20 mt-0.5 block">
                                                     {new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
@@ -309,7 +541,24 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                             )}
 
                             {/* Typing + Input */}
-                            <div className="shrink-0 border-t border-border bg-muted/20">
+                            <div className="shrink-0 border-t border-border bg-muted/20 relative">
+                                {suggestionType !== 'none' && options.length > 0 && (
+                                    <div className="absolute bottom-full left-0 w-full mb-1 px-2 z-20">
+                                        <div className="bg-background/95 backdrop-blur-md border border-border rounded-lg shadow-xl overflow-hidden max-h-40 overflow-y-auto w-full scrollbar-thin scrollbar-thumb-border">
+                                            {options.map((opt, i) => (
+                                                <button
+                                                    key={opt.id}
+                                                    type="button"
+                                                    onClick={() => applySuggestion(opt.id)}
+                                                    className={`w-full text-left px-3 py-2 flex justify-between items-center text-[11px] transition-colors ${i === suggestionIndex ? 'bg-primary/20 text-primary' : 'text-foreground hover:bg-muted/50'}`}
+                                                >
+                                                    <span className="font-bold font-mono">{opt.label}</span>
+                                                    {opt.sub && <span className="text-[9px] text-muted-foreground ml-2 truncate max-w-[200px]">{opt.sub}</span>}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 {typing.length > 0 && (
                                     <div className="px-3 py-1 text-[9px] text-muted-foreground/50 animate-pulse">
                                         {typing.map(t => t.username).join(', ')} typing...
@@ -317,12 +566,13 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                                 )}
                                 {canSendChat ? (
                                     <form onSubmit={handleSend} className="p-2">
-                                        <div className="flex gap-1.5 items-center bg-background border border-border rounded-lg px-2.5 py-2 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+                                        <div className="flex gap-1.5 items-center bg-background border border-border rounded-lg px-2.5 py-2 focus-within:ring-1 focus-within:ring-primary/50 transition-all shadow-inner">
                                             <input
                                                 ref={inputRef}
                                                 type="text"
                                                 value={message}
-                                                onChange={(e) => { setMessage(e.target.value); handleTyping(); }}
+                                                onChange={(e) => { handleInputChange(e); handleTyping(); }}
+                                                onKeyDown={handleKeyDown}
                                                 placeholder="Type a message..."
                                                 maxLength={500}
                                                 className="flex-1 bg-transparent border-none text-[11px] text-foreground focus:outline-none placeholder:text-muted-foreground/40"
@@ -347,14 +597,31 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
 
                     {/* ========== ACTIVITY TAB ========== */}
                     {activeTab === 'activity' && (
-                        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border">
-                            {events.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full text-muted-foreground/30 text-center p-6">
-                                    <ActivityIcon size={28} className="mb-2 opacity-15" />
-                                    <p className="text-[11px]">No activity yet</p>
-                                    <p className="text-[9px] mt-0.5 opacity-50">Server events will appear here</p>
-                                </div>
-                            ) : (
+                        <div className="flex-1 overflow-hidden flex flex-col">
+                            {/* Filter Chips */}
+                            <div className="shrink-0 p-2 border-b border-border/50 bg-background/50 flex gap-1.5 overflow-x-auto scrollbar-none">
+                                {['ALL', 'SERVER', 'USER', 'SYSTEM'].map(f => (
+                                    <button
+                                        key={f}
+                                        onClick={() => setActivityFilter(f as any)}
+                                        className={`px-2.5 py-1 rounded-full text-[9px] font-bold whitespace-nowrap transition-colors ${
+                                            activityFilter === f 
+                                                ? 'bg-primary text-primary-foreground' 
+                                                : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                                        }`}
+                                    >
+                                        {f}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border">
+                                {events.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground/30 text-center p-6">
+                                        <ActivityIcon size={28} className="mb-2 opacity-15" />
+                                        <p className="text-[11px]">No activity matches filter</p>
+                                        <p className="text-[9px] mt-0.5 opacity-50">System and server events appear here</p>
+                                    </div>
+                                ) : (
                                 <div className="p-2 space-y-0.5">
                                     {events.map((event: ActivityEvent) => {
                                         const config = ACTION_ICON[event.action] || { icon: <ActivityIcon size={11} />, color: 'text-zinc-400' };
@@ -377,6 +644,7 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                                     })}
                                 </div>
                             )}
+                            </div>
                         </div>
                     )}
 
@@ -394,8 +662,19 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                                     {users.map(entry => {
                                         const dot = ROLE_DOT[entry.role];
                                         const badge = ROLE_BADGE[entry.role];
+                                        const [targetServerId, actualView] = entry.activeView?.includes('::') 
+                                            ? entry.activeView.split('::') 
+                                            : [null, entry.activeView || 'dashboard'];
+
+                                        const serverName = targetServerId ? servers.find(s => s.id === targetServerId)?.name : null;
+
                                         return (
-                                            <div key={entry.userId} className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/30 transition-colors">
+                                            <button 
+                                                key={entry.userId} 
+                                                onClick={() => handleJumpToServer(targetServerId)}
+                                                disabled={!targetServerId}
+                                                className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors ${targetServerId ? 'hover:bg-primary/10 cursor-pointer group' : 'hover:bg-muted/30 cursor-default'} `}
+                                            >
                                                 {/* Avatar */}
                                                 <div className="relative shrink-0">
                                                     {entry.avatar ? (
@@ -415,17 +694,25 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                                                             {badge.label}
                                                         </span>
                                                     </div>
-                                                    <div className="flex items-center gap-1 mt-0.5 text-[9px] text-muted-foreground/50">
-                                                        {entry.activeView.startsWith('files:') ? <FileEdit size={9} /> : (VIEW_ICON[entry.activeView] || <Eye size={9} />)}
-                                                        <span className="capitalize">
-                                                            {entry.activeView.startsWith('files:') 
-                                                                ? `Editing ${entry.activeView.split(':')[1]}` 
-                                                                : entry.activeView
-                                                            }
-                                                        </span>
+                                                    <div className="flex items-center justify-between mt-0.5">
+                                                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 group-hover:text-primary/70 transition-colors">
+                                                            {actualView.startsWith('files:') ? <FileEdit size={9} /> : (VIEW_ICON[actualView] || <Eye size={9} />)}
+                                                            <span className="capitalize">
+                                                                {actualView.startsWith('files:') 
+                                                                    ? `Editing ${actualView.split(':')[1]}` 
+                                                                    : actualView
+                                                                }
+                                                                {serverName && <span className="ml-1 opacity-70">in {serverName}</span>}
+                                                            </span>
+                                                        </div>
+                                                        {targetServerId && (
+                                                            <div className="text-[8px] font-bold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                JUMP
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            </div>
+                                            </button>
                                         );
                                     })}
                                 </div>

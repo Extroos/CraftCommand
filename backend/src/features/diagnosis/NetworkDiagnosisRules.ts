@@ -1,5 +1,6 @@
 import { DiagnosisRule, DiagnosisResult, ServerConfig, SystemStats } from './types';
 import { networkService } from '../network/NetworkService';
+import { ServerStatus } from '@shared/types';
 
 /**
  * Rule for detecting DuckDNS authentication failures (KO response).
@@ -83,7 +84,7 @@ export const NoFallbackRule: DiagnosisRule = {
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
         // Only run on Velocity proxy servers
         if (server.software !== 'Velocity') return null;
-        if (server.status !== 'ONLINE') return null;
+        if (server.status !== ServerStatus.ONLINE) return null;
 
         const links = server.network?.proxyConfig?.links;
         if (!links || links.length === 0) return null;
@@ -91,7 +92,7 @@ export const NoFallbackRule: DiagnosisRule = {
         const { getServer: getServerById } = await import('../servers/ServerService');
         const onlineBackends = links.filter(l => {
             const backend = getServerById(l.serverId);
-            return backend && backend.status === 'ONLINE';
+            return backend && backend.status === ServerStatus.ONLINE;
         });
 
         if (onlineBackends.length > 0) return null;
@@ -121,7 +122,7 @@ export const UnlinkedServerRule: DiagnosisRule = {
     triggers: [],
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
         // Only check non-proxy, online servers
-        if (server.software === 'Velocity' || server.status !== 'ONLINE') return null;
+        if (server.software === 'Velocity' || server.status !== ServerStatus.ONLINE) return null;
 
         const { getServers: getAllServers } = await import('../servers/ServerService');
         const allServers = getAllServers();
@@ -150,9 +151,54 @@ export const UnlinkedServerRule: DiagnosisRule = {
     }
 };
 
+/**
+ * Rule for detecting BungeeCord/Velocity IP Forwarding Mismatches.
+ */
+export const ProxyForwardingConfigRule: DiagnosisRule = {
+    id: 'proxy_forwarding_mismatch',
+    name: 'Proxy Forwarding Mismatch',
+    description: 'Detects when a backend server is not correctly configured to receive proxy connections.',
+    tier: 2,
+    defaultConfidence: 95,
+    triggers: [
+        /If you wish to use IP forwarding, please enable it in your BungeeCord config/i,
+        /This server requires you to connect with Velocity/i,
+        /Unexpected packet received during login process/i
+    ],
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const fullLog = logs.join('\n');
+        
+        const bungeeMatch = /If you wish to use IP forwarding, please enable it in your BungeeCord config/i.test(fullLog);
+        const velocityMatch = /This server requires you to connect with Velocity/i.test(fullLog);
+        
+        if (bungeeMatch || velocityMatch) {
+            let recommendation = 'Check your proxy configuration and backend server settings.';
+            let explanation = 'Your server is blocking a connection because it expects the player to connect through a proxy (like BungeeCord or Velocity) with IP forwarding enabled, but the connection was either direct or misconfigured.';
+            
+            if (velocityMatch) {
+                recommendation = 'Make sure you are connecting through your Velocity proxy IP/Port. If you are the proxy owner, check that `velocity-support` in `paper-global.yml` and the forwarding secret match between the proxy and this server.';
+            } else if (bungeeMatch) {
+                 recommendation = 'Make sure you are connecting through your proxy IP/Port. If you are the proxy owner, check that `bungeecord: true` is set in your `spigot.yml`.';
+            }
+
+            return {
+                id: `proxy-cfg-${server.id}-${Date.now()}`,
+                ruleId: 'proxy_forwarding_mismatch',
+                severity: 'WARNING',
+                title: 'Proxy Connection Rejected',
+                explanation: explanation,
+                recommendation: recommendation,
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
 export const NetworkRules = [
     DuckDnsAuthRule,
     PublicIpMismatchRule,
     NoFallbackRule,
-    UnlinkedServerRule
+    UnlinkedServerRule,
+    ProxyForwardingConfigRule
 ];

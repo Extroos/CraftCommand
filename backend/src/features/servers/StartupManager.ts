@@ -84,6 +84,8 @@ export class StartupManager {
                 executionEngine: engine,
                 dockerImage,
                 SERVER_PORT: Number(server.port)
+            }).catch(e => {
+                logger.error(`[StartupManager:${id}] Background process startup failed unconditionally: ${e.message}`);
             });
 
             // 6. Clear Restart Flag (Hardening)

@@ -1,6 +1,7 @@
 
 import { CrossPlayService } from '../features/network/CrossPlayService';
 import { ServerRepository } from '../storage/ServerRepository';
+import { ServerStatus } from '@shared/types';
 import path from 'path';
 
 const serverId = 'test-server-crossplay-debug';
@@ -19,7 +20,7 @@ async function run() {
         version: '1.20.4',
         port: 25565,
         javaVersion: 'Java 21',
-        status: 'OFFLINE',
+        status: ServerStatus.OFFLINE,
         ram: 4,
         executionEngine: 'native',
         workingDirectory: path.resolve('test_servers', serverId)

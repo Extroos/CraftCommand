@@ -1,4 +1,4 @@
-import {  ServerConfig, DiagnosisResult  } from '@shared/types';
+import {  ServerConfig, DiagnosisResult, NodeStatus  } from '@shared/types';
 export { ServerConfig, DiagnosisResult };
 import { CrashReport } from './CrashReportReader';
 
@@ -11,7 +11,7 @@ export interface SystemStats {
     memoryUsed?: number;
     memoryTotal?: number;
     tps?: number;
-    nodeStatus?: 'ONLINE' | 'OFFLINE' | 'DEGRADED' | 'ENROLLING';
+    nodeStatus?: NodeStatus;
 }
 
 export interface DiagnosisRule {

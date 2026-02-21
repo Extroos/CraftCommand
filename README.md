@@ -4,7 +4,7 @@
 
 **The Professional Hybrid Cloud Platform for Java & Bedrock Infrastructure**
 
-![version](https://img.shields.io/badge/version-v1.11.1-emerald)
+![version](https://img.shields.io/badge/version-v1.11.3-emerald)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-AGPLv3-blue.svg)
 
@@ -28,7 +28,7 @@ Most hosting solutions are either **too fragile** (Basic `.bat` files) or **too 
 
 ### Honest Comparison Matrix
 
-| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.11.1)**       |
+| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.11.3)**       |
 | :------------------- | :----------------: | :------------------------: | :-----------------------------------: |
 | **Ideal For**        |      Testing       | Reselling & Large Networks |    **Home Hosting & Private Use**     |
 | **Setup Time**       |      Instant       |     Hours (Linux req.)     |       **Instant (Zero-Config)**       |

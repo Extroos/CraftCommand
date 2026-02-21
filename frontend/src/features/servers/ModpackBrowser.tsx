@@ -11,6 +11,7 @@ interface Modpack {
     slug: string;
     downloads: number;
     version_id: string;
+    game_versions?: string[];
     project_type: 'mod' | 'modpack';
 }
 
@@ -233,6 +234,11 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
                                             <span className="flex items-center gap-0.5"><Box size={8} /> Mod</span>
                                         )}
                                     </span>
+                                    {pack.game_versions && pack.game_versions.length > 0 && (
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase flex-shrink-0 bg-secondary/80 text-foreground border border-border">
+                                            {pack.game_versions[pack.game_versions.length - 1]}
+                                        </span>
+                                    )}
                                 </div>
                                 <p className="text-xs text-muted-foreground truncate">{pack.description}</p>
                                 <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground font-mono">

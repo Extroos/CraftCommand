@@ -169,11 +169,13 @@ export const setupSocket = (socketIo: Server) => {
 
             const collab = getCollabSettings(serverId);
 
-            // Verify server exists
-            const server = serverRepository.findById(serverId);
-            if (!server) {
-                socket.emit('collab:error', { message: 'Server not found.' });
-                return;
+            // Verify server exists (unless it's the global room)
+            if (serverId !== 'global') {
+                const server = serverRepository.findById(serverId);
+                if (!server) {
+                    socket.emit('collab:error', { message: 'Server not found.' });
+                    return;
+                }
             }
 
             // Only allow joining if role meets minimum
@@ -312,6 +314,31 @@ export const setupSocket = (socketIo: Server) => {
             const latestUser = userRepository.findById(user.id);
             const finalUser = latestUser || user;
 
+            let actualContent = sanitize(content);
+            let isWhisper = false;
+            let targetUserId: string | null = null;
+            let targetUsername: string | null = null;
+
+            if (content.trim().startsWith('/w @')) {
+                const parts = content.trim().split(' ');
+                if (parts.length < 3) {
+                    socket.emit('collab:error', { message: 'Usage: /w @username message' });
+                    return;
+                }
+                const potentialUsername = parts[1].substring(1); // strip '@'
+                const targetUser = userRepository.findAll().find(u => u.username.toLowerCase() === potentialUsername.toLowerCase());
+                
+                if (!targetUser) {
+                    socket.emit('collab:error', { message: `User @${potentialUsername} not found.` });
+                    return;
+                }
+                
+                isWhisper = true;
+                targetUserId = targetUser.id;
+                targetUsername = targetUser.username;
+                actualContent = sanitize(parts.slice(2).join(' '));
+            }
+
             const message: ChatMessage = {
                 id: `chat-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
                 serverId,
@@ -319,17 +346,22 @@ export const setupSocket = (socketIo: Server) => {
                 username: finalUser.username,
                 role: finalUser.role,
                 avatar: finalUser.avatarUrl,
-                content: sanitize(content),
+                content: actualContent,
                 timestamp: Date.now(),
-                type: 'message'
+                type: isWhisper ? 'whisper' : 'message'
             };
 
-            // Persist in history buffer
-            pushChatHistory(serverId, message);
-
-            // Broadcast to ALL users in the server room (including sender)
-            io.to(`server:${serverId}`).emit('chat:message', message);
-            console.log(`[Chat] ${finalUser.username} → server:${serverId}: "${content.trim().substring(0, 60)}"`);
+            if (!isWhisper) {
+                pushChatHistory(serverId, message);
+                io.to(`server:${serverId}`).emit('chat:message', message);
+                console.log(`[Chat] ${finalUser.username} → server:${serverId}: "${actualContent.trim().substring(0, 60)}"`);
+            } else {
+                socket.emit('chat:message', { ...message, content: `(To @${targetUsername}) ${actualContent}` });
+                if (targetUserId && targetUserId !== user.id) {
+                     io.to(`user:${targetUserId}`).emit('chat:message', { ...message, content: `(From @${finalUser.username}) ${actualContent}` });
+                }
+                console.log(`[Whisper] ${finalUser.username} → ${targetUsername}: "${actualContent.trim().substring(0, 60)}"`);
+            }
         });
 
         socket.on('chat:typing', ({ serverId }) => {

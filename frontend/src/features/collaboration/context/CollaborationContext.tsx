@@ -37,25 +37,35 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
     const lastServerId = useRef<string | null>(null);
     const typingTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
 
-    // Auto leave/join server rooms when currentServer changes
+    // 1. Auto join global room for global team chat/activity
     useEffect(() => {
-        const prevId = lastServerId.current;
-        const newId = currentServer?.id || null;
-
-        if (prevId === newId) return;
-
-        // Leave previous room
-        if (prevId) {
-            socketService.leaveServer(prevId);
+        if (user) {
+            socketService.joinServer('global', 'dashboard');
+        } else {
+            socketService.leaveServer('global');
         }
+    }, [user]);
 
-        // Join new room — the server will send us chat:history and activity:history on join
-        if (newId) {
-            socketService.joinServer(newId, 'dashboard');
+    // 2. Dynamically join specific server room for logs/status/stats
+    useEffect(() => {
+        if (!user) return;
+        
+        const serverId = currentServer?.id;
+        if (serverId === lastServerId.current) return;
+        
+        // Leave previous specific server room
+        if (lastServerId.current) {
+            socketService.leaveServer(lastServerId.current);
         }
-
-        lastServerId.current = newId;
-    }, [currentServer?.id]);
+        
+        // Join new specific server room
+        if (serverId && serverId !== 'global') {
+            socketService.joinServer(serverId, 'dashboard');
+            lastServerId.current = serverId;
+        } else {
+            lastServerId.current = null;
+        }
+    }, [currentServer?.id, user]);
 
     // Socket event listeners — registered once, not per-server
     useEffect(() => {
@@ -176,15 +186,15 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
     }, []); // Register ONCE — no dependency on currentServer
 
     const sendChat = useCallback((serverId: string, content: string) => {
-        socketService.sendChatMessage(serverId, content);
+        socketService.sendChatMessage('global', content);
     }, []);
 
     const sendTyping = useCallback((serverId: string) => {
-        socketService.sendChatTyping(serverId);
+        socketService.sendChatTyping('global');
     }, []);
 
     const updateActiveView = useCallback((serverId: string, view: string) => {
-        socketService.updateView(serverId, view);
+        socketService.updateView('global', view);
     }, []);
 
     return (

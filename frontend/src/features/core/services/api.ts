@@ -153,10 +153,14 @@ class ApiService {
     }
 
     async stopServer(id: string): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/stop`, { 
+        const res = await fetch(`${API_URL}/servers/${id}/stop`, { 
             method: 'POST',
             headers: this.getAuthHeader()
         });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.message || data.error || 'Failed to stop server');
+        }
     }
     
     // --- File Management ---
@@ -267,6 +271,18 @@ class ApiService {
         }
 
         return res.json();
+    }
+
+    async shutdownNode(nodeId: string): Promise<void> {
+        const res = await fetch(`${API_URL}/nodes/${nodeId}/shutdown`, {
+            method: 'POST',
+            headers: this.getAuthHeader()
+        });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to shutdown node');
+        }
     }
 
     // --- Proxy Networking ---

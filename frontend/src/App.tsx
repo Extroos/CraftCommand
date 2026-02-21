@@ -498,7 +498,8 @@ const App: React.FC = () => {
 
 const OperatorChatWrapper = () => {
     const { hostMode } = useSystem();
-    if (!hostMode) return null;
+    const { isAuthenticated } = useUser();
+    if (!hostMode || !isAuthenticated) return null;
     return <OperatorChat />;
 };
 

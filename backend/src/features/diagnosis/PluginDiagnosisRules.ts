@@ -1,4 +1,5 @@
 import { DiagnosisRule, DiagnosisResult, ServerConfig } from './types';
+import { ServerStatus } from '@shared/types';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -172,7 +173,7 @@ export const PluginPendingRestartRule: DiagnosisRule = {
     defaultConfidence: 100,
     triggers: [], 
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
-        if (server.needsRestart && (server.status === 'ONLINE' || server.status === 'STARTING')) {
+        if (server.needsRestart && (server.status === ServerStatus.ONLINE || server.status === ServerStatus.STARTING)) {
             return {
                 id: `plugin-restart-${server.id}-${Date.now()}`,
                 ruleId: 'plugin_pending_restart',
@@ -187,10 +188,49 @@ export const PluginPendingRestartRule: DiagnosisRule = {
     }
 };
 
+/**
+ * Rule for detecting GeyserMC port conflicts (UDP 19132 default)
+ */
+export const GeyserPortConflictRule: DiagnosisRule = {
+    id: 'geyser_port_conflict',
+    name: 'Geyser Port Conflict',
+    description: 'Detects when Geyser fails to bind to its UDP port (typically 19132) because another server or instance is using it.',
+    triggers: [
+        /Geyser failed to start: Address already in use: bind/i,
+        /Address already in use: bind.*19132/i,
+        /Address already in use.*Geyser/i
+    ],
+    tier: 1,
+    defaultConfidence: 100,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const fullLog = logs.join('\n');
+        
+        if (/Geyser failed to start: Address already in use: bind/i.test(fullLog) || (/Address already in use: bind/i.test(fullLog) && /19132/i.test(fullLog)) || (/Address already in use/i.test(fullLog) && /Geyser/i.test(fullLog))) {
+            
+            return {
+                id: `geyser-port-${server.id}-${Date.now()}`,
+                ruleId: 'geyser_port_conflict',
+                severity: 'CRITICAL',
+                title: 'Geyser Port Conflict Detected',
+                explanation: 'GeyserMC tried to start but its Bedrock port (usually 19132) is already being used by another Minecraft Bedrock edition server or another Geyser instance on this machine.',
+                recommendation: 'Change the Geyser Bedrock port in your cross-play settings to an available port, or use the "Fix Now" button to have it randomly assigned and synced.',
+                action: {
+                    type: 'REASSIGN_BEDROCK_PORT',
+                    payload: { serverId: server.id },
+                    autoHeal: true
+                },
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
 export const PluginRules = [
     PluginFolderMissingRule,
     DuplicatePluginJarRule,
     PluginIncompatibleRule,
     PluginAccessRule,
-    PluginPendingRestartRule
+    PluginPendingRestartRule,
+    GeyserPortConflictRule
 ];

@@ -1,8 +1,9 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Power, RotateCcw, Ban, Activity, Cpu, Network, Users, Terminal, AlertTriangle, Zap, Check, Copy, Disc, Globe, Clock, Info, Shield, Layers, Settings, Cloud, Play, Lock, Hash, Signal, Database, RefreshCw, BarChart3, HardDrive, ChevronRight, MoreHorizontal, ChevronUp, ChevronDown } from 'lucide-react';
 import { ServerStatus, ServerConfig, DiagnosisResult } from '@shared/types';
 import { API } from '@core/services/api';
+import { DiagnosisCard } from './DiagnosisCard';
 import { useToast } from '../ui/Toast';
 import { useServers } from '@features/servers/context/ServerContext';
 import { useUser } from '@features/auth/context/UserContext';
@@ -53,7 +54,7 @@ const Sparkline: React.FC<{ data: number[], color: string, height?: number, max?
 };
 
 const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
-    const { servers, stats: allStats, logs, players } = useServers();
+    const { servers, stats: allStats, logs, players, updateServerStatus } = useServers();
     const { user } = useUser();
     const { can } = usePermissions();
     const server = servers.find(s => s.id === serverId);
@@ -75,7 +76,13 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     const { addToast } = useToast();
     const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'restart' | null>(null);
     const [isTerminalExpanded, setIsTerminalExpanded] = useState(false);
+    const [safetyError, setSafetyError] = useState<{ message: string, code: string, details?: string } | null>(null);
+    const [showConfirm, setShowConfirm] = useState<{ action: 'stop' | 'restart', isOpen: boolean }>({ action: 'stop', isOpen: false });
     
+    // Diagnosis Engine State
+    const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
+    const [ignoredInSession, setIgnoredInSession] = useState<string[]>([]);
+
     // History tracking for sparklines
     const [cpuHistory, setCpuHistory] = useState<number[]>(Array(30).fill(0));
     const [memHistory, setMemHistory] = useState<number[]>(Array(30).fill(0));
@@ -89,19 +96,96 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
         setMemHistory(prev => [...prev.slice(1), displayMemory]);
     }, [displayCpu, displayMemory]);
 
-    const handlePower = async (action: 'start' | 'stop' | 'restart') => {
-        setPendingAction(action);
+    const runDiagnosis = async () => {
         try {
-            if (action === 'start') await API.startServer(serverId);
-            if (action === 'stop') await API.stopServer(serverId);
-            if (action === 'restart') {
-                await API.stopServer(serverId);
-                setTimeout(async () => {
+            const results = await API.runDiagnosis(serverId);
+            const result = Array.isArray(results) && results.length > 0 ? results[0] : null;
+
+            if (result) {
+                if (!ignoredInSession.includes(result.ruleId)) {
+                    setDiagnosisResult(result);
+                }
+            } else {
+                setDiagnosisResult(null);
+            }
+        } catch (e) {
+            console.error('[DIAGNOSIS] API Call completely failed:', e);
+        }
+    };
+
+    // Auto-Diagnosis Trigger
+    useEffect(() => {
+        if (
+            status === ServerStatus.CRASHED || 
+            status === ServerStatus.SAFE_MODE || 
+            (status === ServerStatus.OFFLINE && !diagnosisResult)
+        ) {
+            runDiagnosis();
+        } else if (status === ServerStatus.ONLINE || status === ServerStatus.STARTING) {
+            setDiagnosisResult(null); // Clear on start
+        }
+    }, [status]);
+
+    const handlePower = async (action: 'start' | 'restart' | 'stop') => {
+        setPendingAction(action); // Set pending action for all cases initially
+        try {
+            if (action === 'start') {
+                try {
+                    // Optimistic status to prevent flicker
+                    updateServerStatus(serverId, ServerStatus.STARTING);
                     await API.startServer(serverId);
-                }, 2000);
+                } catch (e: any) {
+                    // Revert on error
+                    updateServerStatus(serverId, ServerStatus.OFFLINE);
+                    if (e.safetyError) {
+                        setSafetyError({ message: e.message, code: e.code, details: e.details });
+                    } else {
+                        addToast('error', 'Start Failed', e.message);
+                    }
+                }
+            } else {
+                // Safety Check for Stop/Restart
+                if (stats.players > 0) {
+                    setShowConfirm({ action, isOpen: true });
+                    return; // Don't proceed with action if confirmation is needed
+                }
+                await executePowerAction(action);
+            }
+        } finally {
+            setPendingAction(null); // Clear pending action after attempt
+        }
+    };
+
+    const executePowerAction = async (action: 'stop' | 'restart') => {
+        const previousStatus = status;
+        try {
+            if (action === 'stop') {
+                 updateServerStatus(serverId, ServerStatus.STOPPING);
+                 await API.stopServer(serverId);
+                 updateServerStatus(serverId, ServerStatus.OFFLINE);
+            } else if (action === 'restart') {
+                 updateServerStatus(serverId, ServerStatus.STOPPING);
+                 await API.stopServer(serverId);
+                 updateServerStatus(serverId, ServerStatus.STARTING); // Optimistic status for restart
+                setTimeout(() => API.startServer(serverId), 2000);
             }
         } catch (e: any) {
+            updateServerStatus(serverId, previousStatus as ServerStatus);
             addToast('error', 'Power Action Failed', e.message);
+        } finally {
+            setShowConfirm({ action: 'stop', isOpen: false }); // Close confirmation modal
+            setPendingAction(null); // Clear pending action
+        }
+    };
+
+    const handleForceStart = async () => {
+        try {
+            updateServerStatus(serverId, ServerStatus.STARTING);
+            await API.startServer(serverId, true); // Force = true
+            setSafetyError(null);
+        } catch (e: any) {
+            updateServerStatus(serverId, ServerStatus.OFFLINE);
+            addToast('error', 'Force Start Failed', e.message);
         } finally {
             setPendingAction(null);
         }
@@ -379,6 +463,25 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                     </div>
                 </div>
             </div>
+
+            <AnimatePresence>
+                {diagnosisResult && (
+                    <DiagnosisCard 
+                        result={diagnosisResult} 
+                        serverId={serverId} 
+                        onFix={() => {
+                            setDiagnosisResult(null);
+                            setTimeout(runDiagnosis, 3000); // Re-run after delay to see if fix worked
+                        }}
+                        onDismiss={() => {
+                            if (diagnosisResult?.ruleId) {
+                                setIgnoredInSession(prev => [...prev, diagnosisResult.ruleId]);
+                            }
+                            setDiagnosisResult(null);
+                        }}
+                    />
+                )}
+            </AnimatePresence>
 
         </div>
     );

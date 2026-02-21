@@ -225,7 +225,7 @@ const startMain = async () => {
                 <body>
                     <div class="card">
                         <h1>UI Component Missing</h1>
-                        <p>The Web Dashboard assets (v1.11.0) were not found or are currently being updated.</p>
+                        <p>The Web Dashboard assets (v1.11.3) were not found or are currently being updated.</p>
                         <p>This usually occurs after a partial update or a manual file deletion.</p>
                         <button onclick="runUpdate()">Repair Installation</button>
                         <p id="status" style="margin-top: 1rem; font-size: 0.9rem; color: #94a3b8;"></p>

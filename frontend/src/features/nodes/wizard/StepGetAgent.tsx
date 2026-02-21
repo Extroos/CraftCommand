@@ -15,9 +15,14 @@ export const StepGetAgent: React.FC<Props> = ({ mode, onBack, onNext, onError })
     const [nodeData, setNodeData] = useState<{ id: string, secret: string, token: string } | null>(null);
     const [os, setOs] = useState<'linux' | 'windows'>('linux'); // Simple detection provided user can switch
 
+    const initRef = React.useRef(false);
+
     useEffect(() => {
         // Pre-enroll node to get ID and Secret
         const init = async () => {
+            if (initRef.current) return;
+            initRef.current = true;
+
             try {
                 // Auto-detect OS
                 if (navigator.platform.toLowerCase().includes('win')) {
@@ -27,23 +32,29 @@ export const StepGetAgent: React.FC<Props> = ({ mode, onBack, onNext, onError })
                 // Call new API endpoint
                 const data = await API.preEnrollNode({ 
                     mode,
-                    name: `New ${mode === 'lan' ? 'Local' : 'Remote'} Node` // Default name
+                    // Generate a random suffix to prevent naming collisions (409 Conflict)
+                    name: `New ${mode === 'lan' ? 'Local' : 'Remote'} Node (${Math.random().toString(36).substring(2, 6).toUpperCase()})`
                 });
                 setNodeData(data);
                 
-                // Automatically notify parent of the ID so it can start verifying
-                if (data?.id) {
-                    onNext(data.id); 
-                }
+                // BUG FIX: DO NOT automatically notify parent of the ID yet.
+                // We must show the command/download first.
+                // Only onNext when they click "Verify" or if we detect connection.
             } catch (err: any) {
                 onError(err.message || 'Failed to initialize node enrollment');
+                initRef.current = false; // Allow retry on error
             } finally {
                 setLoading(false);
             }
         };
 
-        if (!nodeData) init();
-    }, [mode, onError, onNext]);
+        init();
+    }, [mode, onError]); // Removed onNext from deps to prevent loop
+
+    const handleDownload = () => {
+        const panelUrl = window.location.origin;
+        window.open(`${panelUrl}/api/install/agent`, '_blank');
+    };
 
     if (loading) {
         return (
@@ -61,7 +72,7 @@ export const StepGetAgent: React.FC<Props> = ({ mode, onBack, onNext, onError })
     // Commands
     const cmdLinux = `curl -sSL ${panelUrl}/api/install/linux | bash -s -- --id ${nodeData.id} --secret ${nodeData.secret} --url ${panelUrl}`;
     const cmdWindows = `iwr ${panelUrl}/api/install/windows | iex; Install-Agent -Id "${nodeData.id}" -Secret "${nodeData.secret}" -Url "${panelUrl}"`;
-    const cmdManual = `npm run start -- --node-id ${nodeData.id} --secret ${nodeData.secret} --panel-url ${panelUrl}`;
+    const cmdManual = `run_agent.bat --node-id ${nodeData.id} --secret ${nodeData.secret} --panel-url ${panelUrl}`;
 
     return (
         <div className="space-y-6">
@@ -102,7 +113,6 @@ export const StepGetAgent: React.FC<Props> = ({ mode, onBack, onNext, onError })
                     <button
                         onClick={() => {
                             navigator.clipboard.writeText(os === 'windows' ? cmdWindows : cmdLinux);
-                            alert('Copied to clipboard!'); // TODO: Toast
                         }}
                         className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-medium"
                     >
@@ -120,16 +130,18 @@ export const StepGetAgent: React.FC<Props> = ({ mode, onBack, onNext, onError })
                     <Download size={14} /> Manual / Advanced
                 </h4>
                 <p className="text-xs text-muted-foreground mb-3">
-                    If the one-click script fails, you can run the agent manually or download the config file.
+                    If the one-click script fails, you can run the agent manually or download the source zip.
                 </p>
                 <div className="flex gap-3">
-                    <button className="px-3 py-1.5 text-xs border border-border rounded bg-background hover:bg-secondary transition-colors">
+                    <button 
+                        onClick={handleDownload}
+                        className="px-3 py-1.5 text-xs border border-border rounded bg-background hover:bg-secondary transition-colors"
+                    >
                         Download agent.zip
                     </button>
                     <button 
                         onClick={() => {
                             navigator.clipboard.writeText(cmdManual);
-                            alert('Copied manual flags');
                         }}
                         className="px-3 py-1.5 text-xs border border-border rounded bg-background hover:bg-secondary transition-colors"
                     >
@@ -138,20 +150,18 @@ export const StepGetAgent: React.FC<Props> = ({ mode, onBack, onNext, onError })
                 </div>
             </div>
 
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5 text-cyan-400 animate-pulse">
-                    <RefreshCw size={12} className="animate-spin" /> 
-                    Waiting for connection...
-                </div>
-                <span>The wizard will advance automatically when the node connects.</span>
-            </div>
-
             <div className="pt-6 border-t border-border flex justify-between">
                 <button
                     onClick={onBack}
                     className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"
                 >
                     Back
+                </button>
+                <button
+                    onClick={() => onNext(nodeData.id)}
+                    className="px-6 py-2 bg-cyan-600 text-white font-bold rounded hover:bg-cyan-500 transition-colors"
+                >
+                    I've run the command
                 </button>
             </div>
         </div>

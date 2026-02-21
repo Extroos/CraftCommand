@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { ServerStatus } from '@shared/types';
 import si from 'systeminformation';
 import net from 'net';
 import { runnerFactory } from './runners/RunnerFactory';
@@ -44,12 +45,12 @@ class ProcessManager extends EventEmitter {
 
                     // 1. RECOVERY: If server is STARTING/RESTARTING but port is reachable, it's ONLINE!
                     // This acts as a redundant check to log-based triggers.
-                    if ((currentStatus === 'STARTING' || currentStatus === 'RESTARTING') && !this.stoppingServers.has(id)) {
+                    if ((currentStatus === ServerStatus.STARTING || currentStatus === ServerStatus.RESTARTING) && !this.stoppingServers.has(id)) {
                         const isPortBound = await NetUtils.checkPort(server.port);
                         if (isPortBound) {
                             logger.info(`[ProcessManager:${id}] Reachability Sync: Detected responsive port ${server.port}. Forcing ONLINE.`);
                             this.startupLocks.delete(id);
-                            this.updateCachedStatus(id, { online: true, status: 'ONLINE' });
+                            this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE });
                         }
                     }
 
@@ -58,18 +59,18 @@ class ProcessManager extends EventEmitter {
                         const isPortBound = await NetUtils.checkPort(server.port);
                         
                         if (isPortBound) {
-                            if (currentStatus !== 'UNMANAGED' && currentStatus !== 'STARTING' && currentStatus !== 'RESTARTING') {
+                            if (currentStatus !== ServerStatus.UNMANAGED && currentStatus !== ServerStatus.STARTING && currentStatus !== ServerStatus.RESTARTING) {
                                 logger.warn(`[ProcessManager:${id}] Unmanaged process detected on port ${server.port}.`);
                                 this.updateCachedStatus(id, { 
                                     online: true, 
-                                    status: 'UNMANAGED', 
+                                    status: ServerStatus.UNMANAGED, 
                                     unmanaged: true,
                                     message: 'Running without panel control'
                                 });
                             }
                         } else {
                             // If we thought it was online but port is dead, it's offline
-                            if (cached?.online || server.status === 'ONLINE' || server.status === 'UNMANAGED') {
+                            if (cached?.online || server.status === ServerStatus.ONLINE || server.status === ServerStatus.UNMANAGED) {
                                 if (!this.startupLocks.has(id)) {
                                     logger.info(`[ProcessManager:${id}] External/Unmanaged process lost. Syncing to OFFLINE.`);
                                     this.handleServerClose(id, 0);
@@ -182,7 +183,7 @@ class ProcessManager extends EventEmitter {
         // Store listeners for explicit cleanup if needed
         this.runnerListeners.set(id, { log: logHandler, close: closeHandler });
 
-        this.statusCache.set(id, { online: false, status: 'STARTING', players: 0, playerList: [], uptime: 0, tps: "0.00" });
+        this.statusCache.set(id, { online: false, status: ServerStatus.STARTING, players: 0, playerList: [], uptime: 0, tps: "0.00" });
         this.logHistory.set(id, []);
         this.activityHistory.set(id, []);
         this.players.set(id, new Set());
@@ -195,19 +196,26 @@ class ProcessManager extends EventEmitter {
 
         try {
             await runner.start(id, runCommand, cwd, env);
+            // --- RACE CONDITION GUARD ---
+            // Only emit STARTING if the server is still managed.
+            // If it crashed during startup, handleServerClose would have already 
+            // set it to CRASHED or offline.
+            if (this.activeRunners.has(id)) {
+                this.maybeEmitStatus(id, ServerStatus.STARTING);
+            }
         } catch (err) {
             this.cleanupRunner(id);
             throw err;
         }
 
-        this.maybeEmitStatus(id, 'STARTING');
+        this.maybeEmitStatus(id, ServerStatus.STARTING);
 
         // Startup Timeout Watchdog
         setTimeout(() => {
             if (this.startupLocks.has(id)) {
                 logger.error(`[ProcessManager] ${id} Startup timed out.`);
                 this.startupLocks.delete(id);
-                this.maybeEmitStatus(id, 'OFFLINE');
+                this.maybeEmitStatus(id, ServerStatus.OFFLINE);
             }
         }, 180000);
     }
@@ -223,7 +231,7 @@ class ProcessManager extends EventEmitter {
         if (this.startupLocks.has(id)) {
             if (line.includes('Done (') || line.includes('Listening on')) {
                 this.startupLocks.delete(id);
-                this.updateCachedStatus(id, { online: true, status: 'ONLINE' });
+                this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE });
             }
         }
 
@@ -318,7 +326,7 @@ class ProcessManager extends EventEmitter {
         this.startupLocks.delete(id);
 
         const isIntentional = this.stoppingServers.has(id);
-        const finalStatus = (!isIntentional && code !== 0 && code !== null) ? 'CRASHED' : 'OFFLINE';
+        const finalStatus = (!isIntentional && code !== 0 && code !== null) ? ServerStatus.CRASHED : ServerStatus.OFFLINE;
 
         this.stoppingServers.delete(id);
 
@@ -335,6 +343,8 @@ class ProcessManager extends EventEmitter {
             saveServer(server);
         }
 
+        // Update cache to reflect final status immediately (prevents polling desyncs)
+        this.updateCachedStatus(id, { status: finalStatus, online: false });
         this.maybeEmitStatus(id, finalStatus);
     }
 
@@ -390,6 +400,10 @@ class ProcessManager extends EventEmitter {
         this.stopServer(id, true);
     }
 
+    isStarting(id: string): boolean {
+        return this.startupLocks.has(id);
+    }
+
     isStopping(id: string): boolean {
         return this.stoppingServers.has(id);
     }
@@ -426,7 +440,7 @@ class ProcessManager extends EventEmitter {
         // If status is OFFLINE or CRASHED, definitely return 0.
         // But if it's STARTING, RESTARTING, or momentarily EMPTY, we KEEP the uptime 
         // IF and only if the process is still managed/running.
-        if (status === 'OFFLINE' || status === 'CRASHED') return 0;
+        if (status === ServerStatus.OFFLINE || status === ServerStatus.CRASHED) return 0;
         
         return Math.floor((Date.now() - onlineTime) / 1000);
     }
@@ -478,8 +492,8 @@ class ProcessManager extends EventEmitter {
             }
         }
 
-        if (data.online && current.status === 'STARTING') {
-            data.status = 'ONLINE';
+        if (data.online && current.status === ServerStatus.STARTING) {
+            data.status = ServerStatus.ONLINE;
             this.onlineTimes.set(id, Date.now());
             this.startupLocks.delete(id);
         }
@@ -512,7 +526,7 @@ class ProcessManager extends EventEmitter {
         return NetUtils.killProcessOnPort(port);
     }
 
-    private maybeEmitStatus(id: string, status: string) {
+    private maybeEmitStatus(id: string, status: ServerStatus) {
         if (this.lastEmittedStatus.get(id) === status) return;
         this.lastEmittedStatus.set(id, status);
         this.emit('status', { id, status });

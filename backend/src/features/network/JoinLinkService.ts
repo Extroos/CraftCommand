@@ -2,7 +2,7 @@
 import { networkService } from '../network/NetworkService';
 import { getServer, getServers } from '../servers/ServerService';
 import { logger } from '../../utils/logger';
-import { ServerConfig } from '@shared/types';
+import { ServerConfig, ServerStatus } from '@shared/types';
 
 /**
  * ╔══════════════════════════════════════════════════════╗
@@ -39,7 +39,7 @@ class JoinLinkService {
      */
     async getAllJoinInfo(): Promise<JoinInfo[]> {
         const servers = getServers();
-        const onlineServers = servers.filter(s => s.status === 'ONLINE');
+        const onlineServers = servers.filter(s => s.status === ServerStatus.ONLINE);
 
         const results: JoinInfo[] = [];
         for (const server of onlineServers) {

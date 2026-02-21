@@ -1,4 +1,5 @@
 import { DiagnosisRule, SystemStats, ServerConfig, DiagnosisResult } from './types';
+import { ServerStatus } from '@shared/types';
 import { CrashReport } from './CrashReportReader';
 import { ConfigReader } from '../../utils/ConfigReader';
 import { CrossPlayRules } from './CrossPlayDiagnosisRules';
@@ -18,6 +19,7 @@ import { ResourceAdvisorRules } from './ResourceAdvisorRules';
 import { ConnectivityRules } from './ConnectivityDiagnosisRules';
 import { HostingOSRules } from './HostingOSDiagnosisRules';
 import { UpdateRules } from './UpdateDiagnosisRules';
+import { ModDiagnosisRules } from './ModDiagnosisRules';
 
 export const EulaRule: DiagnosisRule = {
     id: 'eula_check',
@@ -151,7 +153,7 @@ export const PortConflictRule: DiagnosisRule = {
         if (hasError || isPortBusy) {
             // Context Awareness: Is another MANAGED server using this port?
             const { getServers } = require('../servers/ServerService');
-            const otherOnline = getServers().find((s: ServerConfig) => s.id !== server.id && s.port === server.port && (s.status === 'ONLINE' || s.status === 'STARTING'));
+            const otherOnline = getServers().find((s: ServerConfig) => s.id !== server.id && s.port === server.port && (s.status === ServerStatus.ONLINE || s.status === ServerStatus.STARTING));
 
             // Smart Identification
             const isManagedConflict = !!otherOnline;
@@ -728,6 +730,8 @@ export const DuplicateModRule: DiagnosisRule = {
     }
 };
 
+// IncompatibleModsRule moved to ModDiagnosisRules.ts
+
 export const MixinConflictRule: DiagnosisRule = {
     id: 'mixin_conflict',
     name: 'Mixin Conflict',
@@ -788,7 +792,12 @@ export const TickingEntityRule: DiagnosisRule = {
                 severity: 'CRITICAL',
                 title: `Ticking Entity Crash: ${entityType}`,
                 explanation: `A specific entity (${entityType})${position} caused the server to crash. This is often a corrupted entity or a mod bug.`,
-                recommendation: `You can try deleting the entity using NBTExplorer or world-edit, or restore a backup if the crash persists.`,
+                recommendation: `You can try deleting the entity using NBTExplorer or world-edit, or use the automated 'Entity Purge' to have Forge remove it on startup.`,
+                action: {
+                    type: 'ENABLE_ENTITY_PURGE',
+                    payload: { serverId: server.id },
+                    autoHeal: true
+                },
                 timestamp: Date.now()
             };
         }
@@ -833,7 +842,9 @@ export const WorldCorruptionRule: DiagnosisRule = {
         /Exception reading .*level.dat/i,
         /Chunk file at .* is in the wrong location/i,
         /Corrupted chunk mismatch/i,
-        /RegionFile/i // Crash report
+        /RegionFile/i,
+        /FAILED TO LOAD LEVEL/i,
+        /Region file .* is too small/i
     ],
     tier: 3,
     defaultConfidence: 95,
@@ -858,7 +869,13 @@ export const WorldCorruptionRule: DiagnosisRule = {
         }
 
         // 2. Log Analysis
-        const corruptionLine = logs.find(l => /Failed to read level.dat/i.test(l) || /Corrupted chunk/i.test(l) || /Chunk file at .* is in the wrong location/i.test(l));
+        const corruptionLine = logs.find(l => 
+            /Failed to read level.dat/i.test(l) || 
+            /Corrupted chunk/i.test(l) || 
+            /Chunk file at .* is in the wrong location/i.test(l) ||
+            /Region file .* is too small/i.test(l)
+        );
+
         if (corruptionLine) {
              let chunkInfo = '';
              const coordsMatch = corruptionLine.match(/at (?:chunk )?(-?\d+), (-?\d+)/i);
@@ -866,18 +883,60 @@ export const WorldCorruptionRule: DiagnosisRule = {
                  chunkInfo = ` near coordinates X:${parseInt(coordsMatch[1]) * 16}, Z:${parseInt(coordsMatch[2]) * 16} (Chunk ${coordsMatch[1]}, ${coordsMatch[2]})`;
              }
 
+             const isLockIssue = corruptionLine.toLowerCase().includes('session.lock');
+
              return {
                 id: `world-corrupt-${server.id}-${Date.now()}`,
                 ruleId: 'world_corruption',
                 severity: 'CRITICAL',
                 title: 'World Data Corruption Detected',
                 explanation: `The server detected corrupted world files${chunkInfo}. This often happens after a power outage, crash, or downgrading Minecraft versions.`,
-                recommendation: 'Restore the world from a backup immediately. If no backup exists, you may need a region repair tool like Chunky.',
-                action: corruptionLine.toLowerCase().includes('level.dat') ? {
-                    type: 'RESTORE_DATA_BACKUP',
-                    payload: { filename: 'level.dat', reason: 'corruption' },
-                    autoHeal: false // Don't auto-restore backups without user confirmation
-                } : undefined,
+                recommendation: isLockIssue ? 
+                    'A leftover lock file is preventing the server from starting. Auto-Healing can remove it for you.' : 
+                    'Restore the world from a backup immediately. If no backup exists, you may need a region repair tool like Chunky.',
+                action: isLockIssue ? {
+                    type: 'CLEANUP_WORLD_LOCK',
+                    payload: { serverId: server.id },
+                    autoHeal: true
+                } : (corruptionLine.toLowerCase().includes('level.dat') ? {
+                    type: 'RESTORE_LEVEL_DATA',
+                    payload: { serverId: server.id },
+                    autoHeal: true
+                } : undefined),
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+export const InvalidJvmArgsRule: DiagnosisRule = {
+    id: 'invalid_jvm_args',
+    name: 'Invalid Java Arguments',
+    description: 'Detects malformed startup flags that prevent Java from starting',
+    triggers: [
+        /Initial heap size set to a larger value than the maximum heap size/i,
+        /Could not create the Java Virtual Machine/i,
+        /Unrecognized VM option/i,
+        /Invalid initial heap size/i
+    ],
+    tier: 1,
+    defaultConfidence: 100,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const errorLine = logs.find(l => /heap size|VM option|Could not create/i.test(l));
+        if (errorLine) {
+            return {
+                id: `jvm-args-${server.id}-${Date.now()}`,
+                ruleId: 'invalid_jvm_args',
+                severity: 'CRITICAL',
+                title: 'Invalid startup arguments',
+                explanation: `The Java Virtual Machine failed to start because of an invalid setting: "${errorLine.trim()}"`,
+                recommendation: 'The system can reset your RAM settings and flags to safe defaults to fix this.',
+                action: {
+                    type: 'FIX_JVM_ARGS',
+                    payload: { serverId: server.id },
+                    autoHeal: true
+                },
                 timestamp: Date.now()
             };
         }
@@ -1051,14 +1110,17 @@ export const NetworkOfflineRule: DiagnosisRule = {
     name: 'Authentication/Network Failure',
     description: 'Checks for offline mode or Mojang connection failures',
     triggers: [
-        /UnknownHostException/i,
-        /authserver.mojang.com/i,
-        /sessionserver.mojang.com/i
+        /UnknownHostException: .*mojang\.com/i,
+        /Failed to connect.*mojang/i,
+        /SocketException.*mojang/i,
+        /The server cannot connect to Mojang/i
     ],
     tier: 1,
     defaultConfidence: 90,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
-        if (logs.some(l => /UnknownHostException/i.test(l) || /authserver\.mojang\.com/i.test(l))) {
+        const fullLog = crashReport ? crashReport.content : logs.join('\n');
+        
+        if (/(?:UnknownHostException|SocketException|Failed to connect).*(?:mojang\.com)/i.test(fullLog) || /The server cannot connect to Mojang/i.test(fullLog)) {
              return {
                 id: `net-off-${server.id}-${Date.now()}`,
                 ruleId: 'network_offline',
@@ -1066,7 +1128,12 @@ export const NetworkOfflineRule: DiagnosisRule = {
                 title: 'Network Connectivity Issue',
                 explanation: 'The server cannot connect to Mojang authentication servers. This prevents online-mode players from joining.',
                 recommendation: 'Check your internet connection or firewall. If you want to play offline, set online-mode=false in settings (INSECURE).',
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                isHealable: true,
+                action: {
+                    type: 'UPDATE_CONFIG',
+                    payload: { 'online-mode': false }
+                }
             };
         }
         return null;
@@ -1308,6 +1375,68 @@ export const LogSpamRule: DiagnosisRule = {
     }
 };
 
+export const PlayerDataCorruptionRule: DiagnosisRule = {
+    id: 'player_data_corruption',
+    name: 'Player Data Corruption',
+    description: 'Detects when a specific player\'s data file (.dat) is corrupted, preventing them from joining.',
+    tier: 3,
+    defaultConfidence: 90,
+    triggers: [
+        /Cannot read player data/i,
+        /Failed to load player data/i
+    ],
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const fullLog = logs.join('\n');
+        const match = fullLog.match(/(?:Cannot read player data|Failed to load player data for) (.*)/i);
+        
+        if (match) {
+            const playerContext = match[1].substring(0, 30).trim(); // Might contain UUID or name
+            return {
+                id: `player-data-${server.id}-${Date.now()}`,
+                ruleId: 'player_data_corruption',
+                severity: 'WARNING',
+                title: 'Corrupted Player Data',
+                explanation: `The server failed to read the player data file for ${playerContext}. This usually happens if the server crashed while saving their inventory or position.`,
+                recommendation: `Navigate to the \`world/playerdata\` folder and delete or rename the \`.dat\` file associated with this player to reset their data so they can join again.`,
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+export const BrokenDatapackRule: DiagnosisRule = {
+    id: 'broken_datapack',
+    name: 'Broken Datapack',
+    description: 'Detects when a world\'s datapack is broken and preventing the world from loading.',
+    tier: 3,
+    defaultConfidence: 100,
+    triggers: [
+        /Failed to validate datapack/i,
+        /Errors in datapack/i,
+        /Couldn't load datapack/i
+    ],
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const fullLog = logs.join('\n');
+        
+        const packMatch = fullLog.match(/(?:Failed to validate datapack|Couldn't load datapack) (.*)/i);
+        if (packMatch || /Errors in datapack/i.test(fullLog)) {
+             const packName = packMatch ? packMatch[1] : 'an installed datapack';
+             
+             return {
+                id: `datapack-err-${server.id}-${Date.now()}`,
+                ruleId: 'broken_datapack',
+                severity: 'CRITICAL',
+                title: 'Datapack Load Failure',
+                explanation: `The server failed to load ${packName} because it contains syntax errors or is incompatible with this version of Minecraft. This is preventing the world from starting.`,
+                recommendation: `Boot the server in safe mode (which skips datapacks), run \`/datapack disable <name>\`, then stop the server and restart normally. Or manually delete it from \`world/datapacks\`.`,
+                 timestamp: Date.now()
+             };
+        }
+        return null;
+    }
+};
+
 export const CoreRules: DiagnosisRule[] = [
     ...UpdateRules,
     ResourceExhaustionRule, // Moved to top for debug
@@ -1323,6 +1452,7 @@ export const CoreRules: DiagnosisRule[] = [
     InvalidIpRule,
     DependencyMissingRule,
     DuplicateModRule,
+    InvalidJvmArgsRule,
     MixinConflictRule,
     TickingEntityRule,
     WatchdogRule,
@@ -1341,12 +1471,15 @@ export const CoreRules: DiagnosisRule[] = [
     DiskSpaceRule,
     ForgeLibraryMissingRule,
     LogSpamRule,
+    PlayerDataCorruptionRule,
+    BrokenDatapackRule,
     ...PluginRules,
     ...BedrockRules,
     ...VelocityRules,
     ...NetworkRules,
     ...NodeRules,
     ...JavaRules,
+    ...ModDiagnosisRules,
     ...CrossPlayRules,
     ...MapRules,
     ...PredictiveRules,

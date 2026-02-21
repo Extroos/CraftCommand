@@ -16,7 +16,7 @@ router.post('/install', verifyToken, async (req, res) => {
         if (!serverId || !templateId) {
             return res.status(400).json({ error: 'Missing serverId or templateId' });
         }
-        await templateService.installTemplate(serverId, templateId);
+        await templateService.installTemplate(serverId, templateId, options);
         res.json({ success: true });
     } catch (e: any) {
         console.error('Template install failed:', e);

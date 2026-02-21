@@ -51,7 +51,7 @@ export const setupRoutes = (app: Express) => {
         const { protocol, sslStatus } = require('../features/system/SystemStatusState');
         res.json({ 
             status: 'online', 
-            version: '1.11.0', 
+            version: '1.11.3', 
             app: 'CraftCommand',
             protocol,
             sslStatus

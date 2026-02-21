@@ -403,6 +403,15 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                     <>
                                     <optgroup label="Modern">
                                         <option value="1.21.11">1.21.11 (Latest)</option>
+                                        <option value="1.21.10">1.21.10</option>
+                                        <option value="1.21.9">1.21.9</option>
+                                        <option value="1.21.8">1.21.8</option>
+                                        <option value="1.21.7">1.21.7</option>
+                                        <option value="1.21.6">1.21.6</option>
+                                        <option value="1.21.5">1.21.5</option>
+                                        <option value="1.21.4">1.21.4</option>
+                                        <option value="1.21.3">1.21.3</option>
+                                        <option value="1.21.2">1.21.2</option>
                                         <option value="1.21.1">1.21.1</option>
                                         <option value="1.21">1.21</option>
                                         <option value="1.20.6">1.20.6</option>
@@ -411,11 +420,14 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                     </optgroup>
                                     <optgroup label="Legacy">
                                         <option value="1.19.4">1.19.4</option>
+                                        <option value="1.19.2">1.19.2</option>
                                         <option value="1.18.2">1.18.2</option>
                                         <option value="1.17.1">1.17.1</option>
                                         <option value="1.16.5">1.16.5</option>
                                         <option value="1.12.2">1.12.2</option>
                                         <option value="1.8.9">1.8.9</option>
+                                        <option value="1.8.8">1.8.8</option>
+                                        <option value="1.7.10">1.7.10</option>
                                     </optgroup>
                                     </>
                                 )}
@@ -620,7 +632,18 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                             <div className="bg-card/40 border border-border p-1 rounded-lg">
                                 <ModpackBrowser onSelect={(p) => {
                                     setSelectedModpack(p);
-                                    setFormData({...formData, name: p.title, modpackUrl: `modrinth:${p.id}`});
+                                    
+                                    const nextVersion = (p.game_versions && p.game_versions.length > 0) 
+                                        ? p.game_versions[p.game_versions.length - 1] 
+                                        : formData.version;
+
+                                    setFormData(prev => ({
+                                        ...prev, 
+                                        name: p.title, 
+                                        modpackUrl: `modrinth:${p.id}`,
+                                        version: nextVersion,
+                                        javaVersion: getRecommendedJavaForVersion(nextVersion, prev.software) as any
+                                    }));
                                 }} />
                             </div>
                         )}

@@ -24,7 +24,7 @@ set "CB=%E%[94m"
 set "BOLD=%E%[1m"
 
 :: --- VERSION SYNC ---
-set "CC_VERSION=1.11.2"
+set "CC_VERSION=1.11.3"
 if exist "version.json" (
     for /f "tokens=2 delims=:," %%a in ('findstr "version" version.json') do (
         set "VERSION_VAL=%%~a"
@@ -532,11 +532,12 @@ echo.
 echo   Initializing agent...
 
 cd agent
-if not exist "dist" (
-    call npm install >nul 2>nul
+if not exist "dist\agent\src\index.js" (
+    echo   [System] Building agent artifacts...
+    if not exist "node_modules" call npm install >nul 2>nul
     call npm run build >nul 2>nul
 )
 title CraftCommand - Node Agent [%N_ID:~0,8%...]
-node dist/index.js --panel-url http://localhost:3001 --node-id %N_ID% --secret %N_SEC%
+node dist/agent/src/index.js --panel-url http://localhost:3001 --node-id %N_ID% --secret %N_SEC%
 cd ..
 goto MENU

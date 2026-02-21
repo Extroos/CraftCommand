@@ -45,10 +45,24 @@ interface ServerContextType {
 const ServerContext = createContext<ServerContextType | undefined>(undefined);
 
 export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [servers, setServers] = useState<ServerConfig[]>([]);
+    const [servers, _setServers] = useState<ServerConfig[]>([]);
     const { isAuthenticated } = useUser();
     const [currentServer, _setCurrentServer] = useState<ServerConfig | null>(null);
     const currentServerRef = React.useRef<ServerConfig | null>(null);
+    const serversRef = React.useRef<ServerConfig[]>([]);
+
+    const setServers = useCallback((value: ServerConfig[] | ((prev: ServerConfig[]) => ServerConfig[])) => {
+        if (typeof value === 'function') {
+            _setServers(prev => {
+                const newValue = value(prev);
+                serversRef.current = newValue;
+                return newValue;
+            });
+        } else {
+            serversRef.current = value;
+            _setServers(value);
+        }
+    }, []);
 
     const setCurrentServer = (value: ServerConfig | null | ((prev: ServerConfig | null) => ServerConfig | null)) => {
         if (typeof value === 'function') {
@@ -102,7 +116,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } finally {
             setIsLoading(false);
         }
-    }, []); // Stable identity!
+    }, [setServers]); // Stable identity!
 
     const setCurrentServerById = useCallback((id: string | null) => {
         if (!id) {
@@ -174,71 +188,86 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
     }, [currentServer?.id, refreshServerData]);
 
-    // Background Status & Stats Polling
+    // Background Status & Stats Polling (V2: Parallel & Ref-Based)
+    const pollIdRef = React.useRef(0);
     useEffect(() => {
         const interval = setInterval(async () => {
-            if (!Array.isArray(servers)) return;
+            const currentServers = serversRef.current;
+            if (!Array.isArray(currentServers) || currentServers.length === 0) return;
             
-            // Step 1: Poll basic availability for ALL servers to prevent stale ghosts
-            for (const server of servers) {
+            pollIdRef.current++;
+            const currentPollId = pollIdRef.current;
+
+            // Poll ALL servers in parallel
+            const results = await Promise.allSettled(currentServers.map(async (server) => {
                 try {
                     const queryStats = await API.getServerStatus(server.id);
                     const isOnline = queryStats.online || false;
 
+                    // Step 2: Poll intensive stats ONLY for servers that are actually Online
+                    let procStats = null;
+                    if (isOnline) {
+                        procStats = await API.getServerStats(server.id);
+                    }
+
+                    return { serverId: server.id, queryStats, procStats, isOnline };
+                } catch (err) {
+                    return { serverId: server.id, error: true, status: server.status };
+                }
+            }));
+
+            // If a newer poll already started, discard these results to prevent "time travel" bugs
+            if (currentPollId !== pollIdRef.current) return;
+
+            results.forEach((res, index) => {
+                const server = currentServers[index];
+                if (res.status === 'fulfilled') {
+                    const { queryStats, procStats, isOnline } = res.value;
+
                     setStats(prev => {
                         const current = prev[server.id] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0 };
-                        // If status is actually different from our "isRealOnline" flag, update it
-                        if (current.isRealOnline !== isOnline) {
-                            return {
-                                ...prev,
-                                [server.id]: { ...current, isRealOnline: isOnline, latency: queryStats.latency || 0, players: queryStats.players || 0 }
-                            };
+                        
+                        const newStats = { ...current };
+                        newStats.isRealOnline = isOnline;
+                        newStats.latency = queryStats.latency || 0;
+                        newStats.players = queryStats.players || 0;
+
+                        if (procStats) {
+                            newStats.cpu = procStats.cpu || 0;
+                            newStats.memory = procStats.memory || 0;
+                            newStats.uptime = procStats.uptime || 0;
+                            newStats.tps = queryStats.tps || '20.0';
+                            newStats.pid = procStats.pid || 0;
+                        } else if (!isOnline && server.status === ServerStatus.OFFLINE) {
+                             newStats.isRealOnline = false;
                         }
-                        return prev;
+
+                        // Optimization: Only update state if meaningful numbers changed to prevent unnecessary re-renders
+                        if (JSON.stringify(current) === JSON.stringify(newStats)) return prev;
+                        return { ...prev, [server.id]: newStats };
                     });
 
                     // HEARTBEAT RECOVERY: If we see it's online but status is stuck in a transition state, fix it!
-                    // CRITICAL: We EXCLUDE STOPPING from this check, otherwise we bounce back to ONLINE during shutdown.
                     if (isOnline && (server.status === ServerStatus.STARTING || server.status === ServerStatus.RESTARTING)) {
-                        console.log(`[ServerContext] Heartbeat Recovery: ${server.name} matches ONLINE. Syncing status.`);
                         updateServerStatus(server.id, ServerStatus.ONLINE);
                     }
                     
-                    // If definitely offline according to query, but our state says ONLINE, maybe we missed a stop event?
-                    // But let's be careful not to flip it too aggressively if it was just a temporary timeout.
-                    // If it's literally OFFLINE in state, ensures stats reflect that.
-                    if (!isOnline && server.status === ServerStatus.OFFLINE) {
-                         setStats(prev => prev[server.id]?.isRealOnline ? { ...prev, [server.id]: { ...prev[server.id], isRealOnline: false } } : prev);
+                    // STUCK STATUS RECOVERY: If we see it's offline but status is stuck in STOPPING, fix it!
+                    if (!isOnline && server.status === ServerStatus.STOPPING) {
+                        updateServerStatus(server.id, ServerStatus.OFFLINE);
                     }
-
-                    // Step 2: Poll intensive stats ONLY for servers that are actually Online
-                    if (isOnline) {
-                        const procStats = await API.getServerStats(server.id);
-                        setStats(prev => ({
-                            ...prev,
-                            [server.id]: {
-                                ...(prev[server.id] || {}),
-                                cpu: procStats.cpu || 0,
-                                memory: procStats.memory || 0,
-                                uptime: procStats.uptime || 0,
-                                tps: queryStats.tps || '20.0',
-                                pid: procStats.pid || 0,
-                                isRealOnline: true // Reinforce
-                            } as ServerStats
-                        }));
-                    }
-                } catch (e) {
-                    // On error (timeout), assume not reachable if it fails repeatedly
-                    // But for now just clear isRealOnline if it's OFFLINE in state
+                } else {
+                    // On error, if the server is offline in DB, ensure UI reflects not-real-online
                     if (server.status === ServerStatus.OFFLINE) {
                         setStats(prev => prev[server.id]?.isRealOnline ? { ...prev, [server.id]: { ...prev[server.id], isRealOnline: false } } : prev);
                     }
                 }
-            }
-        }, 2000); // Live-sync frequency (2s instead of 5s)
+            });
+
+        }, 2000); 
 
         return () => clearInterval(interval);
-    }, [servers, updateServerStatus]);
+    }, [updateServerStatus]); // NO DEPENDENCY ON servers! Fixed interval loop!
 
     // Background List Polling
     useEffect(() => {
@@ -370,6 +399,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
 
         const unsubStatus = socketService.onStatus(handleStatus);
+        const unsubStatusGlobal = socketService.onStatusGlobal(handleStatus);
         const unsubStats = socketService.onStats(handleStats);
         const unsubLog = socketService.onLog(handleLog);
         const unsubInstallStatus = socketService.onInstallStatus(handleInstallStatus);
@@ -381,6 +411,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         return () => {
              unsubStatus();
+             unsubStatusGlobal();
              unsubStats();
              unsubLog();
              unsubInstallStatus();

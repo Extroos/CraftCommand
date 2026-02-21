@@ -120,12 +120,13 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
 
     // Auto-Diagnosis & Celebration Trigger
     useEffect(() => {
-        if (server?.status === 'CRASHED' || (server?.status === 'OFFLINE' && !diagnosisResult)) {
-            // Check if we should diagnose (e.g. if it just crashed)
-            // For now, we'll run it once if we see CRASHED
-            if (server.status === 'CRASHED') {
-                runDiagnosis();
-            }
+        if (
+            server?.status === 'CRASHED' || 
+            server?.status === 'SAFE_MODE' || 
+            (server?.status === 'OFFLINE' && !diagnosisResult)
+        ) {
+            // Automatically run diagnosis on crash, safe mode, or when offline without existing diagnosis
+            runDiagnosis();
         } else if (server?.status === 'ONLINE' || server?.status === 'STARTING') {
             setDiagnosisResult(null); // Clear on start
             
@@ -143,20 +144,28 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
 
     const runDiagnosis = async () => {
         try {
+            console.log(`[DIAGNOSIS] Requesting diagnosis for ${serverId}...`);
             const results = await API.runDiagnosis(serverId);
+            console.log(`[DIAGNOSIS] API Returned:`, results);
+
             // API returns array, take first result or null
             const result = Array.isArray(results) && results.length > 0 ? results[0] : null;
 
             if (result) {
+                console.log(`[DIAGNOSIS] Selected rule:`, result.ruleId);
                 const ignored = JSON.parse(localStorage.getItem(`ignored_diagnoses_${serverId}`) || '[]');
                 if (!ignored.includes(result.ruleId)) {
+                    console.log(`[DIAGNOSIS] Setting diagnosis result state!`);
                     setDiagnosisResult(result);
+                } else {
+                    console.warn(`[DIAGNOSIS] Result was hidden because it is in localStorage ignored list:`, ignored);
                 }
             } else {
+                console.log(`[DIAGNOSIS] No valid result found, clearing state.`);
                 setDiagnosisResult(null);
             }
         } catch (e) {
-            console.error('Diagnosis failed:', e);
+            console.error('[DIAGNOSIS] API Call completely failed:', e);
         }
     };
 

@@ -1,6 +1,6 @@
 # Zero-Config Remote Access (Cloudflare Tunnels)
 
-CraftCommand v1.11.0 integrates **Cloudflare Tunnels** (formerly Argo Tunnels) to provide secure, global access to your panel and servers without the need for manual port forwarding or DDNS.
+CraftCommand v1.11.3 integrates **Cloudflare Tunnels** (formerly Argo Tunnels) to provide secure, global access to your panel and servers without the need for manual port forwarding or DDNS.
 
 ## 1. How it Works
 

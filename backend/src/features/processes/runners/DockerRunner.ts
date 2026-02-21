@@ -54,8 +54,25 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
         // Store child to allow direct stdin writing if needed
         // (Will be attached to a more complex session manager in Phase 2)
 
-        child.stdout?.on('data', (data) => this.emit('log', { id, line: data.toString(), type: 'stdout' }));
-        child.stderr?.on('data', (data) => this.emit('log', { id, line: data.toString(), type: 'stderr' }));
+        let stdoutBuffer = '';
+        child.stdout?.on('data', (data) => {
+            stdoutBuffer += data.toString();
+            let lines = stdoutBuffer.split('\n');
+            stdoutBuffer = lines.pop() || '';
+            for (const line of lines) {
+                this.emit('log', { id, line: line.replace(/\r$/, ''), type: 'stdout' });
+            }
+        });
+
+        let stderrBuffer = '';
+        child.stderr?.on('data', (data) => {
+            stderrBuffer += data.toString();
+            let lines = stderrBuffer.split('\n');
+            stderrBuffer = lines.pop() || '';
+            for (const line of lines) {
+                this.emit('log', { id, line: line.replace(/\r$/, ''), type: 'stderr' });
+            }
+        });
 
         child.on('error', (err) => {
             console.error(`[DockerRunner:${id}] Child process error:`, err);
@@ -63,6 +80,9 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
         });
 
         child.on('close', (code) => {
+            if (stdoutBuffer) this.emit('log', { id, line: stdoutBuffer.replace(/\r$/, ''), type: 'stdout' });
+            if (stderrBuffer) this.emit('log', { id, line: stderrBuffer.replace(/\r$/, ''), type: 'stderr' });
+
             this.containers.delete(id);
             this.cpuHistory.delete(id);
             this.emit('close', { id, code });

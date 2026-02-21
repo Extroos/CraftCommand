@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs-extra';
 import path from 'path';
-import {  InstalledPlugin, PluginSource, PluginSearchQuery, PluginSearchResult, PluginUpdateInfo, PluginPlatform  } from '@shared/types';
+import { InstalledPlugin, PluginSource, PluginSearchQuery, PluginSearchResult, PluginUpdateInfo, PluginPlatform, ServerStatus } from '@shared/types';
 import { marketplaceRegistry, SOFTWARE_TO_PLATFORMS, getTargetDir, supportsPlugins } from './MarketplaceRegistry';
 import { installerService } from '../installer/InstallerService';
 import { serverRepository } from '../../storage/ServerRepository';
@@ -135,7 +135,7 @@ export class PluginService {
         // Mark server as needing restart
         serverRepository.update(serverId, { needsRestart: true } as any);
         
-        if (server.status === 'ONLINE' || server.status === 'STARTING') {
+        if (server.status === ServerStatus.ONLINE || server.status === ServerStatus.STARTING) {
             logger.info(`[PluginService] Plugin ${plugin.name} installed while server is ${server.status}. It will load on the next restart.`);
         } else {
             logger.info(`[PluginService] Plugin ${plugin.name} installed for server ${serverId}. Restart required.`);

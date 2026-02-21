@@ -1,0 +1,23 @@
+{
+  "local-1771440645478": {
+    "serverId": "local-1771440645478",
+    "score": 40,
+    "lastCrash": 1771565350701,
+    "consecutiveCrashes": 2,
+    "isSafeMode": false
+  },
+  "local-1771560421885": {
+    "serverId": "local-1771560421885",
+    "score": 10,
+    "lastCrash": 1771561616352,
+    "consecutiveCrashes": 3,
+    "isSafeMode": true
+  },
+  "local-1771565832156": {
+    "serverId": "local-1771565832156",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
+  }
+}

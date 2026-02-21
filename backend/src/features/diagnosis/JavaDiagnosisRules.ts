@@ -24,17 +24,16 @@ export const JavaBinaryMissingRule: DiagnosisRule = {
         const absolutePath = path.join(process.cwd(), 'backend', relativeJavaPath);
 
         // Check logs first for reactive detection
-        const hasLogMatch = logs.some(l => /java.io.IOException: Cannot run program/i.test(l) || /executable file not found/i.test(l));
+        const hasLogMatch = logs.some(l => /java.io.IOException: Cannot run program/i.test(l) || /executable file not found/i.test(l) || /is not recognized as an internal or external command/i.test(l));
 
-        // Proactive check on disk
-        if (!(await fs.pathExists(absolutePath))) {
+        if (hasLogMatch) {
             return {
                 id: `java-miss-${server.id}-${Date.now()}`,
                 ruleId: 'java_binary_missing',
                 severity: 'CRITICAL',
                 title: 'Java Runtime Missing',
-                explanation: `The required Java executable for ${javaVersion} was not found at ${absolutePath}.`,
-                recommendation: 'Re-install the required Java version through the Panel Settings.',
+                explanation: `The server failed to start because the required Java executable for ${javaVersion} could not be found or executed.`,
+                recommendation: 'The system will attempt to automatically download and install the required Java runtime.',
                 action: {
                     type: 'INSTALL_JAVA',
                     payload: { version: javaVersion },
@@ -71,7 +70,7 @@ export const JavaVersionMismatchRule: DiagnosisRule = {
                 recommendation: 'Switch to a newer Java version (e.g. Java 17 for 1.18+, Java 21 for 1.20.6+).',
                 action: {
                     type: 'SWITCH_JAVA',
-                    payload: { serverId: server.id, target: 'auto' },
+                    payload: { serverId: server.id, version: 'auto' }, // Use 'auto' if logic dynamically picks best fallback
                     autoHeal: true
                 },
                 timestamp: Date.now()
@@ -92,7 +91,7 @@ export const JavaVersionMismatchRule: DiagnosisRule = {
                 recommendation: 'Switch to Java 21.',
                 action: {
                     type: 'SWITCH_JAVA',
-                    payload: { serverId: server.id, target: 'Java 21' },
+                    payload: { serverId: server.id, version: 'Java 21' },
                     autoHeal: true
                 },
                 timestamp: Date.now()

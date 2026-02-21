@@ -197,13 +197,22 @@ export const DiagnosisActions = {
     /**
      * Restores a core data file from backup (Server Scoped)
      */
-    restoreDataBackup: async (fs: FileSystemManager, filename: string) => {
+    restoreDataBackup: async (fs: FileSystemManager, filename: string, serverId?: string) => {
         const backupPath = `${filename}.bak`;
 
         if (await fs.exists(backupPath)) {
-            logger.warn(`[DiagnosisAction] Restoring ${filename} from backup...`);
+            logger.warn(`[DiagnosisAction] Restoring ${filename} from sidecar backup...`);
             await fs.copy(backupPath, filename);
-            logger.success(`[DiagnosisAction] ${filename} restored.`);
+            logger.success(`[DiagnosisAction] ${filename} restored from .bak.`);
+        } else if (serverId) {
+            const { backupService } = require('../backups/BackupService');
+            const backups = await backupService.listBackups(serverId);
+            if (backups.length > 0) {
+                logger.info(`[DiagnosisAction] Sidecar .bak not found for ${filename}, but ${backups.length} system snapshots are available. A full restore may be required.`);
+                throw new Error(`Sidecar backup for ${filename} not found. Please use the Backups tab to perform a full restoration.`);
+            } else {
+                throw new Error(`No backups found for ${filename}.`);
+            }
         } else {
             throw new Error(`Backup for ${filename} not found.`);
         }
@@ -371,6 +380,153 @@ export const DiagnosisActions = {
         } catch (e) {
              logger.error(`[DiagnosisActions] Failed to reassign Bedrock port: ${e}`);
              return false;
+        }
+    },
+
+    /**
+     * Removes the session.lock file from the world directory to resolve world corruption/lock issues
+     */
+    cleanupWorldLock: async (server: ServerConfig, fs: FileSystemManager) => {
+        const { ConfigReader } = require('../../utils/ConfigReader');
+        const properties = await ConfigReader.readProperties(path.join(server.workingDirectory, 'server.properties'));
+        const levelName = properties['level-name'] || 'world';
+        const lockPath = path.join(levelName, 'session.lock');
+
+        logger.warn(`[DiagnosisAction] Cleaning up world lock for ${server.id} at ${lockPath}`);
+        try {
+            if (await fs.exists(lockPath)) {
+                await fs.deletePath(lockPath);
+                logger.success(`[DiagnosisAction] Successfully removed ${lockPath}`);
+            } else {
+                logger.info(`[DiagnosisAction] session.lock not found at ${lockPath}, skipping.`);
+            }
+        } catch (e: any) {
+            logger.error(`[DiagnosisAction] Failed to delete session.lock: ${e.message}`);
+            throw e;
+        }
+    },
+
+    /**
+     * Resets JVM heap settings to safe defaults
+     */
+    fixJvmArgs: async (server: ServerConfig) => {
+        logger.warn(`[DiagnosisAction] Resetting JVM heap settings for ${server.id}`);
+        // Reset to 2GB which is safe for most systems and avoids the "Initial > Max" error
+        serverRepository.update(server.id, { ram: 2 });
+    },
+
+    /**
+     * Attempts to remove a specific mod file by slug or name
+     */
+    removeMod: async (server: ServerConfig, fs: FileSystemManager, modNameOrSlug: string) => {
+        logger.warn(`[DiagnosisAction] Removing mod(s) ${modNameOrSlug} for ${server.id}`);
+        if (await fs.exists('mods')) {
+            const targets = modNameOrSlug.toLowerCase().split(',').map(t => t.trim());
+            const files = await fs.listFiles('mods');
+            for (const file of files) {
+                if (!file.isDirectory && file.name.endsWith('.jar')) {
+                    const normalizedFile = file.name.toLowerCase();
+                    for (const target of targets) {
+                        if (normalizedFile.includes(target) || normalizedFile.startsWith(target + '-')) {
+                            logger.info(`[DiagnosisAction] Found incompatible mod file matching ${target}: ${file.name}. Deleting...`);
+                            await fs.deletePath(`mods/${file.name}`);
+                        }
+                    }
+                }
+            }
+        }
+    },
+
+    /**
+     * (Placeholder) Attempts to install a missing mod dependency
+     */
+    installDependency: async (server: ServerConfig, name: string) => {
+        logger.warn(`[DiagnosisAction] Dependency installation requested for ${name} on ${server.id}`);
+        
+        const { ModrinthProjectMappings } = require('./ModDiagnosisRules');
+        const { pluginService } = require('../plugins/PluginService');
+        
+        let projectId = ModrinthProjectMappings[name];
+        
+        // Fallback: If no direct mapping exists, but it looks like a valid lowercase slug, use it directly
+        if (!projectId && /^[a-z0-9-_]+$/.test(name)) {
+            projectId = name;
+        }
+
+        if (projectId) {
+            logger.info(`[DiagnosisAction] Mapping ${name} to Modrinth ID: ${projectId}. Triggering install...`);
+            await pluginService.install(server.id, projectId, 'modrinth');
+        } else {
+            logger.warn(`[DiagnosisAction] No Modrinth mapping found for dependency: ${name}. Automated installation skipped.`);
+        }
+    },
+
+    /**
+     * Attempts to restore level.dat from level.dat_old backup
+     */
+    restoreLevelData: async (server: ServerConfig, fs: FileSystemManager) => {
+        const { ConfigReader } = require('../../utils/ConfigReader');
+        const properties = await ConfigReader.readProperties(path.join(server.workingDirectory, 'server.properties'));
+        const levelName = properties['level-name'] || 'world';
+        const levelDat = path.join(levelName, 'level.dat');
+        const levelDatOld = path.join(levelName, 'level.dat_old');
+
+        logger.warn(`[DiagnosisAction] Attempting level.dat shadow recovery for ${server.id}`);
+        
+        try {
+            if (await fs.exists(levelDatOld)) {
+                // Keep the corrupted one just in case
+                if (await fs.exists(levelDat)) {
+                    await fs.move(levelDat, `${levelDat}.corrupted_${Date.now()}`);
+                }
+                await fs.copy(levelDatOld, levelDat);
+                logger.success(`[DiagnosisAction] Successfully restored level.dat from backup.`);
+            } else {
+                throw new Error('level.dat_old not found. Manual recovery required.');
+            }
+        } catch (e: any) {
+            logger.error(`[DiagnosisAction] level.dat recovery failed: ${e.message}`);
+            throw e;
+        }
+    },
+
+    /**
+     * Modifies Forge configuration to automatically remove erroring entities
+     */
+    enableEntityPurge: async (server: ServerConfig, fs: FileSystemManager) => {
+        logger.info(`[DiagnosisAction] Enabling Forge entity purging for ${server.id}`);
+        
+        // 1. Detect Config Path (Forge 1.13+ uses world/serverconfig/forge-server.toml)
+        let configPath = 'world/serverconfig/forge-server.toml'; // Default for modern
+        
+        // If server-properties defines a different world name
+        const { ConfigReader } = require('../../utils/ConfigReader');
+        try {
+            const props = await ConfigReader.readProperties(path.join(server.workingDirectory, 'server.properties'));
+            const levelName = props['level-name'] || 'world';
+            configPath = path.join(levelName, 'serverconfig', 'forge-server.toml');
+        } catch (e) {}
+
+        const legacyPath = 'config/forge.cfg';
+
+        try {
+            if (await fs.exists(configPath)) {
+                let content = await fs.readFile(configPath);
+                content = content.replace(/removeErroringEntities\s*=\s*false/g, 'removeErroringEntities = true');
+                content = content.replace(/removeErroringTileEntities\s*=\s*false/g, 'removeErroringTileEntities = true');
+                await fs.writeFile(configPath, content);
+                logger.success(`[DiagnosisAction] Updated modern Forge config at ${configPath}`);
+            } else if (await fs.exists(legacyPath)) {
+                let content = await fs.readFile(legacyPath);
+                content = content.replace(/B:removeErroringEntities=false/g, 'B:removeErroringEntities=true');
+                content = content.replace(/B:removeErroringTileEntities=false/g, 'B:removeErroringTileEntities=true');
+                await fs.writeFile(legacyPath, content);
+                logger.success(`[DiagnosisAction] Updated legacy Forge config at ${legacyPath}`);
+            } else {
+                logger.warn(`[DiagnosisAction] No Forge configuration found to enable entity purging.`);
+            }
+        } catch (e: any) {
+            logger.error(`[DiagnosisAction] Failed to update Forge config: ${e.message}`);
         }
     }
 };

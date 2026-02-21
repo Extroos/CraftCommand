@@ -5,6 +5,7 @@ import { NetUtils } from '../../utils/NetUtils';
 import { crossPlayService } from '../network/CrossPlayService';
 import { proxyService } from '../network/ProxyService';
 import { getServer } from '../servers/ServerService';
+import { ServerStatus } from '@shared/types';
 
 /**
  * RULE: Geyser plugin is missing when cross-play is enabled.
@@ -178,7 +179,7 @@ export const CrossPlayUdpPortConflictRule: DiagnosisRule = {
     isHealable: true,
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
         if (!server.crossPlay?.enabled) return null;
-        if (server.status === 'ONLINE') return null; // Port is in use by Geyser — expected
+        if (server.status === ServerStatus.ONLINE) return null; // Port is in use by Geyser — expected
 
         const port = server.crossPlay.bedrockPort;
         const available = await NetUtils.checkUDPPortBind(port);
@@ -235,7 +236,7 @@ export const CrossPlayBedrockPortBlockedRule: DiagnosisRule = {
     defaultConfidence: 70,
     analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
         if (!server.crossPlay?.enabled) return null;
-        if (server.status !== 'ONLINE') return null;
+        if (server.status !== ServerStatus.ONLINE) return null;
 
         // Only trigger if server has been online for >5 min with no Bedrock connections
         const uptime = server.startTime ? Date.now() - server.startTime : 0;

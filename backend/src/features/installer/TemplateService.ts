@@ -112,7 +112,7 @@ export class TemplateService {
         return this.templates.find(t => t.id === id);
     }
 
-    async installTemplate(serverId: string, templateId: string) {
+    async installTemplate(serverId: string, templateId: string, options?: { customUrl?: string }) {
         const { getServer } = await import('../servers/ServerService');
         const { installerService } = await import('./InstallerService');
         
@@ -147,6 +147,11 @@ export class TemplateService {
                 break;
             case 'Spigot':
                 await installerService.installSpigot(serverId, server.workingDirectory, template.version);
+                break;
+            case 'Modpack':
+                const modpackUrl = options?.customUrl || template.downloadUrl;
+                if (!modpackUrl) throw new Error('Modpack installation requires a custom URL or project ID.');
+                await installerService.installModpackFromZip(serverId, server.workingDirectory, modpackUrl, template.version);
                 break;
             default:
                 throw new Error(`Unsupported template type: ${template.type}`);

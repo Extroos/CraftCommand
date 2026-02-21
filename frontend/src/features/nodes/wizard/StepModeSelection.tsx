@@ -72,13 +72,26 @@ export const StepModeSelection: React.FC<Props> = ({ onSelect }) => {
                 </button>
             </div>
 
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4 text-xs flex items-start gap-3">
+                <div className="mt-0.5">
+                    <ShieldCheck size={16} className="text-emerald-400" />
+                </div>
+                <div>
+                    <p className="text-emerald-400 font-bold mb-1">Local Host Auto-Connected</p>
+                    <p className="text-muted-foreground leading-relaxed">
+                        The machine running this panel is already automatically managed as the <strong>"Local Node"</strong>. 
+                        Use this wizard only if you want to add <strong>additional</strong> computers or remote servers.
+                    </p>
+                </div>
+            </div>
+
             <div className="bg-blue-500/5 border border-blue-500/10 rounded-lg p-4 text-xs text-muted-foreground flex items-start gap-3">
                 <div className="mt-0.5 min-w-[16px]">
                     <span className="flex items-center justify-center w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 font-bold">i</span>
                 </div>
                 <p>
-                    Regardless of mode, you will need to run a small "Agent" program on the target machine. 
-                    The next step will generate a command for you to copy-paste.
+                    Note: Adding nodes requires running a small "Agent" program on the target machine. 
+                    The next step will provide the installation command.
                 </p>
             </div>
         </div>

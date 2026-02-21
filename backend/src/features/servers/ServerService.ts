@@ -102,7 +102,7 @@ export const deleteServer = async (id: string) => {
 // Maintain compatibility if something imports removeServer
 export const removeServer = deleteServer;
 /**
- * Bootstrap Discovery Service (v1.11.0)
+ * Bootstrap Discovery Service (v1.11.3)
  * Scans SERVERS_ROOT and re-registers servers missing from metadata.
  */
 export const bootstrapDiscovery = async () => {
@@ -262,8 +262,8 @@ export const cleanupInstallState = () => {
     const servers = serverRepository.findAll();
     let count = 0;
     for (const server of servers) {
-        if (server.status === 'INSTALLING') {
-            serverRepository.update(server.id, { ...server, status: 'OFFLINE' });
+        if (server.status === ServerStatus.INSTALLING) {
+            serverRepository.update(server.id, { ...server, status: ServerStatus.OFFLINE });
             count++;
         }
     }
@@ -310,6 +310,16 @@ export const startServer = async (id: string, force: boolean = false) => {
 export const stopServer = async (id: string, force: boolean = false) => {
     if (!processManager.isRunning(id)) {
         logger.info(`[ServerService] Stop requested for server ${id} but it is not running.`);
+        
+        // --- STUCK STATUS RECOVERY ---
+        // If the process is dead but the status is NOT offline (e.g., CRASHED, STARTING),
+        // we force it to OFFLINE so the user can try starting it again.
+        const server = getServer(id);
+        if (server && server.status !== ServerStatus.OFFLINE) {
+            logger.info(`[ServerService] Forcing stuck server ${id} (${server.status}) to ${ServerStatus.OFFLINE}`);
+            serverRepository.update(id, { status: ServerStatus.OFFLINE });
+            processManager.updateCachedStatus(id, { status: ServerStatus.OFFLINE, online: false });
+        }
         return;
     }
     
@@ -331,7 +341,23 @@ export const diagnoseServer = async (id: string) => {
 
     // 1. Get Logs
     // Using in-memory LogBuffer from ProcessManager (Cyclic buffer of last 1000 lines)
-    const recentLogs = processManager.getLogs(id) || []; 
+    let recentLogs = processManager.getLogs(id) || []; 
+    
+    // Fallback exactly like the logs endpoint:
+    if (recentLogs.length === 0) {
+        const logPath = server.logLocation 
+            ? path.resolve(server.workingDirectory, server.logLocation)
+            : path.join(server.workingDirectory, 'logs', 'latest.log');
+            
+        if (await fs.pathExists(logPath)) {
+            try {
+                const { LogUtils } = require('../../utils/LogUtils');
+                recentLogs = await LogUtils.readLastLines(logPath, 500);
+            } catch (e) {
+                console.warn(`[Diagnosis] Failed to read fallback logs for ${id}:`, e);
+            }
+        }
+    }
 
     // 2. Get System Stats
     const stats = await systemService.getSystemStats();

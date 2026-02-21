@@ -5,6 +5,7 @@ import { networkService } from './NetworkService';
 import { proxyService } from './ProxyService';
 import { startupManager } from '../servers/StartupManager';
 import { getServer, saveServer } from '../servers/ServerService';
+import { ServerStatus } from '@shared/types';
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.post('/proxy/unlink', verifyToken, requireRole(['OWNER', 'ADMIN', 'MANAGE
             await startupManager.enforceBackendProperties(backend);
             
             // If the server is online, mark it as needing restart to apply changes
-            if (backend.status === 'ONLINE') {
+            if (backend.status === ServerStatus.ONLINE) {
                 saveServer({ ...backend, needsRestart: true });
             }
         }
@@ -65,7 +66,7 @@ router.post('/proxy/unlink-by-server', verifyToken, requireRole(['OWNER', 'ADMIN
             await startupManager.enforceBackendProperties(backend);
             
             // If the server is online, mark it as needing restart to apply changes
-            if (backend.status === 'ONLINE') {
+            if (backend.status === ServerStatus.ONLINE) {
                 saveServer({ ...backend, needsRestart: true });
             }
         }

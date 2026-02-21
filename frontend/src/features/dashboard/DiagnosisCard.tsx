@@ -1,8 +1,10 @@
 import React from 'react';
-import { Stethoscope, Wrench, CheckCircle, Zap, Copy, Check } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { AlertCircle, Wrench, CheckCircle, Zap, Copy, Check, X, ShieldAlert, Terminal, Info, Activity, RotateCcw } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import { API } from '@core/services/api';
 import { DiagnosisResult } from '@shared/types';
+import { STAGGER_CONTAINER, STAGGER_ITEM } from '../../styles/motion';
 
 interface DiagnosisCardProps {
     result: DiagnosisResult | null;
@@ -25,11 +27,10 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
         setFixing(true);
         try {
             await API.healServer(serverId, result.action.type, result.action.payload);
-
             setFixed(true);
             setTimeout(() => {
                 onFix();
-            }, 1000);
+            }, 1500);
         } catch (e) {
             console.error('Fix failed', e);
             setFixing(false);
@@ -51,158 +52,186 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
         
         navigator.clipboard.writeText(JSON.stringify(report, null, 2));
         setCopied(true);
-        addToast('success', 'Report Copied', 'Diagnostic data copied to clipboard for support.');
+        addToast('success', 'Report Copied', 'Diagnostic data copied to clipboard.');
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const severityColor = result.severity === 'CRITICAL' ? 'border-rose-500' : 'border-amber-500';
-    const severityBg = result.severity === 'CRITICAL' ? 'bg-rose-500/5' : 'bg-amber-500/5';
-    const severityText = result.severity === 'CRITICAL' ? 'text-rose-500' : 'text-amber-500';
+    const isCritical = result.severity === 'CRITICAL';
+    const accentColor = isCritical ? 'text-rose-500' : 'text-amber-500';
+    const accentBg = isCritical ? 'bg-rose-500/5' : 'bg-amber-500/5';
+    const accentBorder = isCritical ? 'border-rose-500/20' : 'border-amber-500/20';
 
     return (
-        <div className={`bg-card border-y border-r ${severityColor} border-l-4 rounded-r-lg p-6 mb-8 shadow-sm relative transition-all`}>
-            <div className="flex items-start gap-6">
-                <div className={`p-3 ${severityBg} ${severityText} rounded border ${severityColor}/20`}>
-                    <Stethoscope size={24} />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                onClick={!fixing ? onDismiss : undefined}
+            />
+
+            {/* Modal Content - Classic/Professional Design */}
+            <motion.div 
+                initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -15, scale: 0.98 }}
+                className="relative w-full max-w-2xl bg-card border border-border shadow-xl rounded-xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+                {/* Header Section */}
+                <div className="bg-muted/20 border-b border-border p-4 shrink-0">
+                    <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                             <div className={`w-1.5 h-1.5 rounded-full ${isCritical ? 'bg-rose-500' : 'bg-amber-500'}`}></div>
+                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{result.severity} DIAGNOSIS ENGINE</span>
+                        </div>
+                        {!fixing && (
+                            <button onClick={onDismiss} className="text-muted-foreground/60 hover:text-foreground transition-colors p-1">
+                                <X size={16} />
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                        <h2 className="text-lg font-bold text-foreground tracking-tight">{result.title}</h2>
+                        {result.ruleId && (
+                            <span className="text-[10px] font-mono font-bold text-muted-foreground/40 hidden sm:inline">RULE: {result.ruleId.toUpperCase()}</span>
+                        )}
+                    </div>
                 </div>
 
-                <div className="flex-1">
-                    <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                            <span className={`text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded border ${severityColor}/30 ${severityBg} ${severityText}`}>
-                                {result.severity} DIAGNOSIS
-                            </span>
+                {/* Content Section */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                    <motion.div variants={STAGGER_CONTAINER} initial="hidden" animate="show" className="space-y-6">
+                        {/* Summary & Tags */}
+                        <motion.div variants={STAGGER_ITEM} className="flex flex-wrap items-center gap-2">
                             {result.isRootCause && (
-                                <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/20">
+                                <div className="px-2 py-0.5 rounded border border-emerald-500/20 bg-emerald-500/5 text-emerald-500 text-[10px] font-bold uppercase tracking-tight">
                                     Root Cause
-                                </span>
-                            )}
-                            <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded tracking-tight">
-                                ID: {result.ruleId?.toUpperCase()}
-                            </span>
-                        </div>
-                        
-                        <div className="flex items-center gap-4">
-                            {result.action?.autoHeal && (
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded border border-emerald-500/20 uppercase tracking-tighter shadow-sm">
-                                    <Zap size={10} className="fill-emerald-500" />
-                                    Auto-Healing Capable
                                 </div>
                             )}
+                            <div className={`px-2 py-0.5 rounded border ${accentBorder} ${accentBg} ${accentColor} text-[10px] font-bold uppercase tracking-tight`}>
+                                {result.severity} Priority
+                            </div>
+                            <div className="px-2 py-0.5 rounded border border-border bg-muted/30 text-muted-foreground text-[10px] font-bold uppercase tracking-tight">
+                                Detection #{result.id.split('-')[0].toUpperCase()}
+                            </div>
+                        </motion.div>
 
-                            {result.confidence !== undefined && (
-                                <div className="flex items-center gap-3">
-                                    <span className="text-[10px] font-bold text-muted-foreground uppercase opacity-60">Confidence</span>
-                                    <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-                                        <div 
-                                            className={`h-full transition-all duration-1000 ${result.confidence > 80 ? 'bg-emerald-500' : result.confidence > 50 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                                            style={{ width: `${result.confidence}%` }}
-                                        />
-                                    </div>
-                                    <span className="text-[10px] font-mono font-bold text-foreground w-8">{result.confidence}%</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                        {/* Analysis */}
+                        <motion.div variants={STAGGER_ITEM} className="space-y-3">
+                            <label className="text-[11px] font-bold text-muted-foreground/80 uppercase tracking-tighter flex items-center gap-2 h-4">
+                                <Activity size={12} className="opacity-40" />
+                                Incident Analysis
+                            </label>
+                            <div className="text-sm text-foreground/80 leading-relaxed font-semibold">
+                                {result.explanation}
+                            </div>
+                        </motion.div>
 
-                    <h3 className="text-lg font-bold text-foreground mb-1 flex items-center gap-2">
-                         {result.title}
-                    </h3>
+                        {/* Recommendation */}
+                        <motion.div variants={STAGGER_ITEM} className={`p-5 rounded-lg border ${accentBorder} ${accentBg} space-y-3`}>
+                            <label className={`text-[11px] font-bold ${accentColor} opacity-70 uppercase tracking-tighter flex items-center gap-2 h-4`}>
+                                <Wrench size={12} />
+                                Resolution Strategy
+                            </label>
+                            <div className="text-sm text-foreground font-bold tracking-tight">
+                                {result.recommendation}
+                            </div>
+                        </motion.div>
 
-                    {result.suppressedBy && result.suppressedBy.length > 0 && (
-                        <div className="mb-3 flex items-center gap-2">
-                             <span className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-tighter">Suppressed By Deep Causes</span>
-                             <div className="flex items-center gap-1">
-                                {result.suppressedBy.map(sid => (
-                                    <span key={sid} className="text-[9px] font-mono px-1.5 py-0.5 bg-muted/50 text-muted-foreground rounded border border-border/50 uppercase">
-                                        {sid}
-                                    </span>
-                                ))}
-                             </div>
-                        </div>
-                    )}
-                    
-                    <div className="space-y-4">
-                        <div className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
-                            <span className="text-foreground font-semibold">Incident:</span> {result.explanation}
-                        </div>
-                        
-                        <div className="bg-muted/40 rounded border border-border/50 p-4">
-                            <div className="flex items-start gap-3">
-                                <Wrench size={16} className="text-primary mt-0.5 shrink-0" />
-                                <div>
-                                    <h4 className="text-[11px] font-bold text-primary uppercase tracking-wider mb-1">Recommended Action</h4>
-                                    <p className="text-sm text-foreground/90 font-medium">
-                                        {result.recommendation}
-                                    </p>
+                        {/* Confidence Meter */}
+                        <motion.div variants={STAGGER_ITEM} className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest flex justify-between h-4">
+                                    Confidence
+                                    <span>{result.confidence}%</span>
+                                </label>
+                                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden border border-border/20">
+                                    <motion.div 
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${result.confidence}%` }}
+                                        transition={{ duration: 0.8, ease: "easeOut" }}
+                                        className={`h-full ${isCritical ? 'bg-rose-500' : 'bg-amber-500'}`}
+                                    />
                                 </div>
                             </div>
-                        </div>
-                    </div>
-
-                    <div className="mt-8 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            {result.action && !fixed && (
-                                <button 
-                                    onClick={handleAutoFix}
-                                    disabled={fixing}
-                                    className="flex items-center gap-2 px-5 py-2 bg-primary text-primary-foreground rounded text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
-                                >
-                                    {fixing ? (
-                                        <>
-                                            <div className="w-3.5 h-3.5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin"></div>
-                                            Executing Protocol...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <CheckCircle size={14} />
-                                            Apply Automatic Fix
-                                        </>
-                                    )}
-                                </button>
-                            )}
-
-                            {fixed && (
-                                <div className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded text-xs font-bold shadow-sm">
-                                    <CheckCircle size={14} />
-                                    Resolved
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest h-4">Detected at</label>
+                                <div className="text-[11px] font-mono font-bold text-muted-foreground/80 whitespace-nowrap">
+                                    {new Date(result.timestamp).toLocaleString()}
                                 </div>
-                            )}
+                            </div>
+                        </motion.div>
 
+                        {/* Suppressed Issues */}
+                        {result.suppressedBy && result.suppressedBy.length > 0 && (
+                            <motion.div variants={STAGGER_ITEM} className="space-y-2 pt-2">
+                                <label className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em] h-3">Suppressed Signals</label>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {result.suppressedBy.map(sid => (
+                                        <span key={sid} className="text-[9px] font-mono px-1.5 py-0.5 bg-muted/30 text-muted-foreground border border-border/40 rounded uppercase font-bold">
+                                            {sid}
+                                        </span>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        )}
+                    </motion.div>
+                </div>
+
+                {/* Footer Section */}
+                <div className="p-4 bg-muted/10 border-t border-border flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                        {result.action && !fixed && (
+                            <button 
+                                onClick={handleAutoFix}
+                                disabled={fixing}
+                                className={`px-5 py-2 ${isCritical ? 'bg-rose-500 hover:bg-rose-600' : 'bg-primary hover:bg-primary/90'} text-white rounded-md text-[10px] font-bold tracking-tight disabled:opacity-50 transition-all flex items-center gap-2 shadow-sm`}
+                            >
+                                {fixing ? <RotateCcw size={12} className="animate-spin" /> : <Zap size={12} className="fill-current" />}
+                                {fixing ? 'Applying Fix...' : 'Apply Automatic Fix'}
+                            </button>
+                        )}
+
+                        {fixed && (
+                            <div className="px-5 py-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-md text-[10px] font-bold tracking-tight flex items-center gap-2">
+                                <CheckCircle size={12} />
+                                Fix Applied Successfully
+                            </div>
+                        )}
+
+                        {!fixing && !fixed && (
                             <button
                                 onClick={handleShareReport}
-                                className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-widest border border-transparent hover:border-border rounded"
-                                title="Copy redacted report for support"
+                                className="px-4 py-2 hover:bg-muted text-[10px] font-bold text-muted-foreground hover:text-foreground transition-all rounded-md flex items-center gap-2"
                             >
-                                {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                                {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                                 {copied ? 'Copied' : 'Share Report'}
                             </button>
+                        )}
+                    </div>
 
-                            {!fixing && (
-                                <button 
-                                    onClick={onDismiss}
-                                    className="px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-widest"
-                                >
-                                    Ignore
-                                </button>
-                            )}
-
-                            {result.connectedCrashReport && (
-                                <button
-                                    onClick={() => onViewCrash && onViewCrash(result.connectedCrashReport?.id || '')}
-                                    className="px-4 py-2 text-xs font-bold text-rose-500 hover:text-rose-400 hover:underline decoration-rose-500/30 transition-all uppercase tracking-widest ml-auto"
-                                >
-                                    View Crash Report
-                                </button>
-                            )}
-                        </div>
-                        
-                        <div className="text-[9px] font-medium text-muted-foreground/40 uppercase tracking-widest">
-                            Management Terminal // {new Date(result.timestamp).toLocaleTimeString()}
-                        </div>
+                    <div className="flex items-center gap-2">
+                        {result.connectedCrashReport && (
+                            <button
+                                onClick={() => onViewCrash && onViewCrash(result.connectedCrashReport?.id || '')}
+                                className="px-3 py-2 text-rose-500/70 hover:text-rose-500 text-[10px] font-bold transition-colors"
+                            >
+                                View Crash Log
+                            </button>
+                        )}
+                        {!fixing && !fixed && (
+                            <button 
+                                onClick={onDismiss}
+                                className="px-4 py-2 hover:bg-muted text-[10px] font-bold text-muted-foreground/60 hover:text-foreground transition-all rounded-md"
+                            >
+                                Ignore
+                            </button>
+                        )}
                     </div>
                 </div>
-            </div>
+            </motion.div>
         </div>
     );
 };

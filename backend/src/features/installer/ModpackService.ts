@@ -9,6 +9,7 @@ interface ModpackHit {
     slug: string;
     downloads: number;
     version_id: string;
+    game_versions: string[];
     project_type: 'mod' | 'modpack';
 }
 
@@ -72,6 +73,7 @@ class ModpackService {
                 slug: hit.slug,
                 downloads: hit.downloads || 0,
                 version_id: hit.latest_version,
+                game_versions: hit.versions || [],
                 project_type: projectType,
             }));
         } catch (e: any) {

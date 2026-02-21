@@ -4,7 +4,7 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { processManager } from '../processes/ProcessManager';
 import { backupService } from '../backups/BackupService';
-import {  WebhookConfig, WebhookTrigger  } from '@shared/types';
+import {  WebhookConfig, WebhookTrigger, ServerStatus  } from '@shared/types';
 import { logger } from '../../utils/logger';
 
 const DATA_DIR = path.join(__dirname, '../../../data');
@@ -83,9 +83,9 @@ export class WebhookService {
 
     private setupListeners() {
         processManager.on('status', ({ id, status }) => {
-            if (status === 'ONLINE') this.dispatch('SERVER_START', { serverId: id, status });
-            if (status === 'OFFLINE') this.dispatch('SERVER_STOP', { serverId: id, status });
-            if (status === 'CRASHED') this.dispatch('SERVER_CRASH', { serverId: id, status });
+            if (status === ServerStatus.ONLINE) this.dispatch('SERVER_START', { serverId: id, status });
+            if (status === ServerStatus.OFFLINE) this.dispatch('SERVER_STOP', { serverId: id, status });
+            if (status === ServerStatus.CRASHED) this.dispatch('SERVER_CRASH', { serverId: id, status });
         });
 
         processManager.on('player:join', ({ serverId, name }) => {

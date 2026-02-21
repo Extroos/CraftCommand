@@ -66,7 +66,7 @@ export class NodeRegistryService extends EventEmitter {
                         }
                         // Mark all nodes as OFFLINE on startup until they heartbeat
                         // Hardening: Local node stays ONLINE (Host process is running if panel is running)
-                        node.status = (node.id === 'local') ? 'ONLINE' : 'OFFLINE';
+                        node.status = (node.id === 'local') ? NodeStatus.ONLINE : NodeStatus.OFFLINE;
                         this.nodes.set(node.id, node);
                     }
                 }
@@ -102,7 +102,7 @@ export class NodeRegistryService extends EventEmitter {
             name: 'Local Node',
             host: '127.0.0.1',
             port: 3001, // Default port (matches panel)
-            status: 'ONLINE', // We assume the panel is online if it's running this
+            status: NodeStatus.ONLINE, // We assume the panel is online if it's running this
             protocolVersion: '1.0',
             enrolledAt: now,
             lastHeartbeat: now,
@@ -207,7 +207,7 @@ export class NodeRegistryService extends EventEmitter {
             name,
             host,
             port,
-            status: 'ENROLLING',
+            status: NodeStatus.ENROLLING,
             protocolVersion,
             enrolledAt: now,
             lastHeartbeat: now,
@@ -245,7 +245,7 @@ export class NodeRegistryService extends EventEmitter {
         });
 
         logger.info(`[NodeRegistry] Removed node "${node.name}" (${id})`);
-        this.emit('status', { nodeId: id, status: 'REMOVED', node });
+        this.emit('status', { nodeId: id, status: NodeStatus.REMOVED, node });
         return true;
     }
 
@@ -283,7 +283,7 @@ export class NodeRegistryService extends EventEmitter {
             name: this.sanitizeName(name),
             host: 'pending',
             port: 0,
-            status: 'ENROLLING',
+            status: NodeStatus.ENROLLING,
             protocolVersion,
             enrolledAt: now,
             lastHeartbeat: now,
@@ -397,7 +397,7 @@ export class NodeRegistryService extends EventEmitter {
         if (!node) return false;
 
         node.lastHeartbeat = Date.now();
-        node.status = 'ONLINE';
+        node.status = NodeStatus.ONLINE;
         if (health) node.health = health;
         
         this.scheduleSave(); // Debounced — heartbeats are frequent
@@ -414,15 +414,15 @@ export class NodeRegistryService extends EventEmitter {
         for (const [id, node] of this.nodes) {
             // Hardening: Local node never expires from sweep (it's part of the host process)
             if (id === 'local') {
-                if (node.status !== 'ONLINE') {
-                    node.status = 'ONLINE';
+                if (node.status !== NodeStatus.ONLINE) {
+                    node.status = NodeStatus.ONLINE;
                     changed = true;
                 }
                 continue;
             }
 
-            if (node.status === 'ONLINE' && (now - node.lastHeartbeat) > thresholdMs) {
-                node.status = 'OFFLINE';
+            if (node.status === NodeStatus.ONLINE && (now - node.lastHeartbeat) > thresholdMs) {
+                node.status = NodeStatus.OFFLINE;
                 changed = true;
                 logger.warn(`[NodeRegistry] Node "${node.name}" (${id}) went OFFLINE (no heartbeat for ${Math.round(thresholdMs / 1000)}s).`);
                 this.emit('status', { nodeId: id, status: node.status, node });
@@ -456,8 +456,8 @@ export class NodeRegistryService extends EventEmitter {
 
         // Hardening: Local node status is always ONLINE when requested 
         // (Host is obviously running, heartbeats might be delayed in debug/E2E)
-        if (node && normalizedId === 'local' && node.status !== 'ONLINE') {
-            node.status = 'ONLINE';
+        if (node && normalizedId === 'local' && node.status !== NodeStatus.ONLINE) {
+            node.status = NodeStatus.ONLINE;
         }
 
         return node;
@@ -465,8 +465,8 @@ export class NodeRegistryService extends EventEmitter {
 
     getAllNodes(): NodeInfo[] {
         return Array.from(this.nodes.values()).map(node => {
-            if (node.id === 'local' && node.status !== 'ONLINE') {
-                node.status = 'ONLINE';
+            if (node.id === 'local' && node.status !== NodeStatus.ONLINE) {
+                node.status = NodeStatus.ONLINE;
             }
             return node;
         });
@@ -474,7 +474,7 @@ export class NodeRegistryService extends EventEmitter {
 
     getOnlineNodes(): NodeInfo[] {
         const nodes = this.getAllNodes();
-        return nodes.filter(n => n.status === 'ONLINE');
+        return nodes.filter(n => n.status === NodeStatus.ONLINE);
     }
 
     getNodeCount(): number {

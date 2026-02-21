@@ -179,12 +179,14 @@ export class InstallerService extends EventEmitter {
         }
     }
 
-    // Install CurseForge/Modrinth Modpack
+    // Install CurseForge/Modrinth Modpack or Single Mod
     async installModpackFromZip(serverId: string, serverDir: string, zipUrl: string, mcVersion?: string, onProgress?: (msg: string, percent?: number) => void) {
         try {
             await SafeFileOperation.checkDiskSpace(serverDir, 1000); // Modpacks need more space (1GB min)
             await fs.ensureDir(serverDir);
             
+            let downloadFileName = 'modpack.zip';
+
             // Resolve Modrinth ID if needed
             if (zipUrl.startsWith('modrinth:')) {
                 const projectId = zipUrl.split(':')[1];
@@ -195,9 +197,149 @@ export class InstallerService extends EventEmitter {
                 const version = (vRes.data as any)[0];
                 const file = version.files.find((f: any) => f.primary) || version.files[0];
                 zipUrl = file.url;
-                this.emit('status', `Resolved to: ${version.name}`);
+                downloadFileName = file.filename || zipUrl.split('/').pop() || 'modpack.zip';
+                this.emit('status', `Resolved to: ${version.name} (${downloadFileName})`);
+            } else {
+                downloadFileName = zipUrl.split('?')[0].split('/').pop() || 'modpack.zip';
             }
 
+            const isSingleMod = downloadFileName.endsWith('.jar');
+            const isMrpack = downloadFileName.endsWith('.mrpack');
+
+            if (isSingleMod) {
+                // --- SINGLE MOD INSTALLATION ---
+                this.emit('status', `Detected Single Mod Jar. Installing into mods/ ...`);
+                const modsDir = path.join(serverDir, 'mods');
+                await fs.ensureDir(modsDir);
+                const dest = path.join(modsDir, downloadFileName);
+                
+                const dMsg = 'Downloading Mod...';
+                this.updateProgress(serverId, dMsg, 20);
+                onProgress?.(dMsg, 20);
+                await this.downloadFile(zipUrl, dest, onProgress, serverId);
+                
+                // Scan the mods dir to detect the loader (Fabric, Forge, NeoForge)
+                const packType = await this.scanModpackType(serverDir);
+                let loader = packType.loader || 'Fabric';
+                
+                this.emit('status', `Single Mod installed. Detected Loader: ${loader}`);
+                
+                if (mcVersion) {
+                    this.emit('status', `Auto-Installing ${loader} for ${mcVersion}...`);
+                    if (loader === 'Fabric') await this.installFabric(serverId, serverDir, mcVersion);
+                    else if (loader === 'NeoForge') await this.installNeoForge(serverId, serverDir, mcVersion);
+                    else if (loader === 'Forge') await this.installForge(serverId, serverDir, mcVersion);
+                } else {
+                    this.emit('status', `WARNING: Minecraft version not provided. Base server not installed.`);
+                }
+                
+                await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
+                const cMsg = 'Mod Installed.';
+                this.updateProgress(serverId, cMsg, 100);
+                onProgress?.(cMsg, 100);
+                setTimeout(() => this.clearProgress(serverId), 2000);
+                return;
+
+            } else if (isMrpack) {
+                // --- MODRINTH MRPACK INSTALLATION ---
+                const zipPath = path.join(serverDir, 'modpack.mrpack');
+                const tempExtractDir = path.join(serverDir, 'temp_extract');
+                
+                const dMsg = 'Downloading Modrinth Pack...';
+                this.updateProgress(serverId, dMsg, 5);
+                onProgress?.(dMsg, 5);
+                await this.downloadFile(zipUrl, zipPath, onProgress, serverId);
+                
+                const eMsg = 'Extracting Mrpack...';
+                this.updateProgress(serverId, eMsg, 40);
+                onProgress?.(eMsg, 40);
+                await fs.ensureDir(tempExtractDir);
+                await extract(zipPath, { dir: tempExtractDir });
+
+                // Process modrinth.index.json
+                const indexPath = path.join(tempExtractDir, 'modrinth.index.json');
+                if (!await fs.pathExists(indexPath)) {
+                    throw new Error('Invalid .mrpack: Missing modrinth.index.json');
+                }
+                
+                const index = await fs.readJson(indexPath);
+                const mrpackMcVersion = index.dependencies?.minecraft || mcVersion;
+                let loader = 'Fabric';
+                if (index.dependencies?.forge) loader = 'Forge';
+                if (index.dependencies?.['fabric-loader']) loader = 'Fabric';
+                if (index.dependencies?.['quilt-loader']) loader = 'Quilt';
+                if (index.dependencies?.['neoforge']) loader = 'NeoForge';
+
+                this.emit('status', `Detected Modrinth Pack: Minecraft ${mrpackMcVersion}, Loader ${loader}`);
+
+                // Download files sequentially to avoid rate limits
+                if (index.files && Array.isArray(index.files)) {
+                    let dlCount = 0;
+                    const totalFiles = index.files.length;
+                    
+                    for (const f of index.files) {
+                        dlCount++;
+                        // Environment filter: skip client-only mods
+                        if (f.env && f.env.server === 'unsupported') continue;
+                        
+                        const destPath = path.join(serverDir, f.path);
+                        await fs.ensureDir(path.dirname(destPath));
+                        
+                        try {
+                            const res = await axios({ method: 'GET', url: f.downloads[0], responseType: 'stream' });
+                            const writer = fs.createWriteStream(destPath);
+                            (res.data as any).pipe(writer);
+                            await new Promise((resolve, reject) => {
+                                writer.on('finish', () => resolve(true));
+                                writer.on('error', reject);
+                            });
+                        } catch (err: any) {
+                             console.log(`[Installer] Failed to download ${f.path}:`, err.message);
+                             this.emit('status', `Warning: Failed to download ${f.path}`);
+                        }
+                        
+                        if (dlCount % 5 === 0) {
+                            const p = 40 + Math.round((dlCount / totalFiles) * 40);
+                            const msg = `Downloading Mods... (${dlCount}/${totalFiles})`;
+                            this.updateProgress(serverId, msg, p);
+                            onProgress?.(msg, p);
+                        }
+                    }
+                }
+
+                // Copy overrides
+                const overridesMsg = 'Applying Overrides...';
+                this.emit('status', overridesMsg);
+                if (await fs.pathExists(path.join(tempExtractDir, 'overrides'))) {
+                    await fs.copy(path.join(tempExtractDir, 'overrides'), serverDir, { overwrite: true });
+                }
+                if (await fs.pathExists(path.join(tempExtractDir, 'server-overrides'))) {
+                    await fs.copy(path.join(tempExtractDir, 'server-overrides'), serverDir, { overwrite: true });
+                }
+
+                // Cleanup
+                await fs.remove(tempExtractDir);
+                await fs.remove(zipPath);
+
+                // Install base server software
+                if (mrpackMcVersion) {
+                    this.emit('status', `Auto-Installing ${loader} for ${mrpackMcVersion}...`);
+                    if (loader === 'Fabric') await this.installFabric(serverId, serverDir, mrpackMcVersion);
+                    else if (loader === 'NeoForge') await this.installNeoForge(serverId, serverDir, mrpackMcVersion);
+                    else if (loader === 'Forge') await this.installForge(serverId, serverDir, mrpackMcVersion);
+                    
+                    this.emit('status', `${loader} Installed. Modrinth Pack Ready.`);
+                }
+                
+                await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
+                const cMsg = 'Modrinth Pack Installed.';
+                this.updateProgress(serverId, cMsg, 100);
+                onProgress?.(cMsg, 100);
+                setTimeout(() => this.clearProgress(serverId), 2000);
+                return;
+            }
+
+            // --- CURSEFORGE / STANDARD ZIP INSTALLATION ---
             const zipPath = path.join(serverDir, 'modpack.zip');
             const tempExtractDir = path.join(serverDir, 'temp_extract');
             

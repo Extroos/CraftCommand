@@ -770,6 +770,25 @@ function connect(): void {
         }
     });
 
+    /**
+     * Phase 21: Remote Shutdown Command
+     * Allows the panel to remotely terminate the agent process.
+     */
+    socket.on('agent:shutdown', (data: any, ack: (response: any) => void) => {
+        log('Received SHUTDOWN command from panel.');
+        
+        if (ack) ack({ ok: true, message: 'Agent shutting down...' });
+
+        // Set flag to prevent reconnect attempts during shutdown
+        shutdownCalled = true;
+
+        // Give time for ack to flush
+        setTimeout(() => {
+            log('👋 Agent shutting down now.');
+            process.exit(0);
+        }, 500);
+    });
+
     socket.on('agent:command', (data: any, ack: (response: any) => void) => {
         try {
             if (!data?.serverId || typeof data?.serverId !== 'string') {

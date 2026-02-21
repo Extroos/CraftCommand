@@ -1,5 +1,6 @@
 import { DiagnosisRule, SystemStats, ServerConfig, DiagnosisResult } from './types';
 import { CrashReport } from './CrashReportReader';
+import { ServerStatus } from '@shared/types';
 
 /** Internal type that extends DiagnosisResult with tier metadata for brain processing */
 interface InternalDiagnosisResult extends DiagnosisResult {
@@ -65,7 +66,7 @@ export class DiagnosisBrain {
                 const hasCrashMatch = crashReport && rule.triggers.some(t => t.test(crashContent));
                 
                 // Tier 1 logic: Always allow proactive check if logs are empty (pre-flight or log-less crash)
-                const isProactiveNeeded = rule.tier === 1 && (logs.length === 0 || server.status === 'CRASHED');
+                const isProactiveNeeded = rule.tier === 1 && (logs.length === 0 || server.status === ServerStatus.CRASHED);
                 const isExplicitlyProactive = rule.triggers.length === 0;
 
                 if (hasLogMatch || hasCrashMatch || isExplicitlyProactive || isProactiveNeeded) {

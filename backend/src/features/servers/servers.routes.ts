@@ -14,7 +14,8 @@ import { getServers, saveServer, getServer, removeServer, updateServer, diagnose
 import { serverConfigService } from './ServerConfigService';
 import { AppError } from '../../utils/AppError';
 import { auditService } from '../system/AuditService';
-import { DATA_PATHS } from '../../constants';
+import { ServerConfig, ServerStatus } from '@shared/types';
+import { DATA_DIR, SERVERS_ROOT, DATA_PATHS } from '../../constants';
 import { autoHealingManager } from '../diagnosis/AutoHealingManager';
 import sharp from 'sharp';
 
@@ -154,7 +155,7 @@ router.get('/:id/query', async (req, res) => {
     const response = {
         ...cached,
         // Ensure status serves as the source of truth
-        status: cached.status || (processManager.isRunning(id) ? 'STARTING' : 'OFFLINE'),
+        status: cached.status || (processManager.isRunning(id) ? ServerStatus.STARTING : ServerStatus.OFFLINE),
         uptime: processManager.getUptime(id),
         tps: await processManager.getTPS(id),
         maxPlayers: server.maxPlayers || 20
@@ -175,11 +176,11 @@ router.get('/:id/query', async (req, res) => {
                 
                 if (conflict) {
                      console.log(`[Query] ${id} Ghost Detected: Port ${server.port} owned by ${conflict.id}. Marking OFFLINE.`);
-                     processManager.updateCachedStatus(id, { online: false, players: 0, status: 'OFFLINE' });
+                     processManager.updateCachedStatus(id, { online: false, players: 0, status: ServerStatus.OFFLINE });
                      
                      // Force persistence correction
-                     if (server.status === 'ONLINE') {
-                         server.status = 'OFFLINE';
+                     if (server.status === ServerStatus.ONLINE) {
+                         server.status = ServerStatus.OFFLINE;
                          saveServer(server);
                      }
                      return; // Abort further checks
@@ -201,10 +202,16 @@ router.get('/:id/query', async (req, res) => {
                 // DO NOT mark it as ONLINE in the panel, otherwise we get "Flapping" (List says Offline, Query says Online).
                 // The user must kill the ghost manually (or we need a kill-by-port feature).
                 if (!processManager.isRunning(id)) {
+                    // Check if maybe it's still starting (unmanaged or race)
+                    if (processManager.isStarting(id)) {
+                         console.log(`[Query] ${id} Port active during startup lockout. Keeping STARTING.`);
+                         return;
+                    }
+
                     console.warn(`[Query] ${id} Ghost Detected (Process not tracked but Port ${server.port} active). Keeping status OFFLINE.`);
                     
                     // We can optionally mark it as 'GHOST' if the UI supported it, but for now strict OFFLINE is safer.
-                    processManager.updateCachedStatus(id, { online: false, status: 'OFFLINE' });
+                    processManager.updateCachedStatus(id, { online: false, status: ServerStatus.OFFLINE });
                     return; 
                 }
 
@@ -218,8 +225,8 @@ router.get('/:id/query', async (req, res) => {
                 });
 
                 // Reconciliation: If DB thinks it's offline/starting but we found it online
-                if (server.status !== 'ONLINE') {
-                    server.status = 'ONLINE';
+                if (server.status !== ServerStatus.ONLINE) {
+                    server.status = ServerStatus.ONLINE;
                     saveServer(server);
                 }
             } catch (e) {
@@ -230,7 +237,7 @@ router.get('/:id/query', async (req, res) => {
                     
                     if (!processManager.isRunning(id)) {
                         console.warn(`[Query] ${id} Ghost Detected (UDP). Keeping status OFFLINE.`);
-                        processManager.updateCachedStatus(id, { online: false, status: 'OFFLINE' });
+                        processManager.updateCachedStatus(id, { online: false, status: ServerStatus.OFFLINE });
                         return;
                     }
 
@@ -261,9 +268,9 @@ router.get('/:id/query', async (req, res) => {
                         // Only mark as OFFLINE if the process is actually dead locally
                         if (!processManager.isRunning(id)) {
                              // CLEAR PERSISTENT START TIME IF GHOST
-                            if (server.startTime || server.status !== 'OFFLINE') {
+                            if (server.startTime || server.status !== ServerStatus.OFFLINE) {
                                 delete server.startTime;
-                                server.status = 'OFFLINE';
+                                server.status = ServerStatus.OFFLINE;
                                 saveServer(server);
                             }
                         }
@@ -293,11 +300,21 @@ router.get('/', optionalVerifyToken, (req, res) => {
         // Enhance with status
         const enhanced = visibleServers.map((s: any) => {
             const isRunning = processManager.isRunning(s.id);
+            const isStarting = processManager.isStarting(s.id);
             const cached = processManager.getCachedStatus(s.id);
+            
+            let status = s.status;
+            if (isRunning) {
+                status = cached?.status || ServerStatus.STARTING;
+            } else if (isStarting) {
+                status = ServerStatus.STARTING;
+            } else if (s.status !== ServerStatus.CRASHED) {
+                status = ServerStatus.OFFLINE;
+            }
+
             return {
                 ...s,
-                // Trust ProcessManager's state machine (STARTING vs ONLINE)
-                status: isRunning ? (cached?.status || 'STARTING') : (s.status === 'CRASHED' ? 'CRASHED' : 'OFFLINE'),
+                status,
                 iconUrl: getIconUrl(s)
             };
         });
@@ -359,12 +376,27 @@ router.get('/:id/crash-report', verifyToken, requirePermission('server.files.rea
 });
 
 // Run Diagnosis
+// Run Diagnosis
 router.get('/:id/diagnosis', verifyToken, requirePermission('server.view'), async (req, res) => {
     const { id } = req.params;
     try {
         const results = await diagnoseServer(id);
+        logger.info(`[DEBUG_DIAGNOSIS] Returning for ${id}: ${JSON.stringify(results, null, 2)}`);
         res.json(results);
     } catch (e: any) {
+        logger.error(`[DEBUG_DIAGNOSIS] Error for ${id}: ${e}`);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.get('/:id/test-diagnosis', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const results = await diagnoseServer(id);
+        console.log(`[LOCAL_TEST] Returning for ${id}: ${JSON.stringify(results, null, 2)}`);
+        res.json(results);
+    } catch (e: any) {
+        console.error(`[LOCAL_TEST] Error for ${id}: ${e}`);
         res.status(500).json({ error: e.message });
     }
 });
@@ -495,7 +527,7 @@ router.post('/', requirePermission('server.create'), async (req, res) => {
         workingDirectory: serverDir,
         executable: config.executable || defaultExecutable,
         executionCommand: config.executionCommand || defaultCommand,
-        status: 'OFFLINE'
+        status: ServerStatus.OFFLINE
     };
     
     saveServer(newServer);
@@ -518,8 +550,8 @@ router.post('/:id/start', requirePermission('server.start'), async (req, res) =>
     
     try {
         await startServer(id, !!force);
-        res.json({ success: true, status: 'STARTING' });
-        auditService.log((req as any).user.id, 'SERVER_START', id, { force: !!force });
+        res.json({ success: true, status: ServerStatus.STARTING });
+        auditService.log((req as any).user.id, 'SERVER_START', id, { force: !!force }).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
         console.error(`[Server:${id}] Start Route failed:`, e);
         if (e instanceof AppError) {
@@ -544,8 +576,8 @@ router.post('/:id/stop', requirePermission('server.stop'), async (req, res) => {
     
     try {
         await stopServer(id, !!force);
-        res.json({ success: true, status: 'STOPPING' });
-        auditService.log((req as any).user.id, 'SERVER_STOP', id, { force: !!force });
+        res.json({ success: true, status: ServerStatus.STOPPING });
+        auditService.log((req as any).user.id, 'SERVER_STOP', id, { force: !!force }).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
         logger.error(`[Server:${id}] Stop Route failed: ${e.message} ${e.stack || ''}`);
         if (e.message.includes('Server is initializing')) {
@@ -572,7 +604,7 @@ router.delete('/:id', requirePermission('server.delete'), async (req, res) => {
     try {
         await removeServer(id);
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'SERVER_DELETE', id);
+        auditService.log((req as any).user.id, 'SERVER_DELETE', id).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -981,7 +1013,7 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
         // Set status to INSTALLING
         const s = getServer(id);
         if (s) {
-            s.status = 'INSTALLING';
+            s.status = ServerStatus.INSTALLING;
             saveServer(s);
         }
 
@@ -1002,7 +1034,7 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
                     const s = getServer(id);
                     if (s) {
                         s.executable = executable;
-                        s.status = 'OFFLINE';
+                        s.status = ServerStatus.OFFLINE;
                         saveServer(s);
                     }
                 })
@@ -1010,7 +1042,7 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
                     console.error(`[Installation] Forge Install Failed: ${err.message}`);
                     const s = getServer(id);
                     if (s) {
-                        s.status = 'OFFLINE';
+                        s.status = ServerStatus.OFFLINE;
                         saveServer(s);
                     }
                 });
@@ -1040,7 +1072,7 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
                 s.executable = exe;
                 s.executionCommand = process.platform === 'win32' ? exe : `./${exe}`;
                 s.version = bVersion;
-                s.status = 'OFFLINE';
+                s.status = ServerStatus.OFFLINE;
                 saveServer(s);
             }
         } else {
@@ -1077,8 +1109,8 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
         }
 
         const finalS = getServer(id);
-        if (finalS && finalS.status === 'INSTALLING') {
-            finalS.status = 'OFFLINE';
+        if (finalS && finalS.status === ServerStatus.INSTALLING) {
+            finalS.status = ServerStatus.OFFLINE;
             saveServer(finalS);
         }
 
@@ -1089,7 +1121,7 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
         console.error(`[Installation] Fatal error during ${type} install for ${id}:`, e);
         const s = getServer(id);
         if (s) {
-            s.status = 'OFFLINE';
+            s.status = ServerStatus.OFFLINE;
             saveServer(s);
         }
         res.status(500).json({ error: e.message });

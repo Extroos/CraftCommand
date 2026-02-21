@@ -1,5 +1,5 @@
 
-import { ServerConfig } from '@shared/types';
+import { ServerConfig, ServerStatus } from '@shared/types';
 import { pluginService } from '../plugins/PluginService';
 import { proxyService } from './ProxyService';
 import { serverRepository } from '../../storage/ServerRepository';
@@ -294,7 +294,7 @@ export class CrossPlayService {
 
         // UDP port check
         let bedrockPortAvailable: boolean | undefined;
-        if (server.status !== 'ONLINE') {
+        if (server.status !== ServerStatus.ONLINE) {
             bedrockPortAvailable = await NetUtils.checkUDPPortBind(bedrockPort);
         }
 

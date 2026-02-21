@@ -11,7 +11,7 @@ This guide ensures a safe transition between major and minor releases of CraftCo
 
 ## Upgrade Flow 1: Safe Web Update (Recommended)
 
-As of **v1.11.0**, CraftCommand features an integrated update engine that handles the heavy lifting safely.
+As of **v1.11.3**, CraftCommand features an integrated update engine that handles the heavy lifting safely.
 
 1.  **Navigate** to `Global Settings > System Update`.
 2.  **Check for Updates**: The system will verify signature integrity and Node.js compatibility.
@@ -31,7 +31,7 @@ If you are a developer or using a custom fork:
 
 ## v1.11.x: Systems Integrity & Signatures
 
-Version 1.11.0 introduces **Signed Updates**.
+Version 1.11.3 introduces **Signed Updates**.
 
 - **Signature Check**: If your update fails with a `SIGNATURE_INVALID` error, ensure you haven't manually modified the `keys/update_public_key.pem` file.
 - **Node Compatibility**: You may be blocked from updating if your worker nodes are running outdated agents. Update your nodes first by deploying a new Bootstrap ZIP.

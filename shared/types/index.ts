@@ -136,7 +136,7 @@ export interface ServerConfig {
     cpuPriority?: 'normal' | 'high' | 'realtime';
     javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21';
     autoStart?: boolean;
-    status: 'ONLINE' | 'OFFLINE' | 'STARTING' | 'STOPPING' | 'RESTARTING' | 'CRASHED' | 'UNMANAGED' | 'INSTALLING';
+    status: ServerStatus;
     iconUrl?: string; // Data URI
     workingDirectory: string;
     executable?: string; // Custom JAR or start script
@@ -211,6 +211,8 @@ export enum ServerStatus {
     STOPPING = 'STOPPING',
     RESTARTING = 'RESTARTING',
     CRASHED = 'CRASHED',
+    RECOVERING = 'RECOVERING',
+    SAFE_MODE = 'SAFE_MODE',
     UNMANAGED = 'UNMANAGED',
     INSTALLING = 'INSTALLING'
 }
@@ -406,7 +408,7 @@ export interface DiagnosisResult {
     explanation: string;
     recommendation: string;
     action?: {
-        type: 'UPDATE_CONFIG' | 'SWITCH_JAVA' | 'AGREE_EULA' | 'INSTALL_DEPENDENCY' | 'REPAIR_PROPERTIES' | 'CLEANUP_TELEMETRY' | 'OPTIMIZE_ARGUMENTS' | 'PURGE_GHOST' | 'RESOLVE_PORT_CONFLICT' | 'REMOVE_DUPLICATE_PLUGIN' | 'CREATE_PLUGIN_FOLDER' | 'TAKE_HEAP_SNAPSHOT' | 'RESTORE_DATA_BACKUP' | 'REINSTALL_BEDROCK' | 'RESYNC_VELOCITY_SECRET' | 'INSTALL_JAVA' | 'TRIGGER_DDNS_UPDATE' | 'REINSTALL_GEYSER' | 'REINSTALL_FLOODGATE' | 'RESYNC_CROSSPLAY_FORWARDING' | 'REASSIGN_BEDROCK_PORT';
+        type: 'UPDATE_CONFIG' | 'SWITCH_JAVA' | 'AGREE_EULA' | 'INSTALL_DEPENDENCY' | 'REPAIR_PROPERTIES' | 'CLEANUP_TELEMETRY' | 'OPTIMIZE_ARGUMENTS' | 'PURGE_GHOST' | 'RESOLVE_PORT_CONFLICT' | 'REMOVE_DUPLICATE_PLUGIN' | 'CREATE_PLUGIN_FOLDER' | 'TAKE_HEAP_SNAPSHOT' | 'RESTORE_DATA_BACKUP' | 'REINSTALL_BEDROCK' | 'RESYNC_VELOCITY_SECRET' | 'INSTALL_JAVA' | 'TRIGGER_DDNS_UPDATE' | 'REINSTALL_GEYSER' | 'REINSTALL_FLOODGATE' | 'RESYNC_CROSSPLAY_FORWARDING' | 'REASSIGN_BEDROCK_PORT' | 'CLEANUP_WORLD_LOCK' | 'FIX_JVM_ARGS' | 'ENABLE_ENTITY_PURGE' | 'RESTORE_LEVEL_DATA' | 'REMOVE_MOD';
         payload: any;
         autoHeal?: boolean; // If true, AutoHealingService can execute this automatically
     };
@@ -418,6 +420,7 @@ export interface DiagnosisResult {
     // Intelligence Brain v2 Properties
     confidence?: number; // 0-100 (Optional: Brain will populate if missing)
     isRootCause?: boolean; // Primary issue
+    isHealable?: boolean; // Quick hint for UI
     suppressedBy?: string[]; // IDs of deeper issues that suppressed this
     
     timestamp: number;
@@ -563,7 +566,7 @@ export interface ChatMessage {
     content: string;
     avatar?: string;
     timestamp: number;
-    type: 'message' | 'system';
+    type: 'message' | 'system' | 'whisper';
 }
 
 /**
@@ -593,7 +596,13 @@ export interface CollabSettings {
 
 // --- Distributed Node Types ---
 
-export type NodeStatus = 'ONLINE' | 'OFFLINE' | 'DEGRADED' | 'ENROLLING';
+export enum NodeStatus {
+    ONLINE = 'ONLINE',
+    OFFLINE = 'OFFLINE',
+    DEGRADED = 'DEGRADED',
+    ENROLLING = 'ENROLLING',
+    REMOVED = 'REMOVED'
+}
 
 export interface NodeHealth {
     cpu: number;           // 0-100 percentage

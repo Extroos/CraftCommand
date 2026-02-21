@@ -1,3 +1,4 @@
+import { ServerStatus } from '@shared/types';
 
 export interface ServerMetrics {
     cpu: number;      // Percentage 0-100
@@ -18,7 +19,7 @@ export interface AnalysisResult {
 
 export class AnalyticsService {
 
-    analyze(metrics: ServerMetrics, recentLogs: string[], serverStatus: string = 'ONLINE'): AnalysisResult {
+    analyze(metrics: ServerMetrics, recentLogs: string[], serverStatus: string = ServerStatus.ONLINE): AnalysisResult {
         const issues: string[] = [];
         let status: 'HEALTHY' | 'WARNING' | 'CRITICAL' = 'HEALTHY';
 
@@ -29,7 +30,7 @@ export class AnalyticsService {
         };
 
         // If server is initializing (Modpacks can take 5+ mins), suppress performance alerts.
-        const isStarting = serverStatus === 'STARTING' || serverStatus === 'OFFLINE';
+        const isStarting = serverStatus === ServerStatus.STARTING || serverStatus === ServerStatus.OFFLINE;
         
         if (!isStarting) {
             // 1. Performance Heuristics

@@ -3,6 +3,7 @@ import path from 'path';
 import archiver from 'archiver';
 import extract from 'extract-zip';
 import { EventEmitter } from 'events';
+import crypto from 'crypto';
 import { logger } from '../../utils/logger';
 
 export interface Backup {
@@ -15,10 +16,12 @@ export interface Backup {
     locked?: boolean;
     type?: 'Manual' | 'Scheduled' | 'Auto-Save';
     scope?: 'full' | 'world'; // Track if this was a world-only backup
+    sha256?: string; // Integrity hash
 }
 
 export class BackupService extends EventEmitter {
     private backupsDir: string;
+    private activeBackups: Set<string> = new Set(); // Concurrency set
 
     constructor() {
         super();
@@ -28,12 +31,20 @@ export class BackupService extends EventEmitter {
 
     // Create a backup of a server
     async createBackup(serverDir: string, serverId: string, description?: string, worldOnly?: boolean): Promise<Backup> {
+        // 0. Concurrency Guard
+        if (this.activeBackups.has(serverId)) {
+            throw new Error('A backup operation is already in progress for this server.');
+        }
+
         const timestamp = Date.now();
-        const backupId = `backup-${timestamp}`;
+        const backupId = `backup-${timestamp}-${Math.random().toString(36).substring(7)}`;
         const filename = `${backupId}.zip`;
         const serverBackupsDir = path.join(this.backupsDir, serverId);
         
-        await fs.ensureDir(serverBackupsDir);
+        this.activeBackups.add(serverId);
+
+        try {
+            await fs.ensureDir(serverBackupsDir);
         
         const outputPath = path.join(serverBackupsDir, filename);
 
@@ -51,57 +62,71 @@ export class BackupService extends EventEmitter {
             logger.info(`[BackupService] Creating world-only backup for: ${worldFolders.join(', ')}`);
         }
 
-        // Create ZIP archive
-        await new Promise<void>((resolve, reject) => {
-            const output = fs.createWriteStream(outputPath);
-            const archive = archiver('zip', { zlib: { level: 9 } });
+        // Create ZIP archive with Retry Logic (Windows Lock Handling)
+        let attempts = 0;
+        const maxAttempts = 3;
+        let success = false;
 
-            output.on('close', () => resolve());
-            archive.on('warning', (err) => {
-                if (err.code === 'ENOENT') {
-                    logger.warn(`[BackupService] Archive warning: ${err.message}`);
-                } else {
-                    console.warn('[BackupService] Archive Warning:', err);
-                    // On Windows, EPERM or EBUSY often happens for online servers
-                }
-            });
+        while (attempts < maxAttempts && !success) {
+            try {
+                attempts++;
+                await new Promise<void>((resolve, reject) => {
+                    const output = fs.createWriteStream(outputPath);
+                    const archive = archiver('zip', { zlib: { level: 9 } });
 
-            archive.on('error', (err) => {
-                logger.error(`[BackupService] Archive Error: ${err.message}`);
-                reject(err);
-            });
+                    output.on('close', () => resolve());
+                    archive.on('warning', (err) => {
+                        if (err.code === 'ENOENT') {
+                            logger.warn(`[BackupService] Archive warning (skipping): ${err.message}`);
+                        } else {
+                            logger.warn(`[BackupService] Archive warning: ${err.message}`);
+                        }
+                    });
 
-            archive.on('progress', (data) => {
-                const percent = Math.round((data.entries.processed / data.entries.total) * 100);
-                this.emit('progress', { serverId, percent, backupId });
-            });
+                    archive.on('error', (err) => {
+                        logger.error(`[BackupService] Archive Error (Attempt ${attempts}): ${err.message}`);
+                        reject(err);
+                    });
 
-            archive.pipe(output);
-            
-            // Conditional archiving based on worldOnly flag
-            if (worldOnly) {
-                // World-only backup
-                for (const worldFolder of worldFolders) {
-                    archive.directory(path.join(serverDir, worldFolder), worldFolder);
-                }
-            } else {
-                // Full server backup (existing logic)
-                archive.glob('**/*', {
-                    cwd: serverDir,
-                    ignore: [
-                        'session.lock',
-                        '*.lck',
-                        'logs/latest.log',
-                        'backups/**', // Don't backup existing backups if they are inside
-                        '*.zip'
-                    ]
+                    archive.on('progress', (data) => {
+                        const percent = Math.round((data.entries.processed / data.entries.total) * 100);
+                        this.emit('progress', { serverId, percent, backupId });
+                    });
+
+                    archive.pipe(output);
+                    
+                    if (worldOnly) {
+                        for (const worldFolder of worldFolders) {
+                            archive.directory(path.join(serverDir, worldFolder), worldFolder);
+                        }
+                    } else {
+                        archive.glob('**/*', {
+                            cwd: serverDir,
+                            ignore: [
+                                'session.lock',
+                                '*.lck',
+                                'logs/latest.log',
+                                'backups/**',
+                                '*.zip'
+                            ]
+                        });
+                    }
+
+                    archive.finalize();
                 });
+                success = true;
+            } catch (e: any) {
+                if (attempts >= maxAttempts) throw e;
+                logger.warn(`[BackupService] Backup attempt ${attempts} failed, retrying in 2s... (${e.message})`);
+                await new Promise(r => setTimeout(r, 2000));
             }
-
-            archive.finalize();
-        });
+        }
 
         const stats = await fs.stat(outputPath);
+        
+        // Calculate SHA-256 for integrity
+        this.emit('status', 'Calculating integrity hash...');
+        const sha256 = await this.calculateHash(outputPath);
         
         const backup: Backup = {
             id: backupId,
@@ -111,7 +136,8 @@ export class BackupService extends EventEmitter {
             createdAt: new Date(timestamp).toISOString(),
             description,
             type: 'Manual',
-            scope: worldOnly ? 'world' : 'full'
+            scope: worldOnly ? 'world' : 'full',
+            sha256
         };
 
         // Save metadata
@@ -122,6 +148,19 @@ export class BackupService extends EventEmitter {
 
         this.emit('status', 'Backup created successfully');
         return backup;
+        } finally {
+            this.activeBackups.delete(serverId);
+        }
+    }
+
+    private async calculateHash(filePath: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const hash = crypto.createHash('sha256');
+            const stream = fs.createReadStream(filePath);
+            stream.on('data', (data) => hash.update(data));
+            stream.on('end', () => resolve(hash.digest('hex')));
+            stream.on('error', (err) => reject(err));
+        });
     }
 
     // List all backups for a server
@@ -211,6 +250,17 @@ export class BackupService extends EventEmitter {
 
         if (!(await fs.pathExists(backupPath))) {
             throw new Error('Backup file not found');
+        }
+
+        // 1. Verify Integrity before disturbing filesystem
+        if (backup.sha256) {
+            this.emit('status', 'Verifying backup integrity...');
+            const currentHash = await this.calculateHash(backupPath);
+            if (currentHash !== backup.sha256) {
+                logger.error(`[BackupService] Integrity check FAILED for ${backup.id}. Expected: ${backup.sha256}, Got: ${currentHash}`);
+                throw new Error('Backup integrity verification failed. Archive may be corrupted.');
+            }
+            logger.success(`[BackupService] Integrity verified for ${backup.id}`);
         }
 
         this.emit('status', 'Preparing for atomic restore...');
@@ -373,26 +423,59 @@ export class BackupService extends EventEmitter {
         return [...new Set(worlds)]; // Deduplicate
     }
 
-    // Cleanup old backups
+    // Cleanup old backups with smart GFS-style retention
     private async cleanupOldBackups(serverId: string, keepCount: number): Promise<void> {
         const backups = await this.listBackups(serverId);
         
-        // Filter out locked backups (they are immune to auto-cleanup)
-        const candidates = backups.filter(b => !b.locked);
+        // Locked backups are immune
+        const manualAndScheduled = backups.filter(b => !b.locked);
 
-        if (candidates.length <= keepCount) {
+        if (manualAndScheduled.length <= keepCount) {
             return;
         }
 
-        // Sort by date (oldest first)
-        candidates.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        // --- Smart Retention Logic ---
+        // 1. Keep last 'keepCount' (e.g. 5 or 10) regardless of age
+        // 2. Keep 1 per day for the last 3 days
+        const latestBackups = manualAndScheduled.slice(0, keepCount);
+        const olderBackups = manualAndScheduled.slice(keepCount);
 
-        // Delete oldest backups
-        const toDelete = candidates.slice(0, candidates.length - keepCount);
+        const toKeep = new Set<string>(latestBackups.map(b => b.id));
         
-        for (const backup of toDelete) {
-            console.log(`[BackupService] Auto-cleaning old backup: ${backup.id}`);
-            await this.deleteBackup(serverId, backup.id);
+        // Helper: get YYYY-MM-DD
+        const getDateKey = (dateStr: string) => dateStr.split('T')[0];
+        
+        const dailySnapshots = new Map<string, Backup>();
+        for (const backup of olderBackups) {
+            const dateKey = getDateKey(backup.createdAt);
+            const daysAge = (Date.now() - new Date(backup.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+            
+            if (daysAge <= 3) {
+                if (!dailySnapshots.has(dateKey)) {
+                    dailySnapshots.set(dateKey, backup);
+                }
+            }
+        }
+
+        for (const snapshot of dailySnapshots.values()) {
+            toKeep.add(snapshot.id);
+        }
+
+        // 3. Separate list of candidates for deletion
+        const deletionCandidates = manualAndScheduled.filter(b => !toKeep.has(b.id));
+
+        // 4. Prioritize deleting Auto-Saves over Manual backups
+        deletionCandidates.sort((a, b) => {
+            if (a.type === 'Auto-Save' && b.type !== 'Auto-Save') return -1;
+            if (a.type !== 'Auto-Save' && b.type === 'Auto-Save') return 1;
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        });
+
+        for (const backup of deletionCandidates) {
+            logger.info(`[BackupService] Auto-cleaning old backup: ${backup.id} (Type: ${backup.type || 'Manual'}, Policy: GFS)`);
+            await this.deleteBackup(serverId, backup.id).catch(e => {
+                logger.warn(`[BackupService] Failed to clean up ${backup.id}: ${e.message}`);
+            });
         }
     }
 }

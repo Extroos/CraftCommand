@@ -47,7 +47,7 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 - **Remote Access Mode**: Ensure the global toggle is **ON** in System Settings if you are not using a tunnel like Playit.gg.
 - **Can't Connect**: Ensure your DuckDNS synchronization is active in Global Settings.
 
-### v1.11.0 Systems Integrity Errors
+### v1.11.3 Systems Integrity Errors
 
 | Error Code                  | Meaning                                                  | Resolution                                                                                             |
 | :-------------------------- | :------------------------------------------------------- | :----------------------------------------------------------------------------------------------------- |

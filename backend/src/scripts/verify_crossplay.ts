@@ -1,6 +1,7 @@
 
 import { crossPlayService } from '../features/network/CrossPlayService';
 import { serverRepository } from '../storage/ServerRepository';
+import { ServerStatus } from '@shared/types';
 import { pluginService } from '../features/plugins/PluginService';
 import fs from 'fs-extra';
 import path from 'path';
@@ -19,7 +20,7 @@ async function verify() {
         software: 'Paper',
         version: '1.20.4',
         port: 25565,
-        status: 'OFFLINE',
+        status: ServerStatus.OFFLINE,
         workingDirectory: serverDir,
         createdAt: Date.now(),
         updatedAt: Date.now()

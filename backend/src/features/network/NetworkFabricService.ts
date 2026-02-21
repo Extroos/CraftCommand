@@ -4,7 +4,7 @@ import { proxyService } from './ProxyService';
 import { statsRingBuffer } from '../diagnosis/StatsRingBuffer';
 import { getServer, getServers, saveServer } from '../servers/ServerService';
 import { logger } from '../../utils/logger';
-import { ServerConfig } from '@shared/types';
+import { ServerConfig, ServerStatus } from '@shared/types';
 
 /**
  * ╔══════════════════════════════════════════════════════╗
@@ -57,9 +57,9 @@ class NetworkFabricService {
         if (!proxy) return; // No proxy configured, nothing to automate
 
         try {
-            if (status === 'ONLINE') {
+            if (status === ServerStatus.ONLINE) {
                 await this.handleServerOnline(server, proxy);
-            } else if (status === 'OFFLINE' || status === 'CRASHED') {
+            } else if (status === ServerStatus.OFFLINE || status === ServerStatus.CRASHED) {
                 await this.handleServerOffline(server, proxy);
             }
         } catch (e: any) {
@@ -115,7 +115,7 @@ class NetworkFabricService {
         // Find the first online backend
         const onlineBackend = links.find(l => {
             const backend = getServer(l.serverId);
-            return backend && (backend.status === 'ONLINE' || backend.status === 'STARTING');
+            return backend && (backend.status === ServerStatus.ONLINE || backend.status === ServerStatus.STARTING);
         });
 
         if (!onlineBackend) return; // No online backends to promote
@@ -175,7 +175,7 @@ class NetworkFabricService {
         const links = proxy.network?.proxyConfig?.links || [];
         return links.filter(l => {
             const backend = getServer(l.serverId);
-            return backend && backend.status === 'ONLINE';
+            return backend && backend.status === ServerStatus.ONLINE;
         }).length;
     }
 
@@ -213,7 +213,7 @@ class NetworkFabricService {
         return {
             proxyId: proxy.id,
             proxyName: proxy.name,
-            proxyOnline: proxy.status === 'ONLINE',
+            proxyOnline: proxy.status === ServerStatus.ONLINE,
             totalBackends: total,
             onlineBackends: online,
             offlineBackends: offline,
@@ -230,7 +230,7 @@ class NetworkFabricService {
      */
     async rebalanceTraffic(): Promise<void> {
         const proxy = this.findActiveProxy();
-        if (!proxy || proxy.status !== 'ONLINE') return;
+        if (!proxy || proxy.status !== ServerStatus.ONLINE) return;
 
         const links = proxy.network?.proxyConfig?.links;
         if (!links || links.length < 2) return; // Nothing to rebalance
@@ -248,7 +248,7 @@ class NetworkFabricService {
                 playerCount,
                 maxPlayers,
                 loadPercent,
-                isOnline: backend?.status === 'ONLINE'
+                isOnline: backend?.status === ServerStatus.ONLINE
             };
         });
 
@@ -297,7 +297,7 @@ class NetworkFabricService {
                 serverId: link.serverId,
                 playerCount,
                 loadPercent,
-                recommended: backend?.status === 'ONLINE' && loadPercent < 80
+                recommended: backend?.status === ServerStatus.ONLINE && loadPercent < 80
             };
         });
 

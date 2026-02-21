@@ -1,0 +1,181 @@
+backend/node_modules/socket.io/dist/index.d.ts(1,8): error TS1192: Module '"http"' has no default export.
+backend/src/constants.ts(1,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/auth/PermissionService.ts(1,53): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/auth/PermissionService.ts(2,34): error TS2307: Cannot find module '@shared/constants/roles' or its corresponding type declarations.
+backend/src/features/backups/BackupService.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/backups/BackupService.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/backups/BackupService.ts(3,8): error TS1259: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/archiver/index"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/backups/BackupService.ts(4,8): error TS1259: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/extract-zip/index"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/backups/BackupService.ts(6,8): error TS1192: Module '"crypto"' has no default export.
+backend/src/features/backups/BackupService.ts(411,20): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/backups/BackupService.ts(448,32): error TS2802: Type 'MapIterator<Backup>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/diagnosis/BedrockDiagnosisRules.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/diagnosis/BedrockDiagnosisRules.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/diagnosis/ConnectivityDiagnosisRules.ts(3,47): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/diagnosis/CrashReportReader.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/diagnosis/CrashReportReader.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/diagnosis/CrossPlayDiagnosisRules.ts(8,30): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/diagnosis/DiagnosisBrain.ts(3,30): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/diagnosis/DiagnosisBrain.ts(79,38): error TS2339: Property 'confidence' does not exist on type 'InternalDiagnosisResult'.
+backend/src/features/diagnosis/DiagnosisBrain.ts(80,38): error TS2339: Property 'confidence' does not exist on type 'InternalDiagnosisResult'.
+backend/src/features/diagnosis/DiagnosisRules.ts(2,30): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/diagnosis/DiagnosisRules.ts(8,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/diagnosis/DiagnosisRules.ts(9,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/diagnosis/DiagnosisRules.ts(618,81): error TS1501: This regular expression flag is only available when targeting 'es2018' or later.
+backend/src/features/diagnosis/HostingOSDiagnosisRules.ts(3,47): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/diagnosis/JavaDiagnosisRules.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/diagnosis/JavaDiagnosisRules.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/diagnosis/MapDiagnosisRules.ts(3,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/diagnosis/MapDiagnosisRules.ts(4,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/diagnosis/ModDiagnosisRules.ts(115,45): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/diagnosis/ModDiagnosisRules.ts(116,45): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/diagnosis/ModDiagnosisRules.ts(216,72): error TS1501: This regular expression flag is only available when targeting 'es2018' or later.
+backend/src/features/diagnosis/ModDiagnosisRules.ts(287,152): error TS1501: This regular expression flag is only available when targeting 'es2018' or later.
+backend/src/features/diagnosis/NetworkDiagnosisRules.ts(3,30): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/diagnosis/NodeDiagnosisRules.ts(2,26): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/diagnosis/PluginDiagnosisRules.ts(2,30): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/diagnosis/PluginDiagnosisRules.ts(3,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/diagnosis/PluginDiagnosisRules.ts(4,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/diagnosis/PredictiveDiagnosisRules.ts(4,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/systeminformation/lib/index"' has no default export.
+backend/src/features/diagnosis/ResourceAdvisorRules.ts(4,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/systeminformation/lib/index"' has no default export.
+backend/src/features/diagnosis/types.ts(1,61): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/diagnosis/VelocityDiagnosisRules.ts(3,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/diagnosis/VelocityDiagnosisRules.ts(4,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/diagnosis/VelocityDiagnosisRules.ts(6,30): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/files/FileWatcherService.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/chokidar/types/index"' has no default export.
+backend/src/features/files/FileWatcherService.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/installer/InstallerService.ts(1,8): error TS1259: Module '"axios"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/installer/InstallerService.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/installer/InstallerService.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/installer/InstallerService.ts(4,8): error TS1259: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/adm-zip/index"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/installer/InstallerService.ts(5,8): error TS1259: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/extract-zip/index"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/installer/InstallerService.ts(908,40): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/network/CrossPlayService.ts(2,44): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/network/CrossPlayService.ts(9,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/network/CrossPlayService.ts(10,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/network/CrossPlayService.ts(11,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/node_modules/yaml/dist/index"' has no default export.
+backend/src/features/network/NetworkFabricService.ts(7,44): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/network/NetworkService.ts(2,8): error TS1192: Module '"dns"' has no default export.
+backend/src/features/network/NetworkService.ts(3,8): error TS1259: Module '"axios"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/network/NetworkService.ts(5,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/network/NetworkService.ts(6,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/network/NetworkService.ts(12,8): error TS2307: Cannot find module '@shared/types/network' or its corresponding type declarations.
+backend/src/features/network/ProxyService.ts(2,30): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/network/ProxyService.ts(3,27): error TS2307: Cannot find module '@shared/types/network' or its corresponding type declarations.
+backend/src/features/network/ProxyService.ts(8,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/network/ProxyService.ts(9,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/networking/ConnectivityProvider.ts(1,56): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/networking/DirectProvider.ts(2,56): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/networking/PlayitProvider.ts(3,54): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/networking/PlayitProvider.ts(5,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/networking/PlayitProvider.ts(6,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/networking/UPnPProvider.ts(3,54): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/networking/UPnPProvider.ts(6,8): error TS1192: Module '"net"' has no default export.
+backend/src/features/nodes/NodeRegistryService.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/nodes/NodeRegistryService.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/nodes/NodeRegistryService.ts(3,8): error TS1192: Module '"crypto"' has no default export.
+backend/src/features/nodes/NodeRegistryService.ts(5,58): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/nodes/NodeRegistryService.ts(174,32): error TS2802: Type 'MapIterator<NodeInfo>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/nodes/NodeRegistryService.ts(184,32): error TS2802: Type 'MapIterator<NodeInfo>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/nodes/NodeRegistryService.ts(258,32): error TS2802: Type 'MapIterator<NodeInfo>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/nodes/NodeRegistryService.ts(414,34): error TS2802: Type 'Map<string, NodeInfo>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/plugins/MarketplaceRegistry.ts(1,8): error TS1259: Module '"axios"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/plugins/MarketplaceRegistry.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/plugins/MarketplaceRegistry.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/plugins/MarketplaceRegistry.ts(5,103): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/plugins/PluginService.ts(1,8): error TS1192: Module '"crypto"' has no default export.
+backend/src/features/plugins/PluginService.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/plugins/PluginService.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/plugins/PluginService.ts(4,134): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/plugins/PluginService.ts(10,8): error TS1259: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/adm-zip/index"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/processes/JavaManager.ts(4,8): error TS1192: Module '"util"' has no default export.
+backend/src/features/processes/JavaManager.ts(5,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/processes/JavaManager.ts(6,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/processes/JavaManager.ts(7,8): error TS1259: Module '"axios"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/processes/JavaManager.ts(8,8): error TS1259: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/adm-zip/index"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/processes/ProcessManager.ts(2,30): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/processes/ProcessManager.ts(3,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/systeminformation/lib/index"' has no default export.
+backend/src/features/processes/ProcessManager.ts(4,8): error TS1192: Module '"net"' has no default export.
+backend/src/features/processes/runners/DockerRunner.ts(4,8): error TS1192: Module '"util"' has no default export.
+backend/src/features/processes/runners/DockerRunner.ts(5,8): error TS1192: Module '"os"' has no default export.
+backend/src/features/processes/runners/NativeRunner.ts(4,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/systeminformation/lib/index"' has no default export.
+backend/src/features/processes/runners/NativeRunner.ts(5,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/processes/runners/NativeRunner.ts(7,8): error TS1192: Module '"util"' has no default export.
+backend/src/features/processes/runners/NativeRunner.ts(8,8): error TS1259: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/tree-kill/index"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/processes/runners/RemoteRunner.ts(199,39): error TS2802: Type 'Map<string, string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/processes/runners/RemoteRunner.ts(235,39): error TS2802: Type 'Map<string, string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/servers/MapService.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/servers/MapService.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/servers/MapService.ts(3,8): error TS1259: Module '"axios"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/servers/MapService.ts(8,27): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/servers/ServerConfigService.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/servers/ServerConfigService.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/servers/ServerConfigService.ts(3,32): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/servers/ServerService.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/servers/ServerService.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/servers/ServerService.ts(3,8): error TS1192: Module '"net"' has no default export.
+backend/src/features/servers/ServerService.ts(13,44): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/servers/ServerService.ts(231,35): error TS2802: Type 'Set<unknown>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/servers/ServerService.ts(240,35): error TS2802: Type 'Set<unknown>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/features/servers/StartupManager.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/servers/StartupManager.ts(3,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/servers/StartupManager.ts(6,8): error TS1192: Module '"net"' has no default export.
+backend/src/features/servers/StartupManager.ts(7,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/systeminformation/lib/index"' has no default export.
+backend/src/features/servers/StartupManager.ts(9,8): error TS1192: Module '"util"' has no default export.
+backend/src/features/system/AuditService.ts(1,56): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/system/HostingOSService.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/systeminformation/lib/index"' has no default export.
+backend/src/features/system/HostingOSService.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/system/HostingOSService.ts(4,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/system/HostingOSService.ts(7,30): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/system/RemoteAccessService.ts(8,56): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/system/RemoteAccessService.ts(10,8): error TS1192: Module '"os"' has no default export.
+backend/src/features/system/SafetyService.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/system/SafetyService.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/system/SafetyService.ts(3,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/systeminformation/lib/index"' has no default export.
+backend/src/features/system/SafetyService.ts(4,32): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/features/system/SystemService.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/system/SystemService.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/system/SystemService.ts(5,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/systeminformation/lib/index"' has no default export.
+backend/src/features/system/SystemSettingsService.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/features/system/SystemSettingsService.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/features/system/SystemSettingsService.ts(5,31): error TS2307: Cannot find module '@shared/types/network' or its corresponding type declarations.
+backend/src/sockets/handlers/commandHandler.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/sockets/handlers/commandHandler.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/sockets/index.ts(7,72): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/sockets/middleware/authMiddleware.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/jsonwebtoken/index"' has no default export.
+backend/src/sockets/PresenceTracker.ts(1,43): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/sockets/PresenceTracker.ts(109,41): error TS2802: Type 'Map<string, Map<string, PresenceEntry>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+backend/src/storage/AuditRepository.ts(3,28): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/storage/JsonRepository.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/storage/JsonRepository.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/storage/PluginRepository.ts(3,35): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/storage/ServerRepository.ts(3,32): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/storage/SqliteProvider.ts(2,8): error TS1259: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/better-sqlite3/index"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/storage/SqliteProvider.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/storage/SqliteProvider.ts(4,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/storage/StorageFactory.ts(5,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/storage/UserRepository.ts(3,31): error TS2307: Cannot find module '@shared/types' or its corresponding type declarations.
+backend/src/utils/ConfigReader.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/utils/ConfigReader.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/utils/fs.ts(1,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/utils/fs.ts(2,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/utils/logger.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/@types/fs-extra/index"' has no default export.
+backend/src/utils/logger.ts(3,8): error TS1259: Module '"path"' can only be default-imported using the 'esModuleInterop' flag
+backend/src/utils/NetUtils.ts(1,8): error TS1192: Module '"net"' has no default export.
+backend/src/utils/NetUtils.ts(2,8): error TS1192: Module '"C:/Users/user/Desktop/Craft-Commands/backend/node_modules/systeminformation/lib/index"' has no default export.
+node_modules/@types/react-router-dom/index.d.ts(13,10): error TS2724: '"react-router"' has no exported member named 'match'. Did you mean 'UIMatch'?
+node_modules/@types/react-router-dom/index.d.ts(19,5): error TS2305: Module '"react-router"' has no exported member 'PromptProps'.
+node_modules/@types/react-router-dom/index.d.ts(20,5): error TS2305: Module '"react-router"' has no exported member 'Prompt'.
+node_modules/@types/react-router-dom/index.d.ts(23,5): error TS2305: Module '"react-router"' has no exported member 'RedirectProps'.
+node_modules/@types/react-router-dom/index.d.ts(24,5): error TS2724: '"react-router"' has no exported member named 'Redirect'. Did you mean 'redirect'?
+node_modules/@types/react-router-dom/index.d.ts(25,5): error TS2305: Module '"react-router"' has no exported member 'RouteChildrenProps'.
+node_modules/@types/react-router-dom/index.d.ts(26,5): error TS2305: Module '"react-router"' has no exported member 'RouteComponentProps'.
+node_modules/@types/react-router-dom/index.d.ts(33,5): error TS2305: Module '"react-router"' has no exported member 'SwitchProps'.
+node_modules/@types/react-router-dom/index.d.ts(34,5): error TS2305: Module '"react-router"' has no exported member 'Switch'.
+node_modules/@types/react-router-dom/index.d.ts(35,5): error TS2724: '"react-router"' has no exported member named 'match'. Did you mean 'UIMatch'?
+node_modules/@types/react-router-dom/index.d.ts(37,5): error TS2305: Module '"react-router"' has no exported member 'withRouter'.
+node_modules/@types/react-router-dom/index.d.ts(38,5): error TS2724: '"react-router"' has no exported member named 'RouterChildContext'. Did you mean 'RouterContext'?
+node_modules/@types/react-router-dom/index.d.ts(39,5): error TS2305: Module '"react-router"' has no exported member 'useHistory'.
+node_modules/@types/react-router-dom/index.d.ts(42,5): error TS2724: '"react-router"' has no exported member named 'useRouteMatch'. Did you mean 'RouteMatch'?
+node_modules/react-router/dist/development/index.d.ts(4,8): error TS1259: Module '"C:/Users/user/Desktop/Craft-Commands/node_modules/@types/react/index"' can only be default-imported using the 'esModuleInterop' flag
+node_modules/react-router/dist/development/instrumentation-DvHY1sgY.d.ts(408,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.

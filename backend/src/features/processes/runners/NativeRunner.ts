@@ -42,10 +42,30 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
 
         this.processes.set(id, child);
 
-        child.stdout?.on('data', (data) => this.emit('log', { id, line: data.toString(), type: 'stdout' }));
-        child.stderr?.on('data', (data) => this.emit('log', { id, line: data.toString(), type: 'stderr' }));
+        let stdoutBuffer = '';
+        child.stdout?.on('data', (data) => {
+            stdoutBuffer += data.toString();
+            let lines = stdoutBuffer.split('\n');
+            stdoutBuffer = lines.pop() || '';
+            for (const line of lines) {
+                this.emit('log', { id, line: line.replace(/\r$/, ''), type: 'stdout' });
+            }
+        });
+
+        let stderrBuffer = '';
+        child.stderr?.on('data', (data) => {
+            stderrBuffer += data.toString();
+            let lines = stderrBuffer.split('\n');
+            stderrBuffer = lines.pop() || '';
+            for (const line of lines) {
+                this.emit('log', { id, line: line.replace(/\r$/, ''), type: 'stderr' });
+            }
+        });
 
         child.on('close', (code) => {
+            if (stdoutBuffer) this.emit('log', { id, line: stdoutBuffer.replace(/\r$/, ''), type: 'stdout' });
+            if (stderrBuffer) this.emit('log', { id, line: stderrBuffer.replace(/\r$/, ''), type: 'stderr' });
+            
             this.processes.delete(id);
             this.emit('close', { id, code });
         });

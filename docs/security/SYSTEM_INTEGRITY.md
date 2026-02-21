@@ -1,6 +1,6 @@
 # Systems Integrity & Supply Chain Security
 
-CraftCommand v1.11.0 introduces a production-grade security model for system updates, ensuring that every byte running on your cluster is authentic and untampered.
+CraftCommand v1.11.3 introduces a production-grade security model for system updates, ensuring that every byte running on your cluster is authentic and untampered.
 
 ## 1. The Threat Model
 

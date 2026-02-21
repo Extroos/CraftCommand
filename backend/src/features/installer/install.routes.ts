@@ -119,33 +119,49 @@ Write-Host "Install-Agent -Id '...' -Secret '...' -Url '${panelUrl}'" -Foregroun
  * GET /api/install/agent
  * Downloads the agent source code as a zip.
  */
+import { logger } from '../../utils/logger';
+
+// ... (inside the route)
 router.get('/agent', async (req, res) => {
     try {
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', 'attachment; filename="agent.zip"');
 
+        logger.info(`[Install] Starting standalone agent.zip generation Request from ${req.ip}`);
+        logger.info(`[Install] Source Directory: ${AGENT_DIR}`);
+
         const archive = archiver('zip', {
-            zlib: { level: 9 } // Sets the compression level.
+            zlib: { level: 9 }
         });
 
         archive.on('error', (err) => {
-            console.error('[Install] Zip error:', err);
-            res.status(500).end();
+            logger.error(`[Install] Zip error: ${err.message}`);
+            if (!res.headersSent) res.status(500).end();
         });
 
         archive.pipe(res);
+        
+        // Append contents of the agent directory directly (FLAT structure)
+        archive.directory(AGENT_DIR, false, (data) => {
+            const isIgnored = data.name.includes('node_modules') || 
+                            data.name.includes('dist') || 
+                            data.name.includes('.git') ||
+                            data.name === '.env';
+            
+            if (!isIgnored && data.name.endsWith('capabilities.ts')) {
+                logger.debug(`[Install] Including capabilities.ts from ${data.name}`);
+            }
 
-        // Append files from local agent directory
-        // Excluding node_modules and other temp files
-        archive.glob('**/*', {
-            cwd: AGENT_DIR,
-            ignore: ['node_modules/**', 'dist/**', '.git/**', '.env', 'agent.config.json']
+            return isIgnored ? false : data;
         });
 
         await archive.finalize();
-    } catch (error) {
-        console.error('[Install] Failed to serve agent zip:', error);
-        res.status(500).json({ error: 'Failed to serve agent' });
+        logger.success(`[Install] Standalone agent zip served successfully.`);
+    } catch (error: any) {
+        logger.error(`[Install] Failed to serve agent zip: ${error.message}`);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to serve agent' });
+        }
     }
 });
 

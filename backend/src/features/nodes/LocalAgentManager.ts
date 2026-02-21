@@ -7,6 +7,7 @@ import { systemSettingsService } from '../system/SystemSettingsService';
 class LocalAgentManager {
     private agentProcess: ChildProcess | null = null;
     private restartTimer: NodeJS.Timeout | null = null;
+    private intentionalStop: boolean = false;
 
     initialize() {
         // Initial check
@@ -22,38 +23,28 @@ class LocalAgentManager {
         const settings = systemSettingsService.getSettings();
         const enabled = settings.app.distributedNodes?.enabled;
 
-        if (enabled) {
-            // Check if Local Node exists
-            const secret = nodeRegistryService.getLocalNodeSecret();
-            
-            // If missing, auto-enroll it now (e.g. user just enabled it)
-            if (!secret) {
-                // We need to access the private enrollLocalDefault or just wait for next restart?
-                // Actually nodeRegistryService handles this on load, but we might need to trigger it if it was deleted.
-                // Let's assume it might have been removed.
-                
-                // HACK: We can't easily access private method, but we can check if it exists.
-                // Ideally NodeRegistryService should expose ensuring local node.
-                // For now, we will rely on startAgent logic or just log warning.
-                 if (!nodeRegistryService.getNode('local')) {
-                     // We need a way to restore it. 
-                     // Let's use a workaround or expose enrollLocalDefault.
-                     // Actually, let's just use what we have.
-                 }
-            }
-            
-            // We need to get the secret again in case it was just created
-            const currentSecret = nodeRegistryService.getLocalNodeSecret();
-            if (currentSecret) {
-                this.startAgent(currentSecret);
-            }
-        } else {
-            // Disabled -> Stop agent process
+        if (!enabled) {
+            // Feature disabled: stop if running and don't start
+            this.intentionalStop = true;
             this.stop();
-            
-            // NOTE: We no longer remove the 'local' node from the registry here.
-            // The local node is required for standard (single-node) operation.
+            return;
         }
+
+        this.intentionalStop = false;
+
+        // Auto-Enrollment for Local Node
+        const secret = nodeRegistryService.getLocalNodeSecret();
+        if (!secret) {
+            // If missing, we can't do much without calling private enrollLocalDefault. 
+            // However, NodeRegistryService ensures it on load.
+            // If it's missing here, it's an edge case.
+             logger.warn('[LocalAgent] Local node secret missing. Waiting for registry...');
+        } else {
+            // Start the local agent
+            this.startAgent(secret);
+        }
+
+        // Logic for other distributed features (if any) could go here
     }
 
     private startAgent(secret: string) {
@@ -68,49 +59,72 @@ class LocalAgentManager {
         // Command configuration
         const port = process.env.BACKEND_PORT || '3001';
         const panelUrl = `http://127.0.0.1:${port}`;
-        const args = [
-            '--panel-url', panelUrl,
-            '--node-id', 'local',
-            '--secret', secret
-        ];
+        
+        // Fixed: Ensure we point to the correct flat structure in dist 
+        // (tsc output is dist/index.js)
+        const distPath = path.join(agentDir, 'dist', 'index.js');
+        const srcPath = path.join(agentDir, 'src', 'index.ts');
+
+        // Check if dist exists for production fallback
+        const useDist = isProduction || require('fs').existsSync(distPath);
 
         let cmd = 'node';
-        let scriptArgs = [path.join(agentDir, 'dist', 'index.js'), ...args];
+        let scriptArgs = [];
 
-        if (!isProduction) {
-            cmd = 'npx.cmd'; // Windows specific for now, or just npx
-            scriptArgs = ['ts-node', path.join(agentDir, 'src', 'index.ts'), ...args];
+        if (useDist) {
+            scriptArgs = [distPath];
+        } else {
+             // Fallback to ts-node if no build found (Dev mode)
+            cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+            scriptArgs = ['ts-node', srcPath];
         }
+
+        // Add common args
+        scriptArgs.push('--panel-url', panelUrl);
+        scriptArgs.push('--node-id', 'local');
+        scriptArgs.push('--secret', secret);
 
         // Spawn
         this.agentProcess = spawn(cmd, scriptArgs, {
             cwd: agentDir,
             shell: true,
+            stdio: 'pipe', 
             env: { ...process.env, FORCE_COLOR: '1' }
         });
 
         this.agentProcess.stdout?.on('data', (d) => {
             const line = d.toString().trim();
-            if (line) logger.info(`[LocalAgent] ${line}`);
+            // Filter noise
+            if (line && !line.includes('debugger')) logger.debug(`[LocalAgent] ${line}`);
         });
 
         this.agentProcess.stderr?.on('data', (d) => {
             const line = d.toString().trim();
-            if (line) logger.error(`[LocalAgent] ${line}`);
+            if (line) logger.warn(`[LocalAgent] ${line}`);
         });
 
         this.agentProcess.on('close', (code) => {
-            logger.warn(`[LocalAgent] Process exited with code ${code}. Restarting in 5s...`);
             this.agentProcess = null;
-            this.restartTimer = setTimeout(() => this.startAgent(secret), 5000);
+            if (!this.intentionalStop) {
+                logger.warn(`[LocalAgent] Process exited with code ${code}. Restarting in 5s...`);
+                // Always try to restart if it crashes
+                this.restartTimer = setTimeout(() => this.startAgent(secret), 5000);
+            } else {
+                logger.info('[LocalAgent] Process shut down gracefully (Feature Disabled).');
+            }
         });
     }
 
     stop() {
-        if (this.restartTimer) clearTimeout(this.restartTimer);
+        this.intentionalStop = true;
+        if (this.restartTimer) {
+            clearTimeout(this.restartTimer);
+            this.restartTimer = null;
+        }
         if (this.agentProcess) {
-            this.agentProcess.kill();
-            this.agentProcess = null;
+            // Force kill tree? For now standard kill
+            this.agentProcess.kill(); 
+            // process will emit close which respects intentionalStop
         }
     }
 }

@@ -4,7 +4,7 @@ import { runnerFactory } from '../processes/runners/RunnerFactory';
 import { bindAgentBridge } from '../processes/runners/RemoteRunner';
 import { systemSettingsService } from '../system/SystemSettingsService';
 import { auditService } from '../system/AuditService';
-import {  NodeHealth  } from '@shared/types';
+import {  NodeHealth, NodeStatus  } from '@shared/types';
 import { logger } from '../../utils/logger';
 import { jitterMiddleware } from '../../sockets/middleware/JitterMiddleware';
 
@@ -99,7 +99,7 @@ export function setupAgentNamespace(io: Server): void {
                          name: 'E2E Test Node',
                          host: '127.0.0.1',
                          port: 3006,
-                         status: 'ENROLLING',
+                         status: NodeStatus.ENROLLING,
                          protocolVersion: 'E2E',
                          enrolledAt: Date.now(),
                          lastHeartbeat: Date.now(),
@@ -115,7 +115,12 @@ export function setupAgentNamespace(io: Server): void {
 
             // 2. Standard Production Auth
             const settings = systemSettingsService.getSettings();
-            if (!settings.app.distributedNodes?.enabled) {
+            
+            // Allow 'local' node even if distributed nodes is disabled
+            // We check nodeId from auth here (it's validated later for format)
+            const incomingNodeId = socket.handshake.auth?.nodeId;
+
+            if (!settings.app.distributedNodes?.enabled && incomingNodeId !== 'local') {
                 return next(new Error('Distributed Nodes is disabled on this panel.'));
             }
 
@@ -123,9 +128,9 @@ export function setupAgentNamespace(io: Server): void {
                 return next(new Error('Missing or invalid nodeId in handshake auth.'));
             }
 
-            // Validate nodeId format (UUID)
+            // Validate nodeId format (UUID) or allow 'local'
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            if (!uuidRegex.test(nodeId)) {
+            if (nodeId !== 'local' && !uuidRegex.test(nodeId)) {
                 return next(new Error('Invalid nodeId format. Expected UUID.'));
             }
 

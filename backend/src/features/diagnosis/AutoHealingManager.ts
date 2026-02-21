@@ -56,7 +56,7 @@ export class AutoHealingManager {
                     await DiagnosisActions.takeHeapSnapshot(payload.reason);
                     break;
                 case 'RESTORE_DATA_BACKUP':
-                    await DiagnosisActions.restoreDataBackup(fsManager, payload.filename);
+                    await DiagnosisActions.restoreDataBackup(fsManager, payload.filename, serverId);
                     break;
                 case 'REINSTALL_BEDROCK':
                     await DiagnosisActions.reinstallBedrock(server);
@@ -82,6 +82,27 @@ export class AutoHealingManager {
                     break;
                 case 'TRIGGER_DDNS_UPDATE':
                     await DiagnosisActions.triggerDdnsUpdate(server);
+                    break;
+                case 'CLEANUP_WORLD_LOCK':
+                    await DiagnosisActions.cleanupWorldLock(server, fsManager);
+                    break;
+                case 'FIX_JVM_ARGS':
+                    await DiagnosisActions.fixJvmArgs(server);
+                    break;
+                case 'REMOVE_MOD':
+                    await DiagnosisActions.removeMod(server, fsManager, payload.name);
+                    break;
+                case 'INSTALL_DEPENDENCY':
+                    await DiagnosisActions.installDependency(server, payload.name);
+                    break;
+                case 'RESTORE_LEVEL_DATA':
+                    await DiagnosisActions.restoreLevelData(server, fsManager);
+                    break;
+                case 'ENABLE_ENTITY_PURGE':
+                    await DiagnosisActions.enableEntityPurge(server, fsManager);
+                    break;
+                case 'REASSIGN_BEDROCK_PORT':
+                    await DiagnosisActions.reassignBedrockPort(server);
                     break;
                 default:
                     throw new Error(`Unknown auto-heal action type: ${actionType}`);

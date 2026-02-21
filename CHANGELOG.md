@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.11.3] - 2026-02-21 - Diagnostic Intelligence & Backup Hardening
+
+### Added
+
+- **System Diagnosis Expansion (v2.1)**: Integrated 6 new enterprise-grade diagnosis rules targeting common operational failures:
+  - **ClientOnlyModRule**: Identifies client-side mods installed on standalone servers.
+  - **CorruptedModJarRule**: Detects empty or partial JAR files from interrupted downloads.
+  - **ProxyForwardingConfigRule**: Diagnoses Bungee/Velocity IP forwarding mismatches.
+  - **GeyserPortConflictRule**: Transparently identifies UDP 19132 port collisions for cross-play servers.
+  - **PlayerDataCorruptionRule**: Detects corrupted `.dat` files preventing player logins.
+  - **BrokenDatapackRule**: Diagnoses world load failures caused by syntax errors in Datapacks.
+- **Enhanced Auto-Healing Actions**: Introduced `REMOVE_MOD` for corrupted dependency cleanup and `REASSIGN_BEDROCK_PORT` for automated network resolution.
+- **Wider Minecraft Version Support**:
+  - **Modern (1.20 - 1.21.x)**: Full support for the 1.21.x series up to 1.21.11.
+  - **Legacy Support**: Restored compatibility for legacy versions including 1.7.10, 1.8.8, 1.12.2, and 1.19.2.
+  - **Intelligent Java Pinning**: Integrated version-aware Java mappings to automatically recommend the optimal runtime (Java 21 for 1.21+).
+
+### Improved
+
+- **Backup System Hardening (v2.1)**:
+  - **Concurrency Locking**: Implemented per-server backup locks to prevent disk I/O congestion from simultaneous operations.
+  - **Robust ID Generation**: Backup IDs now feature randomized suffixes for guaranteed uniqueness across clustered nodes.
+  - **Smart Retention Logic**: Resolved various retention bugs; the system now correctly respects the `keepCount` parameter and prioritizes purging `Auto-Save` snapshots over user-created `Manual` backups.
+- **Backend Stability**: Enforced strict `ServerStatus` enum synchronization throughout the backend lifecycle to eliminate race conditions and "ghost" process states.
+- **UI Responsiveness**: Redesigned the version selection UI in the creation wizard with cleaner Modern/Legacy grouping.
+
+### Fixed
+
+- **NetworkOfflineRule False Positives**: Refined the authentication connectivity check to strictly match Mojang connection exceptions, preventing false flags during normal offline states.
+- **Server Stop Race Condition**: Resolved an issue where rapid interaction could trigger 409 conflicts during server shutdown transitions.
+- **Mod Diagnosis Regex**: Hardened the corrupted JAR detection to handle non-standard filename characters.
+
 ## [1.11.2] - 2026-02-18 - Hotfix: Agent Dependencies
 
 ### Fixed

@@ -1,7 +1,7 @@
 
 import path from 'path';
 import fs from 'fs-extra';
-import {  ServerConfig, ImportAnalysis  } from '@shared/types';
+import {  ServerConfig, ImportAnalysis, ServerStatus  } from '@shared/types';
 import { SERVERS_ROOT } from '../../constants';
 import { saveServer, getServers } from '../servers/ServerService';
 import { javaManager } from '../processes/JavaManager';
@@ -54,7 +54,7 @@ class ImportService {
             name: name || `Imported Server`,
             software: (configOverrides.software as any) || analysis.software,
             version: configOverrides.version || analysis.version,
-            status: 'OFFLINE',
+            status: ServerStatus.OFFLINE,
             port: configOverrides.port || analysis.port,
             workingDirectory: normalizedPath,
             executable: configOverrides.executable || analysis.executable,
@@ -114,7 +114,7 @@ class ImportService {
                 name: name || `Imported Server`,
                 software: (configOverrides.software as any) || analysis.software,
                 version: configOverrides.version || analysis.version,
-                status: 'OFFLINE',
+                status: ServerStatus.OFFLINE,
                 port: configOverrides.port || analysis.port,
                 workingDirectory: installDir,
                 executable: configOverrides.executable || analysis.executable,

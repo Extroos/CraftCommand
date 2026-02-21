@@ -12,6 +12,7 @@ import {
 } from 'discord.js';
 import { systemSettingsService } from '../system/SystemSettingsService';
 import { getServer, getServers, startServer, stopServer } from '../servers/ServerService';
+import { ServerStatus } from '@shared/types';
 import { processManager } from '../processes/ProcessManager';
 import { backupService } from '../backups/BackupService';
 import { logger } from '../../utils/logger';
@@ -215,7 +216,7 @@ export class DiscordService {
             const server = getServer(id);
             if (!server) return;
             
-            if (status === 'RECOVERING') {
+            if (status === ServerStatus.RECOVERING) {
                 this.sendNotification(
                     '🛡️ Recovery Protocol Active',
                     `The system has detected an issue with **${server.name}**. \n**Action**: Attempting automated stabilization...`,
@@ -227,7 +228,7 @@ export class DiscordService {
             this.sendNotification(
                 'Server Status Change',
                 `The server **${server.name}** is now **${status}**.`,
-                status === 'ONLINE' ? 0x10b981 : (status === 'OFFLINE' ? 0xf43f5e : 0xf59e0b)
+                status === ServerStatus.ONLINE ? 0x10b981 : (status === ServerStatus.OFFLINE ? 0xf43f5e : 0xf59e0b)
             );
         });
 
@@ -340,7 +341,7 @@ export class DiscordService {
                 servers.forEach((s: any) => {
                     const isRunning = processManager.isRunning(s.id);
                     const stats = isRunning ? processManager.getCachedStatus(s.id) : null;
-                    const statusIcon = isRunning ? (stats?.status === 'STARTING' ? '🟡' : '🟢') : '🔴';
+                    const statusIcon = isRunning ? (stats?.status === ServerStatus.STARTING ? '🟡' : '🟢') : '🔴';
                     const statusText = isRunning ? (stats?.status || 'Online') : 'Offline';
                     
                     embed.addFields({ 
@@ -366,10 +367,10 @@ export class DiscordService {
                 
                 // Set up status listener for confirmation
                 const statusListener = async ({ id: statusId, status }: { id: string, status: string }) => {
-                    if (statusId === id && status === 'ONLINE') {
+                    if (statusId === id && status === ServerStatus.ONLINE) {
                         processManager.removeListener('status', statusListener);
                         await interaction.followUp({ content: `✅ **System Ready**: **${server.name}** is now fully operational. Use \`/status\` to view telemetry.` });
-                    } else if (statusId === id && status === 'CRASHED') {
+                    } else if (statusId === id && status === ServerStatus.CRASHED) {
                         processManager.removeListener('status', statusListener);
                         await interaction.followUp({ content: `❌ **Critical Failure**: **${server.name}** failed to stabilize during boot sequence.` });
                     }
@@ -400,7 +401,7 @@ export class DiscordService {
                 await interaction.reply({ content: `🛑 **Shutdown Sequence**: Sending termination signal to **${server.name}**...` });
                 
                 const stopListener = async ({ id: statusId, status }: { id: string, status: string }) => {
-                    if (statusId === id && (status === 'OFFLINE' || status === 'CRASHED')) {
+                    if (statusId === id && (status === ServerStatus.OFFLINE || status === ServerStatus.CRASHED)) {
                         processManager.removeListener('status', stopListener);
                         await interaction.followUp({ content: `💤 **Status: Dormant**: **${server.name}** has reached a safe shutdown state.` });
                     }
@@ -427,8 +428,8 @@ export class DiscordService {
                     const isRunning = processManager.isRunning(s.id);
                     const stats = isRunning ? processManager.getCachedStatus(s.id) : null;
                     
-                    const statusEmoji = isRunning ? (stats?.status === 'STARTING' ? '🟡' : '🟢') : (s.status === 'CRASHED' ? '⚠️' : '🔴');
-                    const statusText = isRunning ? (stats?.status || 'Online') : (s.status === 'CRASHED' ? 'Crashed' : 'Offline');
+                    const statusEmoji = isRunning ? (stats?.status === ServerStatus.STARTING ? '🟡' : '🟢') : (s.status === ServerStatus.CRASHED ? '⚠️' : '🔴');
+                    const statusText = isRunning ? (stats?.status || 'Online') : (s.status === ServerStatus.CRASHED ? 'Crashed' : 'Offline');
 
                     // Get last backup info
                     const backups = await backupService.listBackups(s.id);
