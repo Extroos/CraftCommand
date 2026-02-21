@@ -78,7 +78,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **Distributed Node Crash**: Verified and fixed missing `systeminformation` dependency in the Agent workspace that caused the embedded node engine to fail on startup.
-- **Launcher Automation**: Updated `run_locally.bat` to automatically detect and install missing dependencies for the `agent` directory alongside backend/frontend.
+- **Launcher Automation**: Updated `run_CraftCommand.bat` to automatically detect and install missing dependencies for the `agent` directory alongside backend/frontend.
 
 ## [1.11.1] - 2026-02-18 - Hotfix: Remote Access & HTTPS
 
@@ -123,7 +123,7 @@ All notable changes to this project will be documented in this file.
 - **CreateServer Type Safety**: Added `'Do Not Override'` to the `javaVersion` union, removed dead wizard steps (`category`, `marketing`), and replaced unsafe `as any` casts with proper typed assertions.
 - **CreateServer Code Cleanup**: Removed ~30 unused imports across `index.tsx`, `ProConfig.tsx`, and `WizardMode.tsx`, deleted dead `getRecommendedJava` wrapper and duplicate `canCreate` access-denied guard (20 lines of dead code).
 - **ModpackBrowser UX**: Added error handling with retry button, result counts, mod vs modpack badges, improved empty states with search suggestions, and formatted download counts.
-- **Platform Launcher Redesign**: Rebuilt `run_locally.bat` with auto-sized console (`mode con cols=80 lines=42`), compact FIGlet ASCII banner, grouped menu categories (Operations/Diagnostics/Advanced), and consistent section layout.
+- **Platform Launcher Redesign**: Rebuilt `run_CraftCommand.bat` with auto-sized console (`mode con cols=80 lines=42`), compact FIGlet ASCII banner, grouped menu categories (Operations/Diagnostics/Advanced), and consistent section layout.
 - **Update UX Refinement**: Re-engineered the System Update UI into an adaptive, embedded component that integrates seamlessly into Global Settings without layout clutter.
 - **Atomic Swap Robustness**: Hardened the PowerShell-based update applicator to handle complex directory merges and state transitions.
 - **Launcher FIGlet Banner**: Replaced unescaped characters in the ASCII banner for 100% reliability across terminal environments.
@@ -157,7 +157,7 @@ All notable changes to this project will be documented in this file.
 - **Auto-Healing Manager (v3)**: Stabilized background monitoring with improved "Panic Control" and specialized logic for Bedrock native binary recovery.
 - **API Route Foundation**: Hardened the `ApiService` to consistently handle `/api` prefixing and resolved persistent 404 errors on specific update triggers via a robust GET fallback.
 - **Professional UI Refresh**: Overhauled the Networking and Diagnosis tabs with premium glassmorphism, refined typography, and real-time activity indicators.
-- **Launcher Hardening**: Resolved PowerShell syntax errors in `run_locally.bat` by implementing robust escaped quoting for all interactive prompts.
+- **Launcher Hardening**: Resolved PowerShell syntax errors in `run_CraftCommand.bat` by implementing robust escaped quoting for all interactive prompts.
 - **Maintenance Mode (Fix/Reinstall)**: Hardened dependency cleanup logic with case-insensitive confirmation and real-time installation feedback.
 - **Icon Stabilization Logic**: Implemented high-performance image processing via `sharp` to automatically resize and convert user-uploaded icons to 64x64 PNG for perfect in-game display.
 - **Visual Identity Feedback**: Enhanced `SettingsManager.tsx` to provide real-time "Stabilizing Icon" feedback during the upload and optimization process.

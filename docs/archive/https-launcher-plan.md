@@ -1,8 +1,8 @@
 # Appendix: HTTPS & Launcher Integration Plan
 
-This document details the wiring between the `run_locally.bat` launcher, the Backend API, and the Frontend Wizard for the new **Remote Access** feature.
+This document details the wiring between the `run_CraftCommand.bat` launcher, the Backend API, and the Frontend Wizard for the new **Remote Access** feature.
 
-## 1. Launcher Updates (`run_locally.bat`)
+## 1. Launcher Updates (`run_CraftCommand.bat`)
 
 The launcher will act as the entry point for users who are uncomfortable with command lines or manual config editing.
 

@@ -303,7 +303,7 @@ const GlobalSettingsView: React.FC = () => {
 
                         {/* 
                             Web Update UI removed per user request.
-                            Updates are now handled exclusively by the launcher (run_locally.bat) on startup.
+                            Updates are now handled exclusively by the launcher (run_CraftCommand.bat) on startup.
                         */}
                         
                         <div className="p-3 bg-secondary/30 rounded border border-border/50">

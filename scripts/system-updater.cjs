@@ -23,7 +23,7 @@ const PRESERVE_LIST = [
     'backend/.env',
     '.env',
     'web/web_state.json',
-    'run_locally.bat' // Don't overwrite the launcher itself to prevent lock issues
+    'run_CraftCommand.bat' // Don't overwrite the launcher itself to prevent lock issues
 ];
 
 // Folders to fully replace (if they exist in update)

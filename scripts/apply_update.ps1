@@ -1,12 +1,11 @@
 # apply_update.ps1
-# Usage: called by run_locally.bat when update-plan.json exists.
+# Usage: called by run_CraftCommand.bat when update-plan.json exists.
 # Performs the atomic file swap and backup.
 
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $PlanFile = Join-Path $Root "update-plan.json"
 $BackendDir = Join-Path $Root "backend"
-$FrontendDir = Join-Path $Root "frontend"
 
 Write-Host "`n[UPDATE] ========================================" -ForegroundColor Cyan
 Write-Host "[UPDATE] CRAFTCOMMAND UPDATE APPLICATOR" -ForegroundColor Cyan

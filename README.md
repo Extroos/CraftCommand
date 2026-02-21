@@ -142,7 +142,7 @@ CraftCommand utilizes a specialized **Node Agent** to manage remote resources (O
 _Best for: Users who want to play and host on the same computer._
 
 1.  **Download & Extract** the latest release.
-2.  **Run Launcher**: Execute `run_locally.bat`.
+2.  **Run Launcher**: Execute `run_CraftCommand.bat`.
 3.  **Start**: Choose **[1] Start (Auto-Setup)**.
 4.  **Access**: Open `http://localhost:3000`.
 
@@ -171,7 +171,7 @@ _Best for: Contributing to CraftCommand._
 
 ### Default Credentials
 
-- **Email:** `admin@craftcommands.io`
+- **Email:** `admin@craftcommand.io`
 - **Password:** `admin`
 
 > [!CAUTION]

@@ -12,7 +12,7 @@ Absolutely. The system includes a **Heuristic Installer** that can automatically
 
 ### Can I run it on Linux?
 
-Yes. While `run_locally.bat` is provided for Windows users, you can use `npm run start:all` on Linux or macOS provided you have Node.js and Java installed.
+Yes. While `run_CraftCommand.bat` is provided for Windows users, you can use `npm run start:all` on Linux or macOS provided you have Node.js and Java installed.
 
 ## Technical Questions
 

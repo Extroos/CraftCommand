@@ -10,7 +10,7 @@ Thank you for your interest in contributing! I build CraftCommand as an open-sou
     - Backend: `cd backend && npm install`
     - Frontend: `cd frontend && npm install`
 3.  **Environment**: Copy `.env.example` to `.env` if it doesn't exist.
-4.  **Run Locally**: Use `run_locally.bat` (Windows) or `npm run dev` in the root.
+4.  **Run Locally**: Use `run_CraftCommand.bat` (Windows) or `npm run dev` in the root.
 
 ## Branching Strategy
 

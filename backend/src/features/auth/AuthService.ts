@@ -36,7 +36,7 @@ class AuthService {
         const passwordHash = bcrypt.hashSync('admin', 10);
         const admin: UserProfile = {
             id: '00000000-0000-0000-0000-000000000000',
-            email: process.env.ADMIN_EMAIL || 'admin@craftcommands.io',
+            email: process.env.ADMIN_EMAIL || 'admin@craftcommand.io',
             username: 'Administrator',
             role: 'OWNER',
             passwordHash,

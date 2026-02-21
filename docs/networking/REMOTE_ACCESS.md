@@ -28,7 +28,7 @@ Choose the method that fits your technical comfort level.
 
 **Best for**: Game + Dashboard access without port forwarding.
 
-1.  Go to `run_locally.bat` or System Settings.
+1.  Go to `run_CraftCommand.bat` or System Settings.
 2.  Select **[5] Setup Remote Access** -> **[2] Playit.gg (Reverse Proxy)**.
 3.  Follow the generated "Claim URL" to link your account.
 
@@ -88,5 +88,5 @@ server {
 
 If you suspect unauthorized access or are under a DDoS attack:
 
-1.  Run `run_locally.bat` -> **Option [6] Emergency Disable**.
+1.  Run `run_CraftCommand.bat` -> **Option [6] Emergency Disable**.
 2.  This instantly re-binds the panel to `127.0.0.1` and blocks all external WebSocket traffic.

@@ -168,7 +168,7 @@ const UsersPage: React.FC = () => {
                                         <Mail size={14} />
                                     </div>
                                     <input 
-                                        placeholder="admin@craftcommands.io" 
+                                        placeholder="admin@craftcommand.io" 
                                         required 
                                         className="w-full bg-black/40 border border-[rgb(var(--color-border-subtle))] rounded-md py-2 pl-9 pr-3 text-xs text-foreground focus:border-primary/50 outline-none transition-all"
                                         value={newUser.email}

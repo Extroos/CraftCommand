@@ -238,7 +238,7 @@ const startMain = async () => {
                              status.innerText = 'Initializing Repair...';
                              
                              // We recommend running the local launcher for total integrity
-                             status.innerText = 'Please run "run_locally.bat" or "apply_update.ps1" to restore full system integrity.';
+                             status.innerText = 'Please run "run_CraftCommand.bat" or "apply_update.ps1" to restore full system integrity.';
                         }
                     </script>
                 </body>

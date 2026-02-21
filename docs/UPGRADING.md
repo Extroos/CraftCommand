@@ -25,7 +25,7 @@ If you are a developer or using a custom fork:
 1.  **Fetch Latest**: `git pull origin main`
 2.  **Update Dependencies**: `npm run install:all`
 3.  **Rebuild Assets**: `npm run build --prefix frontend`
-4.  **Restart**: Execute `run_locally.bat`.
+4.  **Restart**: Execute `run_CraftCommand.bat`.
 
 ---
 

@@ -58,7 +58,7 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 
 ### Distributed Node Connectivity
 
-- **E_NODE_OFFLINE**: Background worker is detached. Restart `run_locally.bat`.
+- **E_NODE_OFFLINE**: Background worker is detached. Restart `run_CraftCommand.bat`.
 - **E_PORT_IN_USE**: Port conflict detected. Use the **Environment Doctor** to identify the conflicting process.
 
 ### 2. DNS Resolution Failures
@@ -71,7 +71,7 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 
 | Code                    | Type    | Meaning                           | Action                                    |
 | :---------------------- | :------ | :-------------------------------- | :---------------------------------------- |
-| **E_NODE_OFFLINE**      | System  | Background worker is detached.    | Restart `run_locally.bat`.                |
+| **E_NODE_OFFLINE**      | System  | Background worker is detached.    | Restart `run_CraftCommand.bat`.           |
 | **E_JAVA_MISSING**      | Runtime | No compatible JDK found.          | Install the required Java version.        |
 | **E_FILE_NOT_FOUND**    | Files   | Missing `.jar` or world folder.   | Verify your installation files.           |
 | **E_SERVER_BUSY**       | Logic   | Locked by another action.         | Wait 30 seconds and retry.                |
