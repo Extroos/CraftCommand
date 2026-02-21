@@ -26,7 +26,7 @@ set "BOLD=%E%[1m"
 :: --- VERSION SYNC ---
 set "CC_VERSION=1.11.8"
 if exist "version.json" (
-    for /f "tokens=2 delims=:," %%a in ('findstr "version" version.json') do (
+    for /f "tokens=2 delims=:," %%a in ('findstr /R /C:"^[ ]*.version.:" version.json') do (
         set "VERSION_VAL=%%~a"
         set "VERSION_VAL=!VERSION_VAL: =!"
         set "VERSION_VAL=!VERSION_VAL:"=!"
