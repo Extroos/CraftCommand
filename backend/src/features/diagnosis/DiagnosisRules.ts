@@ -35,6 +35,7 @@ export const EulaRule: DiagnosisRule = {
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
         // EULA only applies to Java Edition servers — Bedrock and Velocity don't have eula.txt
         if (server.software === 'Bedrock' || server.software === 'Velocity') return null;
+        if (server.status === ServerStatus.ONLINE) return null;
 
         const hasLog = logs.some(l => l.includes('agree to the EULA'));
         
@@ -236,6 +237,7 @@ export const JavaVersionRule: DiagnosisRule = {
     defaultConfidence: 95,
     isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
+        if (server.status === ServerStatus.ONLINE) return null;
         const logContent = logs.join('\n').toLowerCase();
         const hasError = /unsupportedclassversionerror|compiled by a more recent version|unsupported java version|java \d+ is required/i.test(logContent);
         
@@ -364,6 +366,8 @@ export const MissingJarRule: DiagnosisRule = {
     tier: 1,
     defaultConfidence: 100,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
+        if (server.status === ServerStatus.ONLINE) return null;
+
         // Universal Check: Logs OR Direct Filesystem check
         const logMatch = logs.some(l => /Unable to access jarfile/i.test(l));
         
@@ -403,7 +407,27 @@ export const BadConfigRule: DiagnosisRule = {
     isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
         const configPath = path.join(server.workingDirectory, 'server.properties');
-        if (logs.some(l => /Failed to load properties/i.test(l))) {
+        
+        // 1. Check for the trigger
+        const hasBadConfigLog = logs.some(l => /Failed to load properties/i.test(l));
+        
+        if (hasBadConfigLog) {
+            // 2. FALSE POSITIVE GUARD: Check if the server successfully started anyway
+            // Some versions (Fabric 1.21+) throw "Failed to load" if the file is missing but then immediately create it and continue.
+            const successfulStartup = logs.some(l => 
+                /Done \(\d+\.\d+s\)!/i.test(l) || 
+                /Starting Minecraft server on/i.test(l) ||
+                /Loading properties/i.test(l) // If it logs "Loading properties" AFTER the error, it's a retry/recovery
+            );
+
+            // 3. NO-SUCH-FILE GUARD: Is it just a missing file that will be auto-generated?
+            const isMissingFileOnly = logs.some(l => /java\.nio\.file\.NoSuchFileException: server\.properties/i.test(l));
+
+            // If it started successfully OR it's just a missing file (which is handled by server init), suppress the rule.
+            if (successfulStartup || isMissingFileOnly) {
+                return null;
+            }
+
              return {
                 id: `bad-config-${server.id}-${Date.now()}`,
                 ruleId: 'bad_config',

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.11.4] - 2026-02-21 - Technical Stabilization & Core Resilience
+
+### Improved
+
+- **Diagnosis Hardening (v2.2)**: System-wide stabilization of core diagnostic rules to eliminate false positives.
+  - **BadConfigRule Refinement**: Integrated context-aware logic that verifies successful startup before flagging configuration errors, suppressing noise from transient Fabric 1.21+ startup quirks.
+  - **Status-Aware Guards**: Applied `ONLINE` status guards to `EulaRule`, `MissingJarRule`, and `JavaVersionRule` to prevent stagnant log entries from triggering redundant critical alerts while servers are running.
+  - **No-Such-File Silencing**: Specifically suppresses the `NoSuchFileException: server.properties` warning on first launches, allowing the server to generate defaults without administrative interference.
+
 ## [1.11.3] - 2026-02-21 - Diagnostic Intelligence & Backup Hardening
 
 ### Added

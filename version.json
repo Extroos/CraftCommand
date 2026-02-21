@@ -1,11 +1,10 @@
 {
-  "version": "1.11.3",
-  "title": "CraftCommand: Diagnostic Intelligence & Backup Hardening",
+  "version": "1.11.4",
+  "title": "CraftCommand: Technical Stabilization & Core Resilience",
   "notes": [
-    "Diagnosis Intelligence: 6 new rules for mod corruption, datapack errors, and network conflicts.",
-    "Auto-Healing: Advanced recovery actions including automated corrupted mod removal.",
-    "Version Expansion: Native support for Minecraft 1.21.11 and legacy 1.7.10-1.19.2 environments.",
-    "Backup Hardening: Implemented concurrency locking and robust randomized ID generation.",
-    "Retention Logic: Intelligent snapshot management with Auto-Save protection and GFS policy."
+    "Core Stabilization: Hardened diagnostic rules to eliminate false positives on first launch.",
+    "Intelligence Resilience: Integrated context-aware status guards for EULA and JAR validation.",
+    "Technical Hardening: Suppressed noise from transient startup sequence errors (Fabric 1.21+).",
+    "Backup Hardening: Verified randomized ID generation and concurrency locks for v1.11.x."
   ]
 }
