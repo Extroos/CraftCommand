@@ -41,12 +41,21 @@ if not exist ".env" (
     echo.
     echo   %CY%%BOLD% FIRST RUN DETECTED %R%
     echo   %CD%Generating secure environment configuration...%R%
+    
+    if not exist ".env.example" (
+        echo   %CR%%BOLD% ERROR %R%  .env.example not found. 
+        echo          Please restore it to generate your .env file.
+        pause
+        exit /b 1
+    )
+    
     copy ".env.example" ".env" >nul
     
     :: Generate proper random secret
     powershell -Command "$s=(-join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | %% {[char]$_})); (Get-Content .env) -replace 'JWT_SECRET=.*', ('JWT_SECRET=' + $s) | Set-Content .env"
     
     echo   %CG%%BOLD%+%R%  Created .env with secure JWT_SECRET
+    echo   %CD%    Configured for local infrastructure.%R%
 )
 if not exist "backend" (
     echo.

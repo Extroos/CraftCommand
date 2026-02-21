@@ -255,7 +255,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                             </span>
                         </div>
                         
-                        <h1 className={`text-6xl font-bold tracking-tighter leading-none lowercase ${user?.preferences.visualQuality ? 'bg-gradient-to-br from-white via-white to-white/40 bg-clip-text text-transparent tracking-[-0.08em]' : 'text-white'}`}>
+                        <h1 className={`text-6xl font-bold tracking-tighter leading-[1.15] pb-2 lowercase ${user?.preferences.visualQuality ? 'bg-gradient-to-br from-white via-white to-white/40 bg-clip-text text-transparent tracking-[-0.08em]' : 'text-white'}`}>
                             {server.name.toLowerCase()}
                         </h1>
 

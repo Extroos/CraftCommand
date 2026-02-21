@@ -11,10 +11,12 @@ import { ThemeToggle } from '../ui/ThemeToggle';
 import { RemoteAccessWizard } from '../ui/RemoteAccessWizard';
 import { useSystem } from '@features/system/context/SystemContext';
 import NodesManager from '@features/nodes/NodesManager';
-import { SelfHealingAudit } from './SelfHealingAudit';
-import { Activity, Globe } from 'lucide-react';
+import { SystemHealthMatrix } from './SelfHealingAudit';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
 import { SystemUpdateCard } from './components/SystemUpdateCard';
+import { WebhookHub } from './WebhookHub';
+import { TokenManager } from './TokenManager';
+import { Activity, Globe } from 'lucide-react';
 
 const GlobalSettingsView: React.FC = () => {
     const [settings, setSettings] = useState<GlobalSettingsType | null>(null);
@@ -137,6 +139,7 @@ const GlobalSettingsView: React.FC = () => {
     };
 
     const [activeTab, setActiveTab] = useState<'SETTINGS' | 'AUDIT' | 'NODES' | 'INTEGRATIONS' | 'HEALTH'>('SETTINGS');
+    const [activeIntegrationTab, setActiveIntegrationTab] = useState<'BOT' | 'WEBHOOKS' | 'TOKENS'>('BOT');
     const { user } = useUser();
 
     if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading System Configuration...</div>;
@@ -742,116 +745,151 @@ const GlobalSettingsView: React.FC = () => {
             animate="show"
             className="space-y-6"
         >
-            <motion.div 
-                variants={STAGGER_ITEM}
-                className={`border border-border p-8 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
-            >
-                <div className="flex items-start gap-4 mb-6">
-                    <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl" id="discord-bot-icon">
-                        <Webhook size={24} />
-                    </div>
-                    <div>
-                        <h3 className="text-xl font-bold">Global Discord Bot</h3>
-                        <p className="text-sm text-muted-foreground">Configure the master bot used for cross-server commands and system notifications.</p>
-                    </div>
-                </div>
+            <div className="flex items-center gap-1.5 p-1 bg-secondary/30 rounded-lg border border-border/50 w-fit mb-6">
+                {[
+                    { id: 'BOT', label: 'Discord Bot', icon: <Webhook size={14} /> },
+                    { id: 'WEBHOOKS', label: 'Webhook Hub', icon: <Globe size={14} /> },
+                    { id: 'TOKENS', label: 'API Tokens', icon: <Zap size={14} /> }
+                ].map((tab) => (
+                    <button 
+                        key={tab.id}
+                        onClick={() => setActiveIntegrationTab(tab.id as any)}
+                        className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                            activeIntegrationTab === tab.id 
+                            ? 'bg-background text-primary shadow-sm border border-border/50' 
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        {tab.icon} {tab.label}
+                    </button>
+                ))}
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bot Token</label>
-                            <input 
-                                type="password"
-                                id="discord-bot-token"
-                                value={settings.discordBot?.token || ''}
-                                onChange={(e) => setSettings({
-                                    ...settings,
-                                    discordBot: { ...settings.discordBot!, token: e.target.value }
-                                })}
-                                placeholder="MTA..."
-                                className="w-full bg-secondary/50 border border-border/50 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Client ID</label>
-                            <input 
-                                type="text"
-                                id="discord-client-id"
-                                value={settings.discordBot?.clientId || ''}
-                                onChange={(e) => setSettings({
-                                    ...settings,
-                                    discordBot: { ...settings.discordBot!, clientId: e.target.value }
-                                })}
-                                placeholder="123456789..."
-                                className="w-full bg-secondary/50 border border-border/50 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Target Guild ID (Optional)</label>
-                            <input 
-                                type="text"
-                                id="discord-guild-id"
-                                value={settings.discordBot?.guildId || ''}
-                                onChange={(e) => setSettings({
-                                    ...settings,
-                                    discordBot: { ...settings.discordBot!, guildId: e.target.value }
-                                })}
-                                placeholder="987654321..."
-                                className="w-full bg-secondary/50 border border-border/50 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Default Notification Channel</label>
-                            <input 
-                                type="text"
-                                id="discord-notification-channel"
-                                value={settings.discordBot?.notificationChannel || ''}
-                                onChange={(e) => setSettings({
-                                    ...settings,
-                                    discordBot: { ...settings.discordBot!, notificationChannel: e.target.value }
-                                })}
-                                placeholder="1122334455..."
-                                className="w-full bg-secondary/50 border border-border/50 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            />
-                        </div>
-                    </div>
-                </div>
+            <AnimatePresence mode="wait">
+                <motion.div
+                    key={activeIntegrationTab}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                >
+                    {activeIntegrationTab === 'BOT' && (
+                        <div className={`border border-border p-8 transition-all duration-500 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-3xl specular-border' : 'bg-card shadow-sm rounded-lg'}`}>
+                             <div className="flex items-start gap-4 mb-8">
+                                <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl shadow-inner border border-indigo-500/20" id="discord-bot-icon">
+                                    <Webhook size={28} />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-black tracking-tight text-foreground">Global Discord Bot</h3>
+                                    <p className="text-sm text-muted-foreground font-medium">The master orchestrator for cross-server synchronization.</p>
+                                </div>
+                            </div>
 
-                <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                         <button 
-                            id="btn-reconnect-discord"
-                            onClick={async () => {
-                                try {
-                                    await API.reconnectDiscord();
-                                    addToast('success', 'Discord', 'Bot reconnection signal sent');
-                                } catch (e: any) {
-                                    addToast('error', 'Discord', e.message);
-                                }
-                            }}
-                            className="px-4 py-2 bg-indigo-500/10 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-500/20 transition-all border border-indigo-500/20"
-                         >
-                            Reconnect Bot
-                         </button>
-                         <button 
-                            id="btn-sync-discord"
-                            onClick={async () => {
-                                try {
-                                    await API.syncDiscordCommands();
-                                    addToast('success', 'Discord', 'Global commands synchronized');
-                                } catch (e: any) {
-                                    addToast('error', 'Discord', e.message);
-                                }
-                            }}
-                            className="px-4 py-2 bg-secondary text-foreground rounded-lg text-xs font-bold hover:bg-secondary/80 transition-all border border-border"
-                         >
-                            Sync Global Commands
-                         </button>
-                    </div>
-                </div>
-            </motion.div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                <div className="space-y-6">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">Bot Gateway Token</label>
+                                        <input 
+                                            type="password"
+                                            id="discord-bot-token"
+                                            value={settings.discordBot?.token || ''}
+                                            onChange={(e) => setSettings({
+                                                ...settings,
+                                                discordBot: { ...settings.discordBot!, token: e.target.value }
+                                            })}
+                                            placeholder="MTA..."
+                                            className="w-full bg-black/20 border border-border/40 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono transition-all hover:border-primary/20"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">Application Client ID</label>
+                                        <input 
+                                            type="text"
+                                            id="discord-client-id"
+                                            value={settings.discordBot?.clientId || ''}
+                                            onChange={(e) => setSettings({
+                                                ...settings,
+                                                discordBot: { ...settings.discordBot!, clientId: e.target.value }
+                                            })}
+                                            placeholder="123456789..."
+                                            className="w-full bg-black/20 border border-border/40 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all hover:border-primary/20"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-6">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">Authorized Guild (Instant Sync)</label>
+                                        <input 
+                                            type="text"
+                                            id="discord-guild-id"
+                                            value={settings.discordBot?.guildId || ''}
+                                            onChange={(e) => setSettings({
+                                                ...settings,
+                                                discordBot: { ...settings.discordBot!, guildId: e.target.value }
+                                            })}
+                                            placeholder="987654321..."
+                                            className="w-full bg-black/20 border border-border/40 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all hover:border-primary/20"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">System Audit Channel</label>
+                                        <input 
+                                            type="text"
+                                            id="discord-notification-channel"
+                                            value={settings.discordBot?.notificationChannel || ''}
+                                            onChange={(e) => setSettings({
+                                                ...settings,
+                                                discordBot: { ...settings.discordBot!, notificationChannel: e.target.value }
+                                            })}
+                                            placeholder="1122334455..."
+                                            className="w-full bg-black/20 border border-border/40 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all hover:border-primary/20"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-12 pt-8 border-t border-border/20 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                     <button 
+                                        id="btn-reconnect-discord"
+                                        onClick={async () => {
+                                            try {
+                                                await API.reconnectDiscord();
+                                                addToast('success', 'Discord', 'Bot reconnection signal sent');
+                                            } catch (e: any) {
+                                                addToast('error', 'Discord', e.message);
+                                            }
+                                        }}
+                                        className="px-6 py-2.5 bg-indigo-500/10 text-indigo-500 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-500/20 transition-all border border-indigo-500/20 shadow-lg"
+                                     >
+                                        Hard Reset Connection
+                                     </button>
+                                     <button 
+                                        id="btn-sync-discord"
+                                        onClick={async () => {
+                                            try {
+                                                await API.syncDiscordCommands();
+                                                addToast('success', 'Discord', 'Global commands synchronized');
+                                            } catch (e: any) {
+                                                addToast('error', 'Discord', e.message);
+                                            }
+                                        }}
+                                        className="px-6 py-2.5 bg-secondary text-foreground rounded-xl text-xs font-black uppercase tracking-widest hover:bg-secondary/80 transition-all border border-border shadow-md"
+                                     >
+                                        Sync Slash Commands
+                                     </button>
+                                </div>
+                                <div className="flex flex-col items-end">
+                                    <span className="text-[9px] font-black text-muted-foreground/40 uppercase tracking-[0.3em]">Module Status</span>
+                                    <span className="text-[10px] font-bold text-emerald-500/80">LATENCY_SYNCED</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {activeIntegrationTab === 'WEBHOOKS' && <WebhookHub />}
+                    {activeIntegrationTab === 'TOKENS' && <TokenManager />}
+                </motion.div>
+            </AnimatePresence>
         </motion.div>
     );
 
@@ -990,7 +1028,7 @@ const GlobalSettingsView: React.FC = () => {
                 {activeTab === 'SETTINGS' ? renderSettings() : 
                  activeTab === 'AUDIT' ? <AuditLog /> : 
                  activeTab === 'NODES' ? <NodesManager /> : 
-                 activeTab === 'HEALTH' ? <SelfHealingAudit /> :
+                 activeTab === 'HEALTH' ? <SystemHealthMatrix /> :
                  renderIntegrations()}
             </div>
 

@@ -41,7 +41,7 @@ out/
 *.tsbuildinfo
 
 # Environment & Sensitive Data
-.env.local
+.env
 .env.local
 .env.*.local
 backend/auth.json

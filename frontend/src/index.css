@@ -230,9 +230,27 @@ body {
 
 /* DEEP CONTRAST MODE - Triggered when a photo is active */
 .has-custom-bg .glass-morphism {
-  background: rgba(0, 0, 0, 0.72) !important; /* Deep charcoal for photo legibility */
-  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.8),
-              inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.85) !important; /* Hardened charcoal for high-density photo legibility */
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.95),
+              inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* Brighten Footer for Legibility */
+.has-custom-bg footer .text-muted-foreground\/30 {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Brighten Neutral text against photos */
+.has-custom-bg .text-muted-foreground {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+
+.has-custom-bg .cc-label {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.has-custom-bg .cc-sub-label {
+  color: rgba(255, 255, 255, 0.4) !important;
 }
 
 /* Glass Specular Spotlight - Opt-in Utility for Hero Sections */

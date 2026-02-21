@@ -211,6 +211,70 @@ class ApiService {
         return res.json();
     }
 
+    // --- Global Webhooks ---
+
+    async getGlobalWebhooks(): Promise<any[]> {
+        const res = await fetch(`${API_URL}/system/webhooks`, {
+            headers: this.getAuthHeader()
+        });
+        return res.json();
+    }
+
+    async createGlobalWebhook(webhook: any): Promise<any> {
+        const res = await fetch(`${API_URL}/system/webhooks`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                ...this.getAuthHeader()
+            },
+            body: JSON.stringify(webhook)
+        });
+        return res.json();
+    }
+
+    async deleteGlobalWebhook(id: string): Promise<void> {
+        await fetch(`${API_URL}/system/webhooks/${id}`, {
+            method: 'DELETE',
+            headers: this.getAuthHeader()
+        });
+    }
+
+    async testGlobalWebhook(id: string): Promise<any> {
+        const res = await fetch(`${API_URL}/system/webhooks/${id}/test`, {
+            method: 'POST',
+            headers: this.getAuthHeader()
+        });
+        return res.json();
+    }
+
+    // --- API Tokens ---
+
+    async getApiTokens(): Promise<any[]> {
+        const res = await fetch(`${API_URL}/system/tokens`, {
+            headers: this.getAuthHeader()
+        });
+        return res.json();
+    }
+
+    async createApiToken(name: string, scopes: string[]): Promise<any> {
+        const res = await fetch(`${API_URL}/system/tokens`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                ...this.getAuthHeader()
+            },
+            body: JSON.stringify({ name, scopes })
+        });
+        return res.json();
+    }
+
+    async deleteApiToken(id: string): Promise<void> {
+        await fetch(`${API_URL}/system/tokens/${id}`, {
+            method: 'DELETE',
+            headers: this.getAuthHeader()
+        });
+    }
+
     async getDockerStatus(): Promise<{ online: boolean, version?: string, error?: string }> {
         const res = await fetch(`${API_URL}/system/docker/status`, {
             headers: this.getAuthHeader()
@@ -1394,9 +1458,6 @@ class ApiService {
     }
 
     async restartSystem(): Promise<void> {
-        // Using Generic post helper which does not await response if I don't want to?
-        // Actually post awaited response.
-        // My backend route sends response then exists.
         await this.post('/system/update/restart', {});
     }
 }

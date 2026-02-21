@@ -31,6 +31,7 @@ import { API } from '@core/services/api';
 import { useToast } from '../ui/Toast';
 import { useServers } from '@features/servers/context/ServerContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
+import { useUser } from '@features/auth/context/UserContext';
 import AccessDenied from '@features/auth/components/AccessDenied';
 
 interface IntegrationsProps {
@@ -73,6 +74,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
     
     const { addToast } = useToast();
     const { can } = usePermissions();
+    const { user } = useUser();
     const { currentServer, updateServerConfig } = useServers();
 
     useEffect(() => {
@@ -196,19 +198,14 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
     const renderWebhookTab = () => (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full font-sans">
             <div className="space-y-6">
-                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
-                    <div className="flex items-center justify-between mb-6 border-b border-[rgb(var(--color-border-subtle))] pb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-[#5865F2]/10 text-[#5865F2] rounded-md border border-[#5865F2]/20 shadow-inner">
-                                <Webhook size={16} />
-                            </div>
-                            <div>
-                                <h2 className="text-xs font-bold text-[rgb(var(--color-fg-secondary))]">Status Webhooks</h2>
-                                <p className="text-[10px] text-[rgb(var(--color-fg-subtle))] font-medium">Legacy event logging</p>
-                            </div>
+                <div className={`border border-border/80 transition-all duration-300 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-2xl' : 'bg-card rounded-md shadow-sm'}`}>
+                    <div className="h-10 bg-[#5865F2]/10 border-b border-[#5865F2]/20 flex items-center justify-between px-4">
+                        <div className="flex items-center gap-2">
+                            <Webhook size={14} className="text-[#5865F2]" />
+                            <span className="text-[11px] font-semibold tracking-tight uppercase text-muted-foreground">Status Webhooks Configuration</span>
                         </div>
                         <div className="flex items-center gap-3">
-                             <div className={`px-2 py-0.5 rounded text-[10px] font-bold border ${webhookConfig.enabled ? 'bg-emerald-500/5 text-emerald-600 border-emerald-500/20' : 'bg-zinc-800/50 text-[rgb(var(--color-fg-subtle))] border-[rgb(var(--color-border-subtle))]'}`}>
+                             <div className={`px-2 py-0.5 rounded text-[9px] font-black border uppercase tracking-widest ${webhookConfig.enabled ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-800/50 text-muted-foreground border-border'}`}>
                                 {webhookConfig.enabled ? 'Active' : 'Disabled'}
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer group/toggle">
@@ -218,18 +215,18 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                                     checked={webhookConfig.enabled}
                                     onChange={(e) => updateWebhookConfig('enabled', e.target.checked)}
                                 />
-                                <div className="w-9 h-4 bg-[#18181b] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-500 after:border-zinc-600 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#5865F2]/20 peer-checked:after:bg-[#5865F2] peer-checked:after:border-[#4752C4] group-hover/toggle:after:scale-95 transition-all"></div>
+                                <div className="w-8 h-4 bg-black/40 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-500 after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#5865F2]/40 peer-checked:after:bg-[#5865F2] transition-colors"></div>
                             </label>
                         </div>
                     </div>
 
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-[10px] font-bold text-[rgb(var(--color-fg-muted))] mb-1.5 block">Webhook URL</label>
-                            <div className="relative mt-1.5">
+                    <div className="p-5 space-y-4">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest block">Webhook Endpoint URL</label>
+                            <div className="relative">
                                 <input 
                                     type="password" 
-                                    className="w-full bg-[#18181b]/50 border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-mono text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-colors placeholder:text-zinc-800 hover:border-[rgb(var(--color-border-default))]"
+                                    className="w-full bg-black/20 border border-border/50 rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-all placeholder:text-zinc-800 hover:border-primary/30"
                                     placeholder="https://discord.com/api/webhooks/..."
                                     value={webhookConfig.webhookUrl}
                                     onChange={(e) => updateWebhookConfig('webhookUrl', e.target.value)}
@@ -239,20 +236,20 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[10px] font-bold text-[rgb(var(--color-fg-muted))] mb-1.5 block">Bot Name</label>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest block">Bot Identity Name</label>
                                 <input 
                                     type="text" 
-                                    className="w-full bg-[#18181b]/50 border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-medium text-[rgb(var(--color-fg-secondary))] mt-1.5 focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-colors hover:border-[rgb(var(--color-border-default))]"
+                                    className="w-full bg-black/20 border border-border/50 rounded-lg px-3 py-2 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-all hover:border-primary/30"
                                     value={webhookConfig.botName}
                                     onChange={(e) => updateWebhookConfig('botName', e.target.value)}
                                 />
                             </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-[rgb(var(--color-fg-muted))] mb-1.5 block">Avatar URL</label>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest block">Profile Avatar URL</label>
                                 <input 
                                     type="text" 
-                                    className="w-full bg-[#18181b]/50 border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-medium text-[rgb(var(--color-fg-secondary))] mt-1.5 focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-colors hover:border-[rgb(var(--color-border-default))]"
+                                    className="w-full bg-black/20 border border-border/50 rounded-lg px-3 py-2 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-all hover:border-primary/30"
                                     value={webhookConfig.avatarUrl}
                                     onChange={(e) => updateWebhookConfig('avatarUrl', e.target.value)}
                                 />
@@ -261,24 +258,28 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                     </div>
                 </div>
 
-                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
-                    <div className="flex items-center gap-2 mb-5 pb-3 border-b border-[rgb(var(--color-border-subtle))]">
-                        <Zap size={14} className="text-amber-500" />
-                        <h3 className="text-xs font-bold text-[rgb(var(--color-fg-secondary))]">Event Triggers</h3>
+                <div className={`border border-border/80 transition-all duration-300 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-2xl' : 'bg-card rounded-md shadow-sm'}`}>
+                    <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
+                        <div className="flex items-center gap-2">
+                            <Zap size={14} className="text-amber-500" />
+                            <span className="text-[11px] font-semibold tracking-tight uppercase text-muted-foreground">Broadcast Event Triggers</span>
+                        </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="p-4 grid grid-cols-2 gap-3">
                         {[
-                            { id: 'onStart', label: 'Startup', icon: <Power size={12} className="text-emerald-500" /> },
-                            { id: 'onStop', label: 'Shutdown', icon: <Power size={12} className="text-rose-500" /> },
-                            { id: 'onJoin', label: 'Connect', icon: <UserPlus size={12} className="text-blue-500" /> },
-                            { id: 'onCrash', label: 'Crashes', icon: <AlertTriangle size={12} className="text-red-500" /> },
+                            { id: 'onStart', label: 'Startup Sequence', icon: <Power size={12} className="text-emerald-500" /> },
+                            { id: 'onStop', label: 'Shutdown Hook', icon: <Power size={12} className="text-rose-500" /> },
+                            { id: 'onJoin', label: 'Player Association', icon: <UserPlus size={12} className="text-blue-500" /> },
+                            { id: 'onCrash', label: 'Failure Recovery', icon: <AlertTriangle size={12} className="text-red-500" /> },
                         ].map((event) => (
-                            <label key={event.id} className="flex items-center justify-between p-2.5 rounded-md bg-[#18181b]/30 border border-[rgb(var(--color-border-subtle))] hover:bg-[#18181b]/50 hover:border-[rgb(var(--color-border-default))] cursor-pointer transition-all">
-                                <div className="flex items-center gap-2.5">
-                                    {event.icon}
-                                    <span className="text-[10px] uppercase font-bold tracking-wider text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-secondary))] transition-colors">{event.label}</span>
+                            <label key={event.id} className="flex items-center justify-between p-3 rounded-xl bg-black/10 border border-border/20 hover:bg-black/20 hover:border-primary/20 cursor-pointer transition-all group">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 rounded-lg bg-black/20 border border-border/40 group-hover:border-primary/20 group-hover:text-primary transition-all">
+                                        {event.icon}
+                                    </div>
+                                    <span className="text-[10px] uppercase font-black tracking-widest text-muted-foreground group-hover:text-foreground transition-colors">{event.label}</span>
                                 </div>
-                                 <div className={`w-8 h-4 rounded-full border flex items-center p-0.5 transition-all ${
+                                <div className={`w-8 h-4 rounded-full border flex items-center p-0.5 transition-all ${
                                         (webhookConfig.events as any)[event.id] 
                                         ? 'bg-zinc-200 border-zinc-200 justify-end' 
                                         : 'bg-black/40 border-zinc-800 group-hover:border-zinc-700 justify-start'
@@ -300,13 +301,13 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                     onClick={handleSaveWebhooks}
                     disabled={!isDirty || !can('server.integrations.manage', serverId)}
                     title={!can('server.integrations.manage', serverId) ? 'Insufficient Permissions' : ''}
-                    className={`w-full py-2.5 rounded-md font-bold text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-lg ${
+                    className={`w-full py-3 rounded-xl font-black text-[10px] uppercase tracking-[0.25em] flex items-center justify-center gap-2 transition-all shadow-lg ${
                         isDirty && can('server.integrations.manage', serverId)
-                        ? 'bg-zinc-100 text-black hover:bg-zinc-300 hover:scale-[1.01] shadow-white/5' 
-                        : 'bg-[#18181b] text-[rgb(var(--color-fg-subtle))] border border-[rgb(var(--color-border-subtle))] opacity-50 cursor-not-allowed'
+                        ? 'bg-primary text-primary-foreground hover:scale-[1.01] shadow-primary/20' 
+                        : 'bg-muted text-muted-foreground border border-border/50 opacity-50 cursor-not-allowed'
                     }`}
                 >
-                    <Save size={12} className={(isDirty && can('server.integrations.manage', serverId)) ? "animate-pulse" : ""} /> Save Configuration
+                    <Save size={12} className={(isDirty && can('server.integrations.manage', serverId)) ? "animate-pulse" : ""} /> Save Internal Configuration
                 </button>
             </div>
 
@@ -344,32 +345,19 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full font-sans animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="space-y-6">
                 {/* Connection Status Card */}
-                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
-                    <div className="p-1 absolute top-0 left-0 w-full bg-gradient-to-r from-[#5865F2] to-[#5865F2]/0 opacity-20" />
-                    
-                    <div className="flex items-center justify-between mb-6 relative">
-                        <div className="flex items-center gap-4">
-                            <div className={`p-2.5 rounded-lg border shadow-inner ${discordStatus.status === 'online' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-rose-500/10 text-rose-600 border-rose-500/20'}`}>
-                                <Radio size={20} />
-                            </div>
-                            <div>
-                                <h2 className="text-xs font-bold text-[rgb(var(--color-fg-secondary))]">Discord Gateway</h2>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${discordStatus.status === 'online' ? 'bg-emerald-600' : (discordStatus.status === 'connecting' ? 'bg-amber-600' : 'bg-rose-600')}`} />
-                                    <span className="text-[10px] font-bold text-[rgb(var(--color-fg-muted))]">
-                                        {discordStatus.status.charAt(0).toUpperCase() + discordStatus.status.slice(1)}
-                                    </span>
-                                </div>
-                            </div>
+                <div className={`border border-border/80 transition-all duration-300 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-2xl' : 'bg-card rounded-md shadow-sm'}`}>
+                    <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
+                        <div className="flex items-center gap-2">
+                            <Radio size={14} className={discordStatus.status === 'online' ? 'text-emerald-500' : 'text-rose-500'} />
+                            <span className="text-[11px] font-semibold tracking-tight uppercase text-muted-foreground">Discord Gateway Status</span>
                         </div>
                         <div className="flex items-center gap-3">
                             <button 
                                 onClick={handleReconnect}
                                 disabled={isRefreshingStatus || !botConfig.enabled || !can('system.integrations.manage')}
-                                title={can('system.integrations.manage') ? "Reconnect Bot" : "Insufficient Permissions"}
-                                className="p-2 rounded-md bg-[#18181b] hover:bg-[#27272a] text-[rgb(var(--color-fg-muted))] hover:text-white transition-all border border-[rgb(var(--color-border-subtle))] hover:border-[rgb(var(--color-border-default))] shadow-lg disabled:opacity-50"
+                                className="p-1.5 rounded-lg bg-black/20 hover:bg-black/40 text-muted-foreground hover:text-foreground transition-all border border-border/20 disabled:opacity-30"
                             >
-                                <RefreshCw size={14} className={isRefreshingStatus ? 'animate-spin' : ''} />
+                                <RefreshCw size={12} className={isRefreshingStatus ? 'animate-spin' : ''} />
                             </button>
                             <label className="relative inline-flex items-center cursor-pointer group/toggle">
                                 <input 
@@ -379,46 +367,48 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                                     disabled={!can('system.integrations.manage')}
                                     onChange={(e) => updateBotConfig('enabled', e.target.checked)}
                                 />
-                                <div className="w-9 h-4 bg-[#18181b] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-500 after:border-zinc-600 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#5865F2]/20 peer-checked:after:bg-[#5865F2] peer-checked:after:border-[#4752C4] group-hover/toggle:after:scale-95 transition-all peer-disabled:opacity-30"></div>
+                                <div className="w-8 h-4 bg-black/40 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-500 after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#5865F2]/40 peer-checked:after:bg-[#5865F2] transition-colors"></div>
                             </label>
                         </div>
                     </div>
 
-                    <div className="relative">
+                    <div className="p-5">
                         {discordStatus.status === 'online' && discordStatus.user ? (
-                            <div className="flex items-center gap-4 p-4 rounded-lg bg-[#18181b]/50 border border-[rgb(var(--color-border-subtle))] group/profile hover:bg-[#18181b] transition-colors">
-                                <img 
-                                    src={discordStatus.user.avatar} 
-                                    alt="Bot Avatar" 
-                                    className="w-10 h-10 rounded-full border border-[rgb(var(--color-border-default))] ring-2 ring-[#5865F2]/20 group-hover/profile:ring-[#5865F2]/40 transition-all"
-                                />
+                            <div className="flex items-center gap-4 p-4 rounded-xl bg-black/10 border border-border/20 group hover:bg-black/20 transition-all">
+                                <div className="relative">
+                                    <img 
+                                        src={discordStatus.user.avatar} 
+                                        alt="Bot Avatar" 
+                                        className="w-12 h-12 rounded-full border-2 border-primary/20 group-hover:border-primary/40 transition-all"
+                                    />
+                                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-[rgb(var(--color-bg-base))] animate-pulse" />
+                                </div>
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2">
-                                        <span className="font-bold text-xs text-[rgb(var(--color-fg-secondary))]">{discordStatus.user.username}</span>
-                                        <span className="bg-[#5865F2] text-white text-[8px] px-1 py-0.5 rounded-[3px] font-bold flex items-center gap-0.5"><CheckmarkIcon /> BOT</span>
+                                        <span className="font-bold text-xs">{discordStatus.user.username}</span>
+                                        <span className="bg-[#5865F2] text-white text-[8px] px-1.5 py-0.5 rounded-[4px] font-black uppercase tracking-tighter flex items-center gap-0.5">BOT</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5 mt-0.5 text-[rgb(var(--color-fg-muted))] text-[9px] font-mono">
+                                    <div className="flex items-center gap-1.5 mt-1 text-muted-foreground/60 text-[9px] font-mono">
                                         <Hash size={10} className="opacity-50" />
                                         <span>{discordStatus.user.id}</span>
                                     </div>
                                 </div>
-                                <div className="text-right space-y-1">
-                                    <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest block mb-0.5">Online</span>
+                                <div className="text-right space-y-1.5">
                                     <div className="flex flex-col gap-1 items-end">
-                                        <span className="text-[8px] text-[rgb(var(--color-fg-subtle))] font-mono bg-[#09090b] px-1.5 py-0.5 rounded border border-[rgb(var(--color-border-subtle))] flex items-center gap-1">
-                                            <Zap size={8} className="text-amber-500" /> {discordStatus.latency || 0}ms
+                                        <span className="text-[9px] font-mono font-bold tabular-nums bg-black/20 px-2 py-0.5 rounded-lg border border-border/20 flex items-center gap-1.5 text-amber-500">
+                                            <Zap size={10} className="animate-pulse" /> {discordStatus.latency || 0}ms
                                         </span>
-                                        <span className="text-[8px] text-[rgb(var(--color-fg-subtle))] font-mono bg-[#09090b] px-1.5 py-0.5 rounded border border-[rgb(var(--color-border-subtle))] flex items-center gap-1">
-                                            <Users size={8} className="text-blue-500" /> {discordStatus.guilds || 0} Servers
+                                        <span className="text-[9px] font-mono font-bold tabular-nums bg-black/20 px-2 py-0.5 rounded-lg border border-border/20 flex items-center gap-1.5 text-blue-500">
+                                            <Users size={10} /> {discordStatus.guilds || 0} Guilds
                                         </span>
                                     </div>
                                 </div>
                             </div>
                         ) : (
-                            <div className="p-6 rounded-lg bg-[#18181b]/20 border border-dashed border-[rgb(var(--color-border-subtle))] flex flex-col items-center justify-center text-center">
-                                <Bot size={20} className="text-zinc-700 mb-2" />
-                                <p className="text-[10px] text-[rgb(var(--color-fg-subtle))] font-medium">
-                                    {botConfig.enabled ? 'Waiting for handshake...' : 'Bot process inactive'}
+                            <div className="p-8 rounded-xl bg-black/5 border border-dashed border-border/40 flex flex-col items-center justify-center text-center">
+                                <Bot size={24} className="text-muted-foreground/20 mb-3" />
+                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                                    {botConfig.enabled ? 'Awaiting Handshake...' : 'System Instance Disabled'}
                                 </p>
                             </div>
                         )}
@@ -427,65 +417,55 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                             <div className="mt-4 p-3 rounded-lg bg-rose-500/5 border border-rose-500/10 flex items-start gap-3">
                                 <AlertTriangle size={14} className="text-rose-500 shrink-0 mt-0.5" />
                                 <div className="space-y-1">
-                                    <p className="text-[9px] font-bold text-rose-500 uppercase tracking-widest">Initialization Error</p>
+                                    <p className="text-[9px] font-bold text-rose-500 uppercase tracking-widest">Gateway Error</p>
                                     <p className="text-[10px] text-rose-200/60 leading-tight">{discordStatus.lastError}</p>
-                                    {discordStatus.lastError.includes('Intents') && (
-                                        <a 
-                                            href="https://discord.com/developers/applications" 
-                                            target="_blank" 
-                                            rel="noreferrer"
-                                            className="text-[9px] text-rose-400 hover:text-rose-300 hover:underline font-bold inline-block mt-1"
-                                        >
-                                            Go to Developer Portal →
-                                        </a>
-                                    )}
                                 </div>
                             </div>
                         )}
                     </div>
                 </div>
 
-                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
-                    <div className="flex items-center gap-2 border-b border-[rgb(var(--color-border-subtle))] pb-4 mb-6">
-                        <Lock size={14} className="text-[#5865F2]" />
-                        <h3 className="text-xs font-bold text-[rgb(var(--color-fg-secondary))]">Authentication</h3>
+                <div className={`border border-border/80 transition-all duration-300 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-2xl' : 'bg-card rounded-md shadow-sm'}`}>
+                    <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
+                        <div className="flex items-center gap-2">
+                            <Lock size={14} className="text-[#5865F2]" />
+                            <span className="text-[11px] font-semibold tracking-tight uppercase text-muted-foreground">Bot Authentication Credentials</span>
+                        </div>
                     </div>
                     
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-[9px] font-bold text-[rgb(var(--color-fg-muted))] uppercase tracking-[0.2em] flex justify-between mb-1.5">
-                                Bot Token
-                                <span className="text-amber-500 lowercase font-medium opacity-70">Requires Reconnect</span>
+                    <div className="p-5 space-y-4">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest flex justify-between">
+                                Security Token
+                                <span className="text-amber-500 lowercase font-bold opacity-70">Handshake Required</span>
                             </label>
                             <div className="relative group/input">
                                 <input 
                                     type="password" 
-                                    className="w-full bg-[#18181b]/50 border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-mono text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-colors placeholder:text-zinc-800 hover:border-[rgb(var(--color-border-default))]"
+                                    className="w-full bg-black/20 border border-border/50 rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-all placeholder:text-zinc-800 hover:border-primary/30"
                                     value={botConfig.token}
                                     onChange={(e) => updateBotConfig('token', e.target.value)}
                                 />
-                                <div className="absolute right-3 top-2 opacity-0 group-hover/input:opacity-100 transition-opacity text-[rgb(var(--color-fg-subtle))]">
-                                    <Lock size={12} />
-                                </div>
+                                <Lock size={12} className="absolute right-3 top-2.5 text-zinc-700 pointer-events-none opacity-40 group-hover/input:opacity-100 transition-opacity" />
                             </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[9px] font-bold text-[rgb(var(--color-fg-muted))] uppercase tracking-[0.2em] mb-1.5 block">Client ID</label>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest block">Client Application ID</label>
                                 <input 
                                     type="text" 
-                                    className="w-full bg-[#18181b]/50 border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-mono text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-colors placeholder:text-zinc-800 hover:border-[rgb(var(--color-border-default))]"
+                                    className="w-full bg-black/20 border border-border/50 rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-all hover:border-primary/30"
                                     value={botConfig.clientId}
                                     placeholder="Application ID"
                                     onChange={(e) => updateBotConfig('clientId', e.target.value)}
                                 />
                             </div>
-                            <div>
-                                <label className="text-[9px] font-bold text-[rgb(var(--color-fg-muted))] uppercase tracking-[0.2em] mb-1.5 block">Guild ID (Optional)</label>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest block">Primary Guild ID</label>
                                 <input 
                                     type="text" 
-                                    className="w-full bg-[#18181b]/50 border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-mono text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-colors placeholder:text-zinc-800 hover:border-[rgb(var(--color-border-default))]"
+                                    className="w-full bg-black/20 border border-border/50 rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-all hover:border-primary/30"
                                     value={botConfig.guildId}
                                     placeholder="Instant Sync ID"
                                     onChange={(e) => updateBotConfig('guildId', e.target.value)}
@@ -501,67 +481,59 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                             onClick={handleSaveBot}
                             disabled={!isDirty || !can('system.integrations.manage')}
                             title={!can('system.integrations.manage') ? 'Insufficient Permissions' : ''}
-                             className={`flex-1 py-2.5 rounded-md font-bold text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-lg ${
+                             className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-[0.25em] flex items-center justify-center gap-2 transition-all shadow-lg ${
                                 isDirty && can('system.integrations.manage')
-                                ? 'bg-zinc-100 text-black hover:bg-zinc-300 hover:scale-[1.01] shadow-white/5' 
-                                : 'bg-[#18181b] text-[rgb(var(--color-fg-subtle))] border border-[rgb(var(--color-border-subtle))] opacity-50 cursor-not-allowed'
+                                ? 'bg-primary text-primary-foreground hover:scale-[1.01] shadow-primary/20' 
+                                : 'bg-muted text-muted-foreground border border-border/50 opacity-50 cursor-not-allowed'
                             }`}
                         >
-                            <Save size={12} /> Update Config
+                            <Save size={12} /> Commit Configuration
                         </button>
                         <button 
                             onClick={handleSyncCommands}
                             disabled={isSyncing || discordStatus.status !== 'online' || !can('system.integrations.manage')}
-                            title={can('system.integrations.manage') ? "Register slash commands with Discord" : "Insufficient Permissions"}
-                             className={`px-6 py-2.5 rounded-md font-bold text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-lg ${
+                            className={`px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-[0.25em] flex items-center justify-center gap-2 transition-all shadow-lg ${
                                 discordStatus.status === 'online' && can('system.integrations.manage')
                                 ? 'bg-[#5865F2] text-white hover:bg-[#4752C4] hover:scale-[1.01] shadow-[#5865F2]/20' 
-                                : 'bg-[#18181b] text-[rgb(var(--color-fg-subtle))] border border-[rgb(var(--color-border-subtle))] opacity-50 cursor-not-allowed'
+                                : 'bg-muted text-muted-foreground border border-border/50 opacity-50 cursor-not-allowed'
                             }`}
                         >
                             {isSyncing ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                            Sync Cmds
+                            Sync Matrix
                         </button>
-                    </div>
-                    
-                    <div className="p-3 rounded-md bg-[#5865F2]/5 border border-[#5865F2]/10 flex items-start gap-2.5">
-                        <div className="p-1 rounded bg-[#5865F2]/10 text-[#5865F2] mt-0.5">
-                            <Info size={10} />
-                        </div>
-                        <p className="text-[10px] leading-relaxed text-[rgb(var(--color-fg-muted))]">
-                            <strong className="text-[rgb(var(--color-fg-secondary))]">Sync Commands?</strong> Registers <code>/start</code>, <code>/stop</code> etc. with Discord. Run this after setup or when changing Client/Guild IDs.
-                        </p>
                     </div>
                 </div>
             </div>
 
             <div className="space-y-6">
-                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
-                    <div className="flex items-center gap-2 border-b border-[rgb(var(--color-border-subtle))] pb-4 mb-6">
-                        <Shield size={14} className="text-emerald-500" />
-                        <h3 className="text-xs font-bold text-[rgb(var(--color-fg-secondary))]">Permissions & Security</h3>
+                <div className={`border border-border/80 transition-all duration-300 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-2xl' : 'bg-card rounded-md shadow-sm'}`}>
+                    <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
+                        <div className="flex items-center gap-2">
+                             <Shield size={14} className="text-emerald-500" />
+                            <span className="text-[11px] font-semibold tracking-tight uppercase text-muted-foreground">Access Control & Notifications</span>
+                        </div>
                     </div>
-                    <div className="space-y-6">
-                             <div>
-                            <label className="text-[10px] font-bold text-[rgb(var(--color-fg-muted))] block mb-1.5">Authorized Role IDs (CSV)</label>
+                    <div className="p-5 space-y-6">
+                             <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest block">Authorized Role Governance (CSV)</label>
                             <input 
                                 type="text" 
-                                className="w-full bg-[#18181b]/50 border border-[rgb(var(--color-border-subtle))] rounded-md px-3 py-2 text-xs font-mono text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-colors placeholder:text-zinc-800 hover:border-[rgb(var(--color-border-default))]"
+                                className="w-full bg-black/20 border border-border/50 rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-all placeholder:text-zinc-800 hover:border-primary/30"
                                 placeholder="123456789, 987654321..."
                                 value={botConfig.commandRoles?.join(', ') || ''}
                                 onChange={(e) => updateBotConfig('commandRoles', e.target.value.split(',').map(s => s.trim()).filter(s => s))}
                             />
                         </div>
 
-                         <div>
-                            <label className="text-[9px] font-bold text-[rgb(var(--color-fg-muted))] uppercase tracking-[0.2em] block mb-1.5">Event Sync Channel</label>
+                         <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest block">Global Telemetry Channel</label>
                             <div className="relative flex items-center">
                                 <div className="absolute left-3 text-zinc-700 pointer-events-none">
                                     <Hash size={12} />
                                 </div>
                                 <input 
                                     type="text" 
-                                    className="w-full bg-[#18181b]/50 border border-[rgb(var(--color-border-subtle))] rounded-md px-8 py-2 text-xs font-mono text-[rgb(var(--color-fg-secondary))] focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-colors placeholder:text-zinc-800 hover:border-[rgb(var(--color-border-default))]"
+                                    className="w-full bg-black/20 border border-border/50 rounded-lg px-8 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-[#5865F2]/50 focus:border-[#5865F2]/50 transition-all placeholder:text-zinc-800 hover:border-primary/30"
                                     placeholder="98765432101234"
                                     value={botConfig.notificationChannel}
                                     onChange={(e) => updateBotConfig('notificationChannel', e.target.value)}
@@ -572,75 +544,76 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                 </div>
 
                 {/* Command Quick Reference */}
-                <div className="bg-card border border-border rounded-xl p-6 relative overflow-hidden group shadow-sm">
-                    <div className="absolute top-0 right-0 p-8 opacity-[0.02] pointer-events-none">
-                        <Terminal size={120} />
+                <div className={`border border-border/80 transition-all duration-300 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-2xl' : 'bg-card rounded-md shadow-sm'}`}>
+                    <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
+                        <div className="flex items-center gap-2">
+                             <Terminal size={14} className="text-[#5865F2]" />
+                            <span className="text-[11px] font-semibold tracking-tight uppercase text-muted-foreground">Slash Command Blueprint</span>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2 border-b border-[rgb(var(--color-border-subtle))] pb-4 mb-4">
-                        <Activity size={14} className="text-[#5865F2]" />
-                        <h3 className="text-xs font-bold text-[rgb(var(--color-fg-secondary))]">Slash Command Guide</h3>
-                    </div>
-                    <div className="space-y-3">
+                    <div className="p-5 space-y-3">
                         {[
-                            { cmd: '/list', desc: 'Queries all local instances.' },
-                            { cmd: '/start <id>', desc: 'Triggers the boot sequence.' },
-                            { cmd: '/stop <id>', desc: 'Initiates a graceful termination.' },
-                            { cmd: '/status <id>', desc: 'Fetches real-time telemetry.' },
+                            { cmd: '/list', desc: 'Queries all federated service instances.' },
+                            { cmd: '/start <id>', desc: 'Initiates remote boot sequence.' },
+                            { cmd: '/stop <id>', desc: 'Triggers controlled termination signal.' },
+                            { cmd: '/status <id>', desc: 'Streams real-time health telemetry.' },
                         ].map(it => (
-                            <div key={it.cmd} className="group transition-all">
+                            <div key={it.cmd} className="group transition-all p-2 rounded-lg hover:bg-black/10 border border-transparent hover:border-border/20">
                                 <div className="flex items-center justify-between mb-1">
-                                    <span className="text-[10px] font-mono text-[#5865F2] font-semibold bg-[#5865F2]/10 px-2 py-0.5 rounded border border-[#5865F2]/20">{it.cmd}</span>
-                                    <span className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-bold uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">Global</span>
+                                    <span className="text-[10px] font-mono text-[#5865F2] font-black bg-[#5865F2]/10 px-2 py-0.5 rounded-lg border border-[#5865F2]/20">{it.cmd}</span>
+                                    <span className="text-[8px] text-muted-foreground/40 font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">Federated</span>
                                 </div>
-                                <p className="text-[9px] text-[rgb(var(--color-fg-muted))] font-medium pl-2 border-l border-[rgb(var(--color-border-subtle))] group-hover:border-[#5865F2]/40 transition-colors leading-tight">{it.desc}</p>
+                                <p className="text-[10px] text-muted-foreground font-medium pl-2 border-l-2 border-border/20 group-hover:border-[#5865F2]/40 transition-all leading-tight">{it.desc}</p>
                             </div>
                         ))}
                     </div>
-                    <div className="mt-6 pt-4 border-t border-[rgb(var(--color-border-subtle))] flex items-center justify-between">
-                         <p className="text-[9px] text-[rgb(var(--color-fg-subtle))] font-bold uppercase tracking-widest">Bot Capability Level</p>
-                         <div className="flex gap-1">
-                            <div className="w-1 h-1 rounded-full bg-[#5865F2]" />
-                            <div className="w-1 h-1 rounded-full bg-[#5865F2]/50" />
-                            <div className="w-1 h-1 rounded-full bg-[#5865F2]/20" />
+                </div>
+                    <div className="mt-6 pt-4 border-t border-border/20 flex items-center justify-between">
+                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Bot Capability Matrix</p>
+                         <div className="flex gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary/50" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary/20" />
                          </div>
                     </div>
-                </div>
 
-                <div className="bg-[#1e1f22] border border-black/40 rounded-xl overflow-hidden shadow-2xl flex flex-col font-sans">
-                    <div className="px-4 py-3 bg-[#2b2d31] border-b border-black/20 flex items-center justify-between">
+                    <div className="bg-black/40 border border-border/40 rounded-xl overflow-hidden shadow-2xl flex flex-col font-sans">
+                    <div className="px-4 py-2 bg-muted/20 border-b border-border/20 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <Terminal size={12} className="text-[#5865F2]" />
-                            <span className="text-[9px] font-black uppercase tracking-widest text-[#949cf7]">Bot Console Output</span>
+                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Bot Console Stream</span>
                         </div>
-                        <div className="flex gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#ed4245]" />
-                            <div className="w-2 h-2 rounded-full bg-[#f0d042]" />
-                            <div className="w-2 h-2 rounded-full bg-[#23a559]" />
+                        <div className="flex gap-1.5 opacity-30">
+                            <div className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
                         </div>
                     </div>
-                    <div className="p-4 font-mono text-[10px] space-y-2.5 min-h-[140px] bg-black/20">
-                        <div className="flex gap-2 text-[rgb(var(--color-fg-muted))]">
-                            <span className="opacity-50">[14:20:01]</span>
+                    <div className="p-4 font-mono text-[10px] space-y-2 min-h-[140px] max-h-[220px] overflow-y-auto scrollbar-thin">
+                        <div className="flex gap-2 text-muted-foreground/60">
+                            <span className="opacity-40 tabular-nums">[{new Date().toLocaleTimeString([], { hour12: false })}]</span>
                             <span className="text-emerald-500 font-bold">[SYSTEM]</span>
-                            <span className="text-[rgb(var(--color-fg-muted))]">Attempting hand-shake...</span>
+                            <span>Awaiting gateway connection...</span>
                         </div>
-                        <div className="flex gap-2 text-[rgb(var(--color-fg-muted))]">
-                            <span className="opacity-50">[14:20:03]</span>
-                            <span className="text-emerald-500 font-bold">[SYSTEM]</span>
-                            <span className="text-emerald-400">IDENTIFIED as {discordStatus.user?.username || 'Bot'}#0000</span>
-                        </div>
-                        <div className="flex gap-2 text-[rgb(var(--color-fg-muted))]">
-                            <span className="opacity-50">[14:20:05]</span>
-                            <span className="text-[#5865F2] font-bold">[COMMAND]</span>
-                            <span className="text-[rgb(var(--color-fg-muted))]">Registered application commands.</span>
-                        </div>
-                        {discordStatus.status === 'online' && (
-                            <div className="flex gap-2 text-[rgb(var(--color-fg-muted))] animate-pulse">
-                                <span className="opacity-50">[{new Date().toLocaleTimeString([], { hour12: false })}]</span>
-                                <span className="text-[rgb(var(--color-fg-secondary))] font-bold">[HEARTBEAT]</span>
-                                <span className="text-[rgb(var(--color-fg-muted))]">WS Connection Healthy</span>
+                        {discordStatus.status === 'online' && discordStatus.user && (
+                            <div className="flex gap-2 text-muted-foreground/60">
+                                <span className="opacity-40 tabular-nums">[{new Date().toLocaleTimeString([], { hour12: false })}]</span>
+                                <span className="text-emerald-500 font-bold">[SYSTEM]</span>
+                                <span className="text-emerald-400 font-semibold">IDENTIFIED AS {discordStatus.user.username}</span>
                             </div>
                         )}
+                        {discordStatus.status === 'online' && (
+                            <div className="flex gap-2 text-muted-foreground/40 animate-pulse">
+                                <span className="opacity-30 tabular-nums">[{new Date().toLocaleTimeString([], { hour12: false })}]</span>
+                                <span className="text-primary font-bold">[HB]</span>
+                                <span>Session heartbeat acknowledged.</span>
+                            </div>
+                        )}
+                         <div className="flex gap-2 text-muted-foreground/60">
+                            <span className="opacity-40 tabular-nums">[{new Date().toLocaleTimeString([], { hour12: false })}]</span>
+                            <span className="text-amber-500 font-bold">[WARN]</span>
+                            <span>Instance state: STANDBY</span>
+                        </div>
                     </div>
                 </div>
             </div>

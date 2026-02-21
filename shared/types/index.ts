@@ -251,8 +251,21 @@ export interface GlobalSettings {
         network?: NetworkConfig;
     };
     discordBot?: DiscordBotConfig;
+    webhooks?: WebhookConfig[];
+    apiTokens?: ApiToken[];
     version?: string; // Programmatic version from version.json
 }
+
+export interface ApiToken {
+    id: string;
+    name: string;
+    token: string;
+    createdAt: number;
+    lastUsedAt?: number;
+    expiresAt?: number;
+    scopes: string[];
+}
+
 
 export interface Player {
     name: string;
