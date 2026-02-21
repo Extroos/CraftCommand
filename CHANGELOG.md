@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.11.6] - 2026-02-21 - Core Deployment Hotfix
+
+### Fixed
+
+- **Template Installation**: Resolved an "Unsupported template type" error when deploying Bedrock or Velocity servers.
+- **Installer registration**: Correctly mapped software templates to their respective installation drivers in the internal pipeline.
+
 ## [1.11.5] - 2026-02-21 - Universal Core Stabilization
 
 ### Improved

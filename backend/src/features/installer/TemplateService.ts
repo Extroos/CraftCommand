@@ -148,6 +148,12 @@ export class TemplateService {
             case 'Spigot':
                 await installerService.installSpigot(serverId, server.workingDirectory, template.version);
                 break;
+            case 'Bedrock':
+                await installerService.installBedrock(serverId, server.workingDirectory, template.version);
+                break;
+            case 'Velocity':
+                await installerService.installVelocity(serverId, server.workingDirectory, { version: template.version, build: template.build });
+                break;
             case 'Modpack':
                 const modpackUrl = options?.customUrl || template.downloadUrl;
                 if (!modpackUrl) throw new Error('Modpack installation requires a custom URL or project ID.');
