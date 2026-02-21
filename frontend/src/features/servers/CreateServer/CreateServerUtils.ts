@@ -33,7 +33,7 @@ export const synthesizeDefaultState = (
         newData.usePurpur = false;
         newData.templateId = undefined;
     } else if (software === 'Bedrock') {
-        newData.version = bedrockVersions?.latest || '1.26.0.2';
+        newData.version = bedrockVersions?.latest || '1.26.1.1';
         newData.port = newData.port === 25565 ? 19132 : newData.port;
         newData.ram = Math.max(newData.ram, 1);
         newData.usePurpur = false;

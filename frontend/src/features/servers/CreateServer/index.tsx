@@ -64,8 +64,8 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
     const [templates, setTemplates] = useState<ServerTemplate[]>([]);
     const [availableNodes, setAvailableNodes] = useState<NodeInfo[]>([]);
     const [bedrockVersions, setBedrockVersions] = useState<{ latest: string, versions: string[] }>({
-        latest: '1.26.0.2',
-        versions: ['1.26.0.2']
+        latest: '1.26.1.1',
+        versions: ['1.26.1.1']
     });
 
     // Load Bedrock Versions
