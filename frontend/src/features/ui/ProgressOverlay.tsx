@@ -55,7 +55,7 @@ export const ProgressOverlay: React.FC<ProgressOverlayProps> = ({
                     />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold font-mono text-indigo-500">
-                    {Math.round(percent)}%
+                    {Math.max(0, Math.round(percent))}%
                 </div>
             </div>
         );
@@ -66,12 +66,12 @@ export const ProgressOverlay: React.FC<ProgressOverlayProps> = ({
             <div className="flex flex-col gap-1 w-full">
                 <div className="flex justify-between items-center text-[10px] font-bold">
                     <span className="text-indigo-400 animate-pulse truncate max-w-[120px]">{message || phase || 'Installing...'}</span>
-                    <span className="text-indigo-400/60 font-mono">{Math.round(percent)}%</span>
+                    <span className="text-indigo-400/60 font-mono">{Math.max(0, Math.round(percent))}%</span>
                 </div>
                 <div className="h-1 bg-muted/30 rounded-full overflow-hidden border border-border/50">
                     <motion.div 
                         initial={{ width: 0 }}
-                        animate={{ width: `${percent}%` }}
+                        animate={{ width: `${Math.max(0, percent)}%` }}
                         className="h-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]"
                         transition={{ type: 'spring', stiffness: 50, damping: 20 }}
                     />
@@ -108,16 +108,14 @@ export const ProgressOverlay: React.FC<ProgressOverlayProps> = ({
                                                 {showLogs ? 'Hide Logs' : 'View Details'}
                                             </button>
                                         )}
-                                        <span className="text-[10px] font-mono text-primary font-bold">
-                                            {Math.round(percent)}%
-                                        </span>
+                                            {Math.max(0, Math.round(percent))}%
                                     </div>
                                 </div>
                                 <div className="h-1 bg-muted rounded-full overflow-hidden">
                                     <motion.div 
                                         className="h-full bg-primary shadow-[0_0_8px_rgba(var(--primary-rgb),0.4)]"
                                         initial={{ width: 0 }}
-                                        animate={{ width: `${percent}%` }}
+                                        animate={{ width: `${Math.max(0, percent)}%` }}
                                         transition={{ type: 'spring', stiffness: 50, damping: 20 }}
                                     />
                                 </div>

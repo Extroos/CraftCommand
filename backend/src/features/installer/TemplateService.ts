@@ -66,7 +66,7 @@ const DEFAULT_TEMPLATES: ServerTemplate[] = [
         id: 'bedrock-latest',
         name: 'Bedrock',
         type: 'Bedrock',
-        version: 'latest',
+        version: '1.26.1.1',
         description: 'Official Bedrock Dedicated Server. Cross-play with mobile & console.',
         recommendedRam: 2048,
         javaVersion: 0 // Not Java-based

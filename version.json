@@ -1,9 +1,9 @@
 {
-  "version": "1.11.6",
-  "title": "CraftCommand: Core Deployment Hotfix",
+  "version": "1.11.8",
+  "title": "CraftCommand: BDS Connectivity Update",
   "notes": [
-    "Template Fix: Resolved registration issues for Bedrock and Velocity templates in the installer pipeline.",
-    "BDS Deployment: Fixed 'Unsupported template type: Bedrock' error during server creation.",
-    "Proxy Stability: Enabled Velocity Proxy template installation support."
+    "Bedrock Fix: Resolved 404 download errors by hardcoding verified stable version 1.26.1.1.",
+    "Installer Stability: Disabled unstable scraping logic to prevent broken download links.",
+    "BDS Deployment: Guaranteed support for the latest Bedrock Dedicated Server binaries."
   ]
 }

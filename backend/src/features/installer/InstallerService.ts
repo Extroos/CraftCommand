@@ -889,6 +889,9 @@ export class InstallerService extends EventEmitter {
             return this.bedrockVersionCache;
         }
 
+        /* 
+        // Scraping disabled due to inconsistent Minecraft.net manifest updates causing 404s.
+        // Transitioning to hardcoded verified versions (v1.11.8).
         // Primary source: Scrape from multiple locales to ensure we hit the latest manifest
         const locales = ['en-us', 'fr-fr'];
         
@@ -939,16 +942,20 @@ export class InstallerService extends EventEmitter {
                 console.warn(`[Installer] Bedrock version scrape failed for ${locale}:`, e.message);
             }
         }
+        */
 
-        // Final Fallback: Use verified stable 1.26.0.2
+        // Verified stable version for v1.11.8
         return {
-            latest: '1.26.0.2',
-            versions: ['1.26.0.2', '1.21.11.01', '1.21.10.01']
+            latest: '1.26.1.1',
+            versions: ['1.26.1.1', '1.26.0.2', '1.21.11.01']
         };
     }
 
     async installBedrock(serverId: string, serverDir: string, version: string, onProgress?: (msg: string, percent?: number) => void) {
-        try {
+    // Phase 11.8: Resolve 'latest' to verified working link version
+    if (version === 'latest') version = '1.26.1.1';
+    
+    try {
             await SafeFileOperation.checkDiskSpace(serverDir);
             console.log(`[Installer] Starting Bedrock install for v${version}. Platform: ${process.platform}`);
             const pMsg = `Preparing Bedrock ${version} installation...`;

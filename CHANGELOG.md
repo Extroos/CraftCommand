@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.11.8] - 2026-02-21 - BDS Connectivity Update
+
+### Fixed
+
+- **Bedrock Deployment**: Fixed a 404 error during server creation by hardcoding verified version 1.26.1.1.
+- **Version Discovery**: Disabled unstable scraping logic that caused the 404 errors on Minecraft's download servers.
+
+## [1.11.7] - 2026-02-21 - UI & Animation Refinement
+
+### Fixed
+
+- **Progress Display**: Added a lower-bound guard to prevent the installation progress from showing negative values (e.g. -1%).
+- **Visual consistency**: Synchronized all progress components to enforce 0-100% ranges.
+
 ## [1.11.6] - 2026-02-21 - Core Deployment Hotfix
 
 ### Fixed
