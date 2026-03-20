@@ -1,4 +1,4 @@
-# 2FA Requirements
+# 2FA Requirements (Status: Implemented v1.12.0)
 
 ## Scope
 

@@ -113,3 +113,8 @@ web_modules/
 .yarn-integrity
 .pnp.*
 vite.config.*.timestamp-*
+
+# Skills System (AI Documentation & Architectural Maps)
+skills/
+skill.md
+skillplan.md

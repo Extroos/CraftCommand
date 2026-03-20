@@ -7,6 +7,7 @@ Assigning a custom hostname to your Minecraft server provides a professional exp
 - **Provider Agility**: Direct support for DuckDNS, No-IP, Dynu, and manual HTTP-based updaters.
 - **Protocol Health Monitoring**: The panel performs silent background DNS lookups to verify that your domain matches your current public IP.
 - **Propagation Tracking**: Visual indicators show if your DNS changes are "Pending", "Propagating", or "Active" across global resolvers.
+- **Persistent Sync (v1.11+)**: If an update fails due to provider downtime, CraftCommand will periodically retry the sync until the record is successfully updated.
 - **Per-Server Isolation**: Assign unique subdomains to different server instances even if they run on the same machine.
 
 ## Implementation Guide

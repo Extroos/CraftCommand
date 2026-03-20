@@ -17,7 +17,12 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 ### 1. Server Starts then Immediately Stops
 
 - **Cause**: You likely haven't accepted the EULA.
-- **Fix**: Check the console for a message requiring an "Accept" interaction, or go to the server folder and set `eula=true` in `eula.txt`.
+- **Fix**: Check the console for a message requiring an "Accept" interaction, or go to the server folder and set `eula=true` in `eula.txt`. Note that in **v1.12.0**, the Doctor may skip this check on the first boot to reduce noise.
+
+### 2. Modpack Crash on First Boot
+
+- **Cause**: Client-side mods or missing dependencies.
+- **Fix**: CraftCommand's **Modpack Intelligence** should handle this automatically. If it persists, check the `_client_mods/` folder for any missed entries or use the **"Force Re-Scan"** action in the server's Mod Manager.
 
 ### 2. "Java Version Mismatch"
 
@@ -71,6 +76,8 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 
 | Code                    | Type    | Meaning                           | Action                                    |
 | :---------------------- | :------ | :-------------------------------- | :---------------------------------------- |
+| **E_2FA_REQUIRED**      | Security| Account has 2FA enabled.          | Enter your TOTP or Recovery code.         |
+| **E_2FA_INVALID**       | Security| Incorrect challenge response.     | Verify your device clock or use a backup. |
 | **E_NODE_OFFLINE**      | System  | Background worker is detached.    | Restart `run_CraftCommand.bat`.           |
 | **E_JAVA_MISSING**      | Runtime | No compatible JDK found.          | Install the required Java version.        |
 | **E_FILE_NOT_FOUND**    | Files   | Missing `.jar` or world folder.   | Verify your installation files.           |

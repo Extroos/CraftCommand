@@ -26,7 +26,8 @@ CraftCommand uses a **Decoupled Connectivity Layer**. This means the backend han
 
 - **Binding**: By default, the panel "binds" to `127.0.0.1`. This means only YOU can see it. Enabling "Remote Access Mode" changes this to `0.0.0.0`, allowing external traffic.
 - **Resolution**: The system periodically checks your Public IP against your configured hostnames. If they don't match, the "Networking" tab will show a Warning.
-- **Reverse Proxy**: I strongly recommend using a proxy like **Caddy** or **Nginx** to handle SSL (HTTPS). This ensures your passwords and commands aren't sent over the internet in plain text.
+- **v1.12.0 Infrastructure Checks**: The panel now performs real-time health checks on your remote access layer, including Caddy/Nginx status and Cloudflare tunnel heartbeats.
+- **Reverse Proxy**: I strongly recommend using a proxy like **Caddy** or **Nginx** to handle SSL (HTTPS).
 
 ---
 

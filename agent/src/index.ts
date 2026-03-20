@@ -30,6 +30,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { getCapabilities } from './capabilities';
+import { BackupService } from './BackupService';
 
 // ──────────────────────────────────────────────
 // Constants
@@ -128,6 +129,9 @@ interface ManagedServer {
 }
 
 const managedServers: Map<string, ManagedServer> = new Map();
+
+// ── Backup Service (Phase 11) ──
+const backupService = new BackupService(SERVERS_DIR);
 
 // ── Log Batching (#3) ──
 
@@ -612,6 +616,40 @@ function connect(): void {
         transports: ['websocket', 'polling']
     });
 
+    // ── Backup Mirroring Logic (Phase 11) ──
+    async function mirrorToPrimary(serverId: string, backupId: string, filePath: string) {
+        log(`Mirroring backup ${backupId} for ${serverId} to Primary...`);
+        try {
+            const stats = fs.statSync(filePath);
+            const stream = fs.createReadStream(filePath);
+            
+            // Use native fetch (Node 18+) to push the file
+            const response = await fetch(`${PANEL_URL}/api/nodes/${NODE_ID}/backups/intake`, {
+                method: 'POST',
+                headers: {
+                    'x-node-id': NODE_ID,
+                    'x-node-secret': SECRET,
+                    'x-server-id': serverId,
+                    'x-backup-id': backupId,
+                    'Content-Type': 'application/octet-stream',
+                    'Content-Length': stats.size.toString()
+                },
+                body: stream as any,
+                // @node-fetch/extend or similar? Native fetch works with ReadableStream
+                // For Node.js native fetch, we might need a workaround for ReadStream or use duplex
+                duplex: 'half' 
+            } as any);
+
+            if (!response.ok) {
+                const err = await response.text();
+                throw new Error(`Mirror failed: ${response.status} ${err}`);
+            }
+            log(`✓ Backup ${backupId} mirrored successfully.`);
+        } catch (e: any) {
+            error(`Mirroring failed for ${backupId}: ${e.message}`);
+        }
+    }
+
     // ── Connection Events ──
 
 
@@ -798,6 +836,46 @@ function connect(): void {
             if (ack) ack({ ok: true });
         } catch (err: any) {
             error(`Failed to send command to "${data?.serverId}": ${err.message}`);
+            if (ack) ack({ error: err.message });
+        }
+    });
+
+    // ── Phase 11: Remote Backups ──
+    socket.on('agent:backup:create', async (data: any, ack: (response: any) => void) => {
+        const { serverId, description, worldOnly, mirror } = data;
+        log(`Received BACKUP command for server "${serverId}" (worldOnly=${!!worldOnly}, mirror=${!!mirror})`);
+        
+        try {
+            const serverDir = path.join(SERVERS_DIR, serverId);
+            if (!fs.existsSync(serverDir)) throw new Error('Server directory not found.');
+
+            const backup = await backupService.createBackup(serverDir, serverId, description, worldOnly);
+            
+            if (ack) ack({ ok: true, backup });
+
+            // Handle Mirroring
+            if (mirror) {
+                const filePath = path.join(SERVERS_DIR, 'backups', serverId, backup.filename);
+                mirrorToPrimary(serverId, backup.id, filePath);
+            }
+        } catch (err: any) {
+            error(`Backup failed for "${serverId}": ${err.message}`);
+            if (ack) ack({ error: err.message });
+        }
+    });
+
+    socket.on('agent:backup:restore', async (data: any, ack: (response: any) => void) => {
+        const { serverId, backupId, worldOnly } = data;
+        log(`Received RESTORE command for server "${serverId}" (backupId=${backupId}, worldOnly=${!!worldOnly})`);
+
+        try {
+            const serverDir = path.join(SERVERS_DIR, serverId);
+            if (!fs.existsSync(serverDir)) throw new Error('Server directory not found.');
+
+            await backupService.restoreBackup(serverDir, serverId, backupId, { worldOnly });
+            if (ack) ack({ ok: true });
+        } catch (err: any) {
+            error(`Restore failed for "${serverId}": ${err.message}`);
             if (ack) ack({ error: err.message });
         }
     });

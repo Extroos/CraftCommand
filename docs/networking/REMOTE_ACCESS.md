@@ -7,8 +7,10 @@ Communication in CraftCommand is secure by default (localhost only). To expose y
 Before enabling external access, ensure your installation is hardened:
 
 1.  **Strict Authentication**: Every administrative account must have a strong password. Manage these in `Global Settings -> Users`.
-2.  **Rate Limiting**: CraftCommand automatically prevents brute-force attacks by banning IPs after 5 failed login attempts for 1 hour.
-3.  **Owner Lock**: Only accounts with the `Owner` role can toggle **Remote Access Mode**.
+2.  **Two-Factor Authentication (2FA)**: **Recommended** - Enable native TOTP protection in your User Profile to prevent account takeovers via leaked passwords.
+3.  **Session Management**: Use the "Logout All Devices" feature if you suspect account compromise to instantly invalidate all active JWT sessions.
+4.  **Rate Limiting**: CraftCommand automatically prevents brute-force attacks by banning IPs after 5 failed login attempts for 1 hour.
+5.  **Owner Lock**: Only accounts with the `Owner` role can toggle **Remote Access Mode**.
 
 ---
 

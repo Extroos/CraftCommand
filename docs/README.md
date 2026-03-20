@@ -2,13 +2,14 @@
 
 Welcome to the technical documentation library for CraftCommand. This library provides deep-dives into the architecture, security, and operation of the platform.
 
-## 🏁 Getting Started & Operations
+## 🏁 Getting Started & Operations (v1.12.0)
 
 | Guide                                                           | Description                                 |
 | :-------------------------------------------------------------- | :------------------------------------------ |
 | [**Architecture**](ARCHITECTURE.md)                             | Technical deep-dive into the hybrid engine. |
 | [**Upgrading**](UPGRADING.md)                                   | Safe transition guide for v1.x releases.    |
 | [**Security: Systems Integrity**](security/SYSTEM_INTEGRITY.md) | Ed25519 & SHA256 safety model.              |
+| [**Security: 2FA Mastery**](security/2fa_requirements.md)       | TOTP setup, backup codes, and encryption.   |
 | [**Networking: Cross-Play**](networking/CROSSPLAY.md)           | Java & Bedrock (Geyser/Floodgate) setup.    |
 | [**Networking: Tunnels**](networking/TUNNELS.md)                | Zero-config Cloudflare provisioning.        |
 | [**Networking: DDNS**](networking/DDNS.md)                      | Dynamic DNS (DuckDNS) synchronization.      |

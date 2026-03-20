@@ -18,7 +18,7 @@ A Cloudflare Tunnel creates a secure, outbound-only connection between your host
 
 ## 3. Distributed Considerations
 
-Worker Nodes can also utilize Tunnels. When a node is enrolled, it can be configured to use a "Private Tunnel" to communicate back to the Primary node, making it possible to host servers behind strict CGNAT or mobile hotspots.
+Worker Nodes can also utilize Tunnels. When a node is enrolled, it can be configured to use a **Private Tunnel** (v1.11.3+) to communicate back to the Primary node. This effectively allows you to host servers behind strict CGNAT, mobile hotspots, or corporate firewalls without any port configuration.
 
 ---
 

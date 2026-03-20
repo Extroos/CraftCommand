@@ -8,11 +8,19 @@ Yes. CraftCommand is open-source and released under the AGPLv3 license. You can 
 
 ### Does it support Modpacks?
 
-Absolutely. The system includes a **Heuristic Installer** that can automatically detect, unzip, and configure modpacks from CurseForge, Modrinth, and custom ZIP files.
+Absolutely. The system includes a **Modpack Intelligence Engine (v1.12.0)** that automatically detects, resolves dependencies, and quarantines client-side only mods from CurseForge and Modrinth.
 
-### Can I run it on Linux?
+### Does it support Minecraft 1.21.1+?
 
-Yes. While `run_CraftCommand.bat` is provided for Windows users, you can use `npm run start:all` on Linux or macOS provided you have Node.js and Java installed.
+Yes. CraftCommand is fully compatible with the latest Minecraft releases and automatically manages the required **Java 21** environment.
+
+### Why were some mods moved to `_client_mods/`?
+
+This is part of our **Triple-Layer Mod Stabilization**. The system identifies mods that only work on the game client (like HUDs or Zoom mods) and disables them on the server to prevent startup crashes.
+
+### Can I clear the system cache?
+
+Yes. Under `Global Settings > System Health`, you can manually clear the **Java Runtime Cache** and **Temporary Uploads** to free up disk space.
 
 ## Technical Questions
 

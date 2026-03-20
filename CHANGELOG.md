@@ -2,6 +2,75 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.12.0] - 2026-03-20 - Operational Excellence Update (Cont.)
+
+### Added
+
+- **Dashboard Modpack Intelligence**: The hero section now intelligently displays dynamic modpack/mod icons, titles, and authorship elegantly compacted with server RAM and IP details.
+- **Modrinth API Hardening**: Replaced brittle client-mod filtering with strict server-side Modrinth API queries, incorporating loaders and game versions for 100% accurate mod retrieval.
+- **Pre-Boot UX Feedback**: Integrated real-time console feedback directly into the terminal during dependency downloads to provide clear startup visibility.
+- **Triple-Layer Mod Stabilization**: Integrated proactive frontend wizard synchronization, strict backend API filtering, and reactive auto-healing to prevent and fix incompatible mod crashes.
+- **Infrastructure Topology Redesign**: Replaced the circular SVG mesh with a professional, grid-based layout for worker nodes, featuring real-time CPU telemetry indicators.
+- **Comprehensive Audit Logging Expansion**: Added 30+ new audit actions covering Plugins, Backups, Networking, and Player management for high-accountability logging.
+- **Graceful Shutdown Countdown**: Implemented a countdown-based shutdown feature with in-game player warnings and cancellation support.
+- **Chained Scheduled Tasks**: Refactored the scheduling system to support multiple sequential actions (e.g., Backup then Restart) within a single task.
+- **High-Performance File Search**: Integrated `grep`-based content search in the File Manager with contextual snippets and optimized scanning.
+- **Secure Administrator Password Resets**: Enhanced user management with `bcrypt` hashing for administrative password changes.
+- **Asset-Aware Update Detection**: Integrated real-time GitHub release asset verification to ensure updates are only reported as "Available" when download payloads are ready.
+- **Automated Environment Synchronization**: Introduced `.env` parity logic that automatically adds missing configuration variables from `.env.example` during system updates.
+- **Standardized API Request Layer**: Introduced a centralized `ApiService` helper suite (`get`, `post`, `put`, `patch`, `delete`) to enforce consistent error handling, header management, and path resolution across the entire frontend.
+- **High-Efficiency Batch Storage**: Implemented `saveAll` method in the `StorageProvider` interface and all concrete repositories (SQLite/JSON), enabling atomic, high-performance batch updates for notifications, audits, and settings.
+- **Console Command History**: Added up/down arrow key cycling through the 50 most recent commands, preserving in-progress input when navigating history.
+- **Console Log Filtering**: Added toggleable INFO/WARN/ERROR level filter pills and real-time keyword search with match count display.
+- **Console Log Export**: Added one-click log export that downloads the current buffer as a timestamped `.log` file.
+- **Server Selection Search (Standard View)**: Extended server search/filter to the Standard view (was Pro-only), showing automatically for 4+ servers.
+- **Settings Manager Quick-Search**: Added a keyword search input in the SettingsManager toolbar that auto-navigates to the matching tab (General/Security/Advanced/Networking) as you type.
+- **Login Remember Me**: Added "Remember me" checkbox to the login form that persists your email across sessions via localStorage.
+- **Login Forgot Password**: Added a "Forgot password?" link that guides users to reset via CLI or administrator contact.
+- **Mobile Infrastructure Baseline**: Added the `viewport` meta tag to `index.html`, enabling correct device scaling and triggering responsive design rules on mobile browsers.
+
+### Fixed
+
+- **Installation Progress UI**: Fixed a visual bug where deployment progress bars would get stuck at "100%" instead of gracefully dismissing when the installation finished.
+- **System Version Accuracy**: Resolved several edge cases that caused the dashboard to occasionally incorrectly display an old version number (like 1.11.3) by linking all panel areas directly to the core version registry.
+- **Server Status Synchronization**: Fixed synchronization bugs that caused the dashboard to display "Online" too early or "Already Running" errors on startup. The UI now perfectly matches the true lifecycle state of the server.
+- **Diagnostic Alert Tuning**: Recalibrated the system's sensitivity to transient server lag ("Can't keep up") and normal networking states, significantly reducing false-positive warning banners.
+- **Velocity Proxy Deployments**: Patched installation routing and startup configurations, ensuring Velocity proxy servers download, configure, and launch successfully without manual intervention.
+- **Java Deployment Freezes**: Rewrote the Java installation pipeline to use stream-based downloads, eliminating UI freezes at the end of the download and reducing memory overhead on Windows.
+- **Redundant Setup Banners**: The global setup notification is now automatically hidden if a specific server card is already tracking an active installation.
+- **Dashboard Rendering Stability**: Fixed a rare frontend crash that could occur when receiving unusually formatted status protocols from third-party plugins.
+- **Update System Reliability**: Added comprehensive post-application integrity checks to prevent corrupted software updates, and restored missing routing logic in the core update manager.
+- **Background Port Conflicts**: Implemented automated detection and termination for orphaned Node.js processes, ensuring the system launches reliably even if previous instances didn't close cleanly.
+- **Dead 2FA Security Button**: The "2FA Security" button in the Header dropdown now correctly navigates to the User Profile page instead of doing nothing.
+- **Hardcoded LAN IP in Console**: Removed the hardcoded `192.168.1.15` IP from the Bedrock join guide that confused users on different networks.
+- **Debug Console.log Leaks**: Removed 3 stray `console.log` statements from `App.tsx` and `CollaborationContext.tsx` that leaked into production output.
+- **Console.error Leak Cleanup**: Removed 8 redundant `console.error` calls from `PlayerManager`, `Console`, `ModpackBrowser`, `FileManager`, `GlobalSettings`, and `SettingsManager` where toast notifications or error UI already handled the error.
+- **Premature Diagnosis Noise**: Hardened the automatic diagnosis trigger to skip uninitialized servers (`startTime === 0`). This eliminates the "Plugins Directory Missing" false positive on brand-new instances.
+- **Header Navigation Persistence**: Resolved click-event bugs in the fixed header and synchronized drawer states to prevent UI locking during deep navigation.
+
+### Improved
+
+- **Professional Dialog System Replaces Native Alerts**: Exterminated all 27 instances of native browser dialogs in favor of custom, sleek, and theme-aware React components:
+    - **Confirmations**: Replaced 19 `window.confirm()` calls across all core panels (Dashboard, Settings, Modpacks, Backups, File Manager) with `useConfirm()` and the animated `<ConfirmDialog>`.
+    - **Prompts**: Replaced `window.prompt()` in the 2FA security flow with `usePrompt()` and the secure `<PromptDialog>`.
+    - **Alerts**: Replaced brutalist `window.alert()` interrupts in the Server Creation wizard with non-blocking `addToast()` notifications.
+- **Proactive Pre-flight Diagnosis**: Integrated the diagnosis engine into `SafetyService` to block server startups if a known-bad configuration is detected, preventing predictable crash loops.
+- **Client-Side Mod Auto-Healing**: Enhanced `ClientOnlyModRule` to detect Fabric-specific environment mismatches and enable automated removal of culprit mods.
+- **Strict Modrinth Filtering**: The installer now strictly requests mod versions matching the server's exact Minecraft and Loader environment, eliminating "wrong version" installs.
+- **UI Aesthetic Stabilization**: Refined the `GlobalSettings` and `ThemeToggle` components with improved states, subtle shadows, and standardized layouts.
+- **Backend Lifecycle Reliability**: Centralized shutdown logic in the `ProcessManager` to prevent race conditions during termination sequences.
+- **Socket Protocol Robustness**: Added a universal safety wrapper in the backend broadcaster to ensure all status events are consistently structured.
+- **Core Update Orchestration**: Redesigned the update lifecycle to include mandatory frontend rebuilding, production asset synchronization, and cross-component dependency updates (Backend, Frontend, and Agent).
+- **Console Command Submission**: Added `Ctrl+Enter` shortcut to submit commands directly from the console input field for faster execution.
+- **Settings Pending Changes Indicator**: Added visual highlights to the "Save Settings" button when unsaved changes exist, preventing accidental data loss.
+- **Settings Keyboard Shortcuts**: Added `Ctrl+S` global listener in the Settings Manager to quickly save configurations without scrolling.
+- **Direct Status Page Routing**: Overhauled `App.tsx` state initialization to natively support direct navigation to `/status` from externally shared URLs.
+- **Centralized System State**: Migrated the application version state to a shared transient service to ensure perfect synchronization between the launcher, backend, and frontend.
+- **Robust Version Resolution**: Enhanced the backend's ability to locate its own version across diverse directory structures and CWD contexts.
+- **Intelligent Notification Orchestration**: Overhauled the notification engine with support for message categorization (SUCCESS, INFO, WARNING, ERROR) and intelligent grouping to prevent UI clutter from repetitive alerts.
+- **Global Settings Connectivity Audit**: Completed a full-stack audit of `GlobalSettings.tsx`, ensuring all infrastructure toggles (Docker, Remote Access, SSL, Storage) are perfectly synchronized with the `SystemSettingsService` and `UpdateService`.
+- **Surgical Dashboard Responsiveness**: Overhauled `Dashboard.tsx` and `DashboardPro.tsx` for mobile viewports while strictly preserving the "telemetry-grade" aesthetic, enabling grid wrapping and scaled hero sections for smaller screens.
+
 ## [1.11.8] - 2026-02-21 - BDS Connectivity Update
 
 ### Fixed
@@ -294,4 +363,4 @@ All notable changes to this project will be documented in this file.
 
 - **v1.11.x**: Distributed Backup Replication (RAID-1 for server data).
 - **v1.12.x**: AI-Powered Log Analysis (Predictive crash prevention).
-- **v2.0.0**: Native Mobile Application (iOS/Android) for cluster management.
+- **v1.0.0**: Native Mobile Application (iOS/Android) for cluster management.

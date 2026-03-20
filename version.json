@@ -1,9 +1,1 @@
-{
-  "version": "1.11.8",
-  "title": "CraftCommand: BDS Connectivity Update",
-  "notes": [
-    "Bedrock Fix: Resolved 404 download errors by hardcoding verified stable version 1.26.1.1.",
-    "Installer Stability: Disabled unstable scraping logic to prevent broken download links.",
-    "BDS Deployment: Guaranteed support for the latest Bedrock Dedicated Server binaries."
-  ]
-}
+{"version":"1.12.0","title":"Operational Excellence Update","notes":["Dashboard Modpack Intelligence: Real-time modpack/mod display in the server hero section.","Modrinth API Hardening: Strict server-side filtering for 100% accurate mod retrieval.","Infrastructure Topology v2: Grid-based cluster layout with real-time CPU telemetry indicators.","Triple-Layer Stabilization: Proactive, strict, and reactive mechanisms to prevent mod crashes.","Standardized API Request Layer: Enforced consistency and error handling across all cluster traffic.","High-Efficiency Batch Storage: Atomic, high-performance updates for audits, notifications, and settings.","Chained Automation Engine: Support for multi-action sequential scheduled tasks (e.g., Backup -> Restart).","High-Performance File Search: Integrated grep-based content scanning with contextual snippets."]}

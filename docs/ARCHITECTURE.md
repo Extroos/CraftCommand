@@ -49,11 +49,43 @@ A sophisticated layer that synchronizes connectivity across distributed clusters
 - **Cross-Play Bridging**: Orchestrates UDP port allocation for Geyser/Floodgate, ensuring a unified entry point for Bedrock and Java clients.
 - **Cloudflare Lifecycle**: Managed provisioning of Cloudflare Tunnels for zero-config remote access without firewall exposure.
 
+### F. Standardized API Layer (`ApiService.ts`)
+
+The frontend communicates through a unified `ApiService` that handles:
+- **Centralized Authentication**: Automatic injection of JWT `Authorization` headers.
+- **Uniform Error Handling**: Consistent parsing of backend error payloads (`ConflictError`, `ValidationError`).
+- **Standardized Request Lifecycle**: Simplified `get`, `post`, `patch`, `put`, and `delete` wrappers.
+
+### G. Modpack Intelligence Engine (`ModpackService.ts`)
+
+A sophisticated backend module for managing Minecraft modifications:
+- **Heuristic Compatibility Scanning**: Batch queries Modrinth API to identify and quarantine client-side only mods.
+- **Transitive Dependency Resolution**: Automatically identifies and installs missing dependencies from Modrinth.
+- **Jar-in-Jar (JiJ) Detection**: Scans embedded libraries to prevent duplicate installs.
+- **Triple-Layer Stabilization**: Combines API metadata with local `fabric.mod.json`/`mods.toml` parsing for 100% accuracy.
+
+### H. Dynmap Orchestration
+
+Embedded support for web-based Minecraft maps:
+- **Automated Installation**: One-click deployment of the Dynmap plugin.
+- **Port Orchestration**: Automatic reservation and mapping of the Dynmap web port.
+- **Render Control**: Trigger map updates or full renders directly from the dashboard.
+
+### I. Server Cloning and Template Engine
+
+- **Atomic Cloning**: Create bit-for-bit copies of existing servers via the `cloneServer` API.
+- **JSON Templates**: Deploy standardized server environments using pre-configured metadata.
+
+---
+
 ## 3. Communication & Telemetry Hierarchy
 
 1.  **Transport**: Socket.IO for binary-efficient real-time streaming.
 2.  **Telemetry**: High-fidelity OS monitoring (using `systeminformation`) provides sub-second CPU/RAM metrics to the frontend.
 3.  **State Sync**: Redux (on frontend) and the Repository Layer (on backend) maintain a synchronized view of server health across all connected clients.
+4.  **2FA Security Suite**: Full TOTP implementation with AES-256-CBC encrypted secrets and bcrypt-hashed backup codes.
+
+---
 
 ## 4. Multi-Node distributed Model (v1.10+)
 

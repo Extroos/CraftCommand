@@ -7,7 +7,7 @@ CraftCommand provides native orchestration for **Geyser** and **Floodgate**, all
 When you enable Cross-Play in a server's settings:
 
 - **Geyser**: The backend automatically downloads and configures the Geyser plugin/standalone agent.
-- **UDP Port Management**: CraftCommand identifies an open UDP port and configures the listener automatically, ensuring it doesn't conflict with your Java TCP port.
+- **UDP Port Management**: CraftCommand identifies an open UDP port and configures the listener automatically. In v1.12.0, this includes **Automated UDP Orchestration** which verifies firewall openness before completing the setup.
 - **Floodgate**: Modern authentication bridging is enabled by default, allowing Bedrock players to join without needing a separate Java account.
 
 ## 2. Connectivity Pipeline

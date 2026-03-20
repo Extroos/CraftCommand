@@ -29,13 +29,20 @@ Because Minecraft servers are prone to external failures, the following are simu
 - **Abrupt Termination**: Killing the background worker or server process to verify state recovery and "Ghost Protection."
 - **NBT Overflows**: Stress-testing the logger and console buffer with high-velocity data.
 
-## 4. Security Regressions
+## 4. Security & Authentication (v1.12.0)
 
 Mandatory checks for every stable release:
 
+- **2FA Recovery Flow**: Verifying that backup codes are correctly invalidated after use and that encrypted secrets remain inaccessible to non-privileged actors.
+- **Session Revocation**: Testing that "Logout All Devices" terminates all active JWT identifiers (`jti`) across the cluster.
 - **Path Traversal Audit**: Automated scans for `../` escapes in the File Manager and API.
 - **Role Isolation**: Verifying that `Manager` accounts cannot access `Admin` settings or modify `Owner` users.
-- **Token Integrity**: Expired or malformed JWT tokens must be rejected with `401 Unauthorized`.
+
+## 5. UI/UX & Compatibility
+
+- **Mobile Responsiveness**: Manual verification of the dashboard across varying viewport widths (e.g., 375px to 1440px) ensuring touch-target sizes and layout density remain functional.
+- **Modpack Stabilization**: Verifying the "Triple-Layer" Modrinth API integration by deploying packs with known client-side mods and ensuring they are quarantined correctly.
+- **Chained Task Sequencing**: Validation of multi-action scheduled tasks (e.g., Command -> Wait -> Backup -> Restart).
 
 ---
 

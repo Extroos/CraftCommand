@@ -29,12 +29,16 @@ If you are a developer or using a custom fork:
 
 ---
 
+## v1.12.x: Security & Modpack Intelligence
+
+Version 1.12.0 is a mandatory security update.
+
+- **2FA Migration**: If you previously used a placeholder 2FA guide, you must now enable the **Native 2FA Security Suite** in your Profile settings.
+- **Mobile Optimization**: This version introduces a professional `viewport` meta tag. If you are using a custom frontend build, ensure your `index.html` is synchronized with the latest source to enable mobile responsiveness.
+- **Diagnostic Skip Logic**: On first boot of a fresh server, the "Doctor" diagnostic engine will now skip certain unnecessary checks (like EULA) until the first attempted start to reduce noise.
+- **Modpack Stabilization**: Transitioning to v1.12.0 automatically enables **Triple-Layer Mod Stabilization**. Your existing modpacks will be scanned for client-side only mods upon the next server restart.
+
 ## v1.11.x: Systems Integrity & Signatures
-
-Version 1.11.3 introduces **Signed Updates**.
-
-- **Signature Check**: If your update fails with a `SIGNATURE_INVALID` error, ensure you haven't manually modified the `keys/update_public_key.pem` file.
-- **Node Compatibility**: You may be blocked from updating if your worker nodes are running outdated agents. Update your nodes first by deploying a new Bootstrap ZIP.
 
 ## v1.10.x: Distributed Ops & DB Migration
 

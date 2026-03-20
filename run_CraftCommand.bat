@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
@@ -24,7 +25,7 @@ set "CB=%E%[94m"
 set "BOLD=%E%[1m"
 
 :: --- VERSION SYNC ---
-set "CC_VERSION=1.11.8"
+set "CC_VERSION=1.12.0"
 if exist "version.json" (
     for /f "tokens=2 delims=:," %%a in ('findstr /R /C:"^[ ]*.version.:" version.json') do (
         set "VERSION_VAL=%%~a"
@@ -178,6 +179,10 @@ if exist "update-plan.json" (
 :: --- POST-UPDATE CLEANUP ---
 if exist "update_applied.flag" (
     echo.
+    echo   %CY%[UPDATE] Synchronizing system configuration...%R%
+    call node scripts/sync-env.cjs
+    
+    echo.
     echo   %CY%[UPDATE] Updating dependencies...%R%
     cd backend
     call npm install --omit=dev >nul 2>nul
@@ -185,58 +190,68 @@ if exist "update_applied.flag" (
     cd frontend
     call npm install >nul 2>nul
     cd ..
+    cd agent
+    call npm install >nul 2>nul
+    cd ..
+    
+    echo.
+    echo   %CY%[UPDATE] Rebuilding frontend assets...%R%
+    call node scripts/update-web-cli.cjs --force
+    
     del "update_applied.flag"
-    echo   %CG%[SUCCESS] Dependencies updated.%R%
+    echo   %CG%[SUCCESS] System synchronized, dependencies updated, and assets rebuilt.%R%
     timeout /t 2 >nul
 )
 
 
-
 echo.
-echo  %CC%%BOLD%   ______            ____  ______                                    __%R%
-echo  %CC%  / ____/____  ____ _/ __/ / ____/____  ____ ___  ____ ___  ____ _____  ____/ /%R%
-echo  %CC% / /   / ___/ / __ `/ /__ / /   / __ \/ __ `__ \/ __ `__ \/ __ `/ __ \/ __  / %R%
-echo  %CC%/ /___/ /    / /_/ / __/ / /___/ /_/ / / / / / / / / / / / /_/ / / / / /_/ /  %R%
-echo  %CC%\____/_/     \__,_/_/    \____/\____/_/ /_/ /_/_/ /_/ /_/\__,_/_/ /_/\__,_/   %R%
-echo.
+echo  %CC%%BOLD%   ______             ______  ______                                          __ %R%
+echo  %CC%  ██████╗██████╗  █████╗ ███████╗████████╗ ██████╗ ██████╗ ███╗   ███╗███╗   ███╗ █████╗ ███╗   ██╗██████╗ %R%
+echo  %CC% ██╔════╝██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██╔════╝██╔═══██╗████╗ ████║████╗ ████║██╔══██╗████╗  ██║██╔══██╗%R%
+echo  %CC% ██║     ██████╔╝███████║█████╗     ██║   ██║     ██║   ██║██╔████╔██║██╔████╔██║███████║██╔██╗ ██║██║  ██║%R%
+echo  %CC% ██║     ██╔══██╗██╔══██║██╔══╝     ██║   ██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║██║╚██╗██║██║  ██║%R%
+echo  %CC% ╚██████╗██║  ██║██║  ██║██║        ██║   ╚██████╗╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║██║ ╚████║██████╔╝%R%
+echo  %CC%  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝ %R%
 
 :: --- STATUS BAR ---
 set "LOCAL_IP=127.0.0.1"
 for /f "tokens=4" %%a in ('route print ^| findstr 0.0.0.0 ^| findstr /V "0.0.0.0.0"') do set "LOCAL_IP=%%a"
 
-echo  %CD%-----------------------------------------------------------------------%R%
-echo   %BOLD%%CW%v!CC_VERSION!%R%  %CD%::%R%  %CG%READY%R%  %CD%::%R%  %CB%!LOCAL_IP!%R%  %CD%::%R%  %CM%Operator Console%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CD%------------------------------------------------------------------------%R%
+echo   %BOLD%%CW%v!CC_VERSION!%R%  %CD%:%R%  %CG%%BOLD%ONLINE%R%  %CD%:%R%  %CD%IPV4: %CB%!LOCAL_IP!%R%  %CD%:%R%  %CD%NODE: %CM%WDL-ADMIN-01%R%
+echo  %CD%------------------------------------------------------------------------%R%
+echo  %CD%[01]%R% %CG%%BOLD%LAUNCH PLATFORM%R%        %CD%Boot (Backend ^& Frontend)%R%
+echo  %CD%[02]%R% %CC%SECURITY: HTTPS%R%        %CD%Caddy Automation / SSL%R%
+echo  %CD%[03]%R% %CC%NETWORK: REMOTE%R%        %CD%Tunnels ^& Mesh VPNs%R%
 echo.
-echo  %CD%%BOLD% OPERATIONS%R%
-echo   %BOLD%%CW%1%R%  %CG%Launch Platform%R%           %CD%Start backend ^& frontend%R%
-echo   %BOLD%%CW%2%R%  %CC%HTTPS Setup%R%               %CD%SSL/TLS via Caddy or certs%R%
-echo   %BOLD%%CW%3%R%  %CC%Remote Access%R%              %CD%VPN, Tunnel, or Direct Bind%R%
+echo  %CD%[04]%R% %CY%SYSTEM DIAGNOSTICS%R%     %CD%Connectivity ^& Integrity%R%
+echo  %CD%[05]%R% %CY%SYSTEM MAINTENANCE%R%     %CD%Environment Reconstruction%R%
 echo.
-echo  %CD%%BOLD% DIAGNOSTICS%R%
-echo   %BOLD%%CW%4%R%  %CY%Stability Audit%R%            %CD%Network ^& config check%R%
-echo   %BOLD%%CW%5%R%  %CY%Maintenance%R%                %CD%Flush ^& reinstall deps%R%
-echo.
-echo  %CD%%BOLD% ADVANCED%R%
-echo   %BOLD%%CW%6%R%  %CM%Node Agent%R%                 %CD%Distributed worker node%R%
-echo   %BOLD%%CW%8%R%  %CR%Panic Kill%R%                 %CD%Kill all external connections%R%
-echo.
-echo  %CD%-----------------------------------------------------------------------%R%
-echo   %BOLD%%CW%0%R%  %CD%Exit%R%
-echo  %CD%-----------------------------------------------------------------------%R%
-echo.
-<nul set /p "=  %CC%%BOLD%^> %R%"
-set /p choice=""
+echo  %CD%[06]%R% %CM%NODE ORCHESTRATION%R%     %CD%Distributed Node Agent%R%
+echo  %CD%[08]%R% %CR%EMERGENCY: ISOLATE%R%     %CD%Immediate Panic Kill%R%
+echo  %CD%------------------------------------------------------------------------%R%
+echo   %BOLD%%CW%[00]%R% %CD%POWER OFF%R%
+echo  %CD%------------------------------------------------------------------------%R%
+set /p choice="  %CC%%BOLD%TERM: %R%"
 
 if "%choice%"=="1" goto START
+if "%choice%"=="01" goto START
 if "%choice%"=="2" goto HTTPS_MENU
+if "%choice%"=="02" goto HTTPS_MENU
 if "%choice%"=="3" goto REMOTE_SETUP
+if "%choice%"=="03" goto REMOTE_SETUP
 if "%choice%"=="4" goto STABILITY_CHECK
+if "%choice%"=="04" goto STABILITY_CHECK
 if "%choice%"=="5" goto REINSTALL
+if "%choice%"=="05" goto REINSTALL
 if "%choice%"=="6" goto AGENT_START
+if "%choice%"=="06" goto AGENT_START
 if "%choice%"=="8" goto REMOTE_DISABLE
+if "%choice%"=="08" goto REMOTE_DISABLE
 if "%choice%"=="0" exit
+if "%choice%"=="00" exit
 if "%choice%"=="7" exit
+if "%choice%"=="07" exit
 goto MENU
 
 :: ============================================================================

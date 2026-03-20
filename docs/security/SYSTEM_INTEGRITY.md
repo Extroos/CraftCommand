@@ -35,6 +35,15 @@ The update isn't applied live to the running directory.
 3. **The Swap**: The launcher script (`apply_update.ps1`) performs an atomic folder move, replacing the `backend/dist` and `frontend/dist` folders in one operation.
 4. **Auto-Rollback**: If the server fails to reach a "Healthy" state within 60 seconds of restarting, the launcher restores the backup automatically.
 
+## 4. Identity & Access Hardening (v1.12.0)
+
+Version 1.12.0 expands the security model to include user-level session and identity protection:
+
+- **Two-Factor Authentication (2FA)**: Native TOTP support with AES-256-CBC encrypted secrets.
+- **Session Revocation**: Database-backed session tracking allows users to invalidate specific login identifiers (`jti`) or perform a global logout.
+- **Scoped API Tokens**: Users can generate granular API tokens with specific permission scopes (e.g., `READ_ONLY`, `SERVER_CONTROL`), isolated from their main login session.
+- **Protocol Guardians**: Distributed nodes perform version-handshake checks to ensure that worker agents match the primary panel's security capabilities before accepting commands.
+
 ---
 
 _See [Upgrading](UPGRADING.md) for instructions on performing an update._

@@ -2,9 +2,18 @@
   
 # CraftCommand
 
+```text
+  _____              __ _   _____                                                _
+ / ____|            / _| | / ____|                                        | | | |
+| |     _ __ __ _ _| |_| || |     ___  _ __ ___  _ __ ___   __ _ _ __   __| |
+| |    | '__/ _` |_   _| || |    / _ \| '_ ` _ \| '_ ` _ \ / _` | '_ \ / _` |
+| |____| | | (_| | | | | || |___| (_) | | | | | | | | | | | (_| | | | | (_| |
+ \_____|_|  \__,_| |_| |_| \_____\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|\__,_|
+```
+
 **The Professional Hybrid Cloud Platform for Java & Bedrock Infrastructure**
 
-![version](https://img.shields.io/badge/version-v1.11.8-emerald)
+![version](https://img.shields.io/badge/version-v1.12.0-emerald)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-AGPLv3-blue.svg)
 
@@ -28,7 +37,7 @@ Most hosting solutions are either **too fragile** (Basic `.bat` files) or **too 
 
 ### Honest Comparison Matrix
 
-| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.11.8)**       |
+| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.12.0)**       |
 | :------------------- | :----------------: | :------------------------: | :-----------------------------------: |
 | **Ideal For**        |      Testing       | Reselling & Large Networks |    **Home Hosting & Private Use**     |
 | **Setup Time**       |      Instant       |     Hours (Linux req.)     |       **Instant (Zero-Config)**       |
@@ -37,14 +46,54 @@ Most hosting solutions are either **too fragile** (Basic `.bat` files) or **too 
 | **Resilience**       |    Crash = Dead    |        Auto-Restart        |    **Auto-Healing v3 (Sentinel)**     |
 | **Networking**       |  Manual Port Fwd   |       Reverse Proxy        |  **Proxy Orchestration (Velocity)**   |
 | **World Data**       |     Level Fold     |      Manual Database       |    **World Intelligence (Dynmap)**    |
+| **Mod Management**   |     Level Fold     |       Manual Upload        |    **Modpack Intelligence Engine**    |
 | **Environment Fix**  |   Manual Install   |        Error & Exit        |  **Integrated Auto-Fix (Heuristic)**  |
 | **File Transfer**    |     Local Only     |      SFTP Client Req.      |  **Secure Chunked Sync (Built-in)**   |
 | **UX Design**        |  Industrial/Flat   |      Functional/Busy       |     **Premium Glassmorphic IDE**      |
 | **Audit Logging**    |         ❌         |        Per-Instance        |   **Immutable Cluster-Wide Ledger**   |
 | **Software Support** |  Java Only (typ.)  |         Universal          |    **Java & Bedrock (Optimized)**     |
+| **Core Advantage**   |       Manual       |      Manual / Plugins      |  **Intelligent Diagnosis & Healing**  |
 
 ![Server Selection](assets/ServerSelection.png)
 _Manage multiple servers with a professional, data-dense interface._
+
+---
+
+## The CraftCommand Advantage
+
+**Why choose CraftCommand instead of Pterodactyl, Crafty, or AMP?**
+
+While other platforms focus on being general-purpose containers, CraftCommand is built as a **specialized orchestrator** with vertical integration for game server lifecycles.
+
+### 🧠 Modpack Intelligence Engine (v1.12.0)
+
+Stop fighting mod crashes. Our **Triple-Layer Mod Stabilization** ensures your modpacks boot correctly the first time.
+
+- **Modrinth API Verifier**: Automatically scans for `"server_side": "unsupported"` mods and moves them to `_client_mods/`.
+- **Transitive Dependency Resolver**: Scans `fabric.mod.json`/`mods.toml` and auto-installs missing dependencies from Modrinth.
+- **JiJ (Jar-in-Jar) Intelligence**: Detects embedded libraries to prevent duplicate mod conflicts before they even load.
+
+### 🛡️ Enterprise-Grade Security Suite
+
+Your infrastructure is only as safe as its weakest link. We provide mandatory protection for your cluster.
+
+- **Native 2FA (TOTP)**: Full multi-factor authentication with **AES-256-CBC encrypted secrets** and **Bcrypt-hashed** recovery codes.
+- **Session Revocation**: View active sessions and perform a **Global Logout** to instantly invalidate all JWT tokens across the cluster.
+- **Systems Integrity**: Cryptographically signed updates (Ed25519) with SHA256 integrity verification, preventing supply-chain attacks.
+
+### 🌀 Hybrid Orchestration & Auto-Healing
+
+Scale horizontally without the complexity of deep Docker management or Kubernetes.
+
+- **Sentinel v3 (Sentinel)**: A proactive auto-healing engine that performs multi-stage triage (`Triage -> Scrap -> Start -> Verify`) on failing instances.
+- **Chained Automation Engine**: Build multi-action sequences (e.g., `Save-All -> Backup -> Update -> Restart`) with a full 5-field Cron parser.
+- **Distributed Node Orchestration**: Enroll remote hosts in seconds using **Zero-Knowledge** pair-bonding and unified resource telemetry.
+
+### 🛠️ Key Differentiators
+
+1.  **Intelligent Diagnosis Engine**: Don't just see a crash—understand it. Our heuristic engine (v2.1) identifies over 40 common failure points (EULA, Java version, port conflicts, corrupted mods) and offers one-click auto-fixes.
+2.  **Cryptographically Secure Updates**: Your infrastructure is only as safe as its updates. We use industry-standard **Ed25519 signatures** and SHA256 integrity verification for every system update, preventing supply-chain attacks.
+3.  **Proxy Network Fabric (Velocity Automation)**: The industry's first "Zero-Config" proxy orchestrator. Native Velocity integration automatically manages internal secrets, forwarding protocols, and backend server links.
 
 ---
 
@@ -83,17 +132,18 @@ _High-performance network management_
 - **Drift Detection**: Automatic repair of "Zombie" instances (Status ONLINE but PID missing) and orphaned processes.
 - **Stateful Recovery Pipeline**: Multi-stage repair logic (Triage -> Scrap -> Start -> Verify) with stability scoring.
 - **Safe Mode Protection**: Panic control system that isolates failing instances to prevent host exhaustion.
+- **Graceful Shutdown Protocol**: Countdown-based termination with automated in-game warnings and real-time cancellation support.
 
-### 5. Systems Integrity Engine (v1.11.8)
+### 5. Systems Integrity & Security (v1.12.0)
 
 _Production-grade safety for your cluster_
 
+- **Two-Factor Authentication (2FA)**: Fully native TOTP support with AES-encrypted secrets and secure session revocation.
 - **Industry-Standard Security**: Integrated Ed25519 signature verification and SHA256 hashing for all system updates.
 - **Atomic State Transitions**: Safe file swapping with automated backup and rollback pathways to prevent data corruption.
-- **Maintenance Dashboard**: Professional embedded update interface with real-time progress and diagnostic feedback.
 - **Protocol Guardians**: Intelligent checks that ensure distributed nodes and proxies remain compatible during upgrades.
 
-### 6. Cross-Play Ecosystem (v1.11.8)
+### 6. Cross-Play Ecosystem (v1.11.9)
 
 _Unified Java & Bedrock gameplay_
 
@@ -101,7 +151,7 @@ _Unified Java & Bedrock gameplay_
 - **Automated Networking**: Intelligent UDP port management and real-time connectivity diagnostics.
 - **Floodgate Optimization**: Zero-config authentication mapping for unified player identities across platforms.
 
-### 7. Global Access & Infrastructure (v1.11.8)
+### 7. Global Access & Infrastructure (v1.11.9)
 
 _Zero-config remote connectivity_
 
@@ -111,10 +161,25 @@ _Zero-config remote connectivity_
 
 ### 8. Developer Experience (DevX)
 
-- **Embedded Monaco IDE**: The power of VS Code in your browser with full syntax highlighting for Minecraft configurations.
-- **Plugin Marketplace**: Integrated Modrinth/Spiget search with automated dependency resolution.
-- **MC Identity Restoration**: Professional 64x64 PNG branding system for in-game server-icon and world-icon.
-- **Immutable Audit Ledger**: Cluster-wide audit trail for Every command, import, and configuration change.
+- **Embedded Monaco IDE**: The power of VS Code in your browser with full syntax highlighting, bracket matching, and real-time co-presence for Minecraft configurations.
+- **Plugin Marketplace**: Integrated Modrinth/Spiget search with automated dependency resolution and version-matching logic.
+- **MC Identity Restoration**: Professional 64x64 PNG branding system that automatically stabilizes and injects your `server-icon.png` and `world_icon.png`.
+- **High-Performance Grep Search**: Look inside massive log files and configurations instantly with contextual snippets and optimized server-side scanning.
+- **Chained Automation Engine**: Build multi-action sequences for scheduled tasks (e.g., `Save-All -> Backup -> Update -> Restart`) with precise Cron-based offsets.
+- **Immutable Audit Ledger**: Cluster-wide audit trail for every command, import, and configuration change, ensuring 100% accountability.
+
+---
+
+## 💎 Operational Excellence (v1.12.0)
+
+**Built for stability. Optimized for performance.**
+
+The v1.12.0 update focuses on the "Invisible Features" that make self-hosting reliable at scale.
+
+- **Standardized API Request Layer**: Enforced consistency across all cluster communications for 100% reliable status reporting.
+- **High-Efficiency Batch Storage**: Atomic, high-performance updates for audits and notifications using our new SQLite/JSON batch provider.
+- **Proactive Pre-flight Diagnosis**: The system now blocks server startups if a critical environment failure (like a Java version mismatch) is predicted.
+- **Surgical Mobile Responsiveness**: A telemetry-grade mobile UI that preserves density while enabling cluster management on any device.
 
 ![Dashboard](assets/Dashboard.png)
 _Real-time monitoring with Auto-Healing v3, World Intelligence, and Systems Integrity controls._
@@ -204,7 +269,7 @@ Some common quick fixes:
 - **E_JAVA_MISSING**: Use the **Heuristic Fix (Wand Icon)** in the GOC to auto-install the correct Java version.
 - **E_PORT_IN_USE**: Port conflict detected. Use the **Environment Doctor** to identify the conflicting process.
 - **Can't Connect**: Ensure your DuckDNS synchronization is active in Global Settings.
-- **Access Denied**: If seen during Caddy setup, this is a benign launcher error and has been suppressed in v1.11.8.
+- **Access Denied**: If seen during Caddy setup, this is a benign launcher error and has been suppressed in v1.11.9.
 
 ---
 
@@ -212,7 +277,8 @@ Some common quick fixes:
 
 - **Core**: React 19, TypeScript, Node.js, Express, Socket.IO.
 - **Styling**: Framer Motion (60FPS), Vanilla CSS, Glassmorphism (Premium Aesthetic).
-- **Orchestration**: Systems Integrity Engine with Auto-Healing v3 (Sentinel) & Cross-Play Support.
+- **Orchestration**: Modpack Intelligence Engine, Auto-Healing v3 (Sentinel) & Cross-Play Support.
+- **Security**: 2FA (TOTP), Ed25519 Software Signing, AES-256-CBC Encryption.
 - **Storage**: Hybrid Dual-Storage (SQLite for teams, JSON for solo portability).
 - **License**: [GNU Affero General Public License v3.0](LICENSE)
 
