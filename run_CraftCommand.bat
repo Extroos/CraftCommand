@@ -3,11 +3,7 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-:: ============================================================================
-::  CRAFTCOMMAND — Enterprise Platform Launcher
-:: ============================================================================
-
-:: --- CONSOLE SIZE ---
+:: --- CONSOLE SETUP ---
 mode con cols=80 lines=42
 color 0F
 
@@ -24,6 +20,20 @@ set "CD=%E%[90m"
 set "CB=%E%[94m"
 set "BOLD=%E%[1m"
 
+:: ============================================================================
+::  CRAFTCOMMAND — Enterprise Platform Launcher
+:: ============================================================================
+
+:: --- DEPENDENCY VALIDATION ---
+where node >nul 2>nul
+if !errorlevel! neq 0 (
+    echo.
+    echo   %CR%%BOLD% ERROR %R%  Node.js is not installed or not in PATH.
+    echo          Please install Node.js from https://nodejs.org/
+    pause
+    exit /b 1
+)
+
 :: --- VERSION SYNC ---
 set "CC_VERSION=1.12.0"
 if exist "version.json" (
@@ -37,66 +47,48 @@ if exist "version.json" (
 
 title CraftCommand v%CC_VERSION%
 
+:: --- FIRST RUN SETUP ---
+if not exist "node_modules" (
+    echo.
+    echo   %CY%%BOLD% INITIAL SETUP DETECTED %R%
+    echo   %CD%Setting up core dependencies for first launch...%R%
+    call npm install >nul 2>nul
+    if !errorlevel! neq 0 (
+        echo   %CR%[ERROR] Dependency installation failed. Check your network.%R%
+        pause
+    )
+)
+
 :: --- CONFIG AUTOMATION ---
 if not exist ".env" (
     echo.
-    echo   %CY%%BOLD% FIRST RUN DETECTED %R%
+    echo   %CY%%BOLD% CONFIG GENERATION %R%
     echo   %CD%Generating secure environment configuration...%R%
-    
     if not exist ".env.example" (
         echo   %CR%%BOLD% ERROR %R%  .env.example not found. 
-        echo          Please restore it to generate your .env file.
         pause
         exit /b 1
     )
-    
     copy ".env.example" ".env" >nul
-    
-    :: Generate proper random secret
     powershell -Command "$s=(-join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | %% {[char]$_})); (Get-Content .env) -replace 'JWT_SECRET=.*', ('JWT_SECRET=' + $s) | Set-Content .env"
-    
-    echo   %CG%%BOLD%+%R%  Created .env with secure JWT_SECRET
-    echo   %CD%    Configured for local infrastructure.%R%
-)
-if not exist "backend" (
-    echo.
-    echo   %CR%%BOLD% FATAL %R%  Directory 'backend' not found.
-    echo          Launch from the project root.
-    pause
-    exit /b 1
-)
-if not exist "frontend" (
-    echo.
-    echo   %CR%%BOLD% FATAL %R%  Directory 'frontend' not found.
-    echo          Launch from the project root.
-    pause
-    exit /b 1
 )
 
-:: --- UPDATE CHECK ---
 :: --- UPDATE CHECK ---
 if not exist "version.json" goto SKIP_UPDATE_CHECK
-
 echo.
-echo   %CD%Checking for updates...%R%
+echo   %CD%Checking for updates... %R%
 (
 echo $wc = New-Object System.Net.WebClient
 echo $wc.Headers.Add^('User-Agent', 'CraftCommand-Launcher'^)
 echo try {
 echo     $r = $wc.DownloadString^('https://raw.githubusercontent.com/Extroos/Craft-Commands/main/version.json'^) ^| ConvertFrom-Json
 echo     $l = Get-Content 'version.json' -Raw ^| ConvertFrom-Json
-echo     if ^($r.version -ne $l.version^) {
-echo         Write-Host 'UPDATE_AVAILABLE'
-echo         Write-Host $r.version
-echo     } else {
-echo         Write-Host 'UP_TO_DATE'
-echo     }
-echo ^} catch {
-echo     Write-Host 'OFFLINE'
-echo ^}
+echo     if ^($r.version -ne $l.version^) { Write-Host 'UPDATE_AVAILABLE' } else { Write-Host 'UP_TO_DATE' }
+echo ^} catch { Write-Host 'OFFLINE' }
 ) > "%TEMP%\cc_check.ps1"
 
-for /f "usebackq tokens=*" %%i in ("%TEMP%\cc_check.ps1") do set "UPDATE_STATUS=%%i"
+set "UPDATE_STATUS=OFFLINE"
+for /f "usebackq tokens=*" %%i in (`powershell -ExecutionPolicy Bypass -File "%TEMP%\cc_check.ps1"`) do set "UPDATE_STATUS=%%i"
 del "%TEMP%\cc_check.ps1" >nul 2>nul
 
 if not "!UPDATE_STATUS!"=="UPDATE_AVAILABLE" goto SKIP_UPDATE_CHECK
