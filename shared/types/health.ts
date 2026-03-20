@@ -7,6 +7,7 @@ export interface RecoveryState {
     attempts: number;
     lastIssueId?: string;
     stabilityScore: number;
+    appliedFix?: boolean;
 }
 
 export interface SystemHealthReport {

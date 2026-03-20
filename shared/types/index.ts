@@ -20,6 +20,7 @@ export interface ServerTemplate {
     javaVersion: number;
     startupFlags?: string[]; // Recommended Aikar flags etc.
     downloadUrl?: string; // If static
+    executable?: string; // Phase 10: Specific fallback filename (e.g. velocity.jar)
 }
 
 export interface BackgroundSettings {
@@ -101,6 +102,14 @@ export interface UserProfile {
     twoFactorPendingCreatedAt?: number;
 }
 
+export interface ServerPort {
+    id: string;
+    name: string;
+    port: number;
+    status: 'Listening' | 'Closed' | 'Provisioning' | 'Rotating';
+    isImmutable?: boolean;
+}
+
 export interface ServerAdvancedFlags {
     aikarFlags?: boolean;
     installSpark?: boolean;
@@ -168,7 +177,7 @@ export interface ServerConfig {
     crashDetection?: boolean;
     includeInTotal?: boolean;
     publicStatus?: boolean;
-    executionEngine?: 'native' | 'docker' | 'remote';
+    executionEngine?: 'native' | 'docker' | 'remote' | 'default';
     dockerImage?: string;
     nodeId?: string; // If set, this server runs on a remote node
     backupConfig?: {
@@ -187,11 +196,30 @@ export interface ServerConfig {
         topology: 'standalone' | 'velocity';
         installedAt?: number;     // Timestamp of initial setup
     };
+    // Modpack / Content Metadata
+    modpackId?: string;
+    modpackTitle?: string;
+    modpackIcon?: string;
+    modpackAuthor?: string;
+    modpackType?: 'mod' | 'modpack';
+    
+    // Connectivity & Networking
+    sftpPassword?: string;
+    additionalPorts?: ServerPort[];
+    
+    // Telemetry (Live)
+    players?: number;
+    cpu?: number;
+    memory?: number;
+    uptime?: number;
+    tps?: string;
+    latency?: number;
+    playerList?: string[];
 }
 
 // --- Frontend Specific Types ---
 
-export type TabView = 'DASHBOARD' | 'CONSOLE' | 'FILES' | 'PLUGINS' | 'SCHEDULES' | 'BACKUPS' | 'PLAYERS' | 'ACCESS' | 'SETTINGS' | 'ARCHITECT' | 'INTEGRATIONS' | 'NETWORK' | 'MAP';
+export type TabView = 'DASHBOARD' | 'CONSOLE' | 'FILES' | 'PLUGINS' | 'SCHEDULES' | 'BACKUPS' | 'PLAYERS' | 'ACCESS' | 'SETTINGS' | 'ARCHITECT' | 'INTEGRATIONS' | 'NETWORK' | 'MAP' | 'DATABASES' | 'SUBUSERS';
 
 export type AppState = 'LOGIN' | 'PUBLIC_STATUS' | 'SERVER_SELECTION' | 'CREATE_SERVER' | 'MANAGE_SERVER' | 'USER_MANAGEMENT' | 'USER_PROFILE' | 'GLOBAL_SETTINGS' | 'AUDIT_LOG' | 'GLOBAL_OPERATIONS';
 
@@ -240,6 +268,8 @@ export interface GlobalSettings {
         dockerEnabled?: boolean;
         distributedNodes?: {
             enabled: boolean;
+            nodeHeartbeatThresholdMs?: number;
+            mirrorRemoteBackups?: boolean;
         };
         autoHealing?: boolean;
         autoHealingV3?: {
@@ -248,6 +278,7 @@ export interface GlobalSettings {
             healthSnapshotInterval: number;
         };
         updateWeb?: boolean;
+        professionalMode?: boolean;
         network?: NetworkConfig;
     };
     discordBot?: DiscordBotConfig;
@@ -278,6 +309,22 @@ export interface Player {
     skinUrl?: string;
 }
 
+export interface CloudUploadResult {
+    destination: string;
+    type: string;
+    success: boolean;
+    remotePath?: string;
+    error?: string;
+    durationMs: number;
+}
+
+export interface CloudBackupDestination {
+    type: 'local-copy' | 's3' | 'sftp';
+    enabled: boolean;
+    name: string;
+    config: Record<string, any>;
+}
+
 export interface Backup {
     id: string;
     name: string;
@@ -289,17 +336,26 @@ export interface Backup {
     type?: 'Manual' | 'Scheduled' | 'Auto';
     filename?: string;
     scope?: 'full' | 'world'; // Track if this was a world-only backup
+    cloudUploads?: CloudUploadResult[];
+}
+
+export interface ScheduleAction {
+    type: 'command' | 'backup' | 'restart' | 'start' | 'stop';
+    command: string; // The command or detail
 }
 
 export interface ScheduleTask {
     id: string;
     serverId: string; // Added for storage consolidation
     name: string;
-    command: string;
+    command: string; // Deprecated: use actions[0] for legacy compatibility
+    actions?: ScheduleAction[]; // Chained actions
     cron: string;
     isActive: boolean;
     lastRun?: number | string;
     nextRun?: string;
+    runOnce?: boolean;    // One-time task: auto-disables after first execution
+    runAt?: string;       // ISO date string for one-time task scheduling
 }
 
 
@@ -344,6 +400,7 @@ export interface DiscordBotConfig {
     enabled?: boolean;
     commandRoles?: any;
     notificationChannel?: string;
+    chatChannel?: string;
 }
 
 export interface SecurityConfig {
@@ -376,14 +433,22 @@ export interface Plugin {
 export type AuditAction = 
     | 'LOGIN_SUCCESS' | 'LOGIN_FAIL' 
     | 'USER_CREATE' | 'USER_UPDATE' | 'USER_DELETE'
-    | 'SERVER_CREATE' | 'SERVER_DELETE' | 'SERVER_START' | 'SERVER_STOP' | 'SERVER_RESTART' | 'SERVER_UPDATE'
+    | 'SERVER_CREATE' | 'SERVER_DELETE' | 'SERVER_START' | 'SERVER_STOP' | 'SERVER_STOP_GRACEFUL' | 'SERVER_STOP_CANCEL' | 'SERVER_RESTART' | 'SERVER_UPDATE'
     | 'SERVER_IMPORT_LOCAL' | 'SERVER_IMPORT_ARCHIVE'
     | 'TEMPLATE_INSTALL' | 'FILE_EDIT' | 'EULA_ACCEPT' | 'PERMISSION_DENIED'
     | 'SYSTEM_SETTINGS_UPDATE' | 'SYSTEM_CACHE_CLEAR' | 'DISCORD_RECONNECT' | 'DISCORD_SYNC'
     | 'ASSET_UPLOAD' | 'WEB_UPDATE_RUN' | 'WEB_UPDATE_ROLLBACK' | 'WEB_UPDATE_FAIL'
-    | 'SERVER_IMPORT' | 'SERVER_IMPORT_UNDO' | 'AUTO_HEAL' | 'SERVER_HEAL'
-    | 'SERVER_ICON_UPDATE'
-    | 'AUTH_2FA_ENABLE' | 'AUTH_2FA_DISABLE' | 'AUTH_2FA_SUCCESS' | 'AUTH_2FA_FAIL' | 'AUTH_2FA_RECOVERY_USE';
+    | 'SERVER_IMPORT' | 'SERVER_IMPORT_UNDO' | 'AUTO_HEAL' | 'SERVER_HEAL' | 'SERVER_HEAL_RESET'
+    | 'SERVER_ICON_UPDATE' | 'SERVER_RESTORE'
+    | 'AUTH_2FA_ENABLE' | 'AUTH_2FA_DISABLE' | 'AUTH_2FA_SUCCESS' | 'AUTH_2FA_FAIL' | 'AUTH_2FA_RECOVERY_USE'
+    | 'AUTH_2FA_BACKUP_REGEN' | 'SYSTEM_STORAGE_MIGRATE'
+    | 'PLUGIN_INSTALL' | 'PLUGIN_UNINSTALL' | 'PLUGIN_TOGGLE' | 'PLUGIN_UPDATE' | 'PLUGIN_BULK_UPDATE' | 'PLUGIN_CONFIG_SAVE'
+    | 'MAP_INSTALL' | 'MAP_VERIFY' | 'MAP_RENDER'
+    | 'BACKUP_CREATE' | 'BACKUP_DELETE' | 'BACKUP_LOCK' | 'BACKUP_UNLOCK' | 'BACKUP_CLOUD_ADD' | 'BACKUP_CLOUD_REMOVE'
+    | 'SCHEDULE_CREATE' | 'SCHEDULE_UPDATE' | 'SCHEDULE_DELETE'
+    | 'PROXY_LINK' | 'PROXY_UNLINK' | 'DDNS_UPDATE' | 'PROXY_INSTALL'
+    | 'PLAYER_KICK' | 'PLAYER_OP' | 'PLAYER_DEOP' | 'PLAYER_WHITELIST_ADD' | 'PLAYER_WHITELIST_REMOVE' | 'PLAYER_BAN' | 'PLAYER_PARDON'
+    | 'FILE_UPLOAD' | 'FILE_EXTRACT' | 'FILE_MOVE' | 'FILE_COPY' | 'FILE_COMPRESS' | 'FILE_DELETE_BULK' | 'FOLDER_CREATE' | 'FILE_DOWNLOAD';
 
 export interface AuditLog {
     id: string;
@@ -401,6 +466,7 @@ export interface ImportAnalysis {
     version: string;
     executable: string;
     port: number;
+    motd: string;
     ram: number;
     javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21';
     isModded: boolean;
@@ -421,7 +487,7 @@ export interface DiagnosisResult {
     explanation: string;
     recommendation: string;
     action?: {
-        type: 'UPDATE_CONFIG' | 'SWITCH_JAVA' | 'AGREE_EULA' | 'INSTALL_DEPENDENCY' | 'REPAIR_PROPERTIES' | 'CLEANUP_TELEMETRY' | 'OPTIMIZE_ARGUMENTS' | 'PURGE_GHOST' | 'RESOLVE_PORT_CONFLICT' | 'REMOVE_DUPLICATE_PLUGIN' | 'CREATE_PLUGIN_FOLDER' | 'TAKE_HEAP_SNAPSHOT' | 'RESTORE_DATA_BACKUP' | 'REINSTALL_BEDROCK' | 'RESYNC_VELOCITY_SECRET' | 'INSTALL_JAVA' | 'TRIGGER_DDNS_UPDATE' | 'REINSTALL_GEYSER' | 'REINSTALL_FLOODGATE' | 'RESYNC_CROSSPLAY_FORWARDING' | 'REASSIGN_BEDROCK_PORT' | 'CLEANUP_WORLD_LOCK' | 'FIX_JVM_ARGS' | 'ENABLE_ENTITY_PURGE' | 'RESTORE_LEVEL_DATA' | 'REMOVE_MOD';
+        type: 'UPDATE_CONFIG' | 'SWITCH_JAVA' | 'AGREE_EULA' | 'INSTALL_DEPENDENCY' | 'REPAIR_PROPERTIES' | 'CLEANUP_TELEMETRY' | 'OPTIMIZE_ARGUMENTS' | 'PURGE_GHOST' | 'RESOLVE_PORT_CONFLICT' | 'REMOVE_DUPLICATE_PLUGIN' | 'CREATE_PLUGIN_FOLDER' | 'TAKE_HEAP_SNAPSHOT' | 'RESTORE_DATA_BACKUP' | 'REINSTALL_BEDROCK' | 'RESYNC_VELOCITY_SECRET' | 'INSTALL_JAVA' | 'TRIGGER_DDNS_UPDATE' | 'REINSTALL_GEYSER' | 'REINSTALL_FLOODGATE' | 'RESYNC_CROSSPLAY_FORWARDING' | 'REASSIGN_BEDROCK_PORT' | 'CLEANUP_WORLD_LOCK' | 'FIX_JVM_ARGS' | 'ENABLE_ENTITY_PURGE' | 'RESTORE_LEVEL_DATA';
         payload: any;
         autoHeal?: boolean; // If true, AutoHealingService can execute this automatically
     };
@@ -719,4 +785,14 @@ export interface SyncReport {
     synchronized: boolean;
     mismatches: ConfigMismatch[];
     eulaAccepted: boolean;
+}
+
+export interface UserSession {
+    id: string; // JTI (JWT ID)
+    userId: string;
+    userAgent?: string;
+    ipAddress?: string;
+    createdAt: number;
+    expiresAt: number;
+    revokedAt?: number;
 }
