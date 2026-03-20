@@ -68,14 +68,15 @@ export const NoRemoteAccessRule: DiagnosisRule = {
         const status = await remoteAccessService.getStatus();
 
         if (status.enabled) return null;
+        if (server.publicStatus !== true) return null;
 
         return {
             id: `conn-no-remote-${server.id}-${Date.now()}`,
             ruleId: 'connectivity_no_remote_access',
             severity: 'WARNING',
             title: 'Server Only Accessible Locally',
-            explanation: `"${server.name}" is running, but Remote Access is disabled. The panel and server are only accessible from this machine (127.0.0.1). External players and remote management are blocked.`,
-            recommendation: 'Enable Remote Access in Settings → Remote Access. Choose "Direct" for simple port forwarding, or set up UPnP for automatic configuration.',
+            explanation: `"${server.name}" is running, but Remote Access is disabled globally. The panel and server are only accessible from this IP (${status.localIP || '127.0.0.1'}). External players and remote management are blocked.`,
+            recommendation: 'Enable Remote Access in Settings → Remote Access, or set up a tunnel if you are behind a CGNAT. If this server should remain private, you can toggle "Public Status" OFF in its settings to hide this reminder.',
             confidence: 70,
             timestamp: Date.now()
         };

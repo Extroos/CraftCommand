@@ -10,6 +10,8 @@ import { API } from '@core/services/api';
 import { useServers } from '@features/servers/context/ServerContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
 import AccessDenied from '@features/auth/components/AccessDenied';
+import { useConfirm } from '@features/ui/hooks/useConfirm';
+import { ConfirmDialog } from '@features/ui/ConfirmDialog';
 
 interface PluginManagerProps {
     serverId: string;
@@ -21,6 +23,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
     const { currentServer, refreshServers } = useServers();
     const { can } = usePermissions();
     const [activeTab, setActiveTab] = useState<Tab>('marketplace');
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
     
     // Marketplace state
     const [searchTerm, setSearchTerm] = useState('');
@@ -153,7 +156,14 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
 
     const handleUninstall = async (plugin: InstalledPlugin) => {
         if (!can('server.plugins.manage', serverId)) return;
-        if (!confirm(`Uninstall ${plugin.name}? The plugin JAR will be deleted.`)) return;
+
+        const isConfirmed = await requestConfirm({
+            title: 'Uninstall Plugin',
+            description: `Are you sure you want to uninstall ${plugin.name}? The plugin JAR will be deleted.`,
+            confirmText: 'Uninstall',
+            cancelText: 'Cancel'
+        });
+        if (!isConfirmed) return;
         
         // Optimistic Deletion
         const originalPlugins = [...installedPlugins];
@@ -213,6 +223,36 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
             setPendingActions(prev => {
                 const next = new Set(prev);
                 next.delete(update.pluginId);
+                return next;
+            });
+        }
+    };
+
+    const handleBulkUpdate = async () => {
+        if (!can('server.plugins.manage', serverId)) return;
+        if (updates.length === 0) return;
+        
+        const pluginIds = updates.map(u => u.pluginId);
+        setPendingActions(prev => new Set([...prev, ...pluginIds]));
+        
+        try {
+            const results = await API.bulkUpdatePlugins(serverId, pluginIds);
+            const successful = results.filter(r => r.success).length;
+            const failed = results.filter(r => !r.success).length;
+            
+            if (failed > 0) {
+                setError(`Updated ${successful} plugins, but ${failed} failed.`);
+            } else {
+                setSuccessMessage(`Successfully updated ${successful} plugins! Restart the server to apply changes.`);
+            }
+            checkUpdates();
+            loadInstalled();
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setPendingActions(prev => {
+                const next = new Set(prev);
+                pluginIds.forEach(id => next.delete(id));
                 return next;
             });
         }
@@ -537,14 +577,26 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                         <p className="text-sm text-muted-foreground">
                             {updates.length} update{updates.length !== 1 ? 's' : ''} available
                         </p>
-                        <button 
-                            onClick={checkUpdates}
-                            disabled={isCheckingUpdates}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-secondary text-muted-foreground hover:text-foreground transition-all"
-                        >
-                            <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
-                            Check Updates
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {updates.length > 0 && (
+                                <button 
+                                    onClick={handleBulkUpdate}
+                                    disabled={updates.some(u => pendingActions.has(u.pluginId))}
+                                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
+                                >
+                                    <ArrowUpCircle size={12} />
+                                    Update All
+                                </button>
+                            )}
+                            <button 
+                                onClick={checkUpdates}
+                                disabled={isCheckingUpdates}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-secondary text-muted-foreground hover:text-foreground transition-all"
+                            >
+                                <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
+                                Check Updates
+                            </button>
+                        </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -600,6 +652,13 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                     </div>
                 </div>
             )}
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                {...confirmConfig}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+            />
         </div>
     );
 };

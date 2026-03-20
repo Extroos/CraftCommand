@@ -16,6 +16,8 @@ import nodesRoutes from '../features/nodes/nodes.routes';
 import networkRoutes from '../features/network/network.routes';
 import crossplayRoutes from '../features/network/crossplay.routes';
 import updateRoutes from '../features/system/update.routes';
+import extensionsRoutes from '../features/system/extensions.routes';
+import mapRoutes from '../features/servers/map.routes';
 
 
 
@@ -45,16 +47,24 @@ export const setupRoutes = (app: Express) => {
     app.use('/api/nodes', nodesRoutes);
     app.use('/api/network', networkRoutes);
     app.use('/api/crossplay', crossplayRoutes);
+
+    console.log('[Routes] Registering /api/webhooks');
+    app.use('/api/webhooks', extensionsRoutes);
+
+    // Map routes are nested under /api/servers/:id/map
+    app.use('/api/servers/:id/map', mapRoutes);
     
     // Status Route
     app.get('/api/status', (req, res) => {
-        const { protocol, sslStatus } = require('../features/system/SystemStatusState');
+        const { protocol, sslStatus, version } = require('../features/system/SystemStatusState');
+        const { NetUtils } = require('../utils/NetUtils');
         res.json({ 
             status: 'online', 
-            version: '1.11.3', 
+            version: version || '1.11.9', 
             app: 'CraftCommand',
             protocol,
-            sslStatus
+            sslStatus,
+            localIP: NetUtils.getLocalIP()
         });
     });
 };

@@ -83,7 +83,6 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
 
             setPlayers(normalized);
         } catch (e) {
-            console.error(e);
             addToast('error', 'Fetch Failed', 'Could not load player list.');
         } finally {
             setLoading(false);
@@ -213,11 +212,41 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
         addToast('info', 'Copied', 'Copied to clipboard');
     };
 
+    const [sortConfig, setSortConfig] = useState<{ key: keyof Player; direction: 'asc' | 'desc' } | null>(null);
+
+    const requestSort = (key: keyof Player) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
     const filteredPlayers = displayedPlayers.filter(p => 
         (p.name && p.name.toLowerCase().includes(searchTerm.toLowerCase())) || 
         (p.ip && p.ip.includes(searchTerm)) ||
         (p.uuid && p.uuid.toLowerCase().includes(searchTerm.toLowerCase()))
     );
+
+    const sortedPlayers = [...filteredPlayers].sort((a, b) => {
+        if (!sortConfig) return 0;
+        const { key, direction } = sortConfig;
+        
+        let aValue = a[key];
+        let bValue = b[key];
+
+        if (key === 'online') {
+            aValue = a.online ? 1 : 0;
+            bValue = b.online ? 1 : 0;
+        }
+
+        if (aValue === bValue) return 0;
+        if (aValue === undefined || aValue === null) return 1;
+        if (bValue === undefined || bValue === null) return -1;
+
+        const result = aValue < bValue ? -1 : 1;
+        return direction === 'asc' ? result : -result;
+    });
 
     const maskIp = (ip?: string) => {
         if (!ip) return 'Unknown';
@@ -335,13 +364,27 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
 
                         <div className="flex-1 overflow-y-auto p-2">
                             <table className="w-full text-sm text-left border-separate border-spacing-y-2">
-                                <thead className="text-xs uppercase text-muted-foreground font-semibold sticky top-0 bg-card z-10">
+                                <thead className="text-[10px] uppercase text-muted-foreground/60 font-black tracking-widest sticky top-0 bg-card z-10 border-b border-border/50">
                                     <tr>
-                                        {activeList !== 'IP_BANNED' && <th className="px-4 pb-2">User</th>}
-                                        <th className="px-4 pb-2">{activeList === 'IP_BANNED' ? 'IP Address' : 'UUID'}</th>
-                                        {(activeList === 'ONLINE' || activeList === 'ALL') && <th className="px-4 pb-2">IP Address</th>}
-                                        {(activeList === 'ONLINE' || activeList === 'ALL') && <th className="px-4 pb-2">Status</th>}
-                                        <th className="px-4 pb-2 text-right">Actions</th>
+                                        {activeList !== 'IP_BANNED' && (
+                                            <th className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors group" onClick={() => requestSort('name')}>
+                                                <div className="flex items-center gap-2">
+                                                    User {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                                </div>
+                                            </th>
+                                        )}
+                                        <th className="px-4 py-3">{activeList === 'IP_BANNED' ? 'IP Address' : 'UUID'}</th>
+                                        {(activeList === 'ONLINE' || activeList === 'ALL') && (
+                                            <th className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors" onClick={() => requestSort('ip')}>
+                                                Network {sortConfig?.key === 'ip' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                            </th>
+                                        )}
+                                        {(activeList === 'ONLINE' || activeList === 'ALL') && (
+                                            <th className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors" onClick={() => requestSort('online')}>
+                                                {activeList === 'ONLINE' ? 'Ping' : 'Status'} {sortConfig?.key === 'online' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                            </th>
+                                        )}
+                                        <th className="px-4 py-3 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -353,7 +396,7 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
                                         </>
                                     ) : (
                                         <AnimatePresence mode="popLayout">
-                                            {filteredPlayers.length === 0 ? (
+                                            {sortedPlayers.length === 0 ? (
                                                  <motion.tr 
                                                     initial={{ opacity: 0 }} 
                                                     animate={{ opacity: 1 }} 
@@ -368,7 +411,7 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
                                                     </td>
                                                 </motion.tr>
                                             ) : (
-                                                filteredPlayers.map((player) => (
+                                                sortedPlayers.map((player) => (
                                                     <motion.tr 
                                                         key={player.uuid + player.name} 
                                                         layout

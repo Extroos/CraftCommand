@@ -118,4 +118,85 @@ export class FileSystemManager {
     async exists(relativePath: string): Promise<boolean> {
         return fs.pathExists(this.resolvePath(relativePath));
     }
+
+    async searchFiles(query: string, dirPath: string = '.', maxResults: number = 100, searchContent: boolean = false): Promise<Array<{
+        name: string;
+        path: string;
+        isDirectory: boolean;
+        size: number;
+        modified: string;
+        snippet?: string;
+    }>> {
+        const results: Array<{ name: string; path: string; isDirectory: boolean; size: number; modified: string; snippet?: string }> = [];
+        const lowerQuery = query.toLowerCase();
+
+        const walk = async (currentDir: string) => {
+            if (results.length >= maxResults) return;
+
+            try {
+                const fullPath = this.resolvePath(currentDir);
+                const entries = await fs.readdir(fullPath, { withFileTypes: true });
+
+                for (const entry of entries) {
+                    if (results.length >= maxResults) break;
+
+                    const entryRelPath = path.join(currentDir, entry.name).replace(/\\/g, '/');
+                    const entryFullPath = path.join(fullPath, entry.name);
+
+                    // Skip common binary/heavy folders
+                    if (entry.isDirectory() && ['node_modules', '.git', 'cache', '.fabric', 'world', 'world_nether', 'world_the_end', 'backups', 'logs'].includes(entry.name)) {
+                        continue;
+                    }
+
+                    if (entry.isDirectory()) {
+                        await walk(entryRelPath);
+                    } else {
+                        // 1. Filename match
+                        const nameMatches = entry.name.toLowerCase().includes(lowerQuery);
+                        let contentMatches = false;
+                        let snippet: string | undefined;
+
+                        // 2. Content match (if requested and not a binary file)
+                        if (searchContent && !nameMatches) {
+                            const isBinary = /\.(jar|zip|gz|png|jpg|exe|bin|dat|mca|db)$/i.test(entry.name);
+                            if (!isBinary) {
+                                try {
+                                    const stats = await fs.stat(entryFullPath);
+                                    if (stats.size < 5 * 1024 * 1024) { // Only search files < 5MB
+                                        const content = await fs.readFile(entryFullPath, 'utf8');
+                                        const lowerContent = content.toLowerCase();
+                                        const idx = lowerContent.indexOf(lowerQuery);
+                                        if (idx !== -1) {
+                                            contentMatches = true;
+                                            // Extract snippet
+                                            const start = Math.max(0, idx - 40);
+                                            const end = Math.min(content.length, idx + query.length + 40);
+                                            snippet = `...${content.substring(start, end).replace(/\n/g, ' ')}...`;
+                                        }
+                                    }
+                                } catch { /* skip inaccessible */ }
+                            }
+                        }
+
+                        if (nameMatches || contentMatches) {
+                            try {
+                                const stats = await fs.stat(entryFullPath);
+                                results.push({
+                                    name: entry.name,
+                                    path: entryRelPath,
+                                    isDirectory: false,
+                                    size: stats.size,
+                                    modified: stats.mtime.toLocaleString(),
+                                    snippet
+                                });
+                            } catch { /* skip inaccessible */ }
+                        }
+                    }
+                }
+            } catch { /* skip inaccessible directories */ }
+        };
+
+        await walk(dirPath);
+        return results;
+    }
 }

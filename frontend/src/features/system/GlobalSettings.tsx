@@ -16,7 +16,8 @@ import { usePermissions } from '@features/auth/hooks/usePermissions';
 import { SystemUpdateCard } from './components/SystemUpdateCard';
 import { WebhookHub } from './WebhookHub';
 import { TokenManager } from './TokenManager';
-import { Activity, Globe } from 'lucide-react';
+import { Activity, Globe, Lock } from 'lucide-react';
+import { useLock } from '../collaboration/hooks/useLock';
 
 const GlobalSettingsView: React.FC = () => {
     const [settings, setSettings] = useState<GlobalSettingsType | null>(null);
@@ -26,12 +27,17 @@ const GlobalSettingsView: React.FC = () => {
     const [showWizard, setShowWizard] = useState(false);
     const [systemStatus, setSystemStatus] = useState<{ protocol: string, sslStatus: string, localIP?: string } | null>(null);
     const { addToast } = useToast();
+    const { user } = useUser();
     const { can } = usePermissions();
     const { refreshSettings } = useSystem();
+
+    const { isLockedByOther, acquireLock, releaseLock, lock: activeLock } = useLock('system:global:settings', user?.id || '');
 
     useEffect(() => {
         loadSettings();
         fetchSystemStatus();
+        acquireLock(); // Try to acquire lock on mount
+        return () => releaseLock(); // Release on unmount
     }, []);
 
     const fetchSystemStatus = async () => {
@@ -49,7 +55,6 @@ const GlobalSettingsView: React.FC = () => {
             setSettings(data);
             setInitialSettings(JSON.parse(JSON.stringify(data))); // Deep clone for comparison
         } catch (e) {
-            console.error(e);
             addToast('error', 'Settings', 'Failed to load system settings');
         } finally {
             setIsLoading(false);
@@ -66,7 +71,7 @@ const GlobalSettingsView: React.FC = () => {
     };
 
     const handleSave = async () => {
-        if (!settings) return;
+        if (!settings || isLockedByOther) return;
         if (!can('system.settings.manage')) {
             addToast('error', 'Permissions', 'Insufficient permissions to modify system settings');
             return;
@@ -140,13 +145,30 @@ const GlobalSettingsView: React.FC = () => {
 
     const [activeTab, setActiveTab] = useState<'SETTINGS' | 'AUDIT' | 'NODES' | 'INTEGRATIONS' | 'HEALTH'>('SETTINGS');
     const [activeIntegrationTab, setActiveIntegrationTab] = useState<'BOT' | 'WEBHOOKS' | 'TOKENS'>('BOT');
-    const { user } = useUser();
 
     if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading System Configuration...</div>;
     if (!settings) return <div className="p-8 text-center text-rose-500">Failed to load configuration.</div>;
 
+    const renderLockOverlay = () => {
+        if (!isLockedByOther) return null;
+        return (
+            <div className="absolute inset-0 z-[100] bg-background/60 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center text-center p-8">
+                <div className="w-16 h-16 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mb-4">
+                    <Lock size={32} />
+                </div>
+                <h3 className="text-xl font-bold mb-2">Resource Locked</h3>
+                <p className="text-muted-foreground max-w-md">
+                    <span className="font-bold text-foreground">{activeLock?.username}</span> is currently editing these settings. 
+                    Changes are restricted to prevent data loss.
+                </p>
+            </div>
+        );
+    };
+
     const renderSettings = () => (
-        <motion.div 
+        <div className="relative">
+            {renderLockOverlay()}
+            <motion.div 
             variants={STAGGER_CONTAINER}
             initial="hidden"
             animate="show"
@@ -155,50 +177,56 @@ const GlobalSettingsView: React.FC = () => {
                 {/* Operation Mode Card */}
                 <motion.div 
                     variants={STAGGER_ITEM}
-                    className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+                    className={`border border-border p-5 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
                 >
-                    <div className="flex items-start gap-3 mb-3">
-                        <div className="p-2 bg-violet-500/10 text-violet-500 rounded">
-                            <Settings2 size={20} />
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="text-foreground">
+                            <Settings2 size={18} />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-base">Operational Mode</h3>
-                            <p className="text-xs text-muted-foreground">Define how CraftCommand operates this instance.</p>
+                            <h3 className="text-sm font-bold tracking-tight text-foreground">Operational Mode</h3>
+                            <p className="text-[10px] font-medium text-muted-foreground">Define how CraftCommand operates this instance.</p>
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
+                        <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                            <div className="flex justify-between items-start gap-4">
                             <div>
-                                <div className="font-medium text-sm flex items-center gap-2">
+                                <div className="font-bold text-[11px] flex items-center gap-2">
                                     Host Mode <Shield size={12} className="text-emerald-500" />
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-0.5 max-w-[280px]">
+                                <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight max-w-[280px]">
+                                    
                                     Enables Multi-User Authentication, Role-Based Access Control, and strict API security. Disabling this switches to "Personal Mode".
+                                
                                 </p>
                             </div>
                             <button
                                 onClick={toggleHostMode}
-                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    settings.app.hostMode ? 'bg-primary' : 'bg-input'
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                    settings.app.hostMode ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
                                 }`}
                             >
-                                <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
-                                        settings.app.hostMode ? 'translate-x-5' : 'translate-x-0'
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                        settings.app.hostMode ? 'translate-x-4' : 'translate-x-0'
                                     }`}
                                 />
-                            </button>
+                                </button>
+                            </div>
                         </div>
 
                         {/* Docker Support Toggle */}
-                        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
+                        <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                            <div className="flex justify-between items-start gap-4">
                             <div>
-                                <div className="font-medium text-sm flex items-center gap-2">
+                                <div className="font-bold text-[11px] flex items-center gap-2">
                                     Docker Engine Support <Database size={12} className="text-blue-500" />
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-0.5 max-w-[280px]">
+                                <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight max-w-[280px]">
+                                    
                                     Enable experimental Docker container execution. Requires Docker Daemon to be running on the host machine.
+                                
                                 </p>
                             </div>
                             <button
@@ -212,20 +240,52 @@ const GlobalSettingsView: React.FC = () => {
                                         app: { ...settings.app, dockerEnabled: !settings.app.dockerEnabled }
                                     });
                                 }}
-                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    settings.app.dockerEnabled ? 'bg-primary' : 'bg-input'
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                    settings.app.dockerEnabled ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
                                 }`}
                             >
-                                <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
-                                        settings.app.dockerEnabled ? 'translate-x-5' : 'translate-x-0'
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                        settings.app.dockerEnabled ? 'translate-x-4' : 'translate-x-0'
                                     }`}
                                 />
-                            </button>
+                                </button>
+                            </div>
                         </div>
                         
+                        {/* Professional Mode Toggle */}
+                        <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                            <div className="flex justify-between items-start gap-4">
+                            <div>
+                                <div className="font-bold text-[11px] flex items-center gap-2">
+                                    Professional Mode <Activity size={12} className="text-cyan-500" />
+                                </div>
+                                <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight max-w-[280px]">
+                                    
+                                    Upgrades the Server Selection to an enterprise operations dashboard with live CPU, memory, TPS, player counts, and system health.
+                                
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setSettings({
+                                        ...settings,
+                                        app: { ...settings.app, professionalMode: !settings.app.professionalMode }
+                                    });
+                                }}
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                    settings.app.professionalMode ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
+                                }`}
+                            >
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                        settings.app.professionalMode ? 'translate-x-4' : 'translate-x-0'
+                                    }`}
+                                />
+                                </button>
+                            </div>
+                        </div>
+
                         {!settings.app.hostMode && (
-                            <div className="flex gap-3 p-3 bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded-lg text-xs">
+                            <div className="flex gap-2 p-2 bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded-md text-[10px] items-center">
                                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                                 <p>
                                     <strong>Warning:</strong> Disabling Host Mode reduces security. Ensure this instance is not publicly accessible.
@@ -238,67 +298,68 @@ const GlobalSettingsView: React.FC = () => {
                 {/* System Maintenance Card */}
                 <motion.div 
                     variants={STAGGER_ITEM}
-                    className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+                    className={`border border-border p-5 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
                 >
-                     <div className="flex items-start gap-3 mb-3">
-                        <div className="p-2 bg-blue-500/10 text-blue-500 rounded">
-                            <Monitor size={20} />
+                     <div className="flex items-center gap-3 mb-4">
+                        <div className="text-foreground">
+                            <Monitor size={18} />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-base">System Maintenance</h3>
-                            <p className="text-xs text-muted-foreground">Automatic updates and health checks.</p>
+                            <h3 className="text-sm font-bold tracking-tight text-foreground">System Maintenance</h3>
+                            <p className="text-[10px] font-medium text-muted-foreground">Automatic updates and health checks.</p>
                         </div>
                     </div>
 
                     <div className="space-y-3">
                         {/* Phase 5: System Update Card */}
-                        <div className="mb-4">
+                        <div className="md:col-span-2 mb-2">
                             <SystemUpdateCard variant="embedded" />
                         </div>
 
-                        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
+                        <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                            <div className="flex justify-between items-start gap-4">
                             <div>
-                                <div className="font-medium text-sm">Auto-Updates</div>
-                                <p className="text-xs text-muted-foreground mt-0.5">
+                                <div className="font-bold text-[11px]">Auto-Updates</div>
+                                <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight">
+                                    
                                     Automatically download and apply critical security patches and updates on startup.
+                                
                                 </p>
                             </div>
                             <button
                                 onClick={toggleAutoUpdate}
-                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    settings.app.autoUpdate ? 'bg-primary' : 'bg-input'
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                    settings.app.autoUpdate ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
                                 }`}
                             >
-                                <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
-                                        settings.app.autoUpdate ? 'translate-x-5' : 'translate-x-0'
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                        settings.app.autoUpdate ? 'translate-x-4' : 'translate-x-0'
                                     }`}
                                 />
-                            </button>
+                                </button>
+                            </div>
                         </div>
-                        <div className="p-3 bg-secondary/30 rounded border border-border/50">
-                            <div className="flex items-center justify-between">
+                        <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                            <div className="flex justify-between items-start gap-4">
                                 <div>
-                                    <div className="font-medium text-sm">Auto-Healing</div>
-                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                    <div className="font-bold text-[11px]">Auto-Healing</div>
+                                    <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight">
                                         Detect and fix common server issues.
                                     </p>
                                 </div>
                                 <button
                                     onClick={toggleAutoHealing}
-                                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                        settings.app.autoHealing ? 'bg-primary' : 'bg-input'
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                        settings.app.autoHealing ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
                                     }`}
                                 >
                                     <span
-                                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
-                                            settings.app.autoHealing ? 'translate-x-5' : 'translate-x-0'
+                                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                            settings.app.autoHealing ? 'translate-x-4' : 'translate-x-0'
                                         }`}
                                     />
                                 </button>
                             </div>
-
-                            {/* Sentinel UI removed - automatic optimization active */}
                         </div>
 
                         {/* 
@@ -306,9 +367,11 @@ const GlobalSettingsView: React.FC = () => {
                             Updates are now handled exclusively by the launcher (run_CraftCommand.bat) on startup.
                         */}
                         
-                        <div className="p-3 bg-secondary/30 rounded border border-border/50">
-                            <div className="font-medium text-sm mb-2">System Theme</div>
-                            <ThemeToggle />
+                        <div className="md:col-span-2 p-3 bg-secondary/30 rounded-lg border border-border/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="font-medium text-sm mb-2 md:mb-0">System Theme</div>
+                            <div className="self-start md:self-auto overflow-x-auto w-full md:w-auto">
+                                <ThemeToggle />
+                            </div>
                         </div>
                     </div>
                 </motion.div>
@@ -318,53 +381,53 @@ const GlobalSettingsView: React.FC = () => {
                 {/* Remote Access Card (Phase R3) */}
                 <motion.div 
                     variants={STAGGER_ITEM}
-                    className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+                    className={`border border-border p-5 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
                 >
-                     <div className="flex items-start gap-3 mb-3">
-                        <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded">
-                            <Monitor size={20} />
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="text-foreground">
+                            <Monitor size={18} />
                         </div>
-                        <div className="flex-1">
-                            <h3 className="font-semibold text-base">Remote Access</h3>
-                            <p className="text-xs text-muted-foreground">Share your server with friends outside your local network.</p>
+                        <div>
+                            <h3 className="text-sm font-bold tracking-tight text-foreground">Remote Access</h3>
+                            <p className="text-[10px] font-medium text-muted-foreground">Share your server with friends outside your local network.</p>
                         </div>
                     </div>
 
                     {!settings.app.remoteAccess?.enabled ? (
                         <div className="space-y-3">
-                            <div className="bg-secondary/30 rounded p-3 border border-border/50">
+                            <div className="bg-secondary/30 rounded-lg p-3 border border-border/50">
                                 <div className="flex items-start gap-4">
-                                    <div className="p-1.5 bg-amber-500/10 rounded">
-                                        <AlertTriangle size={18} className="text-amber-500" />
+                                    <div className="p-1.5 bg-amber-500/10 rounded-md">
+                                        <AlertTriangle size={16} className="text-amber-500" />
                                     </div>
                                     <div className="flex-1">
-                                        <h4 className="font-medium text-sm mb-1">Remote Access Not Configured</h4>
-                                        <p className="text-xs text-muted-foreground mb-3">
+                                        <h4 className="font-bold text-[11px] mb-1">Remote Access Not Configured</h4>
+                                        <p className="text-[9px] font-medium text-muted-foreground mb-3 leading-tight">
                                             Your server is currently only accessible from this computer. To allow friends to join from anywhere, you need to set up remote access.
                                         </p>
                                         <button
                                             onClick={() => setShowWizard(true)}
-                                            className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:bg-primary/90 inline-flex items-center gap-2">
-                                            <Shield size={14} />
+                                            className="bg-indigo-600 text-white px-4 py-1.5 rounded-md text-[10px] font-bold hover:bg-indigo-500 inline-flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/10">
+                                            <Shield size={12} />
                                             Configure Remote Access
                                         </button>
                                     </div>
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div className="bg-secondary rounded-lg p-4 border border-border/30">
+                                <div className="bg-secondary rounded-lg p-3 border border-border/30">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Shield size={14} className="text-emerald-500" />
-                                        <span className="font-medium text-sm">Safest: VPN</span>
+                                        <span className="font-bold text-[10px]">Safest: VPN</span>
                                     </div>
-                                    <p className="text-xs text-muted-foreground">Encrypted private connection via Tailscale/ZeroTier. No ports needed.</p>
+                                    <p className="text-[9px] font-medium text-muted-foreground leading-tight">Encrypted private connection via Tailscale/ZeroTier. No ports needed.</p>
                                 </div>
-                                <div className="bg-secondary rounded-lg p-4 border border-border/30">
+                                <div className="bg-secondary rounded-lg p-3 border border-border/30">
                                     <div className="flex items-center gap-2 mb-1">
                                         <Monitor size={14} className="text-blue-500" />
-                                        <span className="font-medium text-sm">Easiest: Playit.gg</span>
+                                        <span className="font-bold text-[10px]">Easiest: Playit.gg</span>
                                     </div>
-                                    <p className="text-xs text-muted-foreground">One-click tunnel. Game + Web dashboard access.</p>
+                                    <p className="text-[9px] font-medium text-muted-foreground leading-tight">One-click tunnel. Game + Web dashboard access.</p>
                                 </div>
                             </div>
                         </div>
@@ -469,20 +532,21 @@ const GlobalSettingsView: React.FC = () => {
                 {/* Network Security Card */}
                 <motion.div 
                     variants={STAGGER_ITEM}
-                    className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+                    className={`border border-border p-5 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
                 >
-                     <div className="flex items-start gap-3 mb-3">
-                        <div className="p-2 bg-fuchsia-500/10 text-fuchsia-500 rounded">
-                            <Shield size={20} />
+                     <div className="flex items-center gap-3 mb-4">
+                        <div className="text-foreground">
+                            <Shield size={18} />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-base">Network Security</h3>
-                            <p className="text-xs text-muted-foreground">Configure secure access protocols (HTTPS).</p>
+                            <h3 className="text-sm font-bold tracking-tight text-foreground">Network Security</h3>
+                            <p className="text-[10px] font-medium text-muted-foreground">Configure secure access protocols (HTTPS).</p>
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
+                        <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                            <div className="flex justify-between items-start gap-4">
                             <div>
                                 <div className="font-medium flex items-center gap-2">
                                     Built-in HTTPS
@@ -492,35 +556,36 @@ const GlobalSettingsView: React.FC = () => {
                                     Enable direct HTTPS support. Requires valid SSL Certificate and Key files.
                                 </p>
                             </div>
-                            <button
-                                onClick={() => {
-                                    setSettings({
-                                        ...settings,
-                                        app: {
-                                            ...settings.app,
-                                            https: {
-                                                ...settings.app.https,
-                                                enabled: !settings.app.https?.enabled,
-                                                keyPath: settings.app.https?.keyPath || '',
-                                                certPath: settings.app.https?.certPath || ''
-                                            } as any
-                                        }
-                                    });
-                                }}
-                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    settings.app.https?.enabled ? 'bg-primary' : 'bg-input'
-                                }`}
-                            >
-                                <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
-                                        settings.app.https?.enabled ? 'translate-x-5' : 'translate-x-0'
+                                <button
+                                    onClick={() => {
+                                        setSettings({
+                                            ...settings,
+                                            app: {
+                                                ...settings.app,
+                                                https: {
+                                                    ...settings.app.https,
+                                                    enabled: !settings.app.https?.enabled,
+                                                    keyPath: settings.app.https?.keyPath || '',
+                                                    certPath: settings.app.https?.certPath || ''
+                                                } as any
+                                            }
+                                        });
+                                    }}
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                        settings.app.https?.enabled ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
                                     }`}
-                                />
-                            </button>
+                                >
+                                    <span
+                                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                            settings.app.https?.enabled ? 'translate-x-4' : 'translate-x-0'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
                         </div>
 
                         {settings.app.https?.enabled && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-muted-foreground/70">Certificate Path (.pem/.crt)</label>
                                     <input 
@@ -553,7 +618,7 @@ const GlobalSettingsView: React.FC = () => {
                                         })}
                                     />
                                 </div>
-                                <div className="col-span-1 md:col-span-2 p-3 bg-blue-500/10 border border-blue-500/20 text-blue-600 rounded-lg text-xs flex gap-2">
+                                <div className="col-span-1 md:col-span-2 p-3 bg-blue-500/10 border border-blue-500/20 text-blue-600 rounded-md text-[10px] items-center flex gap-2">
                                     <Monitor size={16} className="shrink-0" />
                                     <p>
                                         <strong>Note:</strong> Enabling HTTPS requires a system restart to bind the secure listener. Fallback to HTTP occurs on certificate errors.
@@ -567,43 +632,44 @@ const GlobalSettingsView: React.FC = () => {
                 {/* Data Storage Card (Phase 4) */}
                 <motion.div 
                     variants={STAGGER_ITEM}
-                    className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+                    className={`border border-border p-5 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
                 >
-                     <div className="flex items-start gap-3 mb-3">
-                        <div className="p-2 bg-fuchsia-500/10 text-fuchsia-500 rounded">
-                            <Database size={20} />
+                     <div className="flex items-center gap-3 mb-4">
+                        <div className="text-foreground">
+                            <Database size={18} />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-base">Data Storage</h3>
-                            <p className="text-xs text-muted-foreground">Configure how CraftCommand persists server data.</p>
+                            <h3 className="text-sm font-bold tracking-tight text-foreground">Data Storage</h3>
+                            <p className="text-[10px] font-medium text-muted-foreground">Configure how CraftCommand persists server data.</p>
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
+                        <div className="flex items-center justify-between gap-4 p-3 bg-secondary/30 rounded border border-border/50">
                             <div>
-                                <div className="font-medium text-sm flex items-center gap-2">
+                                <div className="font-bold text-[11px] flex items-center gap-2">
                                     SQLite Storage Database
                                     {settings.app.storageProvider === 'sqlite' && <Database size={12} className="text-emerald-500" />}
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">
+                                <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight">
+                                    
                                     Enable SQLite for better data integrity and crash resilience. Disabling switches back to standard JSON files.
+                                
                                 </p>
                             </div>
-                            <button
-                                onClick={toggleStorageProvider}
-                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    settings.app.storageProvider === 'sqlite' ? 'bg-primary' : 'bg-input'
-                                }`}
-                            >
-                                <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
-                                        settings.app.storageProvider === 'sqlite' ? 'translate-x-5' : 'translate-x-0'
+                                <button
+                                    onClick={toggleStorageProvider}
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                        settings.app.storageProvider === 'sqlite' ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
                                     }`}
-                                />
-                            </button>
-                        </div>
-                         <div className="flex gap-3 p-3 bg-blue-500/10 border border-blue-500/20 text-blue-600 rounded-lg text-xs">
+                                >
+                                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                            settings.app.storageProvider === 'sqlite' ? 'translate-x-4' : 'translate-x-0'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
+                         <div className="flex gap-2 p-2 bg-blue-500/10 border border-blue-500/20 text-blue-600 rounded-md text-[10px] items-center">
                             <Monitor size={16} className="shrink-0 mt-0.5" />
                             <p>
                                 <strong>Note:</strong> Switching providers requires a restart. Data is auto-migrated from JSON to SQL, but NOT vice-versa.
@@ -615,27 +681,30 @@ const GlobalSettingsView: React.FC = () => {
                 {/* Distributed Nodes Card */}
                 <motion.div 
                     variants={STAGGER_ITEM}
-                    className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+                    className={`border border-border p-5 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
                 >
-                     <div className="flex items-start gap-3 mb-3">
-                        <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded">
-                            <Layers size={20} />
+                     <div className="flex items-center gap-3 mb-4">
+                        <div className="text-foreground">
+                            <Layers size={18} />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-base">Distributed Computing</h3>
-                            <p className="text-xs text-muted-foreground">Expand your cluster by enrolling remote nodes.</p>
+                            <h3 className="text-sm font-bold tracking-tight text-foreground">Distributed Computing</h3>
+                            <p className="text-[10px] font-medium text-muted-foreground">Expand your cluster by enrolling remote nodes.</p>
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
+                        <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                            <div className="flex justify-between items-start gap-4">
                             <div>
-                                <div className="font-medium text-sm flex items-center gap-2">
+                                <div className="font-bold text-[11px] flex items-center gap-2">
                                     Distributed Nodes Engine
                                     {settings.app.distributedNodes?.enabled && <Check size={12} className="text-emerald-500" />}
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-0.5 max-w-[280px]">
+                                <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight max-w-[280px]">
+                                    
                                     Enable the distributed node manager to deploy and manage servers across multiple physical or virtual machines.
+                                
                                 </p>
                             </div>
                             <button
@@ -652,25 +721,84 @@ const GlobalSettingsView: React.FC = () => {
                                         setActiveTab('SETTINGS');
                                     }
                                 }}
-                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    settings.app.distributedNodes?.enabled ? 'bg-primary' : 'bg-input'
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                    settings.app.distributedNodes?.enabled ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
                                 }`}
                             >
-                                <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
-                                        settings.app.distributedNodes?.enabled ? 'translate-x-5' : 'translate-x-0'
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                        settings.app.distributedNodes?.enabled ? 'translate-x-4' : 'translate-x-0'
                                     }`}
                                 />
-                            </button>
+                                </button>
+                            </div>
                         </div>
                         
                         {settings.app.distributedNodes?.enabled && (
-                            <button 
-                                onClick={() => setActiveTab('NODES')}
-                                className="w-full flex items-center justify-center gap-2 p-2 bg-emerald-500/10 text-emerald-600 rounded text-xs font-bold hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
-                            >
-                                <Layers size={14} /> Open Nodes Manager
-                            </button>
+                            <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2">
+                                <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                                    <div className="flex justify-between items-start gap-4">
+                                        <div>
+                                            <div className="font-bold text-[11px]">Heartbeat Threshold (ms)</div>
+                                            <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight">
+                                                How long to wait before marking an inactive node as OFFLINE. Default: 60000.
+                                            </p>
+                                        </div>
+                                        <input 
+                                            type="number" 
+                                            className="w-24 h-8 rounded border border-input bg-background/50 px-2 text-[11px] focus:ring-1 focus:ring-primary outline-none"
+                                            value={settings.app.distributedNodes?.nodeHeartbeatThresholdMs || 60000}
+                                            onChange={(e) => setSettings({
+                                                ...settings,
+                                                app: { 
+                                                    ...settings.app, 
+                                                    distributedNodes: { 
+                                                        ...settings.app.distributedNodes, 
+                                                        nodeHeartbeatThresholdMs: parseInt(e.target.value) || 60000 
+                                                    } 
+                                                }
+                                            })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                                    <div className="flex justify-between items-start gap-4">
+                                        <div>
+                                            <div className="font-bold text-[11px]">Mirror Remote Backups</div>
+                                            <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight">
+                                                Enable global mirroring of remote node backups to this Primary node for redundancy.
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => setSettings({
+                                                ...settings,
+                                                app: { 
+                                                    ...settings.app, 
+                                                    distributedNodes: { 
+                                                        ...settings.app.distributedNodes, 
+                                                        mirrorRemoteBackups: !settings.app.distributedNodes?.mirrorRemoteBackups 
+                                                    } 
+                                                }
+                                            })}
+                                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                                settings.app.distributedNodes?.mirrorRemoteBackups ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
+                                            }`}
+                                        >
+                                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                                settings.app.distributedNodes?.mirrorRemoteBackups ? 'translate-x-4' : 'translate-x-0'
+                                            }`}
+                                            />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <button 
+                                    onClick={() => setActiveTab('NODES')}
+                                    className="w-full flex items-center justify-center gap-2 p-2 bg-emerald-500/10 text-emerald-600 rounded text-xs font-bold hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
+                                >
+                                    <Layers size={14} /> Open Nodes Manager
+                                </button>
+                            </div>
                         )}
                     </div>
                 </motion.div>
@@ -678,26 +806,29 @@ const GlobalSettingsView: React.FC = () => {
                 {/* Security & 2FA Policy Card */}
                 <motion.div 
                     variants={STAGGER_ITEM}
-                    className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+                    className={`border border-border p-5 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
                 >
-                     <div className="flex items-start gap-3 mb-3">
-                        <div className="p-2 bg-rose-500/10 text-rose-500 rounded">
-                            <Shield size={20} />
+                     <div className="flex items-center gap-3 mb-4">
+                        <div className="text-foreground">
+                            <Shield size={18} />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-base">Security & 2FA</h3>
-                            <p className="text-xs text-muted-foreground">Global security policies and authentication hardening.</p>
+                            <h3 className="text-sm font-bold tracking-tight text-foreground">Security & 2FA</h3>
+                            <p className="text-[10px] font-medium text-muted-foreground">Global security policies and authentication hardening.</p>
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
+                        <div className="flex flex-col justify-between p-3 bg-secondary/30 rounded-lg border border-border/50 gap-2">
+                            <div className="flex justify-between items-start gap-4">
                             <div>
-                                <div className="font-medium text-sm flex items-center gap-2">
+                                <div className="font-bold text-[11px] flex items-center gap-2">
                                     Enforce Admin 2FA
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-0.5 max-w-[280px]">
+                                <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight max-w-[280px]">
+                                    
                                     Require all Administrators and Owners to have Two-Factor Authentication enabled to access the panel.
+                                
                                 </p>
                             </div>
                             <button
@@ -713,20 +844,20 @@ const GlobalSettingsView: React.FC = () => {
                                         }
                                     });
                                 }}
-                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    settings.app.security?.forceAdmin2FA ? 'bg-primary' : 'bg-input'
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                    settings.app.security?.forceAdmin2FA ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'
                                 }`}
                             >
-                                <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
-                                        settings.app.security?.forceAdmin2FA ? 'translate-x-5' : 'translate-x-0'
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                                        settings.app.security?.forceAdmin2FA ? 'translate-x-4' : 'translate-x-0'
                                     }`}
                                 />
-                            </button>
+                                </button>
+                            </div>
                         </div>
 
                         {settings.app.security?.forceAdmin2FA && (
-                            <div className="flex gap-3 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-600 rounded-lg text-xs">
+                            <div className="flex gap-2 p-2 bg-rose-500/10 border border-rose-500/20 text-rose-600 rounded-md text-[10px] items-center">
                                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                                 <p>
                                     <strong>Policy Active:</strong> Admins without 2FA will be blocked from management actions immediately after saving.
@@ -736,6 +867,7 @@ const GlobalSettingsView: React.FC = () => {
                     </div>
                 </motion.div>
             </motion.div>
+        </div>
     );
 
     const renderIntegrations = () => (

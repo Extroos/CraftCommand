@@ -10,6 +10,7 @@ import { userRepository } from '../storage/UserRepository';
 import { systemSettingsService } from '../features/system/SystemSettingsService';
 import { javaManager } from '../features/processes/JavaManager';
 import { installerService } from '../features/installer/InstallerService';
+import { lockingService } from './LockingService';
 
 export let io: Server;
 
@@ -199,13 +200,6 @@ export const setupSocket = (socketIo: Server) => {
             
             console.log(`[Collab] ${finalUser.username} joined server:${serverId} (view: ${activeView || 'dashboard'})`);
             
-            if (collab.presence.enabled) {
-                io.to(`server:${serverId}`).emit('presence:update', {
-                    serverId,
-                    users: presenceTracker.getPresence(serverId)
-                });
-            }
-
             // Send chat history to this client (catch-up for late joiners)
             const history = getChatHistory(serverId);
             if (history.length > 0) {
@@ -361,6 +355,37 @@ export const setupSocket = (socketIo: Server) => {
                      io.to(`user:${targetUserId}`).emit('chat:message', { ...message, content: `(From @${finalUser.username}) ${actualContent}` });
                 }
                 console.log(`[Whisper] ${finalUser.username} → ${targetUsername}: "${actualContent.trim().substring(0, 60)}"`);
+            }
+        });
+
+        // --- Configuration Locking (Phase 12) ---
+
+        socket.on('lock:acquire', ({ resourceId }) => {
+            if (!resourceId || !systemSettingsService.isHostMode()) return;
+            
+            const lock = lockingService.acquireLock(resourceId, user, socket.id);
+            if (lock) {
+                // Broadcast lock to Everyone in the relevant room
+                // resourceId format e.g. "server:123:settings"
+                const serverId = resourceId.split(':')[1];
+                const room = serverId && serverId !== 'global' ? `server:${serverId}` : 'server:global';
+                
+                io.to(room).emit('lock:update', { resourceId, lock });
+                console.log(`[Locking] ${user.username} acquired lock on ${resourceId}`);
+            } else {
+                socket.emit('lock:error', { resourceId, message: 'Resource is already locked.' });
+            }
+        });
+
+        socket.on('lock:release', ({ resourceId }) => {
+            if (!resourceId || !systemSettingsService.isHostMode()) return;
+            
+            if (lockingService.releaseLock(resourceId, user.id)) {
+                const serverId = resourceId.split(':')[1];
+                const room = serverId && serverId !== 'global' ? `server:${serverId}` : 'server:global';
+                
+                io.to(room).emit('lock:update', { resourceId, lock: null });
+                console.log(`[Locking] ${user.username} released lock on ${resourceId}`);
             }
         });
 

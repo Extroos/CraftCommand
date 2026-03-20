@@ -6,6 +6,7 @@ import fs from 'fs-extra';
 import { exec } from 'child_process';
 import util from 'util';
 import treeKill from 'tree-kill';
+import { backupService } from '../../backups/BackupService';
 
 const execAsync = util.promisify(exec);
 
@@ -193,5 +194,13 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
 
     isRunning(id: string): boolean {
         return this.processes.has(id);
+    }
+
+    async createBackup(id: string, serverDir: string, options: { description?: string, worldOnly?: boolean }): Promise<any> {
+        return backupService.createBackup(serverDir, id, options.description, options.worldOnly);
+    }
+
+    async restoreBackup(id: string, serverDir: string, backupId: string, options: { scope?: 'full' | 'world' | 'configs' | 'plugins', worldOnly?: boolean }): Promise<void> {
+        return backupService.restoreBackup(serverDir, id, backupId, options);
     }
 }

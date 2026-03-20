@@ -42,9 +42,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
     const loadWebhooks = async () => {
         setIsLoading(true);
         try {
-            const token = localStorage.getItem('cc_token');
-            if (!token) throw new Error('Not authenticated');
-            const data = await API.getWebhooks(token, serverId);
+            const data = await API.getWebhooks(serverId);
             setWebhooks(data);
         } catch (e: any) {
             addToast('error', 'Fetch Failed', e.message || 'Failed to load webhooks');
@@ -61,9 +59,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
 
         setIsSaving(true);
         try {
-            const token = localStorage.getItem('cc_token');
-            if (!token) throw new Error('Not authenticated');
-            await API.createWebhook(token, serverId, form);
+            await API.createWebhook(serverId, form);
             addToast('success', 'Webhook Created', 'Extension has been added successfully.');
             setShowAddForm(false);
             setForm({ name: '', url: '', enabled: true, triggers: ['SERVER_CRASH', 'SERVER_START'] });
@@ -77,9 +73,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
 
     const handleDelete = async (id: string) => {
         try {
-            const token = localStorage.getItem('cc_token');
-            if (!token) throw new Error('Not authenticated');
-            await API.deleteWebhook(token, id);
+            await API.deleteWebhook(id);
             addToast('success', 'Webhook Deleted', 'Extension removed.');
             loadWebhooks();
         } catch (e: any) {
@@ -90,9 +84,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
     const handleTest = async (id: string) => {
         setTestingId(id);
         try {
-            const token = localStorage.getItem('cc_token');
-            if (!token) throw new Error('Not authenticated');
-            const res = await API.testWebhook(token, id);
+            const res = await API.testWebhook(id);
             if (res.success) {
                 addToast('success', 'Test Success', `Webhook responded with status ${res.status}`);
             } else {

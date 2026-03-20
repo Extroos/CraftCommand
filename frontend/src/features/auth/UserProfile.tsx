@@ -15,12 +15,17 @@ import { API } from '@core/services/api';
 import { HardDrive, Trash2, Archive, Database, Image as ImageIcon } from 'lucide-react';
 import BackgroundManagerModal from '../ui/BackgroundManagerModal';
 import TwoFactorSetupWizard from './components/TwoFactorSetupWizard';
+import { useConfirm } from '../ui/hooks/useConfirm';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { usePrompt } from '../ui/hooks/usePrompt';
+import { PromptDialog } from '../ui/PromptDialog';
 
 const SystemCacheManager = ({ theme }: { theme: any }) => {
     const { user } = useUser();
     const [stats, setStats] = useState<{ java: { size: number, count: number }, temp: { size: number, count: number } } | null>(null);
     const [loading, setLoading] = useState(false);
     const { addToast } = useToast();
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
 
     const fetchStats = async () => {
         setLoading(true);
@@ -39,7 +44,13 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
     }, []);
 
     const handleClear = async (type: 'java' | 'temp') => {
-        if (!confirm(`Are you sure you want to clear ${type} cache? This may require re-downloading files.`)) return;
+        const isConfirmed = await requestConfirm({
+            title: `Clear ${type.toUpperCase()} Cache`,
+            description: `Are you sure you want to clear the ${type} cache? This may require re-downloading files on the next server start.`,
+            confirmText: 'Clear Cache',
+            cancelText: 'Cancel'
+        });
+        if (!isConfirmed) return;
         setLoading(true);
         try {
             await API.clearSystemCache(type);
@@ -129,6 +140,13 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
                     </div>
                 </div>
             </div>
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                {...confirmConfig}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+            />
         </div>
     );
 };
@@ -164,12 +182,41 @@ const SystemUpdatePreferences = ({ theme, user, onUpdate }: any) => {
     );
 };
 
-const UserProfileView: React.FC = () => {
+interface UserProfileViewProps {
+    initialSection?: string | null;
+    onSectionHandled?: () => void;
+}
+
+const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSectionHandled }) => {
     // Replace local state with global context state
     const { user, isLoading, updateUser, updatePreferences, theme } = useUser();
     const [activeTab, setActiveTab] = useState<'ACCOUNT' | 'PERSONALIZATION' | 'NOTIFICATIONS' | 'MINECRAFT' | 'API' | 'SYSTEM'>('ACCOUNT');
     const { addToast } = useToast();
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
+    const { isOpen: isPromptOpen, config: promptConfig, requestPrompt, handleConfirm: handlePromptConfirm, handleCancel: handlePromptCancel } = usePrompt();
     
+    // Refs for deep-linking
+    const securitySectionRef = React.useRef<HTMLDivElement>(null);
+    const apiSectionRef = React.useRef<HTMLDivElement>(null);
+
+    // Deep-linking effect
+    React.useEffect(() => {
+        if (initialSection === '2FA' && securitySectionRef.current) {
+            setActiveTab('ACCOUNT');
+            setTimeout(() => {
+                securitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                onSectionHandled?.();
+            }, 100);
+        }
+        if (initialSection === 'API' && apiSectionRef.current) {
+            setActiveTab('API');
+            setTimeout(() => {
+                apiSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                onSectionHandled?.();
+            }, 100);
+        }
+    }, [initialSection]);
+
     // Form States (Local only for inputs)
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showPassword, setShowPassword] = useState(false);
@@ -214,14 +261,18 @@ const UserProfileView: React.FC = () => {
             return;
         }
 
+        if (passwords.new.length < 8) {
+            addToast('error', 'Too Short', 'Password must be at least 8 characters.');
+            return;
+        }
+
         setIsSaving(true);
         try {
-            // Call your password change API here
-            await new Promise(r => setTimeout(r, 1000)); // Simulated API call
+            await API.changePassword(passwords.current, passwords.new);
             addToast('success', 'Password Changed!', 'Your password has been updated.');
             setPasswords({ current: '', new: '', confirm: '' });
-        } catch (e) {
-            addToast('error', 'Failed', 'Could not change password.');
+        } catch (e: any) {
+            addToast('error', 'Failed', e.message || 'Could not change password.');
         } finally {
             setIsSaving(false);
         }
@@ -284,18 +335,27 @@ const UserProfileView: React.FC = () => {
     };
 
     const handleDisable2FA = async () => {
-        const password = prompt('Please enter your password to disable 2FA:');
+        const password = await requestPrompt({
+            title: 'Disable 2FA',
+            description: 'Please enter your password to confirm identity.',
+            placeholder: 'Account Password',
+            type: 'password',
+            confirmText: 'Continue'
+        });
         if (!password) return;
         
-        const code = prompt('Please enter a valid 2FA code or recovery code:');
+        const code = await requestPrompt({
+            title: 'Disable 2FA',
+            description: 'Please enter your generated 2FA code or a recovery code.',
+            placeholder: '6-digit code',
+            type: 'text',
+            confirmText: 'Disable 2FA'
+        });
         if (!code) return;
 
         setIsSaving(true);
         try {
-            const token = localStorage.getItem('token');
-            if (!token) throw new Error('Session expired');
-            
-            await API.disable2FA(password, code, token);
+            await API.disable2FA(password, code);
             await updateUser({}); // Trigger refresh from memory or re-fetch
             addToast('success', '2FA Disabled', 'Two-factor authentication has been removed.');
         } catch (err: any) {
@@ -307,10 +367,25 @@ const UserProfileView: React.FC = () => {
 
 
 
-    const handleGenerateKey = () => {
-        if (confirm('Generating a new API Key will invalidate the old one. Continue?')) {
-            // const newKey = API.rotateApiKey();
-            addToast('info', 'Not Implemented', 'API Key rotation requires backend auth module.');
+    const handleGenerateKey = async () => {
+        const isConfirmed = await requestConfirm({
+            title: 'Rotate Developer API Key',
+            description: 'Generating a new API Key will immediately invalidate the active session token. All external integrations (Discord bots, monitoring scripts) will require updating. Proceed?',
+            confirmText: 'Confirm Rotation',
+            cancelText: 'Cancel'
+        });
+
+        if (isConfirmed) {
+            setIsSaving(true);
+            try {
+                const { apiKey } = await API.rotateApiKey();
+                await updateUser({ apiKey } as any);
+                addToast('success', 'Key Rotated', 'A new API identifier has been generated and provisioned.');
+            } catch (err: any) {
+                addToast('error', 'Rotation Failed', err.message || 'Internal security module returned a conflict.');
+            } finally {
+                setIsSaving(false);
+            }
         }
     };
 
@@ -570,7 +645,7 @@ const UserProfileView: React.FC = () => {
                                 </div>
                             </div>
                             {/* 2FA Security */}
-                            <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                            <div ref={securitySectionRef} className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'} ${initialSection === '2FA' ? 'ring-2 ring-primary ring-offset-2' : ''}`}>
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <ShieldCheck size={18} className={theme.text} /> Two-Factor Authentication
                                 </h2>
@@ -929,13 +1004,12 @@ const UserProfileView: React.FC = () => {
                                     </button>
                                 </div>
 
-                                { /* API Key Rotation Pending Backend Implementation */ }
-                                {/* <button 
+                                <button 
                                     onClick={handleGenerateKey}
                                     className="bg-secondary text-foreground border border-border px-4 py-2 rounded-lg text-sm font-medium hover:bg-secondary/80 transition-colors flex items-center gap-2"
                                 >
                                     <RefreshCw size={14} /> {user.apiKey ? 'Rotate Secret Key' : 'Generate Key'}
-                                </button> */}
+                                </button>
                             </div>
 
                              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-6">
@@ -1033,6 +1107,19 @@ const UserProfileView: React.FC = () => {
                     />
                 )}
             </AnimatePresence>
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                {...confirmConfig}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+            />
+            <PromptDialog 
+                isOpen={isPromptOpen}
+                {...promptConfig}
+                onConfirm={handlePromptConfirm}
+                onCancel={handlePromptCancel}
+            />
         </div>
     );
 };

@@ -36,7 +36,7 @@ const TwoFactorSetupWizard: React.FC<TwoFactorSetupWizardProps> = ({ onClose, on
     const handleStartSetup = async () => {
         setIsLoading(true);
         try {
-            const data = await API.start2FASetup(token!);
+            const data = await API.start2FASetup();
             setQrData(data);
         } catch (e) {
             addToast('error', 'Error', 'Failed to initialize 2FA setup.');
@@ -50,7 +50,7 @@ const TwoFactorSetupWizard: React.FC<TwoFactorSetupWizardProps> = ({ onClose, on
         if (verificationCode.length !== 6) return;
         setIsLoading(true);
         try {
-            const data = await API.confirm2FASetup(verificationCode, token!);
+            const data = await API.confirm2FASetup(verificationCode);
             setBackupCodes(data.backupCodes);
             setStep('BACKUP');
         } catch (err: any) {

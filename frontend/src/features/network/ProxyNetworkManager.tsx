@@ -9,6 +9,9 @@ import { useServers } from '@features/servers/context/ServerContext';
 import { useToast } from '@features/ui/Toast';
 import { API } from '@core/services/api';
 import { useUser } from '@features/auth/context/UserContext';
+import pkg from '../../../../package.json';
+import { useConfirm } from '../ui/hooks/useConfirm';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface ProxyNetworkManagerProps {
     serverId: string;
@@ -25,6 +28,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = ({ serverId }) =
     const [alias, setAlias] = useState('');
     const [loading, setLoading] = useState(false);
     const [installingSuite, setInstallingSuite] = useState(false);
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
 
     // List of servers NOT already linked
     const availableBackends = useMemo(() => {
@@ -51,7 +55,14 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = ({ serverId }) =
     };
 
     const handleUnlink = async (backendId: string) => {
-        if (!confirm('Are you sure you want to unlink this server?')) return;
+        const isConfirmed = await requestConfirm({
+            title: 'Unlink Server',
+            description: 'Are you sure you want to unlink this server?',
+            confirmText: 'Unlink',
+            cancelText: 'Cancel'
+        });
+        if (!isConfirmed) return;
+
         try {
             await API.unlinkServerFromProxy(serverId, backendId);
             addToast('success', 'Server Unlinked', 'The connection has been removed.');
@@ -62,7 +73,14 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = ({ serverId }) =
     };
 
     const handleInstallViaSuite = async () => {
-        if (!confirm('This will install ViaVersion, ViaBackwards, and ViaRewind on your proxy. Continue?')) return;
+        const isConfirmed = await requestConfirm({
+            title: 'Install Via Suite',
+            description: 'This will install ViaVersion, ViaBackwards, and ViaRewind on your proxy. Continue?',
+            confirmText: 'Install',
+            cancelText: 'Cancel'
+        });
+        if (!isConfirmed) return;
+
         setInstallingSuite(true);
         try {
             await API.installViaSuite(serverId);
@@ -241,7 +259,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = ({ serverId }) =
                     </div>
                     <h3 className="text-xl font-bold text-foreground/40 tracking-tight">Enterprise Forced Hosts</h3>
                     <p className="text-[10px] text-muted-foreground/30 max-w-xl mt-2 leading-relaxed uppercase tracking-widest font-bold">
-                        Native Host Routing Integration (v1.11.3)
+                        Native Host Routing Integration (v{pkg.version})
                     </p>
                 </div>
             </div>
@@ -353,6 +371,13 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = ({ serverId }) =
                     </div>
                 )}
             </AnimatePresence>
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                {...confirmConfig}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+            />
         </div>
     );
 };

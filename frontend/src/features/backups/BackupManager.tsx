@@ -13,6 +13,9 @@ import { useServers } from '@features/servers/context/ServerContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
 import { motion, AnimatePresence } from 'framer-motion';
 import AccessDenied from '@features/auth/components/AccessDenied';
+import { CloudDestinationsWidget } from './components/CloudDestinationsWidget';
+import { useConfirm } from '../ui/hooks/useConfirm';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface BackupManagerProps {
     serverId: string;
@@ -22,12 +25,14 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
     const { addToast } = useToast();
     const { can } = usePermissions();
     const [filter, setFilter] = useState<'ALL' | 'MANUAL' | 'SCHEDULED' | 'LOCKED'>('ALL');
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
     
     // Workflow States
     const [creationState, setCreationState] = useState<'IDLE' | 'CONFIG' | 'CREATING'>('IDLE');
     const [newBackupName, setNewBackupName] = useState('');
     const [progress, setProgress] = useState(0);
     const [restoreId, setRestoreId] = useState<string | null>(null);
+    const [restoreWorldOnly, setRestoreWorldOnly] = useState(false);
     const [isAutoBackupEnabled, setIsAutoBackupEnabled] = useState(false);
     const [worldOnlyBackup, setWorldOnlyBackup] = useState(false); // NEW: world-only toggle state
     const [autoBackupWorldOnly, setAutoBackupWorldOnly] = useState(false); // NEW: automated backup mode preference
@@ -155,7 +160,14 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
             return;
         }
 
-        if (confirm('Are you sure you want to delete this backup? This action cannot be undone.')) {
+        const isConfirmed = await requestConfirm({
+            title: 'Delete Backup',
+            description: 'Are you sure you want to delete this backup? This action cannot be undone.',
+            confirmText: 'Delete Backup',
+            cancelText: 'Cancel'
+        });
+
+        if (isConfirmed) {
             setDeletedBackupIds(prev => new Set(prev).add(id));
             try {
                 await API.deleteBackup(serverId, id);
@@ -185,9 +197,10 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
         addToast('warning', 'Restoration Started', 'Server is stopping for file restoration...');
         
         try {
-            await API.restoreBackup(serverId, restoreId);
-            addToast('success', 'Restoration Complete', 'Server files have been reverted.');
+            await API.restoreBackup(serverId, restoreId, restoreWorldOnly);
+            addToast('success', 'Restoration Complete', `Server ${restoreWorldOnly ? 'world' : 'files'} have been reverted.`);
             setRestoreId(null);
+            setRestoreWorldOnly(false);
         } catch (e) {
             addToast('error', 'Restore Failed', 'Failed to restore backup');
             setRestoreId(null);
@@ -220,31 +233,52 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                             </div>
                             <h2 className="text-xl font-bold">Confirm Restoration</h2>
                         </div>
-                        <p className="text-muted-foreground text-sm mb-6">
-                            Are you sure you want to restore <span className="text-foreground font-mono font-bold">{backups.find(b => b.id === restoreId)?.description || backups.find(b => b.id === restoreId)?.filename || 'Unknown Backup'}</span>? 
-                            <br /><br />
-                            <span className="text-rose-400">Current server files will be overwritten and lost. The server will restart automatically.</span>
-                        </p>
-                        <div className="flex gap-3">
-                            <button 
-                                onClick={() => setRestoreId(null)}
-                                className="flex-1 py-2.5 rounded-lg border border-border hover:bg-secondary transition-colors text-sm font-medium"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                onClick={confirmRestore}
-                                className="flex-1 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition-colors text-sm font-bold flex items-center justify-center gap-2"
-                            >
-                                <RotateCcw size={16} /> Restore Files
-                            </button>
-                        </div>
+                            <p className="text-muted-foreground text-sm mb-6">
+                                Are you sure you want to restore <span className="text-foreground font-mono font-bold">{backups.find(b => b.id === restoreId)?.description || backups.find(b => b.id === restoreId)?.filename || 'Unknown Backup'}</span>? 
+                                <br /><br />
+                                <span className="text-rose-400">
+                                    {restoreWorldOnly 
+                                        ? "Only world data will be reverted. Existing plugins, mods, and configuration will be preserved." 
+                                        : "Current server files will be overwritten and lost. The server will restart automatically."}
+                                </span>
+                            </p>
+
+                            <div className="mb-6 p-4 bg-secondary/20 rounded-xl flex items-center justify-between border border-border/40">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground/80">Selective Recovery</span>
+                                    <span className="text-xs font-bold text-foreground">Restore World Data Only</span>
+                                    <span className="text-[10px] text-muted-foreground italic mt-0.5">Retain Current JARs, Plugins & Configs</span>
+                                </div>
+                                <button 
+                                    onClick={() => setRestoreWorldOnly(!restoreWorldOnly)}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${restoreWorldOnly ? 'bg-primary shadow-[0_0_12px_rgba(var(--primary-rgb),0.3)]' : 'bg-muted'}`}
+                                >
+                                    <span 
+                                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform duration-300 ${restoreWorldOnly ? 'translate-x-6' : 'translate-x-1'}`}
+                                    />
+                                </button>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button 
+                                    onClick={() => { setRestoreId(null); setRestoreWorldOnly(false); }}
+                                    className="flex-1 py-2.5 rounded-lg border border-border hover:bg-secondary transition-colors text-sm font-medium"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={confirmRestore}
+                                    className="flex-1 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition-colors text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-rose-900/20"
+                                >
+                                    <RotateCcw size={16} /> {restoreWorldOnly ? 'Restore World' : 'Full Restore'}
+                                </button>
+                            </div>
                     </motion.div>
                 </div>
             )}
 
             {/* Left Column: Actions & Stats */}
-            <div className="lg:col-span-1 space-y-6">
+            <div className="lg:col-span-1 space-y-6 overflow-y-auto pb-6 pr-2 custom-scrollbar">
                 
                 {/* Creation Card */}
                 <div className="bg-card border border-border rounded-xl p-6 shadow-sm overflow-hidden relative">
@@ -360,9 +394,9 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                     
                     <div className="h-4 w-full bg-secondary rounded-full overflow-hidden flex mb-2">
                         {/* Manual Part */}
-                        <div className="h-full bg-emerald-500/80" style={{ width: '40%' }} title="Manual Backups"></div>
+                        <div className="h-full bg-emerald-500/80" style={{ width: `${Math.min(backups.filter(b => !deletedBackupIds.has(b.id) && b.type === 'Manual').reduce((s, b) => s + (b.size || 0), 0) / (maxStorage * 1024 * 1024 * 1024) * 100, 100)}%` }} title="Manual Backups"></div>
                         {/* Scheduled Part */}
-                        <div className="h-full bg-blue-500/80" style={{ width: '18%' }} title="Scheduled Backups"></div>
+                        <div className="h-full bg-blue-500/80" style={{ width: `${Math.min(backups.filter(b => !deletedBackupIds.has(b.id) && b.type === 'Scheduled').reduce((s, b) => s + (b.size || 0), 0) / (maxStorage * 1024 * 1024 * 1024) * 100, 100)}%` }} title="Scheduled Backups"></div>
                     </div>
                     
                     <div className="flex justify-between text-[10px] text-muted-foreground uppercase tracking-wider">
@@ -466,6 +500,9 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                         </button>
                     </div>
                 </div>
+
+                {/* Cloud Sync Widget */}
+                <CloudDestinationsWidget serverId={serverId} />
             </div>
 
             {/* Right Column: Backup List */}
@@ -583,12 +620,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                         ))}
                     </AnimatePresence>
                     
-                    {loading ? (
-                        <div className="text-center py-20">
-                            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                            <p className="text-muted-foreground">Loading snapshots...</p>
-                        </div>
-                    ) : filteredBackups.length === 0 && (
+                    {!loading && filteredBackups.length === 0 && (
                         <div className="text-center py-16 text-muted-foreground animate-in fade-in zoom-in-95">
                             <ArchiveRestore size={48} className="mx-auto mb-4 opacity-20" />
                             {backups.length === 0 ? (

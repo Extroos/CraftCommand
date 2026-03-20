@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { IServerRunner, RunnerStats } from './IServerRunner';
 import { logger } from '../../../utils/logger';
+import { systemSettingsService } from '../../system/SystemSettingsService';
 
 /**
  * RemoteRunner — Phase 1 (Stabilized)
@@ -180,6 +181,40 @@ export class RemoteRunner extends EventEmitter implements IServerRunner {
 
     isRunning(id: string): boolean {
         return this.runningServers.has(id);
+    }
+
+    async createBackup(id: string, serverDir: string, options: { description?: string, worldOnly?: boolean, nodeId?: string }): Promise<any> {
+        requireBridge();
+        const nodeId = options.nodeId || this.serverNodeMap.get(id);
+        if (!nodeId) throw new Error(`No node assigned to server ${id}`);
+
+        const settings = systemSettingsService.getSettings();
+        const mirror = settings.app.distributedNodes?.mirrorRemoteBackups || false;
+
+        logger.info(`[RemoteRunner] Requesting remote backup for ${id} on node ${nodeId}...`);
+        
+        const response = await _sendToAgent!(nodeId, 'agent:backup:create', {
+            serverId: id,
+            description: options.description,
+            worldOnly: options.worldOnly,
+            mirror
+        }, 120000); // 2 minute timeout for ZIP
+
+        return response.backup;
+    }
+
+    async restoreBackup(id: string, serverDir: string, backupId: string, options: { worldOnly?: boolean, nodeId?: string }): Promise<void> {
+        requireBridge();
+        const nodeId = options.nodeId || this.serverNodeMap.get(id);
+        if (!nodeId) throw new Error(`No node assigned to server ${id}`);
+
+        logger.info(`[RemoteRunner] Requesting remote restore for ${id} (backupId: ${backupId})...`);
+
+        await _sendToAgent!(nodeId, 'agent:backup:restore', {
+            serverId: id,
+            backupId,
+            worldOnly: options.worldOnly
+        }, 120000); // 2 minute timeout
     }
 
     /**

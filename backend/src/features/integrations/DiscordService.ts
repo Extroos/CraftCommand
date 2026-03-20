@@ -117,6 +117,26 @@ export class DiscordService {
                 await this.handleInteraction(interaction);
             });
 
+            this.client.on('messageCreate', async (message: any) => {
+                if (message.author.bot) return;
+
+                const config = systemSettingsService.getSettings().discordBot;
+                if (!config.chatChannel || message.channelId !== config.chatChannel) return;
+
+                const cleanMsg = message.cleanContent.replace(/"/g, '\\"');
+                const servers = getServers();
+
+                for (const server of servers) {
+                    if (processManager.isRunning(server.id)) {
+                        if (server.software === 'Bedrock') {
+                            processManager.sendCommand(server.id, `tellraw @a {"rawtext":[{"text":"§9[Discord]§r §7${message.author.username}§r: ${cleanMsg}"}]}`);
+                        } else {
+                            processManager.sendCommand(server.id, `tellraw @a ["",{"text":"[Discord]","color":"blue"},{"text":" ${message.author.username}: ${cleanMsg}","color":"white"}]`);
+                        }
+                    }
+                }
+            });
+
             // Login with 10s timeout
             await Promise.race([
                 this.client.login(config.token),
@@ -263,6 +283,35 @@ export class DiscordService {
                 );
             }
         });
+
+        // --- CHAT FORWARDING ---
+        addManagedListener(processManager, 'chat', ({ serverId, name, message }) => {
+            const server = getServer(serverId);
+            // Escape markdown characters to avoid Discord formatting issues
+            const escapedName = name.replace(/[_*~|]/g, '\\$&');
+            const escapedMessage = message.replace(/[_*~|]/g, '\\$&');
+            this.sendChatMessage(`**[${server?.name || serverId}]** \`${escapedName}\`: ${escapedMessage}`);
+        });
+    }
+
+    public async sendChatMessage(content: string) {
+        const config = systemSettingsService.getSettings().discordBot;
+        if (!config.enabled || !config.token || !config.chatChannel) return;
+        
+        if (!this.client || !this.initialized) return;
+
+        try {
+            const channel = await Promise.race([
+                this.client.channels.fetch(config.chatChannel),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Channel fetch timeout')), 5000))
+            ]) as any;
+
+            if (channel && channel.isTextBased()) {
+                await channel.send({ content });
+            }
+        } catch (e: any) {
+            logger.error(`[Discord] Failed to send chat message: ${e.message}`);
+        }
     }
 
     public async sendNotification(title: string, description: string, color: number) {

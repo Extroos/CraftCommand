@@ -5,6 +5,7 @@ import { API } from '@core/services/api';
 import { useServers } from '@features/servers/context/ServerContext';
 import { useSystem } from '@features/system/context/SystemContext';
 import { useUser } from '@features/auth/context/UserContext';
+import { useToast } from '@features/ui/Toast';
 import { ServerTemplate, NodeInfo } from '@shared/types';
 import ModpackBrowser from '../ModpackBrowser';
 
@@ -15,7 +16,7 @@ import ProConfig from './ProConfig';
 import { getErrorHelp } from '@core/settings/ErrorHelpMap';
 import { CreateMode, FormData, WizardStep, CreateServerProps, ServerCategory } from './types';
 import { getServerCapabilities } from '@shared/utils/CapabilityUtils';
-import { synthesizeDefaultState, getRecommendedJavaForVersion } from './CreateServerUtils';
+import { synthesizeDefaultState, getRecommendedJavaForVersion, syncFormDataForModpack } from './CreateServerUtils';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
 import AccessDenied from '@features/auth/components/AccessDenied';
 
@@ -23,6 +24,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
     const { refreshServers } = useServers();
     const { settings } = useSystem();
     const { user } = useUser();
+    const { addToast } = useToast();
     const { can } = usePermissions();
     const canCreate = can('server.create');
     const [mode, setMode] = useState<CreateMode>('wizard');
@@ -93,18 +95,18 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     if (isDistributedEnabled) {
                         try {
                             const [t, n] = await Promise.all([
-                                API.getTemplates(token),
+                                API.getTemplates(),
                                 API.getNodes()
                             ]);
                             setTemplates(t);
                             setAvailableNodes(n.nodes || []);
                         } catch (err) {
                             console.error('Failed to load nodes, falling back to templates only', err);
-                            const t = await API.getTemplates(token);
+                            const t = await API.getTemplates();
                             setTemplates(t);
                         }
                     } else {
-                        const t = await API.getTemplates(token);
+                        const t = await API.getTemplates();
                         setTemplates(t);
                         setAvailableNodes([]);
                     }
@@ -137,7 +139,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
         if (!formData.name || !formData.eula) return;
         
         if (!canCreate) {
-            alert('Access Denied: You do not have permission to create servers.');
+            addToast('error', 'Access Denied', 'You do not have permission to create servers.');
             return;
         }
 
@@ -184,43 +186,57 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         forwardingMode: formData.forwardingMode,
                         secret: formData.proxySecret
                     }
-                } : undefined
+                } : undefined,
+                modpackId: selectedModpack?.id,
+                modpackTitle: selectedModpack?.title,
+                modpackIcon: selectedModpack?.icon_url,
+                modpackAuthor: selectedModpack?.author,
+                modpackType: selectedModpack?.project_type
             });
 
             // 2. If template is used, install it NOW before starting the server
             if (formData.templateId) {
-                await API.installTemplate(token!, server.id, formData.templateId, { customUrl: formData.modpackUrl });
+                await API.installTemplate(server.id, formData.templateId, { customUrl: formData.modpackUrl });
             }
             else {
                 // Fallback / Pro Mode Manual Install
                 const installOpts = { version: formData.version, build: formData.loaderBuild };
                 
-                switch (formData.software) {
-                    case 'Paper': 
-                        await API.installServer(server.id, formData.usePurpur ? 'purpur' : 'paper', installOpts); 
-                        break;
-                    case 'Vanilla': await API.installServer(server.id, 'vanilla', installOpts); break;
-                    case 'Fabric': await API.installServer(server.id, 'fabric', installOpts); break;
-                    case 'Spigot': await API.installServer(server.id, 'spigot', installOpts); break;
-                    case 'NeoForge': await API.installServer(server.id, 'neoforge', installOpts); break;
-                    case 'Forge': 
-                        let localModpack = null;
-                        if (uploadedFileData && useModpack) {
-                                const file = new File([uploadedFileData.blob], uploadedFileData.name);
-                                await API.uploadFile(server.id, file);
-                                localModpack = uploadedFileData.name;
-                        }
-                        await API.installServer(server.id, 'forge', { ...installOpts, localModpack });
-                        break;
-                    case 'Modpack':
-                        await API.installServer(server.id, 'modpack', { url: formData.modpackUrl, version: formData.version });
-                        break;
-                    case 'Bedrock':
-                        await API.installServer(server.id, 'bedrock', { version: formData.version });
-                        break;
-                    case 'Velocity':
-                        await API.installServer(server.id, 'velocity', { version: formData.version });
-                        break;
+                // STEP 1: If a modpackUrl is set (from Modrinth browser), install the mod/modpack FIRST
+                // This downloads the actual mod .jar files into the mods/ folder
+                if (formData.modpackUrl) {
+                    await API.installServer(server.id, 'modpack', { url: formData.modpackUrl, version: formData.version });
+                }
+
+                // STEP 2: Install the base server software (Fabric/Forge/etc.)
+                // When modpackUrl was set above, the backend's installModpackFromZip already installs
+                // the loader for single mods. For .mrpack packs, it also installs the loader.
+                // So we skip the redundant base install if modpackUrl was handled.
+                if (!formData.modpackUrl) {
+                    switch (formData.software) {
+                        case 'Paper': 
+                            await API.installServer(server.id, formData.usePurpur ? 'purpur' : 'paper', installOpts); 
+                            break;
+                        case 'Vanilla': await API.installServer(server.id, 'vanilla', installOpts); break;
+                        case 'Fabric': await API.installServer(server.id, 'fabric', installOpts); break;
+                        case 'Spigot': await API.installServer(server.id, 'spigot', installOpts); break;
+                        case 'NeoForge': await API.installServer(server.id, 'neoforge', installOpts); break;
+                        case 'Forge': 
+                            let localModpack = null;
+                            if (uploadedFileData && useModpack) {
+                                    const file = new File([uploadedFileData.blob], uploadedFileData.name);
+                                    await API.uploadFile(server.id, file);
+                                    localModpack = uploadedFileData.name;
+                            }
+                            await API.installServer(server.id, 'forge', { ...installOpts, localModpack });
+                            break;
+                        case 'Bedrock':
+                            await API.installServer(server.id, 'bedrock', { version: formData.version });
+                            break;
+                        case 'Velocity':
+                            await API.installServer(server.id, 'velocity', { version: formData.version });
+                            break;
+                    }
                 }
             }
 
@@ -236,13 +252,13 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
             const msg = e.response?.data?.error || e.message || 'Unknown error';
             
             if (msg.includes('DNS Resolution failed')) {
-                alert(`Deployment Failed: DNS Issues Detected\n\n${msg}\n\nTIP: Check your internet connection or manually upload the bedrock_server binary via the Files tab after creation if automatic download persists.`);
+                addToast('error', 'Deployment Failed', `DNS Issues Detected. TIP: Check your internet connection or manually upload the bedrock_server binary via the Files tab after creation if automatic download persists.`);
             } else {
                 const help = getErrorHelp(e.code);
                 if (help) {
-                    alert(`Error: ${help.title}\n${help.description}\n\nSee: ${help.docsUrl || 'Wiki'}`);
+                    addToast('error', help.title, `${help.description}. See: ${help.docsUrl || 'Wiki'}`);
                 } else {
-                    alert('Deployment failed: ' + msg);
+                    addToast('error', 'Deployment failed', msg);
                 }
             }
         }
@@ -630,20 +646,9 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         {/* Modpack Browser */}
                         {formData.software === 'Modpack' && (
                             <div className="bg-card/40 border border-border p-1 rounded-lg">
-                                <ModpackBrowser onSelect={(p) => {
+                                <ModpackBrowser onSelect={(p, loader) => {
                                     setSelectedModpack(p);
-                                    
-                                    const nextVersion = (p.game_versions && p.game_versions.length > 0) 
-                                        ? p.game_versions[p.game_versions.length - 1] 
-                                        : formData.version;
-
-                                    setFormData(prev => ({
-                                        ...prev, 
-                                        name: p.title, 
-                                        modpackUrl: `modrinth:${p.id}`,
-                                        version: nextVersion,
-                                        javaVersion: getRecommendedJavaForVersion(nextVersion, prev.software) as any
-                                    }));
+                                    setFormData(prev => syncFormDataForModpack(p, loader, prev, bedrockVersions));
                                 }} />
                             </div>
                         )}

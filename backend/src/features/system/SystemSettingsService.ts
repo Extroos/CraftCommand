@@ -15,6 +15,7 @@ export interface SystemSettings {
         guildId: string;
         commandRoles: string[]; // Role IDs allowed to use commands
         notificationChannel: string; // Channel ID for server events
+        chatChannel: string; // Channel ID for chat bridge
     };
     app: {
         theme: 'dark' | 'light' | 'system';
@@ -37,6 +38,8 @@ export interface SystemSettings {
         dockerEnabled?: boolean;
         distributedNodes?: {
             enabled: boolean;
+            nodeHeartbeatThresholdMs?: number; // threshold in ms
+            mirrorRemoteBackups?: boolean; // toggle for backup mirroring
         };
         autoHealing?: boolean;
         autoHealingV3?: {
@@ -89,7 +92,8 @@ class SystemSettingsService extends EventEmitter {
                         clientId: '',
                         guildId: '',
                         commandRoles: [],
-                        notificationChannel: ''
+                        notificationChannel: '',
+                        chatChannel: ''
                     },
                     app: {
                         theme: 'dark',
@@ -99,7 +103,11 @@ class SystemSettingsService extends EventEmitter {
                         https: { enabled: false, keyPath: '', certPath: '' },
                         dockerEnabled: false,
                         storageProvider: 'json',
-                        distributedNodes: { enabled: false },
+                        distributedNodes: { 
+                            enabled: false,
+                            nodeHeartbeatThresholdMs: 60000, 
+                            mirrorRemoteBackups: false 
+                        },
                         autoHealing: true,
                         autoHealingV3: {
                             driftDetectionEnabled: true,
@@ -124,7 +132,18 @@ class SystemSettingsService extends EventEmitter {
                     loaded.app.https.mode = 'native';
                 }
                 if (loaded.app.distributedNodes === undefined) {
-                    loaded.app.distributedNodes = { enabled: false };
+                    loaded.app.distributedNodes = { 
+                        enabled: false, 
+                        nodeHeartbeatThresholdMs: 60000,
+                        mirrorRemoteBackups: false
+                    };
+                } else {
+                    if (loaded.app.distributedNodes.nodeHeartbeatThresholdMs === undefined) {
+                        loaded.app.distributedNodes.nodeHeartbeatThresholdMs = 60000;
+                    }
+                    if (loaded.app.distributedNodes.mirrorRemoteBackups === undefined) {
+                        loaded.app.distributedNodes.mirrorRemoteBackups = false;
+                    }
                 }
                 if (loaded.app.autoHealing === undefined) {
                     loaded.app.autoHealing = true;
@@ -146,7 +165,7 @@ class SystemSettingsService extends EventEmitter {
         } catch (e) {
             console.error('Failed to load settings.json, using defaults', e);
             return {
-                discordBot: { enabled: false, token: '', clientId: '', guildId: '', commandRoles: [], notificationChannel: '' },
+                discordBot: { enabled: false, token: '', clientId: '', guildId: '', commandRoles: [], notificationChannel: '', chatChannel: '' },
                 app: { theme: 'dark', autoUpdate: false, hostMode: true }
             } as any;
         }

@@ -17,6 +17,7 @@ export class AuditRepository implements StorageProvider<AuditLog> {
     create(item: AuditLog) { return this.provider.create(item); }
     update(id: string, updates: Partial<AuditLog>) { return this.provider.update(id, updates); }
     delete(id: string) { return this.provider.delete(id); }
+    saveAll(items: AuditLog[]) { return this.provider.saveAll(items); }
 
     public async add(entry: AuditLog) {
         // We use create for consistency. 
@@ -28,10 +29,8 @@ export class AuditRepository implements StorageProvider<AuditLog> {
         const all = this.findAll();
         if (all.length > 5000) {
             const sorted = all.sort((a, b) => b.timestamp - a.timestamp);
-            const toDelete = sorted.slice(5000);
-            for (const item of toDelete) {
-                this.delete(item.id);
-            }
+            const toKeep = sorted.slice(0, 5000);
+            this.saveAll(toKeep);
         }
     }
 

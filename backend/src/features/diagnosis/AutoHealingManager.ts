@@ -89,9 +89,8 @@ export class AutoHealingManager {
                 case 'FIX_JVM_ARGS':
                     await DiagnosisActions.fixJvmArgs(server);
                     break;
-                case 'REMOVE_MOD':
-                    await DiagnosisActions.removeMod(server, fsManager, payload.name);
-                    break;
+                // NOTE: REMOVE_MOD has been removed. CraftCommands NEVER deletes user mods.
+                // Incompatible mod issues are handled via guidance and INSTALL_DEPENDENCY only.
                 case 'INSTALL_DEPENDENCY':
                     await DiagnosisActions.installDependency(server, payload.name);
                     break;
@@ -114,7 +113,7 @@ export class AutoHealingManager {
             const cascadingAdvice = this.getCascadingAdvice(actionType);
             await notificationService.create(
                 'ALL', // Notify all admins
-                'INFO',
+                'SUCCESS',
                 'Auto-Healing Applied',
                 `System applied fix: ${actionType.replace(/_/g, ' ')} to server ${server.name || serverId}.${cascadingAdvice ? ' ' + cascadingAdvice : ''}`,
                 { serverId, actionType, timestamp: Date.now() },

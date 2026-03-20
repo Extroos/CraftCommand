@@ -1,6 +1,7 @@
 import { Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { userRepository } from '../../storage/UserRepository';
+import { authService } from '../../features/auth/AuthService';
 
 export const socketAuthMiddleware = async (socket: Socket, next: (err?: any) => void) => {
     // Debug namespace
@@ -38,6 +39,12 @@ export const socketAuthMiddleware = async (socket: Socket, next: (err?: any) => 
         // Attach user data to socket
         (socket as any).userId = userId;
         (socket as any).user = user;
+
+        // Verify Session (Phase 12)
+        if (decoded.jti) {
+            const isValid = await authService.isSessionValid(decoded.jti);
+            if (!isValid) return next(new Error('Authentication Error: Session Revoked or Expired'));
+        }
         
         next();
     } catch (e) {

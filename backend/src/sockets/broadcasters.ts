@@ -29,6 +29,7 @@ export const registerBroadcasters = (io: Server) => {
     });
     processManager.on('stats', (data) => {
         io.to(`server:${data.id}`).emit('stats', data);
+        io.to('server:global').emit('stats', data);
     });
     processManager.on('player:join', (data) => {
         io.to(`server:${data.serverId || data.id}`).emit('player:join', data);
@@ -42,12 +43,13 @@ export const registerBroadcasters = (io: Server) => {
     installerService.removeAllListeners('status');
     installerService.on('progress', (data) => io.emit('install:progress', data));
     installerService.on('status', (data) => {
-        io.emit('install:status', { message: data });
+        const payload = typeof data === 'string' ? { message: data } : data;
+        io.emit('install:status', payload);
         // Pipe installer status to logs for detailed feedback in ProgressOverlay
-        // If data contains a serverId (from onProgress), we use it, otherwise 'java-install'
-        const serverId = (data as any).serverId || 'java-install';
-        io.emit('log', { id: serverId, line: `[INSTALLER] ${data}` });
+        const serverId = (payload as any).serverId || 'java-install';
+        io.emit('log', { id: serverId, line: `[INSTALLER] ${(payload as any).message || payload}` });
     });
+    installerService.on('complete', (data) => io.emit('server:install:complete', data));
 
     // 3. Backup Service (Global — could be scoped later)
     backupService.removeAllListeners('progress');
@@ -64,13 +66,18 @@ export const registerBroadcasters = (io: Server) => {
     javaManager.removeAllListeners('progress');
     javaManager.removeAllListeners('error');
     javaManager.on('status', (data: any) => {
-        io.emit('install:status', data); 
+        const payload = typeof data === 'string' ? { message: data } : data;
+        io.emit('install:status', payload); 
     });
     javaManager.on('progress', (data: any) => {
         io.emit('install:progress', data);
     });
     javaManager.on('error', (data: any) => {
-        io.emit('install:error', data);
+        const payload = typeof data === 'string' ? { message: data } : data;
+        io.emit('install:error', payload);
+    });
+    javaManager.on('complete', (data: any) => {
+        io.emit('server:install:complete', data);
     });
 
     // 6. Node Registry (Global — status updates)

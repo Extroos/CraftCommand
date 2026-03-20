@@ -15,6 +15,7 @@ class ProcessManager extends EventEmitter {
     private onlineTimes: Map<string, number> = new Map();
     private statusCache: Map<string, any> = new Map();
     private stoppingServers: Set<string> = new Set();
+    private gracefulShutdowns: Map<string, boolean> = new Map();
     private updatingStatuses: Set<string> = new Set();
     private startupLocks: Set<string> = new Set();
     private players: Map<string, Set<string>> = new Map();
@@ -26,8 +27,16 @@ class ProcessManager extends EventEmitter {
 
     constructor() {
         super();
+        this.initializeRunners();
         this.startStatsLoop();
         this.startSyncLoop();
+    }
+
+    private async initializeRunners() {
+        const dockerRunner = runnerFactory.getRunner('docker') as any;
+        if (dockerRunner.syncActiveContainers) {
+            await dockerRunner.syncActiveContainers();
+        }
     }
 
     private startSyncLoop() {
@@ -59,6 +68,16 @@ class ProcessManager extends EventEmitter {
                         const isPortBound = await NetUtils.checkPort(server.port);
                         
                         if (isPortBound) {
+                            // --- DOCKER RECOVERY (v1.12.0) ---
+                            // If not managed but port is bound, check if Docker already has this container
+                            const dockerRunner = runnerFactory.getRunner('docker');
+                            if (dockerRunner.isRunning(id)) {
+                                logger.info(`[ProcessManager:${id}] Recovery: Re-binding to existing Docker container.`);
+                                this.attachRunnerListeners(id, dockerRunner);
+                                this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE });
+                                continue;
+                            }
+
                             if (currentStatus !== ServerStatus.UNMANAGED && currentStatus !== ServerStatus.STARTING && currentStatus !== ServerStatus.RESTARTING) {
                                 logger.warn(`[ProcessManager:${id}] Unmanaged process detected on port ${server.port}.`);
                                 this.updateCachedStatus(id, { 
@@ -147,7 +166,8 @@ class ProcessManager extends EventEmitter {
 
     async startServer(id: string, runCommand: string, cwd: string, env: any = {}) {
         if (this.activeRunners.has(id)) {
-            throw new Error(`Server ${id} is already running.`);
+            logger.warn(`[ProcessManager:${id}] Start requested but runner is already active. (Idempotency)`);
+            return;
         }
         
         // --- PORT PROTECTION ENGINE ---
@@ -168,31 +188,7 @@ class ProcessManager extends EventEmitter {
         this.startupLocks.add(id);
         logger.info(`[ProcessManager] Initializing server ${id} using ${engine} engine.`);
 
-        // Setup Event Handlers for this specific server/runner combo
-        const logHandler = (data: { id: string, line: string, type: 'stdout' | 'stderr' }) => {
-            if (data.id !== id) return;
-            this.handleServerLog(id, data.line, data.type);
-        };
-
-        const closeHandler = (data: { id: string, code: number }) => {
-            if (data.id !== id) return;
-            this.cleanupRunner(id); // Comprehensive cleanup
-            this.handleServerClose(id, data.code);
-        };
-
-        // Store listeners for explicit cleanup if needed
-        this.runnerListeners.set(id, { log: logHandler, close: closeHandler });
-
-        this.statusCache.set(id, { online: false, status: ServerStatus.STARTING, players: 0, playerList: [], uptime: 0, tps: "0.00" });
-        this.logHistory.set(id, []);
-        this.activityHistory.set(id, []);
-        this.players.set(id, new Set());
-        this.activeRunners.set(id, runner);
-        this.startTimes.set(id, Date.now());
-
-        // Attach listeners BEFORE starting to catch early logs
-        runner.on('log', logHandler);
-        runner.on('close', closeHandler);
+        this.attachRunnerListeners(id, runner);
 
         try {
             await runner.start(id, runCommand, cwd, env);
@@ -210,14 +206,43 @@ class ProcessManager extends EventEmitter {
 
         this.maybeEmitStatus(id, ServerStatus.STARTING);
 
-        // Startup Timeout Watchdog
-        setTimeout(() => {
-            if (this.startupLocks.has(id)) {
-                logger.error(`[ProcessManager] ${id} Startup timed out.`);
-                this.startupLocks.delete(id);
-                this.maybeEmitStatus(id, ServerStatus.OFFLINE);
-            }
-        }, 180000);
+    }
+
+    private attachRunnerListeners(id: string, runner: IServerRunner, initialStatus: ServerStatus = ServerStatus.STARTING) {
+        // Setup Event Handlers for this specific server/runner combo
+        const logHandler = (data: { id: string, line: string, type: 'stdout' | 'stderr' }) => {
+            if (data.id !== id) return;
+            this.handleServerLog(id, data.line, data.type);
+        };
+
+        const closeHandler = (data: { id: string, code: number }) => {
+            if (data.id !== id) return;
+            this.cleanupRunner(id); // Comprehensive cleanup
+            this.handleServerClose(id, data.code);
+        };
+
+        // Store listeners for explicit cleanup if needed
+        this.runnerListeners.set(id, { log: logHandler, close: closeHandler });
+
+        this.statusCache.set(id, { 
+            online: initialStatus === ServerStatus.ONLINE, 
+            status: initialStatus, 
+            players: 0, 
+            playerList: [], 
+            uptime: 0, 
+            tps: "0.00" 
+        });
+        this.logHistory.set(id, this.logHistory.get(id) || []);
+        this.activityHistory.set(id, this.activityHistory.get(id) || []);
+        this.players.set(id, this.players.get(id) || new Set());
+        this.activeRunners.set(id, runner);
+        if (!this.startTimes.has(id)) {
+            this.startTimes.set(id, Date.now());
+        }
+
+        // Attach listeners
+        runner.on('log', logHandler);
+        runner.on('close', closeHandler);
     }
 
     private handleServerLog(id: string, line: string, type: 'stdout' | 'stderr') {
@@ -300,6 +325,14 @@ class ProcessManager extends EventEmitter {
                 message: `${cmdMatch[1]} used /${cmdMatch[2]}` 
             });
         }
+
+        // 4. Chat Messages
+        // Matches standard Java format: [hh:mm:ss] [Server thread/INFO]: <Player> message
+        const chatMatch = line.match(/(?:\[.*\]:\s+|:\s+|^)<([\w\d_]{3,16})>\s+(.*)/);
+        if (chatMatch) {
+            this.emit('chat', { serverId: id, name: chatMatch[1], message: chatMatch[2] });
+            this.addActivity(id, { type: 'chat', player: chatMatch[1], message: `${chatMatch[1]}: ${chatMatch[2]}` });
+        }
     }
 
     private addActivity(id: string, activity: any) {
@@ -365,25 +398,87 @@ class ProcessManager extends EventEmitter {
             await runner.stop(id, false);
 
             // Bedrock-Specific Smart Shutdown Orchestration
+            // Bedrock-Specific Smart Shutdown Orchestration (Phase 12: Optimized Polling)
             const { getServer } = require('../servers/ServerService');
             const server = getServer(id);
             if (server?.software === 'Bedrock' && runner.kill) {
-                // Wait 10s for stdin 'stop' to work
-                setTimeout(async () => {
-                    if (this.activeRunners.get(id) === runner) {
-                        logger.info(`[ProcessManager] ${id} (Bedrock) did not stop via stdin. Escalating to SIGINT...`);
-                        await runner.kill?.(id, 'SIGINT');
-
-                        // Wait another 10s for SIGINT
-                        setTimeout(async () => {
-                            if (this.activeRunners.get(id) === runner) {
-                                logger.info(`[ProcessManager] ${id} (Bedrock) still alive after SIGINT. Force killing...`);
-                                await runner.kill?.(id, 'SIGKILL');
-                            }
-                        }, 10000);
+                // Poll for up to 10s for stdin 'stop' to work
+                const pollAndEscalate = async (stage: 'STDIN' | 'SIGINT', timeoutMs: number, nextSignal: string) => {
+                    const start = Date.now();
+                    while (Date.now() - start < timeoutMs) {
+                        if (this.activeRunners.get(id) !== runner) return true; // Already stopped
+                        await new Promise(r => setTimeout(r, 500));
                     }
-                }, 10000);
+                    
+                    // Still alive after timeout, escalate
+                    if (this.activeRunners.get(id) === runner) {
+                        logger.info(`[ProcessManager] ${id} (Bedrock) did not stop via ${stage}. Escalating to ${nextSignal}...`);
+                        await runner.kill?.(id, nextSignal as any);
+                        return false;
+                    }
+                    return true;
+                };
+
+                // Create a self-invoking async block to handle orchestration without blocking the main stopServer call context
+                (async () => {
+                    const stoppedAfterStdin = await pollAndEscalate('STDIN', 10000, 'SIGINT');
+                    if (!stoppedAfterStdin) {
+                        const stoppedAfterSigint = await pollAndEscalate('SIGINT', 10000, 'SIGKILL');
+                        if (!stoppedAfterSigint) {
+                            logger.warn(`[ProcessManager] ${id} (Bedrock) required SIGKILL to terminate.`);
+                        }
+                    }
+                })();
             }
+        }
+    }
+
+    async gracefulStop(id: string, delaySeconds: number = 30) {
+        if (!this.isRunning(id)) return;
+        if (this.gracefulShutdowns.has(id)) return;
+
+        logger.info(`[ProcessManager:${id}] Initiating graceful stop with ${delaySeconds}s delay.`);
+        this.gracefulShutdowns.set(id, true);
+
+        // Broadcast warnings
+        const intervals = [delaySeconds, 10, 5, 3, 2, 1];
+        const uniqueIntervals = [...new Set(intervals.filter(s => s > 0 && s <= delaySeconds))].sort((a, b) => b - a);
+
+        for (const seconds of uniqueIntervals) {
+            // Check if cancelled
+            if (!this.gracefulShutdowns.get(id)) {
+                logger.info(`[ProcessManager:${id}] Graceful stop cancelled.`);
+                this.sendCommand(id, 'say §a⚠ Graceful shutdown has been CANCELLED!');
+                return;
+            }
+
+            const index = uniqueIntervals.indexOf(seconds);
+            const nextSeconds = uniqueIntervals[index + 1] || 0;
+            const waitTime = (seconds - nextSeconds) * 1000;
+
+            this.sendCommand(id, `say §c⚠ Server stopping in ${seconds} seconds!`);
+            
+            if (waitTime > 0) {
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+
+            // Check if server was already stopped manually during wait
+            if (!this.isRunning(id)) {
+                this.gracefulShutdowns.delete(id);
+                return;
+            }
+        }
+
+        if (this.gracefulShutdowns.get(id)) {
+            this.sendCommand(id, 'say §c⚠ Server stopping NOW!');
+            await this.stopServer(id);
+        }
+        this.gracefulShutdowns.delete(id);
+    }
+
+    cancelGracefulStop(id: string) {
+        if (this.gracefulShutdowns.has(id)) {
+            this.gracefulShutdowns.set(id, false);
         }
     }
 
@@ -410,11 +505,55 @@ class ProcessManager extends EventEmitter {
 
     sendCommand(id: string, command: string) {
         const runner = this.activeRunners.get(id);
-        if (runner) runner.sendCommand(id, command);
+        if (!runner) return;
+
+        const { getServer } = require('../servers/ServerService');
+        const server = getServer(id);
+
+        if (server?.software === 'Bedrock') {
+            // Bedrock console handles rapid input poorly. 
+            // We add a tiny buffer delay to ensure reliability of injection.
+            setTimeout(() => {
+                runner.sendCommand(id, command);
+            }, 50);
+        } else {
+            runner.sendCommand(id, command);
+        }
     }
 
     isRunning(id: string): boolean {
         return this.activeRunners.has(id);
+    }
+
+    async createBackup(id: string, serverDir: string, description?: string, worldOnly?: boolean) {
+        const { getServer } = require('../servers/ServerService');
+        const server = getServer(id);
+        if (!server) throw new Error('Server not found');
+
+        const engine = server.executionEngine || 'native';
+        const runner = this.activeRunners.get(id) || runnerFactory.getRunner(engine);
+
+        return runner.createBackup(id, serverDir, { 
+            description, 
+            worldOnly, 
+            nodeId: server.nodeId 
+        });
+    }
+
+    async restoreBackup(id: string, serverDir: string, backupId: string, options: { scope?: 'full' | 'world' | 'configs' | 'plugins', worldOnly?: boolean } = {}) {
+        const { getServer } = require('../servers/ServerService');
+        const server = getServer(id);
+        if (!server) throw new Error('Server not found');
+
+        const engine = server.executionEngine || 'native';
+        const runner = this.activeRunners.get(id) || runnerFactory.getRunner(engine);
+
+        const scope = options.scope || (options.worldOnly ? 'world' : 'full');
+
+        return runner.restoreBackup(id, serverDir, backupId, { 
+            scope, 
+            nodeId: server.nodeId 
+        });
     }
 
     getLogs(id: string): string[] {

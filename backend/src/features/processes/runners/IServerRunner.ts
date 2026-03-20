@@ -15,4 +15,6 @@ export interface IServerRunner extends EventEmitter {
     sendCommand(id: string, command: string): Promise<void>;
     getStats(id: string): Promise<RunnerStats>;
     isRunning(id: string): boolean;
+    createBackup(id: string, serverDir: string, options: { description?: string, worldOnly?: boolean, nodeId?: string }): Promise<any>;
+    restoreBackup(id: string, serverDir: string, backupId: string, options: { scope?: 'full' | 'world' | 'configs' | 'plugins', worldOnly?: boolean, nodeId?: string }): Promise<void>;
 }

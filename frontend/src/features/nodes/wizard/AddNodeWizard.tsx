@@ -4,6 +4,7 @@ import { Server, X } from 'lucide-react';
 import { StepModeSelection } from './StepModeSelection';
 import { StepGetAgent } from './StepGetAgent';
 import { StepVerify } from './StepVerify';
+import { useToast } from '../../ui/Toast';
 
 interface Props {
     onClose: () => void;
@@ -13,6 +14,7 @@ interface Props {
 export type WizardMode = 'lan' | 'internet';
 
 export const AddNodeWizard: React.FC<Props> = ({ onClose, onComplete }) => {
+    const { addToast } = useToast();
     const [step, setStep] = useState(1);
     const [mode, setMode] = useState<WizardMode | null>(null);
     const [nodeId, setNodeId] = useState<string | null>(null);
@@ -76,7 +78,7 @@ export const AddNodeWizard: React.FC<Props> = ({ onClose, onComplete }) => {
                                     key="step2" 
                                     mode={mode}
                                     onBack={() => setStep(1)}
-                                    onError={(err) => alert(err)} // TODO: toast
+                                    onError={(err) => addToast('error', 'Node Error', err)}
                                     onNext={(id) => {
                                         setNodeId(id);
                                         setStep(3);

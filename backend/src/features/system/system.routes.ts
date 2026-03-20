@@ -8,6 +8,7 @@ import { auditService } from './AuditService';
 import { verifyToken, requireRole, requirePermission } from '../../middleware/authMiddleware';
 import { installerService } from '../installer/InstallerService';
 import { autoHealingService } from '../servers/AutoHealingService';
+import { migrationService } from './MigrationService';
 
 const router = express.Router();
 
@@ -184,6 +185,25 @@ router.get('/docker/status', verifyToken, async (req, res) => {
         res.json({ online: true, version: stdout.trim() });
     } catch (e: any) {
         res.json({ online: false, error: 'Docker Daemon not reachable' });
+    }
+});
+
+// Storage Migration (Strict)
+router.post('/storage/migrate', verifyToken, requireRole(['OWNER']), async (req, res) => {
+    const { target } = req.body;
+    const actorId = (req as any).user.id;
+    try {
+        if (target === 'sqlite') {
+            const result = await migrationService.migrateToSqlite(actorId);
+            res.json(result);
+        } else if (target === 'json') {
+            const result = await migrationService.migrateToJson(actorId);
+            res.json(result);
+        } else {
+            res.status(400).json({ error: 'Invalid migration target' });
+        }
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
 });
 

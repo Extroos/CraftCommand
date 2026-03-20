@@ -1,13 +1,16 @@
-import { spawn, exec } from 'child_process';
+import { spawn, exec, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { IServerRunner, RunnerStats } from './IServerRunner';
 import util from 'util';
 import os from 'os';
+import { Writable } from 'stream';
+import { backupService } from '../../backups/BackupService';
 
 const execAsync = util.promisify(exec);
 
 export class DockerRunner extends EventEmitter implements IServerRunner {
     private containers: Map<string, string> = new Map(); // serverId -> containerName/Id
+    private stdinStreams: Map<string, Writable> = new Map(); // serverId -> stdin
     private cpuHistory: Map<string, number> = new Map(); // serverId -> lastCpuValue
     private readonly CPU_CORES = os.cpus().length;
     private readonly SMOOTHING_FACTOR = 0.3; // EMA factor (lower = smoother)
@@ -24,6 +27,7 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
 
         const image = env.dockerImage || env.DOCKER_IMAGE || 'eclipse-temurin:17-jre'; 
         console.log(`[DockerRunner] Pulling image ${image} (if missing)...`);
+        this.emit('log', { id, line: `[DockerRunner] Pulling/Verifying image ${image}...`, type: 'stdout' });
         
         try {
             await execAsync(`docker pull ${image}`);
@@ -40,9 +44,39 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
 
         // 3. Build Docker Run Command
         const port = env.SERVER_PORT || '25565';
+        const ram = env.SERVER_RAM || '2';
+        const cpus = env.DOCKER_CPUS || '0.000'; // 0.000 = unlimited
         
-        // Use -i for stdin support without -t (prevent TTY issues in logs)
-        const dockerCmd = `docker run --name ${containerName} -v "${cwd}":/data -w /data -p ${port}:${port} -i ${image} ${runCommand}`;
+        // Protocol Detection
+        let protocol = '';
+        if (env.SERVER_SOFTWARE === 'Bedrock' || runCommand.includes('bedrock_server')) {
+            protocol = '/udp';
+        }
+
+        let dockerCmd = `docker run --name ${containerName} -v "${cwd}":/data -w /data -p ${port}:${port}${protocol} -i`;
+        
+        // 4. Resource Isolation (Cgroups)
+        dockerCmd += ` --memory ${ram}g`;
+        if (parseFloat(cpus.toString()) > 0) {
+            dockerCmd += ` --cpus ${cpus}`;
+        }
+
+        // 5. Native Health Check (Port-based)
+        // Note: Using nc -z for TCP, but Bedrock UDP might need a different approach 
+        // We'll stick to a generic one that works for most if nc is installed, else fail silently
+        if (protocol === '') {
+             dockerCmd += ` --health-cmd "nc -z localhost ${port} || exit 1" --health-interval 30s --health-retries 3`;
+        }
+
+        // 6. Multi-Port Support
+        if (env.EXTRA_PORTS) {
+            const extra = env.EXTRA_PORTS.split(',');
+            for (const p of extra) {
+                if (p.trim()) dockerCmd += ` -p ${p.trim()}`;
+            }
+        }
+
+        dockerCmd += ` ${image} ${runCommand}`;
 
         const child = spawn(dockerCmd, {
             shell: true,
@@ -50,10 +84,10 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
         });
 
         this.containers.set(id, containerName);
+        if (child.stdin) {
+            this.stdinStreams.set(id, child.stdin);
+        }
         
-        // Store child to allow direct stdin writing if needed
-        // (Will be attached to a more complex session manager in Phase 2)
-
         let stdoutBuffer = '';
         child.stdout?.on('data', (data) => {
             stdoutBuffer += data.toString();
@@ -84,9 +118,35 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
             if (stderrBuffer) this.emit('log', { id, line: stderrBuffer.replace(/\r$/, ''), type: 'stderr' });
 
             this.containers.delete(id);
+            this.stdinStreams.delete(id);
             this.cpuHistory.delete(id);
             this.emit('close', { id, code });
         });
+    }
+
+    /**
+     * Recovery logic: Scan for existing containers that match the CraftCommand pattern
+     * and re-register them if they are still running.
+     */
+    async syncActiveContainers(): Promise<void> {
+        try {
+            const { stdout } = await execAsync('docker ps --filter "name=craftcommand-server-" --format "{{.ID}},{{.Names}}"');
+            const lines = stdout.split('\n').filter(l => l.trim() !== '');
+            
+            for (const line of lines) {
+                let [containerId, name] = line.split(',');
+                // Format: craftcommand-server-SERVER_ID
+                // Docker names occasionally have a leading slash
+                name = name.replace(/^\//, '');
+                const serverId = name.replace('craftcommand-server-', '');
+                if (serverId && !this.containers.has(serverId)) {
+                    console.log(`[DockerRunner] Re-mapped existing container ${name} to server ${serverId}`);
+                    this.containers.set(serverId, name);
+                }
+            }
+        } catch (e) {
+            console.warn(`[DockerRunner] Failed to sync active containers: ${e.message}`);
+        }
     }
 
     async stop(id: string, force: boolean = false): Promise<void> {
@@ -120,18 +180,19 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
     }
 
     async sendCommand(id: string, command: string): Promise<void> {
+        const stdin = this.stdinStreams.get(id);
+        if (stdin) {
+            stdin.write(command + '\n');
+            return;
+        }
+
         const containerName = this.containers.get(id);
         if (containerName) {
             try {
-                // More robust way to pipe into interactive container
-                // We use sh -c to ensure the command is sent correctly to the process's stdin
+                // Persistent STDIN absent (e.g. after backend restart), fallback to exec injection
                 await execAsync(`echo "${command}" | docker exec -i ${containerName} sh -c "cat >> /proc/1/fd/0"`);
             } catch (e) {
-                console.warn(`[DockerRunner:${id}] Direct FD injection failed, trying standard exec: ${e.message}`);
-                // Fallback for non-sh images
-                await execAsync(`docker exec -i ${containerName} ${command}`).catch(err => {
-                    console.error(`[DockerRunner:${id}] SendCommand failed completely.`);
-                });
+                console.warn(`[DockerRunner:${id}] SendCommand fallback failed: ${e.message}`);
             }
         }
     }
@@ -182,5 +243,13 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
 
     isRunning(id: string): boolean {
         return this.containers.has(id);
+    }
+
+    async createBackup(id: string, serverDir: string, options: { description?: string, worldOnly?: boolean }): Promise<any> {
+        return backupService.createBackup(serverDir, id, options.description, options.worldOnly);
+    }
+
+    async restoreBackup(id: string, serverDir: string, backupId: string, options: { scope?: 'full' | 'world' | 'configs' | 'plugins', worldOnly?: boolean }): Promise<void> {
+        return backupService.restoreBackup(serverDir, id, backupId, options);
     }
 }

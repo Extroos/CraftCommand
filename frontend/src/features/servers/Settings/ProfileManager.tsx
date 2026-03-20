@@ -22,10 +22,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ serverId }) => {
     const handleExport = async () => {
         setIsExporting(true);
         try {
-            const token = localStorage.getItem('cc_token');
-            if (!token) throw new Error('Not authenticated');
-            
-            await API.exportProfile(token, serverId);
+            await API.exportProfile(serverId);
             addToast('success', 'Profile Exported', 'Server configuration downloaded successfully.');
         } catch (e: any) {
             addToast('error', 'Export Failed', e.message || 'Failed to export profile');
@@ -51,10 +48,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ serverId }) => {
                 throw new Error('Invalid JSON file');
             }
 
-            const token = localStorage.getItem('cc_token');
-            if (!token) throw new Error('Not authenticated');
-
-            const res = await API.validateProfile(token, json);
+            const res = await API.validateProfile(json);
             
             if (res.valid && res.profile) {
                 setImportData(res.profile);

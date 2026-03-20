@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { mapService } from './MapService';
 import { verifyToken, requirePermission } from '../../middleware/authMiddleware';
+import { auditService } from '../system/AuditService';
 
 const router = Router({ mergeParams: true });
 
@@ -19,6 +20,7 @@ router.post('/verify', verifyToken, requirePermission('server.map.manage'), asyn
     try {
         const result = await mapService.verifyHealth(req.params.id);
         res.json(result);
+        auditService.log((req as any).user.id, 'MAP_VERIFY', req.params.id);
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
@@ -29,6 +31,7 @@ router.post('/install', verifyToken, requirePermission('server.map.manage'), asy
     try {
         const result = await mapService.installDynmap(req.params.id);
         res.json(result);
+        auditService.log((req as any).user.id, 'MAP_INSTALL', req.params.id);
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
@@ -40,6 +43,7 @@ router.post('/render', verifyToken, requirePermission('server.map.manage'), asyn
         const { mode, radius } = req.body;
         const result = await mapService.renderWorld(req.params.id, mode, radius);
         res.json(result);
+        auditService.log((req as any).user.id, 'MAP_RENDER', req.params.id, { mode, radius });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

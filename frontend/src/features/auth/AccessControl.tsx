@@ -51,7 +51,7 @@ const AccessControl: React.FC<AccessControlProps> = ({ serverId }) => {
             return;
         }
         try {
-            const data = await API.getUsers(token);
+            const data = await API.getUsers();
             
             // SECURITY FILTER: Only show users below the current user in hierarchy
             // Owners see everyone (except other Owners/self?) - usually Owners manage everyone.
@@ -111,7 +111,7 @@ const AccessControl: React.FC<AccessControlProps> = ({ serverId }) => {
                 serverAcl: { 
                     [scope]: { allow: newAllow, deny: newDeny } 
                 } 
-            }, token);
+            });
             addToast('success', 'Access Control', `Updated ${scope === 'global' ? 'Global' : 'Server'} overrides for ${targetUser.username}.`);
         } catch (e: any) {
             console.error("Failed to save permission change", e);

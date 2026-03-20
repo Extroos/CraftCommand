@@ -55,7 +55,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const initAuth = async () => {
             if (token) {
                 try {
-                    const u = await API.getCurrentUser(token);
+                    const u = await API.getCurrentUser();
                     setUser(u);
                     setIsAuthenticated(true);
                     socketService.connect(); // Connect Socket
@@ -149,8 +149,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser({ ...user, preferences: updated });
 
         // Sync
-        API.updateUser({ preferences: updated }, token!).catch(e => {
-            console.error("Failed to save pref:", e);
+        API.updateUser({ preferences: updated }).catch(() => {
+            // Silent — preference sync failure is non-critical
         });
 
         // Update local guest cache as well for logout persistence
@@ -172,7 +172,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser({ ...user, ...updates });
 
         try {
-            const updated = await API.updateUser(updates, token);
+            const updated = await API.updateUser(updates);
             setUser(updated); // Final sync
         } catch (e) {
             console.error("Failed to update user:", e);
@@ -184,7 +184,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const verify2FA = async (code: string, isRecovery: boolean = false) => {
         if (!token) return false;
         try {
-            const data = await API.verify2FA(code, token, isRecovery);
+            const data = await API.verify2FA(code, isRecovery);
             if (data.success && data.token) {
                 localStorage.setItem('cc_token', data.token);
                 setToken(data.token);
@@ -204,7 +204,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const refreshUser = async () => {
         if (!token) return;
         try {
-            const u = await API.getCurrentUser(token);
+            const u = await API.getCurrentUser();
             setUser(u);
         } catch (e) {
             console.error("Refresh failed:", e);

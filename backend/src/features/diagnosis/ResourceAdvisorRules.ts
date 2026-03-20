@@ -33,7 +33,8 @@ export const RamRightSizingRule: DiagnosisRule = {
         // ── Over-Provisioned Detection ──
         // If peak usage stays below 40% of allocation for a full sample window,
         // the server has way more RAM than it needs.
-        if (peakUsagePercent < 40 && stats.samples >= 45 && server.ram > 1) {
+        // False Positive Guard: Don't nag for very small servers (< 1GB peak)
+        if (peakUsagePercent < 40 && stats.samples >= 300 && server.ram > 1 && stats.peakMemory > 1024) {
             const recommendedGb = Math.max(1, Math.ceil((stats.peakMemory * 1.5) / 1024)); // 50% headroom above peak
             const savingGb = server.ram - recommendedGb;
 
@@ -172,10 +173,10 @@ export const LoadCapacityRule: DiagnosisRule = {
         if (!server.ram) return null;
 
         const stats = statsRingBuffer.getStats(server.id);
-        if (!stats || stats.samples < 30) return null;
+        if (!stats || stats.samples < 60) return null;
 
-        // Need players online to calculate per-player cost
-        if (stats.avgPlayers < 2) return null;
+        // Need players online to calculate per-player cost (require at least 5 for better curve)
+        if (stats.avgPlayers < 5) return null;
 
         const allocatedMb = server.ram * 1024;
         const avgPlayers = stats.avgPlayers;

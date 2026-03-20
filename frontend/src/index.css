@@ -4,6 +4,35 @@
 
 @layer base {
   :root {
+    --background: 240 10% 98%; /* Light Tactical White (#fbfbfc) */
+    --foreground: 240 10% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 240 10% 4%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 10% 4%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 45%;
+    --accent: 240 5% 90%;
+    --accent-foreground: 240 10% 4%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 240 10% 4%;
+    --radius: 6px;
+
+    /* Semantic Alpha Channels */
+    --card-border: rgba(0, 0, 0, 0.08);
+    --card-shadow-inset: rgba(255, 255, 255, 0.8);
+    --text-muted-alpha: rgba(0, 0, 0, 0.4);
+    --grid-line-alpha: rgba(0, 0, 0, 0.05);
+  }
+
+  .dark {
     --background: 240 10% 4%; /* Technical Charcoal (#09090b) */
     --foreground: 0 0% 100%;
     --card: 240 10% 6%; /* Tactical Card Base (#0c0c0e) */
@@ -20,10 +49,15 @@
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%; 
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 10%;
+    --border: 240 4% 12%; /* Dark Tactical Border */
     --input: 240 4% 8%;
     --ring: 0 0% 100%;
-    --radius: 6px; /* Slightly softer professional radius */
+
+    /* Semantic Alpha Channels */
+    --card-border: rgba(255, 255, 255, 0.04);
+    --card-shadow-inset: rgba(255, 255, 255, 0.02);
+    --text-muted-alpha: rgba(255, 255, 255, 0.25);
+    --grid-line-alpha: rgba(255, 255, 255, 0.03);
   }
 }
 
@@ -31,7 +65,13 @@ body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   letter-spacing: -0.015em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -42,19 +82,19 @@ body {
 /* Professional Elevated Card - Solid & Stable */
 .cc-card {
   background: hsl(var(--card)); /* Synchronized with Header */
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--card-border);
   border-radius: 8px; /* Modern tactical radius */
   padding: 0.75rem 1rem; /* High-Density tactical padding */
   transition: border-color 0.1s ease-in-out;
   position: relative;
   overflow: hidden;
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.02); /* Micro-elevation */
+  box-shadow: inset 0 1px 0 0 var(--card-shadow-inset); /* Micro-elevation */
   display: flex;
   flex-direction: column;
 }
 
 .cc-detail-text {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
@@ -90,7 +130,7 @@ body {
   font-size: 3rem; /* 48px - text-5xl equivalent to fill empty space */
   font-weight: 800;
   letter-spacing: -0.04em;
-  color: white;
+  color: hsl(var(--foreground));
   line-height: 0.9;
   font-variant-numeric: tabular-nums; /* Critical for stability: prevents jumping numbers */
 }
@@ -100,14 +140,14 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--text-muted-alpha);
   margin-top: 0.25rem;
 }
 
 .cc-unit {
   font-size: 0.75rem;
   font-weight: 600;
-  color: rgba(255,255,255,0.2);
+  color: var(--text-muted-alpha);
   margin-left: 0.25rem;
 }
 
@@ -135,9 +175,9 @@ body {
 .cc-grid-lines {
   position: absolute;
   inset: 0;
-  background-image: 
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-image:
+    linear-gradient(var(--grid-line-alpha) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line-alpha) 1px, transparent 1px);
   background-size: 50px 50px;
   pointer-events: none;
   opacity: 0.3;
@@ -181,7 +221,7 @@ body {
 .terminal-professional {
   background: #000;
   color: #00ff41; /* Classic Terminal Green */
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
   padding: 1rem;
   border-radius: 2px;
   font-size: 13px;
@@ -210,7 +250,12 @@ body {
 
 /* Quality Mode Aesthetics - Liquid Glass (Apple-Style) */
 .glass-morphism {
-  background: rgba(255, 255, 255, 0.03) !important; /* Default frosted look on solid background */
+  background: rgba(
+    255,
+    255,
+    255,
+    0.03
+  ) !important; /* Default frosted look on solid background */
   backdrop-filter: blur(54px) saturate(210%);
   -webkit-backdrop-filter: blur(54px) saturate(210%);
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -218,21 +263,30 @@ body {
   border-left-color: rgba(255, 255, 255, 0.1) !important;
   border-right-color: rgba(0, 0, 0, 0.2) !important;
   border-bottom-color: rgba(0, 0, 0, 0.3) !important;
-  box-shadow: 
+  box-shadow:
     0 4px 16px -4px rgba(0, 0, 0, 0.5),
     inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   position: relative;
   overflow: hidden;
-  border-radius: 12px !important; 
+  border-radius: 12px !important;
   will-change: transform, opacity;
-  transition: background 0.5s ease-in-out, border-color 0.5s ease-in-out, transform 0.3s ease;
+  transition:
+    background 0.5s ease-in-out,
+    border-color 0.5s ease-in-out,
+    transform 0.3s ease;
 }
 
 /* DEEP CONTRAST MODE - Triggered when a photo is active */
 .has-custom-bg .glass-morphism {
-  background: rgba(0, 0, 0, 0.85) !important; /* Hardened charcoal for high-density photo legibility */
-  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.95),
-              inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: rgba(
+    0,
+    0,
+    0,
+    0.85
+  ) !important; /* Hardened charcoal for high-density photo legibility */
+  box-shadow:
+    0 12px 32px -8px rgba(0, 0, 0, 0.95),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 /* Brighten Footer for Legibility */
@@ -262,8 +316,8 @@ body {
   width: 100%;
   height: 100%;
   background: radial-gradient(
-    circle at 0% 0%, 
-    rgba(255, 255, 255, 0.08) 0%, 
+    circle at 0% 0%,
+    rgba(255, 255, 255, 0.08) 0%,
     transparent 50%
   );
   pointer-events: none;
@@ -279,8 +333,8 @@ body {
   width: 100%;
   height: 100%;
   background: radial-gradient(
-    circle at 10% 10%, 
-    rgba(255, 255, 255, 0.04) 0%, 
+    circle at 10% 10%,
+    rgba(255, 255, 255, 0.04) 0%,
     transparent 35%
   );
   pointer-events: none;
@@ -307,12 +361,12 @@ body {
 }
 
 @keyframes liquid-entrance {
-  0% { 
-    opacity: 0; 
+  0% {
+    opacity: 0;
     transform: translateY(4px) scale(0.99);
   }
-  100% { 
-    opacity: 1; 
+  100% {
+    opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
@@ -330,22 +384,28 @@ body {
 .visual-quality-high .cc-card:hover {
   border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px); /* Physical lift signal */
-  box-shadow: 
+  box-shadow:
     0 12px 24px -8px rgba(0, 0, 0, 0.6),
     inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .has-custom-bg .visual-quality-high .cc-card:hover {
   transform: translateY(-2px);
-  box-shadow: 
+  box-shadow:
     0 16px 32px -10px rgba(0, 0, 0, 0.9),
     inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 /* Terminal Expansion Animation */
 @keyframes expand-up {
-  from { transform: translateY(100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .terminal-expand-enter {
@@ -388,7 +448,12 @@ body {
 .reduced-motion .glass-morphism {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  background: rgba(12, 12, 14, 0.95) !important; /* High opacity solid for legibility */
+  background: rgba(
+    12,
+    12,
+    14,
+    0.95
+  ) !important; /* High opacity solid for legibility */
 }
 
 .reduced-motion .glass-morphism::before,

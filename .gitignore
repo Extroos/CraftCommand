@@ -91,6 +91,24 @@ proxy/playit.exe
 proxy/caddy.exe
 proxy/bin/
 
+# Development & Refactoring Tools
+refactor.cjs
+refactor.js
+do-refactor.cjs
+fix_div.cjs
+*.cjs.old
+*.js.old
+
+# TypeScript & Build Diagnostics
+frontend/ts_errors.txt
+frontend/ts_errors_clean.txt
+frontend/tsc_output.txt
+frontend/typescript_errors.txt
+err.txt
+errors.txt
+tsc_output.txt
+typescript_errors.txt
+
 # Editor & System
 .vscode/*
 !.vscode/extensions.json

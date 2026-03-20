@@ -23,6 +23,12 @@ export class ScheduleRepository {
         this.runMigration();
     }
 
+    public async rebind() {
+        this.scheduleTasks = StorageFactory.get<ScheduleTask>('schedules');
+        this.historyLogs = StorageFactory.get<{ id: string, serverId: string, entry: any }>('schedules_history');
+        this.init();
+    }
+
     /**
      * Migration logic: Moves data from per-server JSON files into unified SQLite storage.
      */
@@ -70,6 +76,10 @@ export class ScheduleRepository {
 
     public async getSchedules(serverId: string): Promise<ScheduleTask[]> {
         return this.scheduleTasks.findAll().filter(t => t.serverId === serverId);
+    }
+
+    public async getAllSchedules(): Promise<ScheduleTask[]> {
+        return this.scheduleTasks.findAll();
     }
 
     public async saveSchedules(serverId: string, tasks: ScheduleTask[]) {

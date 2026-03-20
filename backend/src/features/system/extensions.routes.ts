@@ -29,6 +29,15 @@ router.post('/servers/:serverId', verifyToken, async (req, res) => {
     }
 });
 
+router.put('/:id', verifyToken, async (req, res) => {
+    try {
+        await webhookService.updateWebhook(req.params.id, req.body);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 router.delete('/:id', verifyToken, async (req, res) => {
     try {
         await webhookService.removeWebhook(req.params.id);

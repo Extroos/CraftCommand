@@ -120,8 +120,8 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
 
                         {/* Analysis */}
                         <motion.div variants={STAGGER_ITEM} className="space-y-3">
-                            <label className="text-[11px] font-bold text-muted-foreground/80 uppercase tracking-tighter flex items-center gap-2 h-4">
-                                <Activity size={12} className="opacity-40" />
+                            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-tighter flex items-center gap-2 h-4">
+                                <Activity size={12} className="opacity-70" />
                                 Incident Analysis
                             </label>
                             <div className="text-sm text-foreground/80 leading-relaxed font-semibold">
@@ -131,7 +131,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
 
                         {/* Recommendation */}
                         <motion.div variants={STAGGER_ITEM} className={`p-5 rounded-lg border ${accentBorder} ${accentBg} space-y-3`}>
-                            <label className={`text-[11px] font-bold ${accentColor} opacity-70 uppercase tracking-tighter flex items-center gap-2 h-4`}>
+                            <label className={`text-[11px] font-bold ${accentColor} uppercase tracking-tighter flex items-center gap-2 h-4`}>
                                 <Wrench size={12} />
                                 Resolution Strategy
                             </label>
@@ -143,7 +143,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                         {/* Confidence Meter */}
                         <motion.div variants={STAGGER_ITEM} className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest flex justify-between h-4">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex justify-between h-4">
                                     Confidence
                                     <span>{result.confidence}%</span>
                                 </label>
@@ -157,8 +157,8 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest h-4">Detected at</label>
-                                <div className="text-[11px] font-mono font-bold text-muted-foreground/80 whitespace-nowrap">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest h-4">Detected at</label>
+                                <div className="text-[11px] font-mono font-bold text-muted-foreground whitespace-nowrap">
                                     {new Date(result.timestamp).toLocaleString()}
                                 </div>
                             </div>
@@ -187,7 +187,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                             <button 
                                 onClick={handleAutoFix}
                                 disabled={fixing}
-                                className={`px-5 py-2 ${isCritical ? 'bg-rose-500 hover:bg-rose-600' : 'bg-primary hover:bg-primary/90'} text-white rounded-md text-[10px] font-bold tracking-tight disabled:opacity-50 transition-all flex items-center gap-2 shadow-sm`}
+                                className={`px-5 py-2 ${isCritical ? 'bg-rose-500 hover:bg-rose-600 text-rose-50' : 'bg-primary hover:bg-primary/90 text-primary-foreground'} rounded-md text-[10px] font-bold tracking-tight disabled:opacity-50 transition-all flex items-center gap-2 shadow-sm`}
                             >
                                 {fixing ? <RotateCcw size={12} className="animate-spin" /> : <Zap size={12} className="fill-current" />}
                                 {fixing ? 'Applying Fix...' : 'Apply Automatic Fix'}

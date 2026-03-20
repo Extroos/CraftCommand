@@ -7,4 +7,5 @@ export interface StorageProvider<T extends { id: string }> {
     create(item: T): T;
     update(id: string, updates: Partial<T>): T | null;
     delete(id: string): boolean;
+    saveAll(items: T[]): void;
 }

@@ -133,13 +133,15 @@ class AutoHealingService {
     public async checkHostHealth() {
         const v3Settings = systemSettingsService.getSettings().app.autoHealingV3;
         try {
-            const mem = await si.mem();
-            const cpu = await si.currentLoad();
-            const fsStats = await si.fsStats();
+            // Defensive telemetry gathering
+            const mem = await si.mem().catch(() => null);
+            const cpu = await si.currentLoad().catch(() => null);
+            const fsStats = await si.fsStats().catch(() => null);
             
-            const memoryPressure = (mem.active / mem.total) * 100;
-            const cpuLoad = cpu.currentLoad;
-            const diskIO = fsStats.wx_sec + fsStats.rx_sec; // Bytes per second
+            // Fallback to 0 if telemetry fails
+            const memoryPressure = mem ? (mem.active / mem.total) * 100 : 0;
+            const cpuLoad = cpu ? cpu.currentLoad : 0;
+            const diskIO = fsStats ? (fsStats.wx_sec + fsStats.rx_sec) : 0; // Bytes per second
 
             const isOverloaded = memoryPressure > 92 || cpuLoad > 95 || diskIO > ((v3Settings?.ioThrottlingThreshold || 80) * 1024 * 1024 * 5); // Rough conversion to bps
             
@@ -148,9 +150,10 @@ class AutoHealingService {
                 logger.warn(`[AutoHealing:Sentinel] System Overload Detected (${reason}). Throttling active recoveries.`);
             }
 
-            return { cpuLoad, memoryPressure, diskIO, isOverloaded, memoryTotal: mem.total };
-        } catch (e) {
-            return { cpuLoad: 0, memoryPressure: 0, diskIO: 0, isOverloaded: false };
+            return { cpuLoad, memoryPressure, diskIO, isOverloaded, memoryTotal: mem?.total || 0 };
+        } catch (e: any) {
+            logger.error(`[AutoHealing:Sentinel] Critical telemetry failure in getSystemHealth: ${e.message}`);
+            return { cpuLoad: 0, memoryPressure: 0, diskIO: 0, isOverloaded: false, memoryTotal: 0 };
         }
     }
 
@@ -159,7 +162,9 @@ class AutoHealingService {
         const entry = `[${timestamp}] CPU: ${Math.round(health.cpuLoad)}% | RAM: ${Math.round(health.memoryPressure)}% | IO: ${Math.round(health.diskIO / 1024 / 1024)}MB/s | Recoveries: ${this.activeRecoveries.size}\n`;
         try {
             fs.appendFileSync(this.HEALTH_LOG_FILE, entry);
-        } catch (e) {}
+        } catch (e: any) {
+            logger.error(`[AutoHealing:Sentinel] Failed to append health snapshot: ${e.message}`);
+        }
     }
 
     private async evalServerHealth(server: any, hostHealth: any) {
@@ -252,6 +257,7 @@ class AutoHealingService {
 
                 logger.info(`[AutoHealing:${serverId}] PIPELINE: Applying targeted fix: ${rootCause.title}`);
                 await autoHealingManager.executeFix(serverId, rootCause.action.type, rootCause.action.payload);
+                state.appliedFix = true;
             }
 
             state.stage = 'SCRUB';
@@ -263,7 +269,14 @@ class AutoHealingService {
 
             state.stage = 'VERIFY';
             const backoffMs = Math.min(60000 * Math.pow(2, state.attempts - 1), 300000); // Exponential backoff up to 5m
-            logger.info(`[AutoHealing:${serverId}] PIPELINE: Recovery successful. Entering stability watch (Backoff: ${backoffMs / 1000}s)...`);
+            
+            if (state.appliedFix) {
+                logger.info(`[AutoHealing:${serverId}] PIPELINE: Targeted fix applied. Entering stability watch (Verifying for ${backoffMs / 1000}s)...`);
+                processManager.updateCachedStatus(serverId, { status: ServerStatus.RECOVERING, details: `Fix applied. Verifying stability (${Math.round(backoffMs/1000)}s)...` });
+            } else {
+                logger.info(`[AutoHealing:${serverId}] PIPELINE: No automated fix available. Restarting for recovery attempt (Backoff: ${backoffMs / 1000}s)...`);
+                processManager.updateCachedStatus(serverId, { status: ServerStatus.RECOVERING, details: `Restarting for recovery (${Math.round(backoffMs/1000)}s)...` });
+            }
             
             setTimeout(async () => {
                 const isStillRunning = processManager.isRunning(serverId);
@@ -286,11 +299,37 @@ class AutoHealingService {
 
         } catch (error: any) {
             logger.error(`[AutoHealing:${serverId}] Pipeline FAILED at ${state.stage}: ${error.message}`);
+            // Explicitly set status to reflect failure if we're not already in Safe Mode
+            const marker = this.getStabilityMarker(serverId);
+            if (!marker.isSafeMode) {
+                processManager.updateCachedStatus(serverId, { 
+                    status: ServerStatus.CRASHED, 
+                    details: `Auto-healing failed at ${state.stage}: ${error.message}` 
+                });
+            }
             this.finalizeRecovery(serverId, false);
         }
     }
 
-    private finalizeRecovery(serverId: string, success: boolean) {
+    public resetStabilityMarker(serverId: string) {
+        const marker = this.getStabilityMarker(serverId);
+        marker.isSafeMode = false;
+        marker.consecutiveCrashes = 0;
+        marker.score = 100;
+        this.saveStabilityMarkers();
+        logger.info(`[AutoHealing:${serverId}] Stability marker manually reset. Protection restored.`);
+        
+        // Refresh status if it was in safe mode
+        const cached = processManager.getCachedStatus(serverId);
+        if (cached.status === ServerStatus.SAFE_MODE) {
+            processManager.updateCachedStatus(serverId, { 
+                status: processManager.isRunning(serverId) ? ServerStatus.ONLINE : ServerStatus.OFFLINE,
+                details: 'Safe Mode reset by administrator.'
+            });
+        }
+    }
+
+    public finalizeRecovery(serverId: string, success: boolean) {
         const marker = this.getStabilityMarker(serverId);
         this.activeRecoveries.delete(serverId);
 

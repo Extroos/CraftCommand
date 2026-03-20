@@ -3,7 +3,7 @@ import { API } from '@core/services/api';
 import { AuditLog } from '@shared/types';
 import { StabilityMarker } from '@shared/types/health';
 import { format } from 'date-fns';
-import { Activity, ShieldCheck, AlertTriangle, CheckCircle, Cpu, HardDrive, Database, Zap, ArrowUpRight, History, Layers, Network } from 'lucide-react';
+import { Activity, ShieldCheck, AlertTriangle, CheckCircle, Cpu, HardDrive, Database, Zap, ArrowUpRight, History, Layers, Network, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser } from '@features/auth/context/UserContext';
 import { NodeInfo, NodeStatus } from '@shared/types';
@@ -60,36 +60,45 @@ export const SystemHealthMatrix: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const fetchData = async () => {
+        try {
+            const [logData, healthData, nodeData] = await Promise.all([
+                API.getAuditLogs({ action: 'AUTO_HEAL', limit: 30 }),
+                API.getSystemHealth(),
+                API.getNodes()
+            ]);
+            
+            setLogs(logData.logs);
+            setHealth(healthData);
+            setNodes(nodeData.nodes);
+            
+            setCpuHistory(prev => [...prev.slice(-15), healthData.cpuLoad]);
+            setRamHistory(prev => [...prev.slice(-15), healthData.memoryPressure]);
+            setIoHistory(prev => [...prev.slice(-15), healthData.diskIO / 1024 / 1024]);
+
+            setError(null);
+        } catch (err: any) {
+            console.error('Audit Fetch Error:', err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [logData, healthData, nodeData] = await Promise.all([
-                    API.getAuditLogs({ action: 'AUTO_HEAL', limit: 30 }),
-                    API.getSystemHealth(),
-                    API.getNodes()
-                ]);
-                
-                setLogs(logData.logs);
-                setHealth(healthData);
-                setNodes(nodeData.nodes);
-                
-                setCpuHistory(prev => [...prev.slice(-15), healthData.cpuLoad]);
-                setRamHistory(prev => [...prev.slice(-15), healthData.memoryPressure]);
-                setIoHistory(prev => [...prev.slice(-15), healthData.diskIO / 1024 / 1024]);
-
-                setError(null);
-            } catch (err: any) {
-                console.error('Audit Fetch Error:', err);
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchData();
         const interval = setInterval(fetchData, 5000);
         return () => clearInterval(interval);
     }, []);
+
+    const handleResetStability = async (serverId: string) => {
+        try {
+            await API.resetStabilityMarker(serverId);
+            fetchData();
+        } catch (err: any) {
+            console.error('Reset Stability Error:', err);
+        }
+    };
 
     if (loading && logs.length === 0 && !health) {
         return (
@@ -130,113 +139,109 @@ export const SystemHealthMatrix: React.FC = () => {
                 </div>
 
                 <div className="p-6">
-
-                <div className="h-48 flex items-center justify-center relative overflow-hidden bg-black/5 rounded-xl border border-border/20">
-                    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                        <svg className="w-full h-full">
-                            <AnimatePresence>
-                                {nodes.map((node, i) => {
-                                    const angle = (i / nodes.length) * Math.PI * 2;
-                                    const radius = 120;
-                                    const x1 = 50; // %
-                                    const y1 = 50; // %
-                                    const x2 = 50 + (Math.cos(angle) * 35); // %
-                                    const y2 = 50 + (Math.sin(angle) * 35); // %
-                                    
-                                    return (
-                                        <motion.line
-                                            key={`line-${node.id}`}
-                                            initial={{ pathLength: 0, opacity: 0 }}
-                                            animate={{ 
-                                                pathLength: 1, 
-                                                opacity: node.status === NodeStatus.ONLINE ? 0.3 : 0.1,
-                                                strokeDashoffset: [0, -20]
-                                            }}
-                                            transition={{ 
-                                                pathLength: { duration: 1, delay: i * 0.1 },
-                                                strokeDashoffset: { duration: 2, repeat: Infinity, ease: "linear" }
-                                            }}
-                                            x1={`${x1}%`} y1={`${y1}%`} x2={`${x2}%`} y2={`${y2}%`}
-                                            stroke={node.status === NodeStatus.ONLINE ? "rgb(var(--primary-rgb))" : "rgb(var(--color-fg-muted))"}
-                                            strokeWidth="1.5"
-                                            strokeDasharray="4 8"
-                                            strokeLinecap="round"
-                                        />
-                                    );
-                                })}
-                            </AnimatePresence>
-                        </svg>
-                    </div>
-
-                    <div className="relative z-10 flex items-center justify-center w-full h-full">
-                        {/* Master Hub */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {/* Master Hub Card */}
                         <motion.div 
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="flex flex-col items-center gap-2 group relative z-20"
+                            variants={STAGGER_ITEM}
+                            className={`col-span-1 p-4 border transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'} border-primary/20 relative overflow-hidden group`}
                         >
-                            <div className="w-16 h-16 rounded-2xl bg-primary/20 border-2 border-primary/40 flex items-center justify-center shadow-[0_0_30px_rgba(var(--primary-rgb),0.3)] group-hover:scale-110 transition-transform cursor-pointer backdrop-blur-md">
-                                <Database size={24} className="text-primary" />
-                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-[rgb(var(--color-bg-base))] animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                            <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                                <Database size={40} />
                             </div>
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Master Hub</span>
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)]">
+                                    <Database size={20} className="text-primary" />
+                                </div>
+                                <div>
+                                    <h4 className="text-[11px] font-black uppercase tracking-wider text-primary">Master Hub</h4>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                        <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-tight">ONLINE</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center text-[9px] font-medium text-muted-foreground uppercase tracking-widest">
+                                    <span>Primary Cluster</span>
+                                    <span className="text-[10px] text-foreground font-black">HOST</span>
+                                </div>
+                                {health && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="p-2 bg-secondary/30 rounded-lg border border-border/50">
+                                            <p className="text-[8px] font-bold text-muted-foreground mb-1 uppercase">Load</p>
+                                            <p className="text-[11px] font-black">{Math.round(health.cpuLoad)}%</p>
+                                        </div>
+                                        <div className="p-2 bg-secondary/30 rounded-lg border border-border/50">
+                                            <p className="text-[8px] font-bold text-muted-foreground mb-1 uppercase">Memory</p>
+                                            <p className="text-[11px] font-black">{Math.round(health.memoryPressure)}%</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </motion.div>
 
-                        {/* Nodes */}
-                        {nodes.map((node, i) => {
-                            const angle = (i / nodes.length) * Math.PI * 2;
-                            const radius = 140;
-                            const x = Math.cos(angle) * radius;
-                            const y = Math.sin(angle) * radius;
-                            
-                            return (
-                                <motion.div
-                                    key={node.id}
-                                    initial={{ scale: 0, opacity: 0, x: 0, y: 0 }}
-                                    animate={{ 
-                                        scale: 1, 
-                                        opacity: 1, 
-                                        x: x, 
-                                        y: y 
-                                    }}
-                                    transition={{ 
-                                        type: "spring",
-                                        damping: 15,
-                                        stiffness: 100,
-                                        delay: i * 0.1 
-                                    }}
-                                    className="absolute flex flex-col items-center gap-2 group cursor-pointer"
-                                >
-                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 border backdrop-blur-sm ${
+                        {/* Worker Nodes */}
+                        {nodes.map((node, i) => (
+                            <motion.div
+                                key={node.id}
+                                variants={STAGGER_ITEM}
+                                className={`p-4 border transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'} ${
+                                    node.status === NodeStatus.ONLINE ? 'border-border/60' : 'border-zinc-500/10 opacity-60'
+                                } group relative`}
+                             >
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${
                                         node.status === NodeStatus.ONLINE 
-                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)] group-hover:scale-110 group-hover:bg-emerald-500/20' 
-                                        : 'bg-zinc-800/50 border-border text-muted-foreground/50 grayscale group-hover:grayscale-0'
+                                        ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-500' 
+                                        : 'bg-zinc-500/5 border-zinc-500/20 text-zinc-500'
                                     }`}>
-                                        <Layers size={18} />
+                                        <Layers size={16} />
                                     </div>
-                                    <div className="flex flex-col items-center">
-                                        <span className="text-[8px] font-black uppercase tracking-wider">{node.name.slice(0, 12)}</span>
-                                        {node.health && (
-                                            <span className="text-[7px] font-mono text-muted-foreground/60">{Math.round(node.health.cpu)}% CPU</span>
-                                        )}
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="text-[10px] font-black uppercase truncate tracking-tight">{node.name}</h4>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                            <div className={`w-1.5 h-1.5 rounded-full ${node.status === NodeStatus.ONLINE ? 'bg-emerald-500' : 'bg-zinc-500'}`} />
+                                            <span className={`text-[8px] font-bold uppercase ${node.status === NodeStatus.ONLINE ? 'text-emerald-600' : 'text-zinc-500'}`}>
+                                                {node.status}
+                                            </span>
+                                        </div>
                                     </div>
-                                    
-                                    {/* Connectivity Link Detail */}
-                                    {node.status === NodeStatus.ONLINE && (
-                                        <div className="absolute -inset-2 rounded-2xl border border-emerald-500/0 group-hover:border-emerald-500/20 transition-all pointer-events-none" />
-                                    )}
-                                </motion.div>
-                            );
-                        })}
+                                </div>
+
+                                {node.health ? (
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center text-[8px] font-bold text-muted-foreground uppercase">
+                                            <span>Telemetry</span>
+                                            <span className="text-foreground">{Math.round(node.health.cpu)}% CPU</span>
+                                        </div>
+                                        <div className="h-1 bg-secondary rounded-full overflow-hidden">
+                                            <motion.div 
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${node.health.cpu}%` }}
+                                                className={`h-full ${node.health.cpu > 80 ? 'bg-rose-500' : node.health.cpu > 50 ? 'bg-amber-500' : 'bg-primary'}`}
+                                            />
+                                        </div>
+                                        <div className="flex justify-between items-center text-[8px] text-muted-foreground font-medium">
+                                            <span>IP: {node.host}</span>
+                                            <span>{node.health.memoryUsed ? `${Math.round(node.health.memoryUsed / (1024 * 1024 * 1024))}GB` : 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="h-12 flex items-center justify-center bg-secondary/20 rounded-lg border border-dashed border-border/40">
+                                        <p className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-widest">Awaiting Sync</p>
+                                    </div>
+                                )}
+                            </motion.div>
+                        ))}
 
                         {nodes.length === 0 && (
-                            <div className="flex flex-col items-center gap-3 opacity-20">
+                            <div className="col-span-full py-12 flex flex-col items-center gap-3 opacity-20">
                                 <Network size={32} strokeWidth={1} />
-                                <span className="text-[10px] font-black uppercase tracking-widest">Awaiting Node Mesh...</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest">No worker nodes detected in mesh</span>
                             </div>
                         )}
-                </div>
-                </div>
+                    </div>
                 </div>
             </motion.div>
 
@@ -319,9 +324,20 @@ export const SystemHealthMatrix: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-4 py-2.5 text-right">
-                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border inline-block ${marker.isSafeMode ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
-                                                    {marker.isSafeMode ? 'SAFE_MODE' : 'ACTIVE'}
-                                                </span>
+                                                <div className="flex items-center gap-2 justify-end">
+                                                    {marker.isSafeMode && (
+                                                        <button 
+                                                            onClick={() => handleResetStability(marker.serverId)}
+                                                            className="p-1 hover:bg-rose-500/20 rounded transition-colors text-rose-500"
+                                                            title="Reset Stability Marker"
+                                                        >
+                                                            <RotateCcw size={10} />
+                                                        </button>
+                                                    )}
+                                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border inline-block ${marker.isSafeMode ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
+                                                        {marker.isSafeMode ? 'SAFE_MODE' : 'ACTIVE'}
+                                                    </span>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}

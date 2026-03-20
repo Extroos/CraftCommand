@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { getErrorHelp } from '@core/settings/ErrorHelpMap';
-import { Plus, Server, Hash, Cpu, ArrowRight, HardDrive, LogOut, Trash2, AlertTriangle, Stethoscope, Zap, Loader2, FileInput, Network, Activity, Database, RotateCw } from 'lucide-react';
+import { Plus, Server, Hash, Cpu, ArrowRight, HardDrive, LogOut, Trash2, AlertTriangle, Stethoscope, Zap, Loader2, FileInput, Network, Activity, Database, RotateCw, Copy, CheckCircle2, X, Users, Clock, Gauge, ChevronUp, ChevronDown, MemoryStick, MonitorDot, Search, LayoutGrid, LayoutList, Wifi, Coffee, Globe } from 'lucide-react';
 import { ServerConfig, ServerStatus } from '@shared/types';
 
 import { API } from '@core/services/api';
@@ -11,7 +11,7 @@ interface ServerSelectionProps {
     onSelectServer: (server: ServerConfig) => void;
     onCreateNew: () => void;
     onLogout: () => void;
-    onNavigateProfile: () => void;
+    onNavigateProfile: (section?: string) => void;
     onNavigateUsers: () => void;
     onNavigateGlobalSettings: () => void;
     onNavigateAuditLog: () => void;
@@ -24,6 +24,8 @@ import { Settings, User as UserIcon, Shield, Users as UsersIcon } from 'lucide-r
 import { useServers } from '@features/servers/context/ServerContext';
 import { useSystem } from '@features/system/context/SystemContext';
 import { ProgressOverlay } from '../ui/ProgressOverlay';
+import { useConfirm } from '../ui/hooks/useConfirm';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 
 const ServerSelection: React.FC<ServerSelectionProps> = ({ 
@@ -36,8 +38,83 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
     const { nodes, settings } = useSystem();
     const [userDropdown, setUserDropdown] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
+    const [cloningServer, setCloningServer] = useState<ServerConfig | null>(null);
+    const [newCloneName, setNewCloneName] = useState('');
+    const [isCloning, setIsCloning] = useState(false);
+    const [sortKey, setSortKey] = useState<string>('name');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const userRef = React.useRef<HTMLDivElement>(null);
     const { addToast } = useToast();
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
+
+    const isPro = !!settings?.app?.professionalMode;
+
+    const formatUptime = (seconds: number) => {
+        if (!seconds || seconds <= 0) return '\u2014';
+        const d = Math.floor(seconds / 86400);
+        const h = Math.floor((seconds % 86400) / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        if (d > 0) return `${d}d ${h}h`;
+        if (h > 0) return `${h}h ${m}m`;
+        return `${m}m`;
+    };
+
+    const tpsColor = (tps: string) => {
+        const val = parseFloat(tps);
+        if (isNaN(val) || val <= 0) return 'text-muted-foreground/40';
+        if (val >= 18) return 'text-emerald-500';
+        if (val >= 15) return 'text-amber-500';
+        return 'text-rose-500';
+    };
+
+    const handleSort = (key: string) => {
+        if (sortKey === key) setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+        else { setSortKey(key); setSortDir('asc'); }
+    };
+
+    const sortedServers = useMemo(() => {
+        if (!Array.isArray(servers)) return servers;
+        let filtered = servers;
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            filtered = servers.filter(s => s.name.toLowerCase().includes(q) || s.software?.toLowerCase().includes(q) || s.version?.includes(q) || String(s.port).includes(q));
+        }
+        if (!isPro) return filtered;
+        return [...filtered].sort((a, b) => {
+            let aVal: any, bVal: any;
+            const aStat = stats[a.id], bStat = stats[b.id];
+            switch (sortKey) {
+                case 'name': aVal = a.name.toLowerCase(); bVal = b.name.toLowerCase(); break;
+                case 'status': aVal = a.status; bVal = b.status; break;
+                case 'cpu': aVal = aStat?.cpu || 0; bVal = bStat?.cpu || 0; break;
+                case 'memory': aVal = aStat?.memory || 0; bVal = bStat?.memory || 0; break;
+                case 'tps': aVal = parseFloat(aStat?.tps || '0'); bVal = parseFloat(bStat?.tps || '0'); break;
+                case 'players': aVal = aStat?.players || 0; bVal = bStat?.players || 0; break;
+                default: aVal = a.name; bVal = b.name;
+            }
+            if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [servers, stats, sortKey, sortDir, isPro, searchQuery]);
+
+    const handleClone = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!cloningServer || !newCloneName.trim()) return;
+        setIsCloning(true);
+        try {
+            await API.cloneServer(cloningServer.id, newCloneName.trim());
+            addToast('success', 'Clone', `Cloned to "${newCloneName.trim()}"`);
+            setCloningServer(null);
+            refreshServers();
+        } catch (err: any) {
+            addToast('error', 'Clone Failed', err?.message || 'Clone failed');
+        } finally {
+            setIsCloning(false);
+        }
+    };
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -55,26 +132,25 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
         // ServerContext handles the initial population upon login.
     }, []);
 
-
-
-
-// ...
-
     const handleDelete = async (e: React.MouseEvent, id: string, name: string) => {
         e.stopPropagation(); 
-        
-        // 1. Status Check (RESTORED FEATURE: v1.7.6)
         const server = servers.find(s => s.id === id);
         if (server && (server.status === ServerStatus.ONLINE || server.status === ServerStatus.STARTING)) {
             addToast('warning', 'Safety Lock', `You cannot delete "${name}" while it is ${server.status}. Stop it first.`);
             return;
         }
+        const isConfirmed = await requestConfirm({
+            title: 'Delete Server',
+            description: `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+            confirmText: 'Delete Server',
+            cancelText: 'Cancel'
+        });
 
-        if (window.confirm(`Are you sure you want to delete "${name}"?\nThis action cannot be undone.`)) {
+        if (isConfirmed) {
             try {
                 await API.deleteServer(id);
                 addToast('success', 'Deleted', 'Server has been removed.');
-                refreshServers(); // Use global refresh
+                refreshServers();
             } catch (err: any) {
                 const help = getErrorHelp(err.code);
                 if (help) {
@@ -86,7 +162,6 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
         }
     };
 
-
     const cachedBg = localStorage.getItem('cc_backgrounds');
     const hasBg = cachedBg ? JSON.parse(cachedBg).global || JSON.parse(cachedBg).serverSelection : false;
     const bgClass = hasBg ? 'bg-transparent-if-bg' : 'bg-background';
@@ -96,13 +171,16 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
             {/* Minimal Background Decoration */}
             <div className="hidden dark:block absolute top-0 left-0 w-full h-full bg-zinc-950/20 pointer-events-none"></div>
             
-            <div className="max-w-4xl w-full relative z-10">
+            <div className={`${isPro ? 'max-w-7xl' : 'max-w-4xl'} w-full relative z-10 transition-all`}>
                 <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                     <div className="flex items-center gap-5">
                         <img src="/website-icon.png" className="w-20 h-20 object-contain drop-shadow-sm" alt="CraftCommand" />
                         <div className="space-y-1">
                             <h1 className="text-2xl font-bold tracking-tight text-foreground">CraftCommand</h1>
-                            <p className="text-muted-foreground text-sm">Select a deployment to interface with.</p>
+                            <div className="flex items-center gap-2">
+                                <p className="text-muted-foreground text-sm">{isPro ? 'Operations Dashboard' : 'Select a deployment to interface with.'}</p>
+                                {isPro && <span className="px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.2em] bg-foreground/5 text-foreground/70 border border-border rounded-full">PRO</span>}
+                            </div>
                         </div>
                     </div>
                     
@@ -140,95 +218,485 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                             <p className="text-xs font-semibold text-foreground truncate">{user?.email || 'Guest'}</p>
                                             <p className="text-[10px] text-muted-foreground mt-0.5">Signed in</p>
                                         </div>
-                                        <button 
-                                            onClick={() => {
-                                                onNavigateProfile();
-                                                setUserDropdown(false);
-                                            }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"
-                                        >
-                                            <UserIcon size={16} /> User Profile
-                                        </button>
-                                        
-                                        {/* Global Settings (Owner Only) */}
+                                        <button onClick={() => { onNavigateProfile(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UserIcon size={16} /> User Profile</button>
                                         {user?.role === 'OWNER' && (
-                                            <button 
-                                                onClick={() => {
-                                                    onNavigateGlobalSettings();
-                                                    setUserDropdown(false);
-                                                }}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"
-                                            >
-                                                <Settings size={16} /> System Config
-                                            </button>
+                                            <button onClick={() => { onNavigateGlobalSettings(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Settings size={16} /> System Config</button>
                                         )}
-
-                                        {/* Users Management (Owner/Admin) */}
                                         {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
                                             <>
-                                                <button 
-                                                    onClick={() => {
-                                                        onNavigateUsers();
-                                                        setUserDropdown(false);
-                                                    }}
-                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"
-                                                >
-                                                    <UsersIcon size={16} /> Manage Users
-                                                </button>
-                                                <button 
-                                                    onClick={() => {
-                                                        onNavigateAuditLog();
-                                                        setUserDropdown(false);
-                                                    }}
-                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"
-                                                >
-                                                    <Shield size={16} /> Audit Log
-                                                </button>
+                                                <button onClick={() => { onNavigateUsers(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UsersIcon size={16} /> Manage Users</button>
+                                                <button onClick={() => { onNavigateAuditLog(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Shield size={16} /> Audit Log</button>
                                             </>
                                         )}
-
-                                        {/* Global Operations (Owner/Admin) */}
                                         {(user?.role === 'OWNER' || user?.role === 'ADMIN') && settings?.app?.distributedNodes?.enabled && (
-                                            <button 
-                                                onClick={() => {
-                                                    onNavigateOperations();
-                                                    setUserDropdown(false);
-                                                }}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-primary hover:bg-primary/10 transition-colors mb-1"
-                                            >
-                                                <Activity size={16} /> Global Operations
-                                            </button>
+                                            <button onClick={() => { onNavigateOperations(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-primary hover:bg-primary/10 transition-colors mb-1"><Activity size={16} /> Global Operations</button>
                                         )}
-
                                         <div className="h-[1px] bg-border/50 my-1 mx-2"></div>
-                                        <button 
-                                            onClick={onLogout}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"
-                                        >
-                                            <LogOut size={16} /> Sign Out
-                                        </button>
+                                        <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"><LogOut size={16} /> Sign Out</button>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
                         </div>
                         
                         <div className="flex gap-2">
-                            <button 
-                                onClick={() => setShowImportModal(true)}
-                                className="bg-secondary border border-border text-foreground hover:bg-muted px-5 py-2.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all shadow-sm"
-                            >
-                                <FileInput size={16} /> Import Server
-                            </button>
-                            <button 
-                                onClick={onCreateNew}
-                                className={`px-5 py-2.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${user?.preferences.visualQuality ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:scale-105 active:scale-95' : 'bg-foreground text-background hover:bg-foreground/90 shadow-lg shadow-white/5'}`}
-                            >
-                                <Plus size={16} /> Deploy New Instance
-                            </button>
+                            <button onClick={() => setShowImportModal(true)} className="bg-secondary border border-border text-foreground hover:bg-muted px-5 py-2.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all shadow-sm"><FileInput size={16} /> Import Server</button>
+                            <button onClick={onCreateNew} className={`px-5 py-2.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${user?.preferences.visualQuality ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:scale-105 active:scale-95' : 'bg-foreground text-background hover:bg-foreground/90 shadow-lg shadow-white/5'}`}><Plus size={16} /> Deploy New Instance</button>
                         </div>
                     </div>
                 </div>
 
+                {/* ========== PRO VIEW ========== */}
+                {isPro && Array.isArray(servers) && (() => {
+                    const onlineServers = servers.filter(s => s.status === ServerStatus.ONLINE);
+                    const offlineServers = servers.filter(s => s.status === ServerStatus.OFFLINE);
+                    const crashedServers = servers.filter(s => s.status === ServerStatus.CRASHED);
+                    
+                    const statsServers = servers.filter(s => s.software !== 'Velocity');
+                    const onlineStatsServers = statsServers.filter(s => s.status === ServerStatus.ONLINE || s.status === ServerStatus.STARTING);
+
+                    const totalPlayers = statsServers.reduce((sum, s) => sum + (stats[s.id]?.players || 0), 0);
+                    const avgCpu = onlineStatsServers.length > 0 ? onlineStatsServers.reduce((sum, s) => sum + (stats[s.id]?.cpu || 0), 0) / onlineStatsServers.length : 0;
+                    const totalRam = statsServers.reduce((sum, s) => sum + (s.ram || 0), 0);
+                    const usedRam = statsServers.reduce((sum, s) => sum + ((stats[s.id]?.memory || 0) / 1024), 0);
+                    const avgTps = onlineStatsServers.length > 0 ? onlineStatsServers.reduce((sum, s) => sum + parseFloat(stats[s.id]?.tps || '0'), 0) / onlineStatsServers.length : 0;
+                    const maxUptime = Object.values(stats).reduce((max, s) => Math.max(max, s?.uptime || 0), 0);
+
+                    // ── Enhanced SVG Gauge with gradient, glow, and tick marks ──
+                    // Uses a fixed 200x120 internal viewBox, scales gracefully using CSS width/height.
+                    const GaugeWidget = ({ value, max, label, unit, color, gradientId, size = 160 }: { value: number, max: number, label: string, unit: string, color: string, gradientId: string, size?: number }) => {
+                        const pct = Math.min(100, Math.max(0, (value / max) * 100));
+                        const internalWidth = 200;
+                        const internalHeight = 120;
+                        const strokeW = 16;
+                        const r = (internalWidth - strokeW * 2) / 2;
+                        const circumference = Math.PI * r;
+                        const offset = circumference - (pct / 100) * circumference;
+                        const cx = internalWidth / 2;
+                        const cy = internalHeight - 10;
+                        const ticks = 11;
+                        const tickMarks = [];
+                        for (let i = 0; i <= ticks; i++) {
+                            const angle = Math.PI + (Math.PI * i / ticks);
+                            const x1 = cx + (r + strokeW / 2 + 5) * Math.cos(angle);
+                            const y1 = cy + (r + strokeW / 2 + 5) * Math.sin(angle);
+                            const x2 = cx + (r + strokeW / 2 + (i % 5 === 0 ? 13 : 8)) * Math.cos(angle);
+                            const y2 = cy + (r + strokeW / 2 + (i % 5 === 0 ? 13 : 8)) * Math.sin(angle);
+                            tickMarks.push(<line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" className="text-foreground/[0.12]" strokeWidth={i % 5 === 0 ? 3 : 2} strokeLinecap="round" />);
+                        }
+                        const lighterColor = color + '90';
+                        return (
+                            <div className="flex flex-col items-center">
+                                <svg width={size} height={size * (internalHeight / internalWidth)} viewBox={`0 0 ${internalWidth} ${internalHeight}`} className="overflow-visible">
+                                    <defs>
+                                        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+                                            <stop offset="0%" stopColor={lighterColor} />
+                                            <stop offset="100%" stopColor={color} />
+                                        </linearGradient>
+                                        <filter id={`glow-${gradientId}`}>
+                                            <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor={color} floodOpacity="0.4" />
+                                        </filter>
+                                    </defs>
+                                    {tickMarks}
+                                    <path d={`M ${strokeW} ${cy} A ${r} ${r} 0 0 1 ${internalWidth - strokeW} ${cy}`} fill="none" stroke="currentColor" className="text-foreground/[0.07]" strokeWidth={strokeW} strokeLinecap="round" />
+                                    <path d={`M ${strokeW} ${cy} A ${r} ${r} 0 0 1 ${internalWidth - strokeW} ${cy}`} fill="none" stroke={`url(#${gradientId})`} strokeWidth={strokeW} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} filter={pct > 0 ? `url(#glow-${gradientId})` : undefined} style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                                    <text x={cx} y={cy - 10} textAnchor="middle" className="fill-foreground font-bold font-mono" style={{ fontSize: 44 }}>{typeof value === 'number' ? (value % 1 === 0 ? value : value.toFixed(1)) : value}</text>
+                                    <text x={cx} y={cy + 12} textAnchor="middle" className="fill-muted-foreground font-medium" style={{ fontSize: 16, letterSpacing: '0.05em' }}>{unit}</text>
+                                </svg>
+                                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.15em] mt-3">{label}</span>
+                            </div>
+                        );
+                    };
+
+                    // ── SVG Donut Chart for fleet composition ──
+                    // Uses a fixed 120x120 viewBox, scales automatically
+                    const DonutChart = ({ online, offline, crashed, size = 120 }: { online: number, offline: number, crashed: number, size?: number }) => {
+                        const total = online + offline + crashed;
+                        if (total === 0) return null;
+                        const internalSize = 120;
+                        const sw = 14;
+                        const r = (internalSize - sw * 2) / 2;
+                        const circumference = 2 * Math.PI * r;
+                        const segments = [
+                            { value: online, color: '#22c55e' },
+                            { value: offline, color: '#71717a' },
+                            { value: crashed, color: '#ef4444' },
+                        ].filter(s => s.value > 0);
+                        let accOffset = 0;
+                        return (
+                            <svg width={size} height={size} viewBox={`0 0 ${internalSize} ${internalSize}`} className="overflow-visible overflow-y-visible">
+                                <defs>
+                                    <filter id="donut-glow"><feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#22c55e" floodOpacity="0.35" /></filter>
+                                </defs>
+                                <circle cx={internalSize/2} cy={internalSize/2} r={r} fill="none" stroke="currentColor" className="text-foreground/[0.05]" strokeWidth={sw} />
+                                {segments.map((seg, i) => {
+                                    const segLen = (seg.value / total) * circumference;
+                                    const gap = segments.length > 1 ? 4 : 0;
+                                    const el = (
+                                        <circle key={i} cx={internalSize/2} cy={internalSize/2} r={r} fill="none" stroke={seg.color} strokeWidth={sw} strokeLinecap="round"
+                                            strokeDasharray={`${Math.max(0, segLen - gap)} ${circumference - Math.max(0, segLen - gap)}`}
+                                            strokeDashoffset={-accOffset} transform={`rotate(-90 ${internalSize/2} ${internalSize/2})`}
+                                            style={{ transition: 'stroke-dasharray 0.6s ease, stroke-dashoffset 0.6s ease' }}
+                                            filter={seg.color === '#22c55e' ? 'url(#donut-glow)' : undefined}
+                                        />
+                                    );
+                                    accOffset += segLen;
+                                    return el;
+                                })}
+                                <text x={internalSize/2} y={internalSize/2 - 4} textAnchor="middle" className="fill-foreground" style={{ fontWeight: 800, fontSize: 26, fontFamily: 'ui-monospace, monospace' }}>{total}</text>
+                                <text x={internalSize/2} y={internalSize/2 + 16} textAnchor="middle" className="fill-muted-foreground/70" style={{ fontWeight: 600, fontSize: 10, letterSpacing: '0.1em' }}>TOTAL</text>
+                            </svg>
+                        );
+                    };
+
+                    // ── SVG Horizontal Bar with gradient + glow ──
+                    const RamBar = ({ used, total: tot, width = 100, height = 8 }: { used: number, total: number, width?: number, height?: number }) => {
+                        const pct = tot > 0 ? Math.min(100, (used / tot) * 100) : 0;
+                        const barColor = pct > 80 ? '#ef4444' : pct > 50 ? '#f59e0b' : '#ffffff';
+                        const barId = `ram-${Math.random().toString(36).slice(2, 6)}`;
+                        return (
+                            <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="rounded-full overflow-visible">
+                                <defs>
+                                    <linearGradient id={`rg-${barId}`}><stop offset="0%" stopColor={barColor + '60'} /><stop offset="100%" stopColor={barColor} /></linearGradient>
+                                    <filter id={`rf-${barId}`}><feDropShadow dx="0" dy="0" stdDeviation="2" floodColor={barColor} floodOpacity="0.35" /></filter>
+                                </defs>
+                                <rect x={0} y={0} width={width} height={height} rx={height/2} fill="currentColor" className="text-foreground/[0.06]" />
+                                <rect x={0} y={0} width={Math.max(height, width * pct / 100)} height={height} rx={height/2} fill={`url(#rg-${barId})`} filter={`url(#rf-${barId})`} style={{ transition: 'width 0.6s ease' }} />
+                            </svg>
+                        );
+                    };
+
+                    // ── Enhanced Mini Ring with glow effect ──
+                    const MiniRing = ({ value, max, color, size = 42 }: { value: number, max: number, color: string, size?: number }) => {
+                        const pct = Math.min(100, Math.max(0, (value / max) * 100));
+                        const sw = 3.5;
+                        const r = (size - sw * 2) / 2;
+                        const circumference = 2 * Math.PI * r;
+                        const offset = circumference - (pct / 100) * circumference;
+                        const glowId = `mg-${color.replace('#', '')}`;
+                        return (
+                            <svg width={size} height={size} className="transform -rotate-90">
+                                <defs><filter id={glowId}><feDropShadow dx="0" dy="0" stdDeviation="1.5" floodColor={color} floodOpacity="0.4" /></filter></defs>
+                                <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" className="text-foreground/[0.07]" strokeWidth={sw} />
+                                <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} filter={`url(#${glowId})`} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+                            </svg>
+                        );
+                    };
+
+                    const cpuColor = avgCpu > 80 ? '#ef4444' : avgCpu > 50 ? '#f59e0b' : '#3b82f6';
+                    const tpsColorVal = avgTps >= 18 ? '#22c55e' : avgTps >= 15 ? '#f59e0b' : avgTps > 0 ? '#ef4444' : '#555555';
+                    const ramPct = totalRam > 0 ? (usedRam / totalRam) * 100 : 0;
+                    const ramColor = ramPct > 80 ? '#ef4444' : ramPct > 50 ? '#f59e0b' : '#ffffff';
+
+                    return (<>
+                        {/* ── Dashboard Panels ── */}
+                        <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_1fr] gap-4 mb-5 items-stretch">
+                            {/* Left: Live Performance Gauges */}
+                            <div className={`rounded-xl border border-border/80 p-4 flex flex-col justify-between ${user?.preferences.visualQuality ? 'glass-morphism' : 'bg-card'}`}>
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Activity size={14} className="text-foreground/50" />
+                                        <span className="text-[11px] font-bold text-foreground/70">Live Performance</span>
+                                    </div>
+                                    <div className="flex items-center justify-around gap-6 my-2">
+                                        <GaugeWidget value={avgCpu} max={100} label="Avg CPU" unit="%" color={cpuColor} gradientId="gauge-cpu" size={130} />
+                                        <GaugeWidget value={avgTps > 0 ? avgTps : 0} max={20} label="Avg TPS" unit={avgTps > 0 ? 'tick/s' : 'n/a'} color={tpsColorVal} gradientId="gauge-tps" size={130} />
+                                        <GaugeWidget value={usedRam} max={totalRam || 1} label="Memory" unit="GB" color={ramColor} gradientId="gauge-ram" size={130} />
+                                    </div>
+                                </div>
+                                {/* RAM allocation bar */}
+                                <div className="mt-4 pt-3 border-t border-border/30">
+                                    <div className="flex items-center justify-between mb-2.5">
+                                        <span className="text-[11px] font-bold text-muted-foreground">RAM Allocation</span>
+                                        <span className="text-[11px] font-bold text-foreground tabular-nums">{usedRam.toFixed(1)}G / {totalRam}G</span>
+                                    </div>
+                                    <RamBar used={usedRam} total={totalRam} width={600} height={10} />
+                                </div>
+                            </div>
+
+                            {/* Right: Fleet Status with Donut */}
+                            <div className={`rounded-xl border border-border/80 p-4 flex flex-col justify-between ${user?.preferences.visualQuality ? 'glass-morphism' : 'bg-card'}`}>
+                                <div>
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <MonitorDot size={14} className="text-foreground/50" />
+                                        <span className="text-[11px] font-bold text-foreground/70">Fleet Overview</span>
+                                    </div>
+                                    <div className="flex items-center justify-center gap-8 mb-4">
+                                        <DonutChart online={onlineServers.length} offline={offlineServers.length} crashed={crashedServers.length} size={100} />
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-4 justify-between">
+                                                <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Online</span></div>
+                                                <span className="text-sm font-bold text-foreground tabular-nums">{onlineServers.length}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 justify-between">
+                                                <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-zinc-500/60" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Offline</span></div>
+                                                <span className="text-sm font-bold text-foreground tabular-nums">{offlineServers.length}</span>
+                                            </div>
+                                            {crashedServers.length > 0 && (
+                                                <div className="flex items-center gap-4 justify-between">
+                                                    <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Crashed</span></div>
+                                                    <span className="text-sm font-bold text-rose-500 tabular-nums">{crashedServers.length}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="space-y-2 pt-3 border-t border-border/30">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2"><Users size={12} className="text-muted-foreground/50" /><span className="text-[11px] text-muted-foreground font-medium">Players Connected</span></div>
+                                        <span className="text-sm font-bold text-foreground tabular-nums">{totalPlayers}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2"><Clock size={12} className="text-muted-foreground/50" /><span className="text-[11px] text-muted-foreground font-medium">Longest Uptime</span></div>
+                                        <span className="text-sm font-bold text-foreground font-mono">{formatUptime(maxUptime)}</span>
+                                    </div>
+                                </div>
+                                {/* System Features */}
+                                {(settings?.app?.dockerEnabled || settings?.app?.https?.enabled || settings?.app?.remoteAccess?.enabled || settings?.app?.hostMode || settings?.app?.autoHealing || settings?.app?.storageProvider === 'sqlite' || settings?.app?.distributedNodes?.enabled) && (
+                                    <div className="pt-3 border-t border-border/30">
+                                        <div className="flex items-center gap-1.5 mb-2.5">
+                                            <Zap size={11} className="text-foreground/50" />
+                                            <span className="text-[11px] font-bold text-foreground/70">Infrastructure</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1">
+                                            {settings?.app?.dockerEnabled && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-bold uppercase tracking-wider bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                                                    <Database size={9} /> Docker
+                                                </span>
+                                            )}
+                                            {settings?.app?.https?.enabled && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                                                    <Shield size={9} /> HTTPS
+                                                </span>
+                                            )}
+                                            {settings?.app?.remoteAccess?.enabled && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-bold uppercase tracking-wider bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                                                    <Wifi size={9} /> {settings.app.remoteAccess.method?.toUpperCase() || 'REMOTE'}
+                                                </span>
+                                            )}
+                                            {settings?.app?.hostMode && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-bold uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                                                    <Shield size={9} /> Host Mode
+                                                </span>
+                                            )}
+                                            {settings?.app?.autoHealing && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-bold uppercase tracking-wider bg-green-500/10 border border-green-500/20 text-green-400">
+                                                    <Activity size={9} /> Auto-Heal
+                                                </span>
+                                            )}
+                                            {settings?.app?.storageProvider === 'sqlite' && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-bold uppercase tracking-wider bg-orange-500/10 border border-orange-500/20 text-orange-400">
+                                                    <Database size={9} /> SQLite
+                                                </span>
+                                            )}
+                                            {settings?.app?.distributedNodes?.enabled && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-bold uppercase tracking-wider bg-violet-500/10 border border-violet-500/20 text-violet-400">
+                                                    <Network size={9} /> Cluster
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── Server Instances with Controls ── */}
+                        <div className="space-y-2">
+                            {/* Toolbar: Search + Sort + View Toggle */}
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
+                                {/* Search */}
+                                <div className="relative flex-1 min-w-0 max-w-sm">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+                                    <input
+                                        type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                                        placeholder="Search instances..."
+                                        className="w-full bg-secondary/30 border border-border/50 rounded-lg pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary/30 outline-none transition-all"
+                                    />
+                                </div>
+                                {/* Sort Pills */}
+                                <div className="flex items-center gap-1 flex-wrap">
+                                    {[
+                                        { key: 'name', label: 'Name' },
+                                        { key: 'status', label: 'Status' },
+                                        { key: 'cpu', label: 'CPU' },
+                                        { key: 'memory', label: 'Mem' },
+                                        { key: 'tps', label: 'TPS' },
+                                        { key: 'players', label: 'Players' },
+                                    ].map(s => (
+                                        <button key={s.key} onClick={() => handleSort(s.key)}
+                                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                                                sortKey === s.key
+                                                    ? 'bg-foreground/10 border-border text-foreground'
+                                                    : 'bg-transparent border-transparent text-muted-foreground/60 hover:text-foreground hover:border-border/50'
+                                            }`}
+                                        >
+                                            {s.label}
+                                            {sortKey === s.key && (sortDir === 'asc' ? <ChevronUp size={10} className="inline ml-0.5 -mt-0.5" /> : <ChevronDown size={10} className="inline ml-0.5 -mt-0.5" />)}
+                                        </button>
+                                    ))}
+                                </div>
+                                {/* View Toggle */}
+                                <div className="flex items-center gap-0.5 bg-secondary/30 rounded-lg border border-border/50 p-0.5">
+                                    <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground/60 hover:text-foreground'}`}><LayoutList size={14} /></button>
+                                    <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground/60 hover:text-foreground'}`}><LayoutGrid size={14} /></button>
+                                </div>
+                            </div>
+
+                            {/* Instance Count + Health */}
+                            <div className="flex items-center justify-between px-1 mb-3">
+                                <div className="flex items-center gap-2">
+                                    <Server size={14} className="text-foreground/50" />
+                                    <span className="text-xs font-bold text-foreground/70">Instances <span className="text-foreground/40 ml-1 tabular-nums font-mono">({sortedServers.length}{searchQuery ? ` / ${servers.length}` : ''})</span></span>
+                                </div>
+                                {onlineServers.length > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                        <Wifi size={10} className="text-emerald-500" />
+                                        <span className="text-[10px] font-bold text-emerald-500/60">{onlineServers.length} live</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Server Cards Container */}
+                            <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 gap-3' : 'space-y-2'}>
+                            {sortedServers.length === 0 ? (
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`${viewMode === 'grid' ? 'col-span-2' : ''} rounded-xl border border-dashed border-border/30 py-24 flex flex-col items-center gap-5 ${user?.preferences.visualQuality ? 'glass-morphism bg-secondary/5' : 'bg-card'}`}>
+                                    <div className="w-16 h-16 rounded-full bg-secondary/30 border border-border/50 flex items-center justify-center">
+                                        {searchQuery ? <Search className="text-foreground/20" size={28} /> : <Server className="text-foreground/20" size={28} strokeWidth={1.5} />}
+                                    </div>
+                                    <div className="text-center space-y-1">
+                                        <h4 className="text-sm font-bold text-foreground/70">{searchQuery ? 'No instances found' : 'No instances deployed'}</h4>
+                                        <p className="text-[11px] text-muted-foreground/40 font-medium max-w-[250px] mx-auto leading-relaxed">
+                                            {searchQuery ? `We couldn't find any servers matching "${searchQuery}".` : "You don't have any servers running. Click the 'New Instance' button above to deploy."}
+                                        </p>
+                                    </div>
+                                    {!searchQuery && (
+                                        <button onClick={() => setShowImportModal(true)} className="mt-2 px-4 py-2 bg-foreground hover:bg-foreground/90 text-background rounded-lg text-xs font-bold transition-all flex items-center gap-2">
+                                            <Plus size={14} /> Deploy Instance
+                                        </button>
+                                    )}
+                                </motion.div>
+                            ) : sortedServers.map((server) => {
+                                const stat = stats[server.id];
+                                const isOnline = server.status === ServerStatus.ONLINE;
+                                const isTransitioning = server.status === ServerStatus.STARTING || server.status === ServerStatus.STOPPING || server.status === ServerStatus.RESTARTING;
+                                const isInstalling = !!installProgress[server.id] || server.status === ServerStatus.INSTALLING;
+                                const isCrashed = server.status === ServerStatus.CRASHED;
+                                const cpuVal = stat?.cpu || 0;
+                                const memPct = stat && server.ram ? (stat.memory / (server.ram * 1024)) * 100 : 0;
+                                const serverCpuColor = cpuVal > 80 ? '#ef4444' : cpuVal > 50 ? '#f59e0b' : '#3b82f6';
+                                const serverMemColor = memPct > 80 ? '#ef4444' : memPct > 50 ? '#f59e0b' : '#ffffff';
+                                const tpsVal = stat ? parseFloat(stat.tps) : 0;
+
+                                return (
+                                    <div key={server.id}
+                                        onClick={() => onSelectServer(server)}
+                                        className={`group rounded-xl border transition-all cursor-pointer overflow-hidden ${
+                                            isOnline ? 'border-l-2 border-l-emerald-500/40 border-border/80' : 'border-border/80'
+                                        } ${user?.preferences.visualQuality ? 'glass-morphism hover:border-primary/30 hover:scale-[1.005]' : 'bg-card hover:border-border-strong hover:shadow-md'}`}>
+                                        <div className={`flex ${viewMode === 'grid' ? 'flex-col gap-3 p-4' : 'items-center gap-5 p-4'}`}>
+                                            {/* Status icon */}
+                                            <div className="relative flex-shrink-0">
+                                                <div className={`w-11 h-11 rounded-lg flex items-center justify-center border transition-all ${
+                                                    isInstalling ? 'bg-foreground/5 border-foreground/10 text-foreground/40' :
+                                                    isOnline ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                                                    isCrashed ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' :
+                                                    isTransitioning ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
+                                                    'bg-secondary border-border text-muted-foreground/40'
+                                                }`}>
+                                                    {isInstalling ? <Loader2 size={20} className="animate-spin" /> :
+                                                     isTransitioning ? <RotateCw size={20} className="animate-spin" /> :
+                                                     <Server size={20} />}
+                                                </div>
+                                                {isOnline && <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-card bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]" />}
+                                            </div>
+
+                                            {/* Server info */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors truncate">{server.name}</h3>
+                                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 ${server.software === 'Bedrock' ? 'bg-sky-500/10 text-sky-500 border border-sky-500/20' : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'}`}>{server.software === 'Bedrock' ? 'Bedrock' : 'Java'}</span>
+                                                    {server.executionEngine === 'docker' && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 bg-blue-500/10 text-blue-400 border border-blue-500/20"><Database size={9} /> Docker</span>}
+                                                    {server.executionEngine === 'remote' && server.nodeId && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 bg-violet-500/10 text-violet-400 border border-violet-500/20"><Globe size={9} /> {nodes.find(n => n.id === server.nodeId)?.name || 'Remote'}</span>}
+                                                    {isCrashed && <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded text-[8px] font-bold uppercase flex-shrink-0">Crashed</span>}
+                                                </div>
+                                                <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground/40 font-mono">
+                                                    {isInstalling ? (
+                                                        <span className="text-foreground/40">{installProgress[server.id]?.message || 'Installing...'}</span>
+                                                    ) : (
+                                                        <>
+                                                            <span>{server.software} {server.version}</span>
+                                                            <span className="text-border">|</span>
+                                                            <span>:{server.port}</span>
+                                                            <span className="text-border">|</span>
+                                                            <span>{server.ram}G RAM</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Live metrics */}
+                                            {isOnline && stat && (
+                                                <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-2 xlg:grid-cols-5 gap-3 w-full bg-secondary/10 p-3.5 rounded-xl border border-border/40" : "hidden md:flex items-center gap-5 flex-shrink-0"}>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="relative">
+                                                            <MiniRing value={cpuVal} max={100} color={serverCpuColor} />
+                                                            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-foreground tabular-nums">{cpuVal.toFixed(0)}</span>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider">CPU</div>
+                                                            <div className="text-[11px] font-bold text-foreground tabular-nums">{cpuVal.toFixed(1)}%</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="relative">
+                                                            <MiniRing value={memPct} max={100} color={serverMemColor} />
+                                                            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-foreground tabular-nums">{Math.round(memPct)}</span>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider">Mem</div>
+                                                            <div className="text-[11px] font-bold text-foreground tabular-nums">{stat.memory > 1024 ? `${(stat.memory/1024).toFixed(1)}G` : `${Math.round(stat.memory)}M`}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`text-center px-2 ${viewMode === 'grid' ? 'flex flex-col items-center justify-center' : ''}`}>
+                                                        <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider mb-0.5">TPS</div>
+                                                        <div className={`text-sm font-black tabular-nums ${tpsVal >= 18 ? 'text-emerald-500' : tpsVal >= 15 ? 'text-amber-500' : 'text-rose-500'}`}>{tpsVal.toFixed(1)}</div>
+                                                    </div>
+                                                    <div className={`flex flex-col gap-1 min-w-[80px] ${viewMode === 'grid' ? 'items-center justify-center' : ''}`}>
+                                                        <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider">RAM</div>
+                                                        <RamBar used={stat.memory / 1024} total={server.ram} width={80} height={6} />
+                                                        <div className="text-[9px] text-muted-foreground/40 font-mono tabular-nums">{stat.memory > 1024 ? `${(stat.memory/1024).toFixed(1)}` : `${(stat.memory/1024).toFixed(2)}`}G / {server.ram}G</div>
+                                                    </div>
+                                                    <div className={`${viewMode === 'grid' ? 'col-span-2 flex justify-evenly mt-2 pt-3 border-t' : 'border-l pl-4 flex items-center gap-4'} border-border/30`}>
+                                                        <div className="text-center">
+                                                            <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider mb-0.5">Players</div>
+                                                            <div className="text-sm font-bold text-foreground tabular-nums">{stat.players}</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider mb-0.5">Uptime</div>
+                                                            <div className="text-[11px] font-bold text-foreground font-mono">{formatUptime(stat.uptime)}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Actions */}
+                                            <div className={`flex flex-shrink-0 ${viewMode === 'grid' ? 'w-full gap-2 mt-2' : 'items-center gap-1'}`}>
+                                                <button onClick={(e) => { e.stopPropagation(); setCloningServer(server); setNewCloneName(`${server.name} (Clone)`); }} className={`p-2 rounded-lg opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-all text-foreground hover:bg-secondary ${viewMode === 'grid' ? 'bg-secondary/40 !opacity-100' : ''}`} title="Clone"><Copy size={14} /></button>
+                                                <button disabled={isOnline || server.status === ServerStatus.STARTING || isInstalling} onClick={(e) => handleDelete(e, server.id, server.name)} className={`p-2 rounded-lg opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-all ${(isOnline || server.status === ServerStatus.STARTING || isInstalling) ? 'text-foreground/15 cursor-not-allowed' : 'text-foreground hover:text-rose-500 hover:bg-rose-500/10'} ${viewMode === 'grid' ? 'bg-secondary/40 !opacity-100' : ''}`} title="Delete"><Trash2 size={14} /></button>
+                                                <div className={`px-4 py-1.5 rounded-lg bg-primary/10 border border-primary/20 hover:bg-primary hover:text-primary-foreground text-primary transition-all text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 ${viewMode === 'grid' ? 'flex-1 ml-auto' : 'ml-1'}`}>
+                                                    Connect <ArrowRight size={12} className={viewMode === 'list' ? 'ml-1' : ''} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            </div>
+                        </div>
+                    </>);
+                })()}
+
+                {/* ========== STANDARD VIEW ========== */}
+                {!isPro && (
                 <motion.div 
                     initial="hidden"
                     animate="visible"
@@ -238,14 +706,26 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                     }}
                     className="space-y-4"
                 >
-                    {(!Array.isArray(servers) || servers.length === 0) && (
-                        <div className="w-full py-24 border border-dashed border-border/30 rounded-xl flex flex-col items-center justify-center gap-6 select-none">
-                            <Server className="text-foreground/10" size={48} strokeWidth={1.5} />
-                            <p className="text-[13px] text-muted-foreground/50 font-medium tracking-tight">No local instances found.</p>
+                    {/* Search Bar for Standard View */}
+                    {Array.isArray(servers) && servers.length > 3 && (
+                        <div className="relative max-w-sm">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+                            <input
+                                type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                                placeholder="Search servers..."
+                                className="w-full bg-secondary/30 border border-border/50 rounded-lg pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary/30 outline-none transition-all"
+                            />
                         </div>
                     )}
 
-                    {Array.isArray(servers) && servers.length > 0 && servers.map((server) => {
+                    {(!Array.isArray(sortedServers) || sortedServers.length === 0) && (
+                        <div className="w-full py-24 border border-dashed border-border/30 rounded-xl flex flex-col items-center justify-center gap-6 select-none">
+                            {searchQuery ? <Search className="text-foreground/10" size={48} strokeWidth={1.5} /> : <Server className="text-foreground/10" size={48} strokeWidth={1.5} />}
+                            <p className="text-[13px] text-muted-foreground/50 font-medium tracking-tight">{searchQuery ? `No servers matching "${searchQuery}".` : 'No local instances found.'}</p>
+                        </div>
+                    )}
+
+                    {Array.isArray(sortedServers) && sortedServers.length > 0 && sortedServers.map((server) => {
                         const stat = stats[server.id];
                         const status = server.status;
                         const isTransitioning = status === ServerStatus.STARTING || status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING || status === ServerStatus.INSTALLING;
@@ -291,57 +771,30 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                         </div>
 
                                         <div className="hidden md:flex gap-6 text-xs text-muted-foreground font-mono border-l border-border pl-6">
-                                            <div>
-                                                <span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Platform</span>
-                                                <span className="text-foreground">{server.software === 'Bedrock' ? 'Bedrock' : 'Java'}</span>
-                                            </div>
-                                            <div>
-                                                <span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Port</span>
-                                                <span className="text-foreground">{server.port}</span>
-                                            </div>
-                                            <div>
-                                                <span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Memory</span>
-                                                <span className="text-foreground">{server.ram} GB</span>
-                                            </div>
-                                            <div>
-                                                <span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Version</span>
-                                                <span className="text-foreground">{server.version}</span>
-                                            </div>
+                                            <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Platform</span><span className="text-foreground">{server.software === 'Bedrock' ? 'Bedrock' : 'Java'}</span></div>
+                                            <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Port</span><span className="text-foreground">{server.port}</span></div>
+                                            <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Memory</span><span className="text-foreground">{server.ram} GB</span></div>
+                                            <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Version</span><span className="text-foreground">{server.version}</span></div>
+                                            {server.executionEngine === 'docker' && (
+                                                <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Engine</span><span className="flex items-center gap-1.5 text-blue-400 font-semibold"><Database size={12} /> Docker</span></div>
+                                            )}
                                             {server.executionEngine === 'remote' && (
-                                                <div>
-                                                    <span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Node</span>
-                                                    <span className="flex items-center gap-1.5 text-foreground">
-                                                        <Network size={12} className="text-blue-400" />
-                                                        <span className="text-blue-400 font-semibold">{nodes.find(n => n.id === server.nodeId)?.name || 'Unknown'}</span>
-                                                    </span>
-                                                </div>
+                                                <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Node</span><span className="flex items-center gap-1.5 text-foreground"><Network size={12} className="text-blue-400" /><span className="text-blue-400 font-semibold">{nodes.find(n => n.id === server.nodeId)?.name || 'Unknown'}</span></span></div>
                                             )}
                                         </div>
 
                                         <div className="flex justify-end items-center gap-4">
                                             {status === ServerStatus.CRASHED && (
                                                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-rose-500 text-white rounded text-[9px] font-bold uppercase tracking-tight shadow-sm whitespace-nowrap">
-                                                    <AlertTriangle size={10} className="stroke-[3px]" />
-                                                    <span>Analysis Required</span>
+                                                    <AlertTriangle size={10} className="stroke-[3px]" /><span>Analysis Required</span>
                                                 </div>
                                             )}
                                             <div className="flex items-center gap-3">
-                                                <button 
-                                                    disabled={isOnline || status === ServerStatus.STARTING || !!installProgress[server.id] || status === ServerStatus.INSTALLING}
-                                                    onClick={(e) => handleDelete(e, server.id, server.name)}
-                                                    className={`p-2 rounded-md opacity-0 group-hover:opacity-100 transition-all ${(isOnline || status === ServerStatus.STARTING || !!installProgress[server.id] || status === ServerStatus.INSTALLING) ? 'text-muted-foreground/30 cursor-not-allowed' : 'text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10'}`}
-                                                    title={(isOnline || status === ServerStatus.STARTING) ? "Stop server to delete" : "Delete Instance"}
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                <button disabled={isOnline || status === ServerStatus.STARTING || !!installProgress[server.id] || status === ServerStatus.INSTALLING} onClick={(e) => handleDelete(e, server.id, server.name)} className={`p-2 rounded-md opacity-0 group-hover:opacity-100 transition-all ${(isOnline || status === ServerStatus.STARTING || !!installProgress[server.id] || status === ServerStatus.INSTALLING) ? 'text-muted-foreground/30 cursor-not-allowed' : 'text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10'}`} title={(isOnline || status === ServerStatus.STARTING) ? "Stop server to delete" : "Delete Instance"}><Trash2 size={16} /></button>
                                                 {installProgress[server.id] ? (
-                                                    <div className="px-3 py-1.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 transition-colors text-xs font-bold flex items-center gap-2">
-                                                        <Loader2 size={12} className="animate-spin" /> Installing...
-                                                    </div>
+                                                    <div className="px-3 py-1.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 transition-colors text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin" /> Installing...</div>
                                                 ) : (
-                                                    <div className="px-3 py-1.5 rounded bg-secondary border border-border group-hover:bg-foreground group-hover:text-background transition-colors text-xs font-medium flex items-center gap-2">
-                                                        Connect <ArrowRight size={12} />
-                                                    </div>
+                                                    <div className="px-3 py-1.5 rounded bg-secondary border border-border group-hover:bg-foreground group-hover:text-background transition-colors text-xs font-medium flex items-center gap-2">Connect <ArrowRight size={12} /></div>
                                                 )}
                                             </div>
                                         </div>
@@ -351,20 +804,54 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                         );
                     })}
                 </motion.div>
+                )}
+
+                {/* Cloning Modal */}
+                <AnimatePresence>
+                    {cloningServer && (
+                        <div className="fixed inset-0 bg-background/80 z-[60] flex items-center justify-center p-6 backdrop-blur-sm">
+                            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+                                <form onSubmit={handleClone}>
+                                    <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-secondary/20">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center text-primary"><Copy size={18} /></div>
+                                            <h2 className="text-sm font-bold text-foreground">Clone Instance</h2>
+                                        </div>
+                                        <button type="button" onClick={() => setCloningServer(null)} className="p-2 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground"><X size={18} /></button>
+                                    </div>
+                                    <div className="p-6 space-y-4">
+                                        <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4 flex items-center gap-4">
+                                            <div className="p-2 bg-amber-500/10 rounded text-amber-500"><AlertTriangle size={18} /></div>
+                                            <div className="text-[11px] text-muted-foreground leading-relaxed">This will create a near-identical copy of <span className="text-foreground font-bold">{cloningServer.name}</span>, including all files, plugins, and configurations.</div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-1">Namespace for New Clone</label>
+                                            <input autoFocus type="text" value={newCloneName} onChange={e => setNewCloneName(e.target.value)} placeholder="Enter new server name..." className="w-full bg-secondary/50 border border-border rounded-lg px-4 py-3 text-sm text-foreground focus:ring-1 focus:ring-primary outline-none transition-all" />
+                                        </div>
+                                    </div>
+                                    <div className="p-4 bg-secondary/10 border-t border-border flex gap-3">
+                                        <button type="button" onClick={() => setCloningServer(null)} className="flex-1 py-2.5 text-xs font-bold text-muted-foreground hover:bg-secondary rounded-lg transition-all">Cancel</button>
+                                        <button type="submit" disabled={isCloning || !newCloneName.trim()} className="flex-[2] py-2.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2">
+                                            {isCloning ? <Loader2 size={14} className="animate-spin" /> : <><CheckCircle2 size={14} /> Initialize Clone</>}
+                                        </button>
+                                    </div>
+                                </form>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
 
                 {/* Import Server Modal */}
                 {showImportModal && (
-                    <ImportServerModal 
-                        onClose={() => setShowImportModal(false)}
-                        onSuccess={() => refreshServers()}
-                    />
+                    <ImportServerModal onClose={() => setShowImportModal(false)} onSuccess={() => refreshServers()} />
                 )}
                 
-                {/* Footer Info */}
-                <div className="mt-8 flex justify-between items-center text-[10px] text-muted-foreground uppercase tracking-widest font-mono opacity-50">
-                    <span>Craft Commands Pro</span>
-                    <span>System Ready</span>
-                </div>
+                <ConfirmDialog 
+                    isOpen={isConfirmOpen}
+                    {...confirmConfig}
+                    onConfirm={handleConfirm}
+                    onCancel={handleCancel}
+                />
             </div>
         </div>
     );

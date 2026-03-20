@@ -16,7 +16,7 @@ interface Modpack {
 }
 
 interface ModpackBrowserProps {
-    onSelect: (pack: Modpack) => void;
+    onSelect: (pack: Modpack, loader: string) => void;
     serverSoftware?: string;
 }
 
@@ -84,7 +84,6 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
             const data = await res.json();
             setPacks(Array.isArray(data) ? data : []);
         } catch (e: any) {
-            console.error("Failed to search mods/modpacks", e);
             setError(e.message || 'Search failed. Check your connection and try again.');
             setPacks([]);
         } finally {
@@ -211,7 +210,7 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
                     packs.map((pack) => (
                         <div 
                             key={pack.id}
-                            onClick={() => onSelect(pack)}
+                            onClick={() => onSelect(pack, activeLoader)}
                             className="flex items-center gap-4 p-3 rounded-xl border border-border bg-card/50 hover:bg-secondary/50 hover:border-primary/30 cursor-pointer transition-all group"
                         >
                             <img 

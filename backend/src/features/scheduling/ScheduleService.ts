@@ -6,73 +6,194 @@ import { startServer } from '../servers/ServerService';
 import { EventEmitter } from 'events';
 import {  ScheduleTask  } from '@shared/types';
 
+// --- Full 5-field Cron Parser ---
+// Supports: *, */N, N, N-M, N,M,O, and named days (SUN-SAT) / months (JAN-DEC)
+
+const DAY_NAMES: Record<string, number> = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
+const MONTH_NAMES: Record<string, number> = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+
+function resolveNamedValue(token: string, names: Record<string, number>): string {
+    const upper = token.toUpperCase();
+    return names[upper] !== undefined ? String(names[upper]) : token;
+}
+
+function matchesCronField(value: number, field: string, names: Record<string, number> = {}): boolean {
+    // Handle comma-separated list: "1,5,10"
+    const parts = field.split(',');
+    for (const part of parts) {
+        const resolved = resolveNamedValue(part.trim(), names);
+
+        // Wildcard
+        if (resolved === '*') return true;
+
+        // Step: */N or N-M/S
+        if (resolved.includes('/')) {
+            const [rangeStr, stepStr] = resolved.split('/');
+            const step = parseInt(stepStr, 10);
+            if (isNaN(step) || step <= 0) continue;
+
+            if (rangeStr === '*') {
+                if (value % step === 0) return true;
+            } else if (rangeStr.includes('-')) {
+                const [start, end] = rangeStr.split('-').map(Number);
+                if (value >= start && value <= end && (value - start) % step === 0) return true;
+            }
+            continue;
+        }
+
+        // Range: N-M
+        if (resolved.includes('-')) {
+            const [start, end] = resolved.split('-').map(s => {
+                const named = resolveNamedValue(s.trim(), names);
+                return parseInt(named, 10);
+            });
+            if (value >= start && value <= end) return true;
+            continue;
+        }
+
+        // Exact value
+        if (parseInt(resolved, 10) === value) return true;
+    }
+
+    return false;
+}
+
+function isDue(cron: string, now: Date): boolean {
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length < 5) return false;
+
+    const [minField, hourField, domField, monthField, dowField] = parts;
+
+    const minute = now.getMinutes();
+    const hour = now.getHours();
+    const dayOfMonth = now.getDate();
+    const month = now.getMonth() + 1; // JS months are 0-indexed
+    const dayOfWeek = now.getDay(); // 0 = Sunday
+
+    return (
+        matchesCronField(minute, minField) &&
+        matchesCronField(hour, hourField) &&
+        matchesCronField(dayOfMonth, domField) &&
+        matchesCronField(month, monthField, MONTH_NAMES) &&
+        matchesCronField(dayOfWeek, dowField, DAY_NAMES)
+    );
+}
+
+// --- Next Run Calculator ---
+// Brute-force scans future minutes to find the next match (capped at 7 days)
+
+function calculateNextRun(cron: string): string {
+    try {
+        const now = new Date();
+        const candidate = new Date(now);
+        candidate.setSeconds(0, 0);
+        candidate.setMinutes(candidate.getMinutes() + 1); // Start from next minute
+
+        const maxIterations = 7 * 24 * 60; // 7 days of minutes
+        for (let i = 0; i < maxIterations; i++) {
+            if (isDue(cron, candidate)) {
+                return candidate.toISOString();
+            }
+            candidate.setMinutes(candidate.getMinutes() + 1);
+        }
+        return 'No match within 7 days';
+    } catch {
+        return 'Invalid cron';
+    }
+}
+
+// --- Human-Readable Cron Description ---
+
+function describeCron(cron: string): string {
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length < 5) return 'Invalid';
+
+    const [min, hour, dom, month, dow] = parts;
+
+    if (cron === '* * * * *') return 'Every minute';
+    if (min.startsWith('*/') && hour === '*' && dom === '*' && month === '*' && dow === '*') {
+        return `Every ${min.substring(2)} minutes`;
+    }
+    if (min === '0' && hour === '*' && dom === '*' && month === '*' && dow === '*') return 'Every hour';
+    if (min === '0' && hour === '0' && dom === '*' && month === '*' && dow === '*') return 'Daily at midnight';
+    if (min === '0' && hour !== '*' && dom === '*' && month === '*' && dow === '*') return `Daily at ${hour}:00`;
+    if (dow !== '*' && dom === '*' && month === '*') {
+        const dayName = Object.entries(DAY_NAMES).find(([, v]) => String(v) === dow)?.[0] || dow;
+        const timeStr = hour !== '*' ? ` at ${hour}:${min.padStart(2, '0')}` : '';
+        return `Every ${dayName}${timeStr}`;
+    }
+    return `Cron: ${cron}`;
+}
+
 export class ScheduleService extends EventEmitter {
     private timer: NodeJS.Timeout | null = null;
     private tasks: Map<string, ScheduleTask[]> = new Map();
 
     constructor() {
         super();
+        this.preloadAllSchedules();
         this.startScheduler();
     }
 
+    // Pre-load ALL schedules from repository on boot so we never miss a first-minute run
+    private async preloadAllSchedules() {
+        try {
+            const allTasks = await scheduleRepository.getAllSchedules();
+            for (const task of allTasks) {
+                const serverId = task.serverId;
+                if (!this.tasks.has(serverId)) {
+                    this.tasks.set(serverId, []);
+                }
+                this.tasks.get(serverId)!.push(task);
+            }
+            const serverCount = this.tasks.size;
+            const taskCount = allTasks.length;
+            if (taskCount > 0) {
+                console.log(`[ScheduleService] Pre-loaded ${taskCount} tasks across ${serverCount} servers.`);
+            }
+        } catch (e) {
+            console.error('[ScheduleService] Failed to preload schedules:', e);
+        }
+    }
+
     private startScheduler() {
-        console.log('[ScheduleService] Scheduler started.');
+        console.log('[ScheduleService] Scheduler started (full 5-field cron).');
         // Check every minute
         this.timer = setInterval(() => this.checkSchedules(), 60 * 1000);
     }
 
     private async checkSchedules() {
         const now = new Date();
-        const minutes = now.getMinutes();
-        const hours = now.getHours();
         
         for (const [serverId, tasks] of this.tasks.entries()) {
             for (const task of tasks) {
                 if (!task.isActive) continue;
 
-                if (this.isDue(task.cron, minutes, hours)) {
-                    console.log(`[ScheduleService] Executing task ${task.name} for server ${serverId}`);
+                // One-time task: check if runAt date has passed
+                if (task.runOnce && task.runAt) {
+                    const runAt = new Date(task.runAt);
+                    if (now >= runAt && (!task.lastRun || new Date(task.lastRun as string) < runAt)) {
+                        console.log(`[ScheduleService] Executing one-time task "${task.name}" for server ${serverId}`);
+                        await this.executeTask(serverId, task);
+                        task.lastRun = now.toISOString();
+                        task.isActive = false; // Auto-disable after one-time execution
+                        this.saveSchedules(serverId, tasks);
+                        continue;
+                    }
+                }
+
+                // Standard cron task
+                if (isDue(task.cron, now)) {
+                    console.log(`[ScheduleService] Executing task "${task.name}" for server ${serverId}`);
                     await this.executeTask(serverId, task);
                     
-                    // Update last run
+                    // Update last run and next run
                     task.lastRun = now.toISOString();
-                    task.nextRun = this.calculateNextRun(task.cron); // Simplified
+                    task.nextRun = calculateNextRun(task.cron);
                     this.saveSchedules(serverId, tasks);
                 }
             }
         }
-    }
-
-    private isDue(cron: string, currentMinute: number, currentHour: number): boolean {
-        // Supports: "* * * * *" (Every min), "0 * * * *" (Hourly), "*/5 * * * *" (Every 5 mins)
-        // Does NOT fully support extensive Cron syntax, but covers 95% of use cases.
-        const parts = cron.split(' ');
-        if (parts.length < 5) return false;
-
-        const [min, hour] = parts;
-
-        const checkPart = (current: number, pattern: string) => {
-            if (pattern === '*') return true;
-            if (pattern.startsWith('*/')) {
-                const interval = parseInt(pattern.substring(2));
-                return current % interval === 0;
-            }
-            return parseInt(pattern) === current;
-        };
-
-        return checkPart(currentMinute, min) && checkPart(currentHour, hour);
-    }
-
-    private calculateNextRun(cron: string): string {
-        // Simple human-readable heuristic
-        if (cron === '* * * * *') return "in 1 minute";
-        if (cron.startsWith('0 *')) return "at the top of the next hour";
-        if (cron.startsWith('0 0 * * *')) return "at midnight";
-        if (cron.startsWith('*/')) {
-             const min = cron.split(' ')[0].substring(2);
-             return `every ${min} minutes`;
-        }
-        return "Scheduled";
     }
 
     private async logExecution(serverId: string, taskName: string, success: boolean, message: string) {
@@ -93,45 +214,72 @@ export class ScheduleService extends EventEmitter {
 
     private async executeTask(serverId: string, task: ScheduleTask) {
         try {
-            if (task.command === 'backup') {
-                // Get server's backup preference
+            const actions = task.actions && task.actions.length > 0 
+                ? task.actions 
+                : [{ type: (task.command === 'backup' || task.command === 'restart') ? task.command : 'command', command: task.command } as any];
+
+            console.log(`[ScheduleService] Executing ${actions.length} actions for task "${task.name}"`);
+
+            for (const action of actions) {
+                await this.executeSingleAction(serverId, task.name, action);
+            }
+        } catch (e: any) {
+            console.error(`[ScheduleService] Task "${task.name}" failed:`, e);
+            await this.logExecution(serverId, task.name, false, e.message || "Execution failed");
+        }
+    }
+
+    private async executeSingleAction(serverId: string, taskName: string, action: any) {
+        const type = action.type;
+        const command = action.command;
+
+        try {
+            if (type === 'backup') {
                 const { getServer } = require('../servers/ServerService');
                 const server = getServer(serverId);
-                const worldOnly = server?.backupConfig?.worldOnly ?? false; // Default to full backup
+                const worldOnly = server?.backupConfig?.worldOnly ?? false;
                 
                 await backupService.createBackup(
                     await this.getServerDir(serverId), 
                     serverId, 
-                    `Scheduled: ${task.name}`,
+                    `Scheduled: ${taskName}`,
                     worldOnly
                 );
-                await this.logExecution(serverId, task.name, true, worldOnly ? "World backup created" : "Full backup created");
-            } else if (task.command === 'restart') {
+                await this.logExecution(serverId, taskName, true, `Backup created (${worldOnly ? "world" : "full"})`);
+            } else if (type === 'restart') {
                 processManager.stopServer(serverId);
+                await this.logExecution(serverId, taskName, true, "Restart: Stop initiated");
                 
-                // Wait for graceful shutdown (15s), then start
-                setTimeout(async () => {
-                    try {
-                        await startServer(serverId);
-                        await this.logExecution(serverId, task.name, true, "Server restarted successfully");
-                    } catch (e: any) {
-                        await this.logExecution(serverId, task.name, false, `Restart start failed: ${e.message}`);
-                    }
-                }, 15000);
+                // Wait for graceful shutdown (max 30s)
+                let attempts = 0;
+                while (processManager.isRunning(serverId) && attempts < 30) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    attempts++;
+                }
 
-                await this.logExecution(serverId, task.name, true, "Server restart triggered (Shutdown initiated)");
+                try {
+                    await startServer(serverId);
+                    await this.logExecution(serverId, taskName, true, "Restart: Server started");
+                } catch (e: any) {
+                    throw new Error(`Restart start failed: ${e.message}`);
+                }
+            } else if (type === 'start') {
+                await startServer(serverId);
+                await this.logExecution(serverId, taskName, true, "Server started");
+            } else if (type === 'stop') {
+                processManager.stopServer(serverId);
+                await this.logExecution(serverId, taskName, true, "Server stop initiated");
             } else {
                 // Console Command
                 if (processManager.isRunning(serverId)) {
-                    await processManager.sendCommand(serverId, task.command);
-                    await this.logExecution(serverId, task.name, true, `Executed: ${task.command}`);
+                    await processManager.sendCommand(serverId, command);
+                    await this.logExecution(serverId, taskName, true, `Executed command: ${command}`);
                 } else {
-                    await this.logExecution(serverId, task.name, false, "Server not running");
+                    throw new Error("Cannot send command: Server not running");
                 }
             }
         } catch (e: any) {
-            console.error(`[ScheduleService] Task failed:`, e);
-            await this.logExecution(serverId, task.name, false, e.message || "Unknown error");
+            throw e; // Bubble up to executeTask for final logging
         }
     }
     
@@ -149,7 +297,16 @@ export class ScheduleService extends EventEmitter {
             const data = await scheduleRepository.getSchedules(serverId);
             this.tasks.set(serverId, data);
         }
-        return this.tasks.get(serverId) || [];
+        
+        // Recalculate next run for all tasks before returning
+        const tasks = this.tasks.get(serverId) || [];
+        for (const task of tasks) {
+            if (task.isActive && task.cron) {
+                task.nextRun = calculateNextRun(task.cron);
+            }
+        }
+        
+        return tasks;
     }
 
     async getHistory(serverId: string): Promise<any[]> {
@@ -157,6 +314,8 @@ export class ScheduleService extends EventEmitter {
     }
 
     async addTask(serverId: string, task: ScheduleTask): Promise<void> {
+        // Compute next run on creation
+        task.nextRun = task.runOnce && task.runAt ? task.runAt : calculateNextRun(task.cron);
         const tasks = await this.getSchedules(serverId);
         tasks.push(task);
         await this.saveSchedules(serverId, tasks);
@@ -173,9 +332,16 @@ export class ScheduleService extends EventEmitter {
          let tasks = await this.getSchedules(serverId);
          const idx = tasks.findIndex(t => t.id === task.id);
          if (idx !== -1) {
+             // Recompute next run if cron changed
+             task.nextRun = task.runOnce && task.runAt ? task.runAt : calculateNextRun(task.cron);
              tasks[idx] = task;
              await this.saveSchedules(serverId, tasks);
          }
+    }
+
+    // Utility for frontend: describe a cron expression in human-readable form
+    describeCron(cron: string): string {
+        return describeCron(cron);
     }
 
     private async saveSchedules(serverId: string, tasks: ScheduleTask[]) {

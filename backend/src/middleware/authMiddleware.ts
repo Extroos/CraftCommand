@@ -8,7 +8,7 @@ import { getServer } from '../features/servers/ServerService';
 import { getServerCapabilities } from '../../../shared/utils/CapabilityUtils';
 
 
-export const verifyToken = (req: Request, res: Response, next: NextFunction) => {
+export const verifyToken = async (req: Request, res: Response, next: NextFunction) => {
     // Check if Host Mode is disabled (Personal Mode)
     const settings = systemSettingsService.getSettings();
     const hostMode = settings?.app?.hostMode ?? true;
@@ -70,6 +70,15 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
         // Attach user to request
         (req as any).user = user;
 
+        // Verify Session (Phase 12)
+        if (decoded.jti) {
+            const isValid = await authService.isSessionValid(decoded.jti);
+            if (!isValid) {
+                 console.warn(`[AuthMiddleware] Revoked or expired session: ${decoded.jti} for user ${user.email}`);
+                 return res.status(401).json({ error: 'Session has been revoked or expired. Please login again.' });
+            }
+        }
+
         // Phase 6: Enforce 2FA Policy for Administrators
         // ... (policy enforcement omitted for brevity, but stays below)
         const isAppAdmin = user.role === 'ADMIN' || user.role === 'OWNER';
@@ -91,7 +100,7 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
     }
 };
 
-export const optionalVerifyToken = (req: Request, res: Response, next: NextFunction) => {
+export const optionalVerifyToken = async (req: Request, res: Response, next: NextFunction) => {
     const settings = systemSettingsService.getSettings();
     if (!settings.app.hostMode) {
         (req as any).user = {

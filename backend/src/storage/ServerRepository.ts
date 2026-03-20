@@ -12,6 +12,11 @@ export class ServerRepository implements StorageProvider<ServerConfig> {
     }
 
     init() { return this.provider.init(); }
+
+    public async rebind() {
+        this.provider = StorageFactory.get<ServerConfig>('servers');
+        await this.init();
+    }
     
     public findAll(): ServerConfig[] {
         const data = this.provider.findAll();
@@ -42,6 +47,8 @@ export class ServerRepository implements StorageProvider<ServerConfig> {
 
     delete(id: string) { return this.provider.delete(id); }
 
+    saveAll(items: ServerConfig[]) { return this.provider.saveAll(items); }
+
     /**
      * Data Healing Layer (v1.7.11)
      * Automatically repairs missing or corrupted field defaults.
@@ -56,6 +63,8 @@ export class ServerRepository implements StorageProvider<ServerConfig> {
         if (!sanitized.executable || sanitized.executable === 'undefined' || sanitized.executable === 'null' || (isBedrock && isJavaExe)) {
             if (isBedrock) {
                 sanitized.executable = process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server';
+            } else if (sanitized.software === 'Velocity') {
+                sanitized.executable = 'velocity.jar';
             } else {
                 sanitized.executable = 'server.jar';
             }

@@ -2,6 +2,7 @@ import express from 'express';
 import { pluginService } from '../plugins/PluginService';
 import { pluginConfigService } from '../plugins/PluginConfigService';
 import { verifyToken, requirePermission, requireCapability } from '../../middleware/authMiddleware';
+import { auditService } from '../system/AuditService';
 
 import {  PluginSearchQuery, PluginSource  } from '@shared/types';
 
@@ -83,6 +84,11 @@ router.post('/servers/:id/install', requirePermission('server.files.write'), asy
 
         const plugin = await pluginService.install(req.params.id, sourceId, source as PluginSource);
         res.json(plugin);
+        auditService.log((req as any).user.id, 'PLUGIN_INSTALL', req.params.id, { 
+            pluginName: plugin.name, 
+            source, 
+            sourceId 
+        });
     } catch (err: any) {
         console.error('[PluginRoutes] Install error:', err.message);
         const msg = err.message || 'Install failed';
@@ -106,6 +112,7 @@ router.delete('/servers/:id/:pluginId', requirePermission('server.files.write'),
     try {
         await pluginService.uninstall(req.params.id, req.params.pluginId);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'PLUGIN_UNINSTALL', req.params.id, { pluginId: req.params.pluginId });
     } catch (err: any) {
         console.error('[PluginRoutes] Uninstall error:', err.message);
         res.status(500).json({ error: err.message });
@@ -117,6 +124,11 @@ router.patch('/servers/:id/:pluginId/toggle', requirePermission('server.files.wr
     try {
         const plugin = await pluginService.toggle(req.params.id, req.params.pluginId);
         res.json(plugin);
+        auditService.log((req as any).user.id, 'PLUGIN_TOGGLE', req.params.id, { 
+            pluginId: req.params.pluginId, 
+            pluginName: plugin.name,
+            enabled: plugin.enabled 
+        });
     } catch (err: any) {
         console.error('[PluginRoutes] Toggle error:', err.message);
         res.status(500).json({ error: err.message });
@@ -128,8 +140,33 @@ router.post('/servers/:id/:pluginId/update', requirePermission('server.files.wri
     try {
         const plugin = await pluginService.update(req.params.id, req.params.pluginId);
         res.json(plugin);
+        auditService.log((req as any).user.id, 'PLUGIN_UPDATE', req.params.id, { 
+            pluginId: req.params.pluginId, 
+            pluginName: plugin.name,
+            version: plugin.version 
+        });
     } catch (err: any) {
         console.error('[PluginRoutes] Update error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/plugins/servers/:id/bulk-update - Update multiple plugins
+router.post('/servers/:id/bulk-update', requirePermission('server.files.write'), async (req, res) => {
+    try {
+        const { pluginIds } = req.body;
+        if (!Array.isArray(pluginIds) || pluginIds.length === 0) {
+            return res.status(400).json({ error: 'pluginIds array is required and cannot be empty' });
+        }
+        
+        const results = await pluginService.bulkUpdate(req.params.id, pluginIds);
+        res.json(results);
+        auditService.log((req as any).user.id, 'PLUGIN_BULK_UPDATE', req.params.id, { 
+            pluginIds,
+            count: results.length 
+        });
+    } catch (err: any) {
+        console.error('[PluginRoutes] Bulk update error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -185,6 +222,10 @@ router.post('/servers/:id/:pluginId/config/save', requirePermission('server.file
         
         await pluginConfigService.saveFile(req.params.id, req.params.pluginId, filePath, content);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'PLUGIN_CONFIG_SAVE', req.params.id, { 
+            pluginId: req.params.pluginId, 
+            path: filePath 
+        });
     } catch (err: any) {
         console.error('[PluginRoutes] Config save error:', err.message);
         res.status(500).json({ error: err.message });

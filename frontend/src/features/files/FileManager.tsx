@@ -2,13 +2,15 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-    Folder, File, FileCode, Archive, Home, ChevronRight, 
+    Folder, File as FileIcon, FileCode, Archive, Home, ChevronRight, 
     Download, Trash2, Save, X, 
     UploadCloud, FolderPlus, FilePlus, Search, 
-    CornerUpLeft, SortAsc, SortDesc, Loader2, Shield
+    CornerUpLeft, SortAsc, SortDesc, Loader2, Shield, Copy
 } from 'lucide-react';
 import { FileNode } from '@shared/types';
 import { useToast } from '../ui/Toast';
+import { useConfirm } from '../ui/hooks/useConfirm';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 
 import { API } from '@core/services/api';
@@ -40,6 +42,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const mountedRef = useRef(true);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { addToast } = useToast();
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
     
     // Modals & Actions
     const [editorFile, setEditorFile] = useState<{ node: FileNode, content: string } | null>(null);
@@ -47,6 +50,9 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const [newItemModal, setNewItemModal] = useState<{ type: 'file' | 'folder' | null, value: string }>({ type: null, value: '' });
     const [deletingItemIds, setDeletingItemIds] = useState<Set<string>>(new Set());
     const [extractingItemIds, setExtractingItemIds] = useState<Set<string>>(new Set());
+    const [searchResults, setSearchResults] = useState<any[] | null>(null);
+    const [isSearchingServer, setIsSearchingServer] = useState(false);
+    const [searchInContent, setSearchInContent] = useState(false);
 
     useEffect(() => {
         mountedRef.current = true;
@@ -81,7 +87,6 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             });
             setFileSystem(nodes);
         } catch (e) {
-            console.error(e);
             addToast('error', 'File Error', 'Failed to load files.');
         }
     };
@@ -93,8 +98,21 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
 
     // Derived State (Flattened, since we fetch per folder now)
     const currentFiles = useMemo(() => {
+        if (searchResults) {
+             return searchResults.map(f => ({
+                id: f.path,
+                name: f.name,
+                type: f.isDirectory ? 'folder' : (f.name.endsWith('.jar') || f.name.endsWith('.zip') ? 'archive' : 'file'),
+                size: f.isDirectory ? '-' : (f.size > 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${(f.size / 1024).toFixed(1)} KB`),
+                modified: f.modified || 'Unknown', 
+                path: f.path,
+                isDirectory: f.isDirectory,
+                snippet: f.snippet
+             }));
+        }
+
         let files = fileSystem;
-        if (searchTerm) {
+        if (searchTerm && !searchResults) {
             files = files.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
         }
         // Filter out optimistically deleted items
@@ -125,7 +143,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [fileSystem, searchTerm, sortConfig]);
+    }, [fileSystem, searchTerm, sortConfig, searchResults]);
 
     // Helpers (Removed legacy recursive helpers)
 
@@ -139,6 +157,11 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     };
 
     const handleUp = () => {
+        if (searchResults) {
+            setSearchResults(null);
+            setSearchTerm('');
+            return;
+        }
         setCurrentPath(currentPath.slice(0, -1));
         setSelectedIds(new Set());
     };
@@ -192,7 +215,13 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             return;
         }
 
-        if (!confirm(`Are you sure you want to delete ${targets.size} items?`)) return;
+        const isConfirmed = await requestConfirm({
+            title: 'Delete Items',
+            description: `Are you sure you want to delete ${targets.size} items? This action cannot be undone.`,
+            confirmText: 'Delete',
+            cancelText: 'Cancel'
+        });
+        if (!isConfirmed) return;
         
         const paths = Array.from(targets);
         setDeletingItemIds(prev => {
@@ -244,6 +273,15 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     };
 
 
+
+    const handleDownload = async (path: string, name: string) => {
+        try {
+            addToast('info', 'Downloading', `Preparing ${name}...`);
+            await API.downloadFile(serverId, path);
+        } catch (e: any) {
+            addToast('error', 'Download Failed', e.message || 'Could not download file.');
+        }
+    };
 
     const processUpload = async (file: File) => {
         if (!canManage) return;
@@ -305,6 +343,22 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
         }
     };
 
+    const handleServerSearch = async () => {
+        if (!searchTerm || searchTerm.length < 2) return;
+        setIsSearchingServer(true);
+        try {
+            const results = await API.searchFiles(serverId, searchTerm, '.', searchInContent);
+            setSearchResults(results);
+            if (results.length === 0) {
+                addToast('info', 'No Results', `No matches found for "${searchTerm}"`);
+            }
+        } catch (e) {
+            addToast('error', 'Search Failed', 'Could not complete server-side search.');
+        } finally {
+            setIsSearchingServer(false);
+        }
+    };
+
 
     // Icons
     const getFileIcon = (type: string) => {
@@ -313,7 +367,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             case 'archive': return <Archive className="text-amber-500" size={20} />;
             case 'config': return <FileCode className="text-emerald-400" size={20} />;
             case 'code': return <FileCode className="text-blue-500" size={20} />;
-            default: return <File className="text-muted-foreground/60" size={20} />;
+            default: return <FileIcon className="text-muted-foreground/60" size={20} />;
         }
     };
 
@@ -329,10 +383,10 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                 <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto no-scrollbar py-0.5">
                     <button 
                         onClick={() => { setCurrentPath([]); setSelectedIds(new Set()); }}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-secondary transition-colors shrink-0 ${currentPath.length === 0 ? 'bg-secondary text-primary font-bold' : 'text-muted-foreground'}`}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-secondary transition-colors shrink-0 ${currentPath.length === 0 ? 'bg-primary/10 text-primary font-bold border border-primary/20' : 'text-muted-foreground border border-transparent'}`}
                     >
-                        <Home size={16} />
-                        <span className="text-xs font-bold tracking-tight">ROOT</span>
+                        <Home size={14} />
+                        <span className="text-[10px] font-black tracking-[0.1em] uppercase">Root</span>
                     </button>
                     {currentPath.map((folder, index) => (
                         <div key={folder} className="flex items-center gap-1 shrink-0">
@@ -342,24 +396,57 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                     setCurrentPath(currentPath.slice(0, index + 1));
                                     setSelectedIds(new Set());
                                 }}
-                                className={`text-xs px-3 py-2 rounded-lg hover:bg-secondary transition-colors font-medium ${index === currentPath.length - 1 ? 'text-foreground' : 'text-muted-foreground'}`}
+                                className={`text-[10px] uppercase tracking-wider px-2.5 py-1.5 rounded-md hover:bg-secondary transition-colors font-bold border border-transparent hover:border-border/40 ${index === currentPath.length - 1 ? 'text-foreground bg-secondary/30' : 'text-muted-foreground'}`}
                             >
                                 {folder}
                             </button>
                         </div>
                     ))}
+                    {currentPath.length > 0 && (
+                        <button 
+                            onClick={() => {
+                                navigator.clipboard.writeText('/' + currentPath.join('/'));
+                                addToast('info', 'Path Copied', 'Directory path copied to clipboard');
+                            }}
+                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground/40 hover:text-primary transition-all ml-2"
+                            title="Copy Current Path"
+                        >
+                            <Copy size={12} />
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-48">
-                        <Search className="absolute left-2.5 top-2.5 text-muted-foreground h-4 w-4" />
-                        <input 
-                            type="text" 
-                            placeholder="Filter files..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-secondary/30 border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                        />
+                    <div className="relative flex-1 md:w-64 flex gap-2">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-2.5 top-2.5 text-muted-foreground h-4 w-4" />
+                            <input 
+                                type="text" 
+                                placeholder="Search files..." 
+                                value={searchTerm}
+                                onChange={(e) => {
+                                    setSearchTerm(e.target.value);
+                                    if (!e.target.value) setSearchResults(null);
+                                }}
+                                onKeyDown={(e) => e.key === 'Enter' && handleServerSearch()}
+                                className="w-full bg-secondary/30 border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                        </div>
+                        <button 
+                            onClick={() => setSearchInContent(!searchInContent)}
+                            className={`px-2 rounded-lg border text-[10px] font-bold transition-all ${searchInContent ? 'bg-primary/20 border-primary text-primary' : 'bg-secondary/30 border-border text-muted-foreground'}`}
+                            title="Search in file content (Grep)"
+                        >
+                            GREP
+                        </button>
+                        <button 
+                            onClick={handleServerSearch}
+                            disabled={isSearchingServer || searchTerm.length < 2}
+                            className="p-2 bg-secondary/50 hover:bg-secondary border border-border rounded-lg text-muted-foreground transition-all"
+                            title="Search All Files"
+                        >
+                            {isSearchingServer ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                        </button>
                     </div>
                     <div className="flex gap-2 shrink-0">
                         {canManage && (
@@ -418,7 +505,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/50">
-                            {currentPath.length > 0 && (
+                            {(currentPath.length > 0 || searchResults) && (
                                 <tr 
                                     className="hover:bg-muted/40 transition-colors cursor-pointer group"
                                     onClick={handleUp}
@@ -428,7 +515,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                             <CornerUpLeft size={10} className="text-muted-foreground/40 group-hover:text-primary transition-colors" />
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground/60 group-hover:text-primary transition-colors" colSpan={4}>.. (Parent Directory)</td>
+                                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground/60 group-hover:text-primary transition-colors" colSpan={4}>.. (Back{searchResults ? ' to Folder' : ''})</td>
                                 </tr>
                             )}
                             
@@ -492,9 +579,14 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                                 }}
                                             >
                                                 {getFileIcon(file.type)}
-                                                 <span className={`font-medium transition-colors ${file.type === 'folder' ? 'text-foreground group-hover:text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                                                  <span className={`font-medium transition-colors ${file.type === 'folder' ? 'text-foreground group-hover:text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
                                                     {file.name}
                                                 </span>
+                                                {file.snippet && (
+                                                    <span className="text-[10px] text-muted-foreground/60 italic truncate max-w-xs ml-2">
+                                                        {file.snippet}
+                                                    </span>
+                                                )}
                                                 {/* Smart Collab: LIVE Badge */}
                                                 {!file.isDirectory && presence[serverId]?.some(p => p.activeView === `files:${file.name}` && p.userId !== user?.id) && (
                                                     <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-500 animate-pulse border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
@@ -519,7 +611,13 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                         <td className="px-4 py-3 text-muted-foreground text-xs">{file.modified}</td>
                                         <td className="px-4 py-3 text-right">
                                             <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Download">
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDownload(file.path, file.name);
+                                                    }}
+                                                    className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Download"
+                                                >
                                                     <Download size={14} />
                                                 </button>
                                                 {file.name.endsWith('.zip') && canManage && (
@@ -574,16 +672,50 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                     <span className="font-bold text-sm">{selectedIds.size} selected</span>
                     <div className="h-4 w-[1px] bg-background/20"></div>
                     <div className="flex gap-2">
-                         <button className="p-2 hover:bg-background/20 rounded-full transition-colors" title="Archive">
+                         <button 
+                            onClick={async () => {
+                                const name = await requestConfirm({
+                                    title: 'Create Archive',
+                                    description: 'Enter a name for the new archive file.',
+                                    confirmText: 'Create',
+                                    cancelText: 'Cancel'
+                                });
+                                if (name) {
+                                    try {
+                                        await API.archiveFiles(serverId, Array.from(selectedIds), name + '.zip');
+                                        addToast('success', 'Archive Created', 'Files have been compressed.');
+                                        setSelectedIds(new Set());
+                                        fetchFiles();
+                                    } catch (e) {
+                                        addToast('error', 'Archive Failed', 'Failed to compress files.');
+                                    }
+                                }
+                            }}
+                            className="p-2 hover:bg-background/20 rounded-full transition-colors" title="Archive Selection"
+                        >
                             <Archive size={18} />
                         </button>
-                         <button className="p-2 hover:bg-background/20 rounded-full transition-colors" title="Download">
+                         <button 
+                            onClick={async () => {
+                                addToast('info', 'Downloading', `Starting sequential download of ${selectedIds.size} items...`);
+                                for (const id of selectedIds) {
+                                    const file = currentFiles.find(f => f.id === id);
+                                    if (file && !file.isDirectory) {
+                                        await API.downloadFile(serverId, file.path);
+                                        // Slight delay to prevent browser throttling
+                                        await new Promise(r => setTimeout(r, 300));
+                                    }
+                                }
+                                addToast('success', 'Downloads Finished', 'Batch download complete.');
+                            }}
+                            className="p-2 hover:bg-background/20 rounded-full transition-colors" title="Download Selection"
+                        >
                             <Download size={18} />
                         </button>
                          {canManage && (
                              <button 
                                 onClick={() => handleDelete()}
-                                className="p-2 hover:bg-red-500 hover:text-white rounded-full transition-colors" title="Delete"
+                                className="p-2 hover:bg-red-500 hover:text-white rounded-full transition-colors" title="Delete Selection"
                             >
                                 <Trash2 size={18} />
                             </button>
@@ -693,6 +825,13 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                     </div>
                 </div>
             )}
+            
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                {...confirmConfig}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+            />
         </div>
     );
 };

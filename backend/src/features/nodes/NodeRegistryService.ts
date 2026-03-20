@@ -408,7 +408,9 @@ export class NodeRegistryService extends EventEmitter {
     /**
      * Mark stale nodes as OFFLINE (no heartbeat within threshold).
      */
-    sweepStaleNodes(thresholdMs: number = 60000): void {
+    sweepStaleNodes(): void {
+        const settings = systemSettingsService.getSettings();
+        const thresholdMs = settings.app.distributedNodes?.nodeHeartbeatThresholdMs || 60000;
         const now = Date.now();
         let changed = false;
         for (const [id, node] of this.nodes) {

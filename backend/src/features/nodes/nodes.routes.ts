@@ -4,6 +4,7 @@ import { nodeSchedulerService } from './NodeSchedulerService';
 import { systemSettingsService } from '../system/SystemSettingsService';
 import { verifyToken, requireRole } from '../../middleware/authMiddleware';
 import { nodeEnrollmentService } from './NodeEnrollmentService';
+import { backupService } from '../backups/BackupService';
 
 const router = Router();
 
@@ -299,6 +300,39 @@ router.post('/:id/shutdown', verifyToken, requireRole(['OWNER']), requireDistrib
     } catch (error: any) {
         console.error('[Nodes] Failed to shutdown node:', error);
         res.status(500).json({ error: error.message || 'Failed to shutdown node' });
+    }
+});
+
+/**
+ * POST /api/nodes/:id/backups/intake — Intake mirrored backup from agent (Phase 11)
+ */
+router.post('/:id/backups/intake', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const nodeSecret = req.headers['x-node-secret'] as string;
+        const serverId = req.headers['x-server-id'] as string;
+        const backupId = req.headers['x-backup-id'] as string;
+
+        if (!nodeSecret || !serverId || !backupId) {
+            return res.status(400).json({ error: 'Missing required headers (x-node-secret, x-server-id, x-backup-id).' });
+        }
+
+        // Verify node exists and secret matches
+        const node = nodeRegistryService.getNode(id);
+        if (!node) return res.status(404).json({ error: 'Node not found.' });
+
+        if (!nodeRegistryService.verifySecret(id, nodeSecret)) {
+            return res.status(401).json({ error: 'Invalid node secret.' });
+        }
+
+        // Store the mirrored backup
+        await backupService.storeMirroredBackup(id, serverId, backupId, req);
+
+        res.json({ ok: true, message: 'Backup mirrored successfully.' });
+
+    } catch (error: any) {
+        console.error('[Nodes] Mirror intake failed:', error);
+        res.status(500).json({ error: error.message || 'Mirror intake failed' });
     }
 });
 

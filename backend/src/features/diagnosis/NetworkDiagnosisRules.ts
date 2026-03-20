@@ -55,10 +55,10 @@ export const PublicIpMismatchRule: DiagnosisRule = {
             return {
                 id: `ip-mismatch-${server.id}-${Date.now()}`,
                 ruleId: 'public_ip_mismatch',
-                severity: 'WARNING',
-                title: 'DDNS IP Mismatch',
-                explanation: `Your public IP has changed, but the record for ${server.network.hostname} is still pointing to ${ddnsStatus.resolvedIp}.`,
-                recommendation: 'Wait a few minutes for DNS propagation, or manually trigger a DDNS update.',
+                severity: 'INFO',
+                title: 'DDNS Propagation Pending',
+                explanation: `Your public IP has changed, but the record for ${server.network.hostname} is still pointing to ${ddnsStatus.resolvedIp}. This is normal during DNS propagation.`,
+                recommendation: 'Wait a few minutes for DNS propagation, or manually trigger a DDNS update if it persists.',
                 action: {
                     type: 'UPDATE_CONFIG',
                     payload: { triggerDdnsUpdate: true },
@@ -137,6 +137,9 @@ export const UnlinkedServerRule: DiagnosisRule = {
         );
 
         if (isLinked) return null;
+
+        // Skip for Bedrock (Velocity only handles Java)
+        if (server.software === 'Bedrock') return null;
 
         return {
             id: `net-unlinked-${server.id}-${Date.now()}`,

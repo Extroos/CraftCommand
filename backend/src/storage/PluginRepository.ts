@@ -11,12 +11,18 @@ class PluginRepository implements StorageProvider<InstalledPlugin> {
     }
 
     init() { return this.provider.init(); }
+
+    public async rebind() {
+        this.provider = StorageFactory.get<InstalledPlugin>('plugins');
+        await this.init();
+    }
     findAll() { return this.provider.findAll(); }
     findById(id: string) { return this.provider.findById(id); }
     findOne(criteria: Partial<InstalledPlugin>) { return this.provider.findOne(criteria); }
     create(item: InstalledPlugin) { return this.provider.create(item); }
     update(id: string, updates: Partial<InstalledPlugin>) { return this.provider.update(id, updates); }
     delete(id: string) { return this.provider.delete(id); }
+    saveAll(items: InstalledPlugin[]) { return this.provider.saveAll(items); }
 
     /**
      * Get all installed plugins for a specific server.

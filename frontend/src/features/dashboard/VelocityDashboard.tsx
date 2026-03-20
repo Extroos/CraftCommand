@@ -37,6 +37,9 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
     const [loading, setLoading] = useState(false);
     const [installingSuite, setInstallingSuite] = useState(false);
     const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'restart' | null>(null);
+    const [powerConfirm, setPowerConfirm] = useState<{ action: 'stop' | 'restart', isOpen: boolean }>({ action: 'stop', isOpen: false });
+    const [showGraceful, setShowGraceful] = useState(false);
+    const [gracefulCountdown, setGracefulCountdown] = useState(30);
 
     // List of servers NOT already linked
     const availableBackends = React.useMemo(() => {
@@ -57,15 +60,23 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
         if (action === 'stop' && !can('server.stop', serverId)) return;
         if (action === 'restart' && !can('server.restart', serverId)) return;
 
+        if (action === 'stop' && stats.players > 0) {
+            setShowGraceful(true);
+            return;
+        }
+
+        if (action === 'restart' && stats.players > 0) {
+            setPowerConfirm({ action, isOpen: true });
+            return;
+        }
+
+        await executePowerAction(action);
+    };
+
+    const executePowerAction = async (action: 'start' | 'stop' | 'restart') => {
         setPendingAction(action);
         const originalStatus = (server?.status || ServerStatus.ONLINE) as ServerStatus;
         
-        // Watchdog to prevent UI freeze if API stalls
-        const watchdog = setTimeout(() => {
-            setPendingAction(null);
-            console.warn(`[VelocityDashboard] Power action ${action} watchdog triggered.`);
-        }, 15000);
-
         try {
             if (action === 'start') {
                 updateServerStatus(serverId, ServerStatus.STARTING);
@@ -74,11 +85,9 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 await API.stopServer(serverId);
             } else {
-                // Restart logic - State aware
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 await API.stopServer(serverId);
                 
-                // Wait for state to actually show stopping/offline or timeout after 5s
                 let attempts = 0;
                 while (attempts < 10) {
                      const currentServer = servers.find(s => s.id === serverId);
@@ -95,7 +104,22 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
             updateServerStatus(serverId, originalStatus);
             addToast('error', 'Power Action Failed', e.message);
         } finally {
-            clearTimeout(watchdog);
+            setPendingAction(null);
+            setPowerConfirm({ action: 'stop', isOpen: false });
+        }
+    };
+
+    const handleGracefulStop = async () => {
+        setPendingAction('stop');
+        setShowGraceful(false);
+        try {
+            updateServerStatus(serverId, ServerStatus.STOPPING);
+            await API.gracefulStopServer(serverId, gracefulCountdown);
+            addToast('info', 'Graceful Shutdown', `Broadcast sent. Stopping in ${gracefulCountdown}s.`);
+        } catch (e: any) {
+            updateServerStatus(serverId, (server?.status || 'ONLINE') as ServerStatus);
+            addToast('error', 'Shutdown Failed', e.message);
+        } finally {
             setPendingAction(null);
         }
     };
@@ -150,14 +174,14 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
                         <div className="space-y-4">
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${server.status === 'ONLINE' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-zinc-600'}`} />
-                                    <span className={`text-[10px] font-bold tracking-[0.2em] ${server.status === 'ONLINE' ? 'text-emerald-500' : 'text-zinc-500'} uppercase`}>
+                                    <div className={`w-2 h-2 rounded-full ${server.status === 'ONLINE' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-foreground/20'}`} />
+                                    <span className={`text-[10px] font-bold tracking-[0.2em] ${server.status === 'ONLINE' ? 'text-emerald-500' : 'text-foreground/40'} uppercase`}>
                                         {server.status}
                                     </span>
                                 </div>
                                 <div className="h-4 w-px bg-border" />
                                 <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-[0.2em]">
-                                    {server.software} <span className="text-muted-foreground/30 mx-1">/</span> {server.version}
+                                    {server.executionEngine === 'docker' ? 'DOCKER' : 'NATIVE'} • {server.software} <span className="text-muted-foreground/30 mx-1">/</span> {server.version}
                                 </div>
                             </div>
 
@@ -190,9 +214,9 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
                                 <button 
                                     onClick={() => handlePower('restart')}
                                     disabled={server.status === 'OFFLINE' || (server.network?.proxyConfig?.links.length === 0) || !!pendingAction || !can('server.restart', serverId)}
-                                    className="w-11 h-11 flex items-center justify-center bg-zinc-800 border border-zinc-700 text-white hover:bg-zinc-700 rounded-xl transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                                    className="w-11 h-11 flex items-center justify-center bg-foreground/[0.04] border border-foreground/5 text-foreground hover:bg-foreground/[0.08] rounded-xl transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                                 >
-                                    <RotateCcw size={16} className={pendingAction === 'restart' ? "animate-spin" : ""} />
+                                    <RotateCcw size={16} className={pendingAction === 'restart' ? "animate-spin" : "opacity-40"} />
                                 </button>
                                 <button 
                                     onClick={() => handlePower('stop')}
@@ -228,16 +252,16 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
             </div>
 
             {/* Sub-navigation for specialized views */}
-            <div className="flex p-1 bg-white/[0.02] border border-white/5 rounded-2xl w-fit">
+            <div className="flex p-1 bg-foreground/[0.02] border border-foreground/5 rounded-2xl w-fit">
                 <button 
                     onClick={() => setViewMode('OVERVIEW')}
-                    className={`px-8 py-2.5 rounded-xl text-[10px] font-bold tracking-[0.2em] transition-all ${viewMode === 'OVERVIEW' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-500 hover:text-white/60'}`}
+                    className={`px-8 py-2.5 rounded-xl text-[10px] font-bold tracking-[0.2em] transition-all ${viewMode === 'OVERVIEW' ? 'bg-foreground text-background shadow-lg shadow-foreground/5' : 'text-foreground/40 hover:text-foreground/60'}`}
                 >
                     OVERVIEW
                 </button>
                 <button 
                     onClick={() => setViewMode('NETWORK')}
-                    className={`px-8 py-2.5 rounded-xl text-[10px] font-bold tracking-[0.2em] transition-all ${viewMode === 'NETWORK' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-500 hover:text-white/60'}`}
+                    className={`px-8 py-2.5 rounded-xl text-[10px] font-bold tracking-[0.2em] transition-all ${viewMode === 'NETWORK' ? 'bg-foreground text-background shadow-lg shadow-foreground/5' : 'text-foreground/40 hover:text-foreground/60'}`}
                 >
                     INFRASTRUCTURE
                 </button>
@@ -344,7 +368,7 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
                                          <div className="text-center pt-6">
                                              <button 
                                                 onClick={() => setViewMode('NETWORK')}
-                                                className="text-[10px] font-bold text-zinc-500 hover:text-white transition-colors tracking-[0.2em] uppercase"
+                                                className="text-[10px] font-bold text-foreground/40 hover:text-foreground transition-colors tracking-[0.2em] uppercase"
                                              >
                                                  + {server.network.proxyConfig.links.length - 4} Additional Assets
                                              </button>
@@ -517,6 +541,52 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
                                         Dismiss
                                     </button>
                                 </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+                {/* Traditional Confirmation Modal */}
+                {powerConfirm.isOpen && (
+                    <div className="fixed inset-0 bg-background/80 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-card border border-border rounded-xl shadow-2xl p-8 max-w-md w-full text-center space-y-6">
+                            <div className="flex justify-center"><Server size={48} className="text-amber-500" /></div>
+                            <div className="space-y-2">
+                                <h3 className="text-xl font-bold">Active Assets Detected</h3>
+                                <p className="text-sm text-muted-foreground">Players are currently connected to this proxy. Forcing a {powerConfirm.action} may disrupt their connections.</p>
+                            </div>
+                            <div className="flex gap-4">
+                                <button onClick={() => setPowerConfirm({ ...powerConfirm, isOpen: false })} className="flex-1 py-3 px-4 bg-secondary/50 rounded-lg text-sm font-bold hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground">Cancel</button>
+                                <button onClick={() => { executePowerAction(powerConfirm.action); }} className="flex-1 py-3 px-4 bg-rose-500 text-white rounded-lg text-sm font-bold hover:bg-rose-600 transition-all active:scale-95 shadow-lg shadow-rose-500/20">Force {powerConfirm.action === 'stop' ? 'Stop' : 'Restart'}</button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Graceful Shutdown Modal */}
+                {showGraceful && (
+                    <div className="fixed inset-0 bg-background/80 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col relative z-50">
+                            <div className="p-6 border-b border-border/40 flex items-center justify-between bg-muted/20">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-amber-500/10 text-amber-500 rounded-lg"><Clock size={16} /></div>
+                                    <h3 className="text-sm font-bold">Graceful Proxy Stop</h3>
+                                </div>
+                                <button onClick={() => setShowGraceful(false)} className="p-2 hover:bg-rose-500/10 hover:text-rose-500 text-muted-foreground rounded-lg transition-colors"><X size={16} /></button>
+                            </div>
+                            <div className="p-8 space-y-8">
+                                <p className="text-xs font-medium text-muted-foreground leading-relaxed">Notify <span className="text-foreground font-bold">{stats.players} players</span> across all linked backends before terminating the proxy session.</p>
+                                
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="text-[10px] font-bold text-muted-foreground tracking-widest uppercase">Drain Period</label>
+                                        <span className="text-sm font-mono font-bold text-primary">{gracefulCountdown}s</span>
+                                    </div>
+                                    <input type="range" min="10" max="300" step="10" value={gracefulCountdown} onChange={e => setGracefulCountdown(parseInt(e.target.value))} className="w-full accent-primary h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer" />
+                                </div>
+                            </div>
+                            <div className="p-6 bg-muted/5 border-t border-border/40 flex gap-3">
+                                <button onClick={() => { executePowerAction('stop'); setShowGraceful(false); }} className="flex-1 py-3 text-[11px] font-bold text-muted-foreground hover:text-rose-500 hover:bg-rose-500/5 rounded-xl transition-all uppercase tracking-wider">Force Stop</button>
+                                <button onClick={handleGracefulStop} className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-amber-500/20 active:scale-95 transition-all">Begin Drain</button>
                             </div>
                         </motion.div>
                     </div>

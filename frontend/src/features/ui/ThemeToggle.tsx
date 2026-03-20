@@ -13,16 +13,17 @@ export const ThemeToggle: React.FC = () => {
     ];
 
     return (
-        <div className="flex gap-1 p-1 bg-secondary/50 rounded-lg border border-border/50">
+        <div className="flex gap-1 p-1 bg-secondary/30 rounded-lg border border-border/50">
             {themes.map(({ value, icon, label }) => (
                 <button
                     key={value}
                     onClick={() => setTheme(value)}
+                    title={label}
                     className={`
-                        relative px-3 py-1.5 rounded-md text-xs font-medium
-                        transition-all duration-200 flex items-center gap-1.5
+                        relative px-2.5 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide
+                        transition-all duration-300 flex items-center justify-center
                         ${theme === value 
-                            ? 'text-primary' 
+                            ? 'text-indigo-400' 
                             : 'text-muted-foreground hover:text-foreground'
                         }
                     `}
@@ -30,13 +31,12 @@ export const ThemeToggle: React.FC = () => {
                     {theme === value && (
                         <motion.div
                             layoutId="theme-indicator"
-                            className="absolute inset-0 bg-background rounded-md shadow-sm"
+                            className="absolute inset-0 bg-indigo-500/10 border border-indigo-500/20 rounded-lg"
                             transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
                         />
                     )}
-                    <span className="relative z-10 flex items-center gap-1.5">
+                    <span className="relative z-10 flex items-center justify-center">
                         {icon}
-                        {label}
                     </span>
                 </button>
             ))}

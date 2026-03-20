@@ -204,4 +204,20 @@ export class NetUtils {
             client.send(packet, port, host);
         });
     }
+
+    /**
+     * Retrieves the local IPv4 address of the host machine.
+     */
+    static getLocalIP(): string {
+        const os = require('os');
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    return iface.address;
+                }
+            }
+        }
+        return '127.0.0.1';
+    }
 }

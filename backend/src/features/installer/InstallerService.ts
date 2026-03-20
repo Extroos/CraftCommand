@@ -13,7 +13,7 @@ const BEDROCK_CACHE_DIR = path.join(CACHE_DIR, 'bedrock');
 export class InstallerService extends EventEmitter {
     
     // Phase 56.3: Track active progress for session recovery
-    private activeProgress: Map<string, { percent: number, message: string }> = new Map();
+    private activeProgress: Map<string, { percent: number, message: string, phase: string }> = new Map();
 
     public getActiveProgress() {
         return Object.fromEntries(this.activeProgress);
@@ -21,15 +21,18 @@ export class InstallerService extends EventEmitter {
 
     private updateProgress(serverId: string, message: string, percent?: number) {
         if (!serverId) return;
-        const current = this.activeProgress.get(serverId) || { percent: 0, message: '' };
+        const current = this.activeProgress.get(serverId) || { percent: 0, message: '', phase: 'installing' };
         const newPercent = percent !== undefined ? percent : current.percent;
-        this.activeProgress.set(serverId, { percent: newPercent, message });
-        this.emit('status', { serverId, message, percent: newPercent });
+        const phase = newPercent >= 100 ? 'complete' : 'installing';
+        
+        this.activeProgress.set(serverId, { percent: newPercent, message, phase });
+        this.emit('status', { serverId, message, percent: newPercent, phase });
     }
 
     private clearProgress(serverId: string) {
         if (!serverId) return;
         this.activeProgress.delete(serverId);
+        this.emit('complete', { serverId });
     }
 
     // Download a file with progress events
@@ -54,9 +57,11 @@ export class InstallerService extends EventEmitter {
             const totalLength = parseInt(response.headers['content-length'] || '0', 10);
             
             this.emit('progress', {
+                serverId,
                 total: totalLength,
                 current: 0,
-                percent: 0
+                percent: 0,
+                phase: 'downloading'
             });
 
             let current = 0;
@@ -66,9 +71,11 @@ export class InstallerService extends EventEmitter {
                 const percent = totalLength > 0 ? Math.round((current / totalLength) * 100) : 0;
                 
                 this.emit('progress', {
+                    serverId,
                     total: totalLength,
                     current: current,
-                    percent: percent
+                    percent: percent,
+                    phase: 'downloading'
                 });
 
                 // Periodic progress message updates
@@ -180,7 +187,7 @@ export class InstallerService extends EventEmitter {
     }
 
     // Install CurseForge/Modrinth Modpack or Single Mod
-    async installModpackFromZip(serverId: string, serverDir: string, zipUrl: string, mcVersion?: string, onProgress?: (msg: string, percent?: number) => void) {
+    async installModpackFromZip(serverId: string, serverDir: string, zipUrl: string, mcVersion?: string, onProgress?: (msg: string, percent?: number) => void, intendedSoftware?: string) {
         try {
             await SafeFileOperation.checkDiskSpace(serverDir, 1000); // Modpacks need more space (1GB min)
             await fs.ensureDir(serverDir);
@@ -193,12 +200,78 @@ export class InstallerService extends EventEmitter {
                 const rMsg = `Resolving Modrinth Project ${projectId}...`;
                 this.updateProgress(serverId, rMsg, 0);
                 onProgress?.(rMsg);
-                const vRes = await axios.get(`https://api.modrinth.com/v2/project/${projectId}/version`);
-                const version = (vRes.data as any)[0];
-                const file = version.files.find((f: any) => f.primary) || version.files[0];
-                zipUrl = file.url;
-                downloadFileName = file.filename || zipUrl.split('/').pop() || 'modpack.zip';
-                this.emit('status', `Resolved to: ${version.name} (${downloadFileName})`);
+
+                // PRE-CHECK: Fetch project metadata to check server compatibility
+                try {
+                    const projectRes = await axios.get(`https://api.modrinth.com/v2/project/${projectId}`);
+                    const project = projectRes.data as any;
+                    
+                    if (project.server_side === 'unsupported') {
+                        const warnMsg = `⚠️ Warning: "${project.title}" is marked as client-only on Modrinth. It may not work on a dedicated server.`;
+                        logger.warn(`[Installer] ${warnMsg}`);
+                        this.updateProgress(serverId, warnMsg);
+                        onProgress?.(warnMsg);
+                    } else if (project.server_side === 'optional') {
+                        this.updateProgress(serverId, `ℹ️ "${project.title}" has optional server support.`);
+                    }
+                } catch (e) {
+                    // Non-fatal — if we can't check, continue with the install
+                    logger.warn(`[Installer] Could not fetch project metadata for ${projectId}: ${(e as Error).message}`);
+                }
+
+                // Fetch versions with filters for version and loader (Layer 1 Stabilization)
+                let versionUrl = `https://api.modrinth.com/v2/project/${projectId}/version`;
+                if (mcVersion && intendedSoftware) {
+                    const mappedLoader = intendedSoftware.toLowerCase();
+                    versionUrl += `?loaders=["${mappedLoader}"]&game_versions=["${mcVersion}"]`;
+                }
+                try {
+                    let vRes = await axios.get(versionUrl);
+                    let versions = vRes.data as any[];
+                    
+                    // Fallback Logic: If no version found for current loader, try without loader filter (Layer 2 Stabilization)
+                    if (versions.length === 0 && mcVersion && intendedSoftware?.toLowerCase() === 'modpack') {
+                        logger.info(`[Installer] No 'modpack' versions for ${projectId}. Retrying without loader filter for Minecraft ${mcVersion}...`);
+                        const fallbackUrl = `https://api.modrinth.com/v2/project/${projectId}/version?game_versions=["${mcVersion}"]`;
+                        const fallbackRes = await axios.get(fallbackUrl);
+                        versions = fallbackRes.data as any[];
+                    }
+                    
+                    if (versions && versions.length > 0) {
+                        await processVersion(versions[0], this);
+                    } else {
+                        throw new Error(`Incompatible mod: ${projectId} does not support ${mcVersion}/${intendedSoftware || 'any'}`);
+                    }
+                } catch (err: any) {
+                    logger.error(`[Installer] Modrinth resolution failed for ${projectId}: ${err.message}`);
+                    throw err;
+                }
+
+                async function processVersion(version: any, service: any) {
+                    // Backend Safety Net: Check if the loader matches (if mcVersion and intendedSoftware are provided)
+                    if (mcVersion && intendedSoftware) {
+                        const supportedLoaders = version.loaders || [];
+                        const normalizedSupported = supportedLoaders.map((l: string) => l.toLowerCase());
+                        const normalizedIntended = intendedSoftware.toLowerCase();
+
+                        const mismatch = !normalizedSupported.includes(normalizedIntended);
+                        
+                        if (mismatch && supportedLoaders.length > 0) {
+                            const warnMsg = `[MATCH_WARNING] Server is '${intendedSoftware}' but mod supports: ${supportedLoaders.join(', ')}`;
+                            logger.warn(`[Installer] ${warnMsg} for server ${serverId}`);
+                            service.updateProgress(serverId, warnMsg);
+                            onProgress?.(warnMsg);
+                        } else {
+                            service.updateProgress(serverId, `Verifying compatibility... OK (${supportedLoaders.join(', ')})`);
+                        }
+                    }
+
+                    const file = version.files.find((f: any) => f.primary) || version.files[0];
+                    zipUrl = file.url;
+                    downloadFileName = file.filename || zipUrl.split('/').pop() || 'modpack.zip';
+                    const statusMsg = `Resolved to: ${version.name} (${downloadFileName})`;
+                    service.updateProgress(serverId, statusMsg);
+                }
             } else {
                 downloadFileName = zipUrl.split('?')[0].split('/').pop() || 'modpack.zip';
             }
@@ -208,7 +281,7 @@ export class InstallerService extends EventEmitter {
 
             if (isSingleMod) {
                 // --- SINGLE MOD INSTALLATION ---
-                this.emit('status', `Detected Single Mod Jar. Installing into mods/ ...`);
+                this.updateProgress(serverId, `Detected Single Mod Jar. Installing into mods/ ...`);
                 const modsDir = path.join(serverDir, 'mods');
                 await fs.ensureDir(modsDir);
                 const dest = path.join(modsDir, downloadFileName);
@@ -222,17 +295,23 @@ export class InstallerService extends EventEmitter {
                 const packType = await this.scanModpackType(serverDir);
                 let loader = packType.loader || 'Fabric';
                 
-                this.emit('status', `Single Mod installed. Detected Loader: ${loader}`);
+                this.updateProgress(serverId, `Single Mod installed. Detected Loader: ${loader}`);
                 
                 if (mcVersion) {
-                    this.emit('status', `Auto-Installing ${loader} for ${mcVersion}...`);
+                    this.updateProgress(serverId, `Auto-Installing ${loader} for ${mcVersion}...`);
                     if (loader === 'Fabric') await this.installFabric(serverId, serverDir, mcVersion);
                     else if (loader === 'NeoForge') await this.installNeoForge(serverId, serverDir, mcVersion);
                     else if (loader === 'Forge') await this.installForge(serverId, serverDir, mcVersion);
                 } else {
-                    this.emit('status', `WARNING: Minecraft version not provided. Base server not installed.`);
+                    this.updateProgress(serverId, `WARNING: Minecraft version not provided. Base server not installed.`);
                 }
                 
+                // SMART MOD MANAGEMENT: Filter client-side projects + resolve dependencies
+                if (mcVersion) {
+                    await this.verifyServerCompatibility(serverId, serverDir, onProgress);
+                    await this.resolveModDependencies(serverId, serverDir, mcVersion, loader, onProgress);
+                }
+
                 await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
                 const cMsg = 'Mod Installed.';
                 this.updateProgress(serverId, cMsg, 100);
@@ -270,7 +349,7 @@ export class InstallerService extends EventEmitter {
                 if (index.dependencies?.['quilt-loader']) loader = 'Quilt';
                 if (index.dependencies?.['neoforge']) loader = 'NeoForge';
 
-                this.emit('status', `Detected Modrinth Pack: Minecraft ${mrpackMcVersion}, Loader ${loader}`);
+                this.updateProgress(serverId, `Detected Modrinth Pack: Minecraft ${mrpackMcVersion}, Loader ${loader}`);
 
                 // Download files sequentially to avoid rate limits
                 if (index.files && Array.isArray(index.files)) {
@@ -286,7 +365,16 @@ export class InstallerService extends EventEmitter {
                         await fs.ensureDir(path.dirname(destPath));
                         
                         try {
-                            const res = await axios({ method: 'GET', url: f.downloads[0], responseType: 'stream' });
+                            const res = await axios({ 
+                                method: 'GET', 
+                                url: f.downloads[0], 
+                                responseType: 'stream',
+                                headers: {
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                    'Accept': '*/*'
+                                },
+                                timeout: 15000 
+                            });
                             const writer = fs.createWriteStream(destPath);
                             (res.data as any).pipe(writer);
                             await new Promise((resolve, reject) => {
@@ -294,8 +382,8 @@ export class InstallerService extends EventEmitter {
                                 writer.on('error', reject);
                             });
                         } catch (err: any) {
-                             console.log(`[Installer] Failed to download ${f.path}:`, err.message);
-                             this.emit('status', `Warning: Failed to download ${f.path}`);
+                             logger.error(`[Installer] Failed to download pack file ${f.path} from ${f.downloads[0]}: ${err.message}`);
+                             this.updateProgress(serverId, `Warning: Failed to download mod ${path.basename(f.path)}`);
                         }
                         
                         if (dlCount % 5 === 0) {
@@ -309,7 +397,7 @@ export class InstallerService extends EventEmitter {
 
                 // Copy overrides
                 const overridesMsg = 'Applying Overrides...';
-                this.emit('status', overridesMsg);
+                this.updateProgress(serverId, overridesMsg);
                 if (await fs.pathExists(path.join(tempExtractDir, 'overrides'))) {
                     await fs.copy(path.join(tempExtractDir, 'overrides'), serverDir, { overwrite: true });
                 }
@@ -323,14 +411,21 @@ export class InstallerService extends EventEmitter {
 
                 // Install base server software
                 if (mrpackMcVersion) {
-                    this.emit('status', `Auto-Installing ${loader} for ${mrpackMcVersion}...`);
+                    this.updateProgress(serverId, `Auto-Installing ${loader} for ${mrpackMcVersion}...`);
                     if (loader === 'Fabric') await this.installFabric(serverId, serverDir, mrpackMcVersion);
                     else if (loader === 'NeoForge') await this.installNeoForge(serverId, serverDir, mrpackMcVersion);
                     else if (loader === 'Forge') await this.installForge(serverId, serverDir, mrpackMcVersion);
                     
-                    this.emit('status', `${loader} Installed. Modrinth Pack Ready.`);
+                    this.updateProgress(serverId, `${loader} Installed. Modrinth Pack Ready.`);
                 }
                 
+                // SMART MOD MANAGEMENT: Filter client-side projects + resolve dependencies
+                const mrpackMcVer = mrpackMcVersion || mcVersion;
+                if (mrpackMcVer) {
+                    await this.verifyServerCompatibility(serverId, serverDir, onProgress);
+                    await this.resolveModDependencies(serverId, serverDir, mrpackMcVer, loader || 'Fabric', onProgress);
+                }
+
                 await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
                 const cMsg = 'Modrinth Pack Installed.';
                 this.updateProgress(serverId, cMsg, 100);
@@ -364,7 +459,7 @@ export class InstallerService extends EventEmitter {
                     if (extractedCount % 100 === 0) {
                         const percent = Math.min(99, Math.round((extractedCount / 5000) * 100)); // Rough estimate if total unknown
                         const msg = `Extracting Modpack... (${extractedCount} files)`;
-                        this.emit('status', msg);
+                        this.updateProgress(serverId, msg, percent);
                         onProgress?.(msg, percent);
                     }
                 }
@@ -387,7 +482,7 @@ export class InstallerService extends EventEmitter {
 
             // Move files to server root
             const iMsg = 'Installing Modpack Files...';
-            this.emit('status', iMsg);
+            this.updateProgress(serverId, iMsg);
             onProgress?.(iMsg);
             await fs.copy(rootContentDir, serverDir, { overwrite: true });
 
@@ -397,10 +492,10 @@ export class InstallerService extends EventEmitter {
 
             // SMART INSTALLER LOGIC
             if (packType.type === 'CLIENT_PACK') {
-                this.emit('status', `Detected Client-Only Modpack (${packType.loader}). Checking Version...`);
+                this.updateProgress(serverId, `Detected Client-Only Modpack (${packType.loader}). Checking Version...`);
                 
                 if (mcVersion) {
-                    this.emit('status', `Auto-Installing ${packType.loader} for ${mcVersion}...`);
+                    this.updateProgress(serverId, `Auto-Installing ${packType.loader} for ${mcVersion}...`);
                     
                     if (packType.loader === 'Fabric') {
                         await this.installFabric(serverId, serverDir, mcVersion);
@@ -410,14 +505,21 @@ export class InstallerService extends EventEmitter {
                         await this.installForge(serverId, serverDir, mcVersion);
                     }
                     
-                    this.emit('status', `${packType.loader} Installed. Client Pack Ready.`);
+                    this.updateProgress(serverId, `${packType.loader} Installed. Client Pack Ready.`);
 
                 } else {
-                    this.emit('status', `WARNING: Client Pack detected (${packType.loader}) but no Minecraft version provided.`);
-                    this.emit('status', `Please manually install ${packType.loader} if the server fails to start.`);
+                    this.updateProgress(serverId, `WARNING: Client Pack detected (${packType.loader}) but no Minecraft version provided.`);
+                    this.updateProgress(serverId, `Please manually install ${packType.loader} if the server fails to start.`);
                 }
             } 
             
+            // SMART MOD MANAGEMENT: Filter client-side projects + resolve dependencies
+            if (mcVersion) {
+                await this.verifyServerCompatibility(serverId, serverDir, onProgress);
+                const cfLoader = packType?.loader || 'Fabric';
+                await this.resolveModDependencies(serverId, serverDir, mcVersion, cfLoader, onProgress);
+            }
+
             await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
             const cMsg = 'Modpack Installed.';
             this.updateProgress(serverId, cMsg, 100);
@@ -430,6 +532,340 @@ export class InstallerService extends EventEmitter {
              await fs.remove(path.join(serverDir, 'temp_extract')).catch(() => {});
              throw e;
         }
+    }
+
+    /**
+     * Modrinth API-based Server Compatibility Verification
+     * 1. Scans jars for mod IDs (slugs)
+     * 2. Batch queries Modrinth API for "server_side" status
+     * 3. Moves "unsupported" mods to mods/_client_mods/
+     * 4. Fallback to fabric.mod.json metadata if not on Modrinth
+     */
+    async verifyServerCompatibility(serverId: string, serverDir: string, onProgress?: (msg: string, percent?: number) => void, onLog?: (line: string) => void): Promise<string[]> {
+        const modsDir = path.join(serverDir, 'mods');
+        if (!await fs.pathExists(modsDir)) return [];
+
+        const files = await fs.readdir(modsDir);
+        const jarFiles = files.filter(f => f.endsWith('.jar'));
+        if (jarFiles.length === 0) return [];
+
+        this.updateProgress(serverId, `🔍 Verifying ${jarFiles.length} mods against Modrinth API...`);
+        onProgress?.(`🔍 Verifying ${jarFiles.length} mods against Modrinth API...`);
+        onLog?.(`[SmartMod] Verifying ${jarFiles.length} mods against Modrinth API...`);
+
+        // Phase 1: Scan local metadata to get IDs
+        const modMeta: Map<string, { file: string; name: string; env: string; deps: string[] }> = new Map();
+        const modIdToFile = new Map<string, string>();
+        
+        for (const jarFile of jarFiles) {
+            const jarPath = path.join(modsDir, jarFile);
+            try {
+                const zip = new AdmZip(jarPath);
+                const fabricEntry = zip.getEntry('fabric.mod.json');
+                if (fabricEntry) {
+                    const content = JSON.parse(fabricEntry.getData().toString('utf8'));
+                    const modId = content.id || jarFile;
+                    const env = content.environment || '*';
+                    const deps = Object.keys(content.depends || {}).filter(d => 
+                        !['minecraft', 'java', 'fabricloader', 'fabric-api'].includes(d) && !d.startsWith('fabric-')
+                    );
+                    modMeta.set(modId, { file: jarFile, name: content.name || modId, env, deps });
+                    modIdToFile.set(modId, jarFile);
+                }
+            } catch (e) {}
+        }
+
+        const idsToCheck = [...modMeta.keys()];
+        const clientOnlyIds = new Set<string>();
+
+        // Phase 2: Batch Query Modrinth API
+        try {
+            // Modrinth allows querying by IDs/slugs in batches
+            const chunkSize = 50;
+            const chunks = [];
+            for (let i = 0; i < idsToCheck.length; i += chunkSize) {
+                chunks.push(idsToCheck.slice(i, i + chunkSize));
+            }
+
+            for (const chunk of chunks) {
+                try {
+                    const response = await axios.get(`https://api.modrinth.com/v2/projects`, {
+                        params: { ids: JSON.stringify(chunk) },
+                        headers: { 'User-Agent': 'CraftCommand/1.0' },
+                        timeout: 10000
+                    });
+
+                    if (Array.isArray(response.data)) {
+                        for (const project of response.data) {
+                            if (project.server_side === 'unsupported') {
+                                clientOnlyIds.add(project.id);
+                                if (project.slug) clientOnlyIds.add(project.slug);
+                            }
+                        }
+                    }
+                } catch (apiErr: any) {
+                    logger.warn(`[Installer] Modrinth batch query failed for chunk: ${apiErr.message}`);
+                }
+            }
+        } catch (e: any) {
+            logger.error(`[Installer] Modrinth verification failed: ${e.message}`);
+        }
+
+        // Phase 3: Complement with local metadata Pass 1 (Direct client-only mods)
+        for (const [modId, meta] of modMeta) {
+            if (meta.env === 'client') {
+                clientOnlyIds.add(modId);
+            }
+        }
+
+        // Phase 4: Pass 2 (Dependencies of client-only mods)
+        for (const [modId, meta] of modMeta) {
+            if (clientOnlyIds.has(modId)) continue;
+            for (const dep of meta.deps) {
+                if (clientOnlyIds.has(dep)) {
+                    clientOnlyIds.add(modId);
+                    logger.info(`[Installer] ${meta.name} depends on client-only mod "${dep}" — marking as client-only`);
+                    break;
+                }
+            }
+        }
+
+        // Phase 5: Known server-incompatible mods (Final safety net for those not on Modrinth)
+        const KNOWN_CLIENT_ONLY_IDS = new Set([
+            'slyde', 'slydemore', 'libjf', 'fancymenu', 'konkrete', 'melody', 
+            'iris', 'replaymod', 'optifine', 'command-block-ide', 'sodiumcoreshadersupport',
+            'utility' // Undertale Utility Engine — crashes server with "supposed to play to Undertale"
+        ]);
+        
+        for (const [modId, meta] of modMeta) {
+            if (!clientOnlyIds.has(modId) && KNOWN_CLIENT_ONLY_IDS.has(modId)) {
+                clientOnlyIds.add(modId);
+            }
+        }
+
+        // Execute move
+        const clientDir = path.join(modsDir, '_client_mods');
+        await fs.ensureDir(clientDir);
+
+        const filtered: string[] = [];
+        for (const modId of clientOnlyIds) {
+            const meta = modMeta.get(modId);
+            if (!meta) continue;
+            try {
+                const src = path.join(modsDir, meta.file);
+                const dest = path.join(clientDir, meta.file);
+                if (await fs.pathExists(src)) {
+                    await fs.move(src, dest, { overwrite: true });
+                    filtered.push(meta.name);
+                }
+            } catch (e) {}
+        }
+
+        if (filtered.length > 0) {
+            const msg = `🚫 Moved ${filtered.length} client-side projects to _client_mods/: ${filtered.join(', ')}`;
+            this.updateProgress(serverId, msg, 100);
+            onProgress?.(msg, 100);
+            onLog?.(`[SmartMod] ${msg}`);
+            logger.success(`[Installer] Server ${serverId}: ${msg}`);
+            setTimeout(() => this.clearProgress(serverId), 3000);
+        } else {
+            const msg = `✅ All ${jarFiles.length} mods are server-compatible.`;
+            this.updateProgress(serverId, msg, 100);
+            onProgress?.(msg, 100);
+            onLog?.(`[SmartMod] ${msg}`);
+            setTimeout(() => this.clearProgress(serverId), 3000);
+        }
+
+        return filtered;
+    }
+
+    /**
+     * Auto-Dependency Resolution
+     * Scans all mod jars in mods/ for required dependencies (fabric.mod.json, mods.toml),
+     * determines what's missing, and auto-installs them from Modrinth.
+     * Also scans JiJ (Jar-in-Jar) embedded mods to know what's already bundled.
+     * Runs 2 passes to handle transitive dependencies.
+     * NEVER deletes anything — only adds missing mods.
+     */
+    async resolveModDependencies(serverId: string, serverDir: string, mcVersion: string, loader: string, onProgress?: (msg: string, percent?: number) => void, onLog?: (line: string) => void): Promise<string[]> {
+        const modsDir = path.join(serverDir, 'mods');
+        if (!await fs.pathExists(modsDir)) return [];
+
+        // Built-in mod IDs that are provided by the loader/game itself — never try to install these
+        const BUILTIN_IDS = new Set([
+            'minecraft', 'java', 'fabricloader', 'fabric', 'fabric-api', 
+            'fabric-language-kotlin', 'forge', 'neoforge', 'quilt_loader',
+            'mixinextras', 'cloth-config', 'cloth-config2',
+        ]);
+        
+        // Fabric API provides 70+ sub-modules — match any ID starting with "fabric-"
+        const isFabricApiSubmodule = (id: string) => id.startsWith('fabric-') || id.startsWith('fabric_');
+
+        const installedMods: string[] = [];
+        const MAX_PASSES = 2;
+
+        for (let pass = 0; pass < MAX_PASSES; pass++) {
+            const files = await fs.readdir(modsDir);
+            const jarFiles = files.filter(f => f.endsWith('.jar'));
+            
+            if (jarFiles.length === 0) break;
+
+            // STEP 1: Build a set of all mod IDs provided by installed jars
+            const providedIds = new Set<string>();
+            const missingDeps = new Map<string, string>(); // dep ID → required by mod name
+            
+            const scanMsg = pass === 0 
+                ? `🔍 Scanning ${jarFiles.length} mods for dependencies...`
+                : `🔍 Checking transitive dependencies (pass ${pass + 1})...`;
+            this.updateProgress(serverId, scanMsg);
+            onProgress?.(scanMsg);
+
+            for (const jarFile of jarFiles) {
+                const jarPath = path.join(modsDir, jarFile);
+                try {
+                    const zip = new AdmZip(jarPath);
+                    
+                    // Read Fabric metadata
+                    const fabricEntry = zip.getEntry('fabric.mod.json');
+                    if (fabricEntry) {
+                        const content = JSON.parse(fabricEntry.getData().toString('utf8'));
+                        const modId = content.id;
+                        const modName = content.name || modId;
+                        if (modId) providedIds.add(modId);
+                        
+                        // Also register any "provides" aliases
+                        if (Array.isArray(content.provides)) {
+                            for (const alias of content.provides) providedIds.add(alias);
+                        }
+                        
+                        // Scan JiJ (Jar-in-Jar) embedded mods — these are bundled deps
+                        const jijEntries = zip.getEntries().filter(e => 
+                            e.entryName.startsWith('META-INF/jars/') && e.entryName.endsWith('.jar')
+                        );
+                        for (const jijEntry of jijEntries) {
+                            try {
+                                const jijZip = new AdmZip(jijEntry.getData());
+                                const jijFabric = jijZip.getEntry('fabric.mod.json');
+                                if (jijFabric) {
+                                    const jijContent = JSON.parse(jijFabric.getData().toString('utf8'));
+                                    if (jijContent.id) providedIds.add(jijContent.id);
+                                    if (Array.isArray(jijContent.provides)) {
+                                        for (const alias of jijContent.provides) providedIds.add(alias);
+                                    }
+                                }
+                            } catch (e) { /* nested jar unreadable, skip */ }
+                        }
+                        
+                        // Collect required dependencies
+                        const depends = content.depends || {};
+                        for (const depId of Object.keys(depends)) {
+                            if (!BUILTIN_IDS.has(depId) && !isFabricApiSubmodule(depId) && !providedIds.has(depId)) {
+                                missingDeps.set(depId, modName);
+                            }
+                        }
+                        continue;
+                    }
+                    
+                    // Read Forge/NeoForge metadata
+                    const modsToml = zip.getEntry('META-INF/mods.toml') || zip.getEntry('META-INF/neoforge.mods.toml');
+                    if (modsToml) {
+                        const content = modsToml.getData().toString('utf8');
+                        const modIdMatch = content.match(/modId\s*=\s*["']([^"']+)["']/);
+                        if (modIdMatch) providedIds.add(modIdMatch[1]);
+                        
+                        // Parse required dependencies from [[dependencies.modId]] sections
+                        const depRegex = /\[\[dependencies\.[^\]]+\]\][^[]*?modId\s*=\s*["']([^"']+)["'][^[]*?mandatory\s*=\s*true/gis;
+                        let depMatch;
+                        while ((depMatch = depRegex.exec(content)) !== null) {
+                            const depId = depMatch[1];
+                            if (!BUILTIN_IDS.has(depId)) {
+                                missingDeps.set(depId, modIdMatch?.[1] || jarFile);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Can't read jar, skip
+                }
+            }
+
+            // Remove deps that ARE provided by installed mods
+            for (const depId of missingDeps.keys()) {
+                if (providedIds.has(depId)) {
+                    missingDeps.delete(depId);
+                }
+            }
+
+            if (missingDeps.size === 0) {
+                if (pass === 0) {
+                    const msg = `✅ All mod dependencies are satisfied.`;
+                    this.updateProgress(serverId, msg, 100);
+                    onProgress?.(msg, 100);
+                    setTimeout(() => this.clearProgress(serverId), 3000);
+                }
+                break;
+            }
+
+            // STEP 2: Install missing dependencies from Modrinth
+            const { pluginService } = require('../plugins/PluginService');
+            
+            const depMsg = `📦 Installing ${missingDeps.size} missing dependenc${missingDeps.size === 1 ? 'y' : 'ies'}...`;
+            this.updateProgress(serverId, depMsg);
+            onProgress?.(depMsg);
+            onLog?.(`[SmartMod] ${depMsg}`);
+            logger.info(`[Installer] Auto-resolving ${missingDeps.size} missing dependencies: ${[...missingDeps.keys()].join(', ')}`);
+
+            const failedDeps: { id: string; reason: string }[] = [];
+
+            for (const [depId, requiredBy] of missingDeps) {
+                try {
+                    const installMsg = `📦 Installing dependency: ${depId} (required by ${requiredBy})`;
+                    this.updateProgress(serverId, installMsg);
+                    onProgress?.(installMsg);
+                    
+                    await pluginService.install(serverId, depId, 'modrinth');
+                    installedMods.push(depId);
+                    onLog?.(`[SmartMod] ✅ Auto-installed dependency: ${depId}`);
+                    logger.success(`[Installer] Auto-installed dependency: ${depId}`);
+                } catch (e: any) {
+                    const errMsg = e.message || '';
+                    let reason: string;
+                    let warnMsg: string;
+                    
+                    if (errMsg.includes('404') || errMsg.includes('Not Found') || errMsg.includes('Request failed with status code 404')) {
+                        reason = 'Deleted from Modrinth';
+                        warnMsg = `❌ "${depId}" was deleted from Modrinth (required by ${requiredBy}). The mod author removed it — you need to find it elsewhere.`;
+                    } else if (errMsg.includes('No compatible versions') || errMsg.includes('No versions found')) {
+                        reason = `No version for MC ${mcVersion}`;
+                        warnMsg = `⚠️ "${depId}" has no version compatible with Minecraft ${mcVersion}. Check for a different version of ${requiredBy}.`;
+                    } else {
+                        reason = errMsg.substring(0, 80);
+                        warnMsg = `⚠️ Could not install "${depId}" — ${reason}`;
+                    }
+                    
+                    failedDeps.push({ id: depId, reason });
+                    logger.warn(`[Installer] Dependency "${depId}" failed: ${reason}`);
+                    this.updateProgress(serverId, warnMsg);
+                    onProgress?.(warnMsg);
+                }
+            }
+        }
+
+        if (installedMods.length > 0) {
+            // Build final summary
+            const parts: string[] = [];
+            if (installedMods.length > 0) {
+                parts.push(`✅ Auto-installed ${installedMods.length} dep${installedMods.length === 1 ? '' : 's'}: ${installedMods.join(', ')}`);
+            }
+            if (parts.length > 0) {
+                const successMsg = parts.join(' | ');
+                this.updateProgress(serverId, successMsg);
+                onProgress?.(successMsg);
+                onLog?.(`[SmartMod] ${successMsg}`);
+                logger.success(`[Installer] Server ${serverId}: ${successMsg}`);
+            }
+        }
+
+        return installedMods;
     }
 
     private async scanModpackType(dir: string): Promise<{ type: 'SERVER_PACK' | 'CLIENT_PACK' | 'UNKNOWN', loader?: string }> {
@@ -591,14 +1027,14 @@ export class InstallerService extends EventEmitter {
                         if (entryCount % 100 === 0) {
                             const percent = Math.min(80, Math.round((entryCount / 5000) * 100)); // Cap at 80 for extraction
                             const msg = `Extracting modpack... (${entryCount} files)`;
-                            this.emit('status', msg);
+                            this.updateProgress(serverId, msg, percent);
                             onProgress?.(msg, percent);
                         }
                     }
                     });
                     const msg = `Modpack extracted successfully (${entryCount} files installed).`;
                     console.log(`[Installer:Forge] ${msg}`);
-                    this.emit('status', msg);
+                    this.updateProgress(serverId, msg);
                     onProgress?.(msg);
                 }
 
@@ -612,7 +1048,7 @@ export class InstallerService extends EventEmitter {
                     if (stats.isDirectory()) {
                         const msg = `Detected nested modpack structure. Flattening...`;
                         console.log(`[Installer:Forge] ${msg}`);
-                        this.emit('status', msg);
+                        this.updateProgress(serverId, msg);
                         onProgress?.(msg);
                         
                         const subEntries = await fs.readdir(singleDir);
@@ -626,7 +1062,7 @@ export class InstallerService extends EventEmitter {
                 }
             }
 
-            this.emit('status', `Fetching Forge version for ${version}...`);
+            this.updateProgress(serverId, `Fetching Forge version for ${version}...`);
             
             let forgeVersion = build;
             if (!forgeVersion || forgeVersion === 'latest' || forgeVersion === 'recommended') {
@@ -655,7 +1091,7 @@ export class InstallerService extends EventEmitter {
                 onProgress?.(msg, mappedPercent);
             }, serverId);
 
-            this.emit('status', 'Running Forge Installer (This may take a minute)...');
+            this.updateProgress(serverId, 'Running Forge Installer (This may take a minute)...', 95);
             console.log(`[Installer:Forge] Running Forge Installer...`);
             
             // Run the installer with the resolved java path
@@ -688,14 +1124,14 @@ export class InstallerService extends EventEmitter {
             
             // Priority 1: run.bat (Modern Forge)
             if (files.includes('run.bat')) {
-                this.emit('status', 'Forge installed. Using run.bat');
+                this.updateProgress(serverId, 'Forge installed. Using run.bat', 100);
                 return 'run.bat';
             }
 
             // Priority 2: forge-*.jar (Older Forge)
             const forgeJar = files.find(f => f.startsWith('forge-') && f.endsWith('.jar') && !f.includes('installer'));
             if (forgeJar) {
-                 this.emit('status', `Forge installed. Using ${forgeJar}`);
+                 this.updateProgress(serverId, `Forge installed. Using ${forgeJar}`, 100);
                  return forgeJar;
             }
 
@@ -730,12 +1166,12 @@ export class InstallerService extends EventEmitter {
             if (mcMajor === 20 && mcMinor <= 4) requiredJava = 'Java 17';
 
             const jMsg = `Ensuring ${requiredJava} exists...`;
-            this.emit('status', jMsg);
+            this.updateProgress(serverId, jMsg);
             onProgress?.(jMsg);
             const javaPath = await javaManager.ensureJava(requiredJava);
 
             const vMsg = `Fetching NeoForge version for ${version}...`;
-            this.emit('status', vMsg);
+            this.updateProgress(serverId, vMsg);
             onProgress?.(vMsg);
             
             let matchingVersion = build;
@@ -840,9 +1276,9 @@ export class InstallerService extends EventEmitter {
             try {
                 onProgress?.('Downloading Spigot Jar...', 0);
                 await this.downloadFile(downloadUrl, dest, onProgress);
-                this.emit('status', 'Spigot Downloaded successfully.');
+                this.updateProgress(serverId, 'Spigot Downloaded successfully.');
             } catch (e) {
-                this.emit('status', 'Mirror failed. Falling back to BuildTools (Slow)...');
+                this.updateProgress(serverId, 'Mirror failed. Falling back to BuildTools (Slow)...');
                 // BuildTools logic would go here... for now we'll throw
                 throw new Error('Spigot download failed. No mirror found for this version.');
             }
@@ -897,7 +1333,7 @@ export class InstallerService extends EventEmitter {
         
         for (const locale of locales) {
             try {
-                this.emit('status', `Consulting official Bedrock manifest (${locale})...`);
+                this.updateProgress(serverId, `Consulting official Bedrock manifest (${locale})...`);
                 const response = await axios.get(`https://www.minecraft.net/${locale}/download/server/bedrock`, {
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -1095,15 +1531,30 @@ export class InstallerService extends EventEmitter {
                     
                     let targetBuild = build;
                     if (build === 'latest') {
-                        const buildsUrl = `https://api.papermc.io/v2/projects/velocity/versions/${version}/builds`;
-                        const buildsRes = await axios.get(buildsUrl, { timeout: 10000 });
+                        let buildsUrl = `https://api.papermc.io/v2/projects/velocity/versions/${version}/builds`;
+                        let buildsRes;
+                        try {
+                            buildsRes = await axios.get(buildsUrl, { timeout: 10000 });
+                        } catch (err: any) {
+                            // If version 404s and doesn't have -SNAPSHOT, try with -SNAPSHOT
+                            if (err.response?.status === 404 && !version.includes('-SNAPSHOT')) {
+                                console.log(`[Installer] Velocity ${version} 404'd. Retrying with ${version}-SNAPSHOT...`);
+                                buildsUrl = `https://api.papermc.io/v2/projects/velocity/versions/${version}-SNAPSHOT/builds`;
+                                buildsRes = await axios.get(buildsUrl, { timeout: 10000 });
+                                // Update version for the jarName construction below
+                                (options as any).version = `${version}-SNAPSHOT`;
+                            } else {
+                                throw err;
+                            }
+                        }
                         const builds = (buildsRes.data as any).builds;
                         if (!builds || builds.length === 0) throw new Error('No builds found for this version');
                         targetBuild = builds[builds.length - 1].build;
                     }
 
-                    const jarName = `velocity-${version}-${targetBuild}.jar`;
-                    const downloadUrl = `https://api.papermc.io/v2/projects/velocity/versions/${version}/builds/${targetBuild}/downloads/${jarName}`;
+                    const currentVersion = (options as any).version || version;
+                    const jarName = `velocity-${currentVersion}-${targetBuild}.jar`;
+                    const downloadUrl = `https://api.papermc.io/v2/projects/velocity/versions/${currentVersion}/builds/${targetBuild}/downloads/${jarName}`;
                     const dest = path.join(serverDir, 'velocity.jar');
 
                     await fs.ensureDir(serverDir);
@@ -1139,6 +1590,20 @@ player-info-forwarding-mode = "modern"
                     const cMsg = 'Installation Complete';
                     this.updateProgress(serverId, cMsg, 100);
                     onProgress?.(cMsg);
+
+                    // Update server config to use velocity.jar as the executable
+                    try {
+                        const { getServer, saveServer } = await import('../servers/ServerService');
+                        const server = getServer(serverId);
+                        if (server) {
+                            server.executable = 'velocity.jar';
+                            saveServer(server);
+                            console.log(`[Installer:${serverId}] Updated executable to velocity.jar`);
+                        }
+                    } catch (err) {
+                        console.error(`[Installer:${serverId}] Failed to update executable:`, err);
+                    }
+
                     setTimeout(() => this.clearProgress(serverId), 2000);
                     return true;
 

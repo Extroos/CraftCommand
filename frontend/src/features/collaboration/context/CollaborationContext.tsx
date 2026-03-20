@@ -164,7 +164,6 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
         // --- Reconnection Resilience ---
         const handleReconnect = () => {
             if (lastServerId.current) {
-                console.log(`[Socket] Reconnected. Restoring subscription to server:${lastServerId.current}`);
                 socketService.joinServer(lastServerId.current, 'dashboard');
             }
         };

@@ -14,6 +14,7 @@ interface ServerStats {
     isRealOnline: boolean;
     tps: string;
     pid: number;
+    lastUpdate: number;
 }
 
 interface ServerContextType {
@@ -26,8 +27,8 @@ interface ServerContextType {
     players: Record<string, Player[]>;
     logs: Record<string, string[]>; // Latest 10 logs for each server
     
-    // Java Download Status (Global)
-    javaDownloadStatus: { message: string, phase: string, percent?: number } | null;
+    // Java Download Status (Global or Server-Scoped)
+    javaDownloadStatus: { message: string, phase: string, percent?: number, serverId?: string } | null;
     
     // Server Install Progress (Per Server)
     installProgress: Record<string, { message: string, percent: number }>;
@@ -89,7 +90,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [installProgress, setInstallProgress] = useState<Record<string, { message: string, percent: number }>>({});
 
     // Java Download Status
-    const [javaDownloadStatus, setJavaDownloadStatus] = useState<{ message: string, phase: string, percent?: number } | null>(null);
+    const [javaDownloadStatus, setJavaDownloadStatus] = useState<{ message: string, phase: string, percent?: number, serverId?: string } | null>(null);
 
     const refreshServers = useCallback(async (showSplash = false) => {
         if (showSplash) setIsLoading(true);
@@ -191,12 +192,13 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Background Status & Stats Polling (V2: Parallel & Ref-Based)
     const pollIdRef = React.useRef(0);
     useEffect(() => {
-        const interval = setInterval(async () => {
+        const pollServers = async () => {
             const currentServers = serversRef.current;
             if (!Array.isArray(currentServers) || currentServers.length === 0) return;
             
             pollIdRef.current++;
             const currentPollId = pollIdRef.current;
+            const pollStartTime = Date.now(); // Capture start time to prevent staleness overwrites
 
             // Poll ALL servers in parallel
             const results = await Promise.allSettled(currentServers.map(async (server) => {
@@ -222,16 +224,25 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             results.forEach((res, index) => {
                 const server = currentServers[index];
                 if (res.status === 'fulfilled') {
-                    const { queryStats, procStats, isOnline } = res.value;
+                    const { queryStats, procStats, isOnline, error } = res.value;
+
+                    if (error || !queryStats) return;
 
                     setStats(prev => {
-                        const current = prev[server.id] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0 };
+                        const current = prev[server.id] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0, lastUpdate: 0 };
                         
-                        const newStats = { ...current };
-                        newStats.isRealOnline = isOnline;
-                        newStats.latency = queryStats.latency || 0;
-                        newStats.players = queryStats.players || 0;
+                        // STALENESS GUARD: If we received a fresher WebSocket update AFTER this poll was initiated, 
+                        // ignore the poll result for this specific server to avoid flickering.
+                        if (current.lastUpdate > pollStartTime) return prev;
 
+                        const newStats = { 
+                            ...current, 
+                            isRealOnline: isOnline, 
+                            latency: queryStats.latency || 0, 
+                            players: queryStats.players || 0,
+                            lastUpdate: Date.now() // Polling update
+                        };
+                        
                         if (procStats) {
                             newStats.cpu = procStats.cpu || 0;
                             newStats.memory = procStats.memory || 0;
@@ -242,7 +253,6 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                              newStats.isRealOnline = false;
                         }
 
-                        // Optimization: Only update state if meaningful numbers changed to prevent unnecessary re-renders
                         if (JSON.stringify(current) === JSON.stringify(newStats)) return prev;
                         return { ...prev, [server.id]: newStats };
                     });
@@ -263,11 +273,13 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     }
                 }
             });
+        };
 
-        }, 2000); 
+        pollServers(); // Execute immediately upon load
+        const interval = setInterval(pollServers, 2000); 
 
         return () => clearInterval(interval);
-    }, [updateServerStatus]); // NO DEPENDENCY ON servers! Fixed interval loop!
+    }, [updateServerStatus, servers.length]);
 
     // Background List Polling
     useEffect(() => {
@@ -296,7 +308,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const handleStats = (data: { id: string, cpu: number, memory: number, pid: number, tps: string, uptime: number }) => {
             setStats(prev => {
-                const current = prev[data.id] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0 };
+                const current = prev[data.id] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0, lastUpdate: 0 };
                 return {
                     ...prev,
                     [data.id]: {
@@ -305,7 +317,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         memory: data.memory,
                         tps: data.tps,
                         uptime: data.uptime,
-                        pid: data.pid
+                        pid: data.pid,
+                        lastUpdate: Date.now() // Live update
                     }
                 };
             });
@@ -320,28 +333,86 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
         
         // Java Download Status Handlers
-        const handleInstallStatus = (data: { message: string, phase: string }) => {
-            setJavaDownloadStatus({ message: data.message, phase: data.phase });
-            if (data.phase === 'complete') {
-                setTimeout(() => setJavaDownloadStatus(null), 3000);
-            }
-        };
+        const handleInstallStatus = (data: any) => {
+            const serverId = data?.serverId;
+            const message = typeof data?.message === 'string' ? data.message : (typeof data === 'string' ? data : 'Processing...');
+            const phase = data?.phase || 'unknown';
+            const percent = typeof data?.percent === 'number' ? data.percent : undefined;
 
-        const handleInstallProgress = (data: { serverId?: string, phase: string, percent: number, message: string }) => {
-            // If serverId is present, update the specific server progress
-            if (data.serverId) {
+            setJavaDownloadStatus({ 
+                message, 
+                phase, 
+                percent,
+                serverId 
+            });
+
+            if (serverId) {
                 setInstallProgress(prev => ({
                     ...prev,
-                    [data.serverId!]: { message: data.message, percent: data.percent }
+                    [serverId]: { message, percent: percent ?? 100 }
                 }));
-            } else {
-                // Fallback to global (Java install)
-                setJavaDownloadStatus({ message: data.message, phase: data.phase, percent: data.percent });
+            }
+
+            if (phase === 'complete' || percent === 100) {
+                setTimeout(() => {
+                    setJavaDownloadStatus(null);
+                    if (serverId) {
+                        setInstallProgress(prev => {
+                            const newState = { ...prev };
+                            delete newState[serverId];
+                            return newState;
+                        });
+                    }
+                    refreshServers();
+                }, 3000);
             }
         };
 
-        const handleInstallError = (data: { message: string, phase: string }) => {
-            setJavaDownloadStatus({ message: data.message, phase: data.phase });
+        const handleInstallProgress = (data: any) => {
+            const serverId = data?.serverId;
+            const message = typeof data?.message === 'string' ? data.message : (typeof data === 'string' ? data : 'Downloading...');
+            const percent = typeof data?.percent === 'number' ? data.percent : 0;
+            const phase = data?.phase || 'downloading';
+
+            // Update specific server progress if serverId is provided
+            if (serverId) {
+                setInstallProgress(prev => ({
+                    ...prev,
+                    [serverId]: { message, percent }
+                }));
+            }
+
+            // Always update Java status if it's a Java-related phase or if no serverId is provided (legacy)
+            const isJavaPhase = phase === 'downloading' || phase === 'extracting' || phase === 'installing' || phase === 'complete' || message?.toLowerCase().includes('java');
+            
+            if (!serverId || isJavaPhase) {
+                setJavaDownloadStatus({ 
+                    message, 
+                    phase, 
+                    percent,
+                    serverId
+                });
+                
+                // Clear Java status on completion or failure
+                if (phase === 'complete' || phase === 'failed' || percent === 100) {
+                    setTimeout(() => {
+                        setJavaDownloadStatus(null);
+                        if (serverId) {
+                            setInstallProgress(prev => {
+                                const newState = { ...prev };
+                                delete newState[serverId];
+                                return newState;
+                            });
+                        }
+                    }, 3000);
+                }
+            }
+        };
+
+        const handleInstallError = (data: any) => {
+            const message = typeof data?.message === 'string' ? data.message : (typeof data === 'string' ? data : 'Installation Failed');
+            const phase = data?.phase || 'failed';
+            setJavaDownloadStatus({ message, phase, percent: 0 });
             setTimeout(() => setJavaDownloadStatus(null), 5000);
         };
 
@@ -352,15 +423,19 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                  delete newState[data.serverId];
                  return newState;
              });
+             // Also clear global Java status if it matches this server or is global
+             setJavaDownloadStatus(prev => {
+                 if (!prev || !prev.serverId || prev.serverId === data.serverId) return null;
+                 return prev;
+             });
              // Also refresh status immediately
              refreshServers();
         };
 
         const handlePlayerJoin = (data: { serverId: string, name: string, onlinePlayers: number }) => {
-            console.log(`[Socket] Player Joined: ${data.name} to ${data.serverId} (${data.onlinePlayers})`);
             // 1. Immediate stats update for count
             setStats(prev => {
-                const current = prev[data.serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0 };
+                const current = prev[data.serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0, lastUpdate: 0 };
                 return {
                     ...prev,
                     [data.serverId]: { ...current, players: data.onlinePlayers }
@@ -371,11 +446,10 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
 
         const handlePlayerLeave = (data: { serverId: string, name: string, onlinePlayers: number }) => {
-            console.log(`[Socket] Player Left: ${data.name} from ${data.serverId} (${data.onlinePlayers})`);
             
             // 1. Immediate stats update for count
             setStats(prev => {
-                const current = prev[data.serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0 };
+                const current = prev[data.serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0, lastUpdate: 0 };
                 const newCount = Math.max(0, data.onlinePlayers);
                 return {
                     ...prev,

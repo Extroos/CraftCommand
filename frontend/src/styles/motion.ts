@@ -88,3 +88,27 @@ export const getSafeTransition = (isQuality: boolean, isReduced: boolean): Trans
     if (!isQuality) return { duration: 0.2 };
     return MOTION_SPRINGS.premium;
 };
+/**
+ * Modal Animation Variants
+ */
+export const MODAL_BACKDROP: Variants = {
+    hidden: { opacity: 0 },
+    show: { opacity: 1 },
+    exit: { opacity: 0 }
+};
+
+export const MODAL_CONTENT: Variants = {
+    hidden: { opacity: 0, scale: 0.95, y: 10 },
+    show: { 
+        opacity: 1, 
+        scale: 1, 
+        y: 0,
+        transition: MOTION_SPRINGS.premium 
+    },
+    exit: { 
+        opacity: 0, 
+        scale: 0.95, 
+        y: 10,
+        transition: { duration: 0.15 }
+    }
+};

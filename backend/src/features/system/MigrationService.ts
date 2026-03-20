@@ -1,121 +1,120 @@
-import path from 'path';
-import fs from 'fs-extra';
-import { logger } from '../../utils/logger';
-import { DATA_DIR } from '../../constants';
+import { StorageFactory } from '../../storage/StorageFactory';
+import { systemSettingsService } from './SystemSettingsService';
+import { auditService } from './AuditService';
+import { userRepository } from '../../storage/UserRepository';
+import { serverRepository } from '../../storage/ServerRepository';
+import { notificationRepository } from '../../storage/NotificationRepository';
+import { pluginRepository } from '../../storage/PluginRepository';
+import { scheduleRepository } from '../../storage/ScheduleRepository';
+import { sessionRepository } from '../../storage/SessionRepository';
 
-export interface Migration {
-    id: string;
-    description: string;
-    run: () => Promise<void>;
-}
+class MigrationService {
+    private inProgress = false;
 
-export class MigrationService {
-    private static instance: MigrationService;
-    private migrations: Migration[] = [];
-    private migrationsFile = path.join(DATA_DIR, 'migrations.json');
+    async runMigrations(): Promise<void> {
+        console.log('[MigrationService] Running startup migrations/initialization...');
+        const repos: any[] = [
+            userRepository,
+            serverRepository,
+            notificationRepository,
+            pluginRepository,
+            scheduleRepository,
+            sessionRepository
+        ];
 
-    private constructor() {
-        this.registerMigrations();
-    }
-
-    public static getInstance(): MigrationService {
-        if (!MigrationService.instance) {
-            MigrationService.instance = new MigrationService();
-        }
-        return MigrationService.instance;
-    }
-
-    private registerMigrations() {
-        // Register your migrations here
-        this.migrations.push({
-            id: 'init_applied_migrations_file',
-            description: 'Initialize the migrations storage file',
-            run: async () => {
-                // No-op, just explicitly marking the start of tracking
-                logger.info('[Migration] Initialized migration tracking.');
-            }
-        });
-        
-        // Example:
-        // this.migrations.push({ id: 'v2_schema_update', ... })
-    }
-
-    public async runMigrations(): Promise<void> {
-        logger.info('[Migration] Checking for pending migrations...');
-        
-        const applied = await this.getAppliedMigrations();
-        const pending = this.migrations.filter(m => !applied.includes(m.id));
-
-        if (pending.length === 0) {
-            logger.info('[Migration] System is up to date.');
-            return;
-        }
-
-        logger.info(`[Migration] Found ${pending.length} pending migrations.`);
-
-        // Create a pre-migration snapshot if needed
-        await this.createSnapshot();
-
-        for (const migration of pending) {
+        for (const repo of repos) {
             try {
-                logger.info(`[Migration] Running: ${migration.id} (${migration.description})`);
-                await migration.run();
-                await this.markAsApplied(migration.id);
-                logger.info(`[Migration] Completed: ${migration.id}`);
-            } catch (err: any) {
-                logger.error(`[Migration] FAILED: ${migration.id} - ${err.message}`);
-                throw err; // Stop startup on migration failure
+                if (repo.init) {
+                    await repo.init();
+                }
+            } catch (e) {
+                console.error(`[MigrationService] Failed to initialize repository:`, e);
             }
         }
-        
-        logger.info('[Migration] All migrations applied successfully.');
     }
 
-    private async getAppliedMigrations(): Promise<string[]> {
-        if (!await fs.pathExists(this.migrationsFile)) {
-            return [];
+    async migrateToSqlite(actorId: string): Promise<{ success: boolean; message: string }> {
+        if (this.inProgress) throw new Error('Migration already in progress');
+        
+        const settings = systemSettingsService.getSettings();
+        if (settings.app.storageProvider === 'sqlite') {
+            return { success: true, message: 'Existing storage is already SQLite.' };
         }
-        try {
-            const data = await fs.readJson(this.migrationsFile);
-            return Array.isArray(data) ? data : [];
-        } catch (err) {
-            logger.warn('[Migration] Could not read migrations file, assuming empty.');
-            return [];
-        }
-    }
 
-    private async markAsApplied(id: string): Promise<void> {
-        const applied = await this.getAppliedMigrations();
-        applied.push(id);
-        await fs.ensureDir(path.dirname(this.migrationsFile));
-        await fs.writeJson(this.migrationsFile, applied, { spaces: 2 });
-    }
-
-    private async createSnapshot(): Promise<void> {
-        // Simple snapshot of critical config files before applying changes
-        const timestamp = Date.now();
-        const snapshotDir = path.join(DATA_DIR, 'snapshots', `pre_migration_${timestamp}`);
-        
-        logger.info(`[Migration] Creating snapshot at ${snapshotDir}...`);
-        
+        this.inProgress = true;
         try {
-            await fs.ensureDir(snapshotDir);
-            // Copy critical files if they exist
-            const criticalFiles = ['settings.json', 'servers.json', 'users.json'];
+            console.log(`[MigrationService] Starting storage migration to SQLite (triggered by ${actorId})`);
             
-            for (const file of criticalFiles) {
-                const src = path.join(DATA_DIR, file);
-                if (await fs.pathExists(src)) {
-                    await fs.copy(src, path.join(snapshotDir, file));
+            // 1. Force the StorageFactory to use SQLite for initialization
+            // We do this by temporarily overriding the settings or using a special flag.
+            // Since we'll update settings at the end, let's just trigger the 'init' on all repos
+            // which will automatically find JSON data and move it to SQLite if SQLite is enabled.
+            
+            // Actually, SqliteProvider.init handles auto-migration if migrationJsonPath is provided.
+            // So we just need to ensure that when we switch the setting, we re-initialize the providers.
+            
+            // Step 1: Update the global setting
+            systemSettingsService.updateSettings({
+                app: { ...settings.app, storageProvider: 'sqlite' }
+            });
+
+            // Step 2: Re-initialize all repositories. 
+            // Since they are singletons, we need to manually trigger their re-init or they need a way to swap providers.
+            // Let's check if they have an init() that re-creates the provider.
+            // Looking at UserRepository: constructor calls StorageFactory.get() which checks systemSettingsService.getSettings().
+            // So we need to re-instantiate or re-trigger the getter.
+            
+            // A better way: repositories should have a 'setProvider' or similar, 
+            // OR we just tell the USER a REBOOT is required. 
+            // In our implementation plan we said "with a visible progress indicator".
+            
+            // Let's implement an explicit 'rebind' on repositories.
+            const repos: any[] = [
+                userRepository,
+                serverRepository,
+                notificationRepository,
+                pluginRepository,
+                scheduleRepository,
+                sessionRepository
+            ];
+
+            for (const repo of repos) {
+                if (repo.rebind) {
+                    await repo.rebind();
+                } else if (repo.init) {
+                    // If init detects SQLite but no data, and JSON exists, it migrates.
+                    await repo.init();
                 }
             }
-        } catch (err: any) {
-            logger.error(`[Migration] Snapshot failed: ${err.message}`);
-            // Decide if we want to block migration if snapshot fails. 
-            // Better safe than sorry.
-            throw new Error(`Migration snapshot failed: ${err.message}`);
+
+            auditService.log(actorId, 'SYSTEM_STORAGE_MIGRATE', 'system', { target: 'sqlite' });
+            return { success: true, message: 'Migration to SQLite complete. System is now using database storage.' };
+        } catch (e: any) {
+            console.error(`[MigrationService] Migration failed:`, e);
+            // Revert setting if possible?
+            systemSettingsService.updateSettings({
+                app: { ...settings.app, storageProvider: 'json' }
+            });
+            throw e;
+        } finally {
+            this.inProgress = false;
         }
+    }
+
+    async migrateToJson(actorId: string): Promise<{ success: boolean; message: string }> {
+        const settings = systemSettingsService.getSettings();
+        if (settings.app.storageProvider === 'json') {
+             return { success: true, message: 'Existing storage is already JSON.' };
+        }
+
+        // Switching back to JSON is easy because SqliteProvider maintains a sync by default.
+        systemSettingsService.updateSettings({
+            app: { ...settings.app, storageProvider: 'json' }
+        });
+
+        auditService.log(actorId, 'SYSTEM_STORAGE_MIGRATE', 'system', { target: 'json' });
+        return { success: true, message: 'Migration to JSON complete. Database sync remains active for safe return.' };
     }
 }
 
-export const migrationService = MigrationService.getInstance();
+export const migrationService = new MigrationService();

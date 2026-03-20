@@ -160,42 +160,42 @@ async function searchModrinth(query: PluginSearchQuery, software: string): Promi
 export async function getModrinthDownloadUrl(projectId: string, gameVersion?: string, platforms?: string[]) {
     const headers = { 'User-Agent': 'CraftCommand/1.8.0 (contact@craftcommand.io)' };
     
+    // Build strict query parameters for Modrinth API (Layer 1 Stabilization)
+    const versionUrl = `https://api.modrinth.com/v2/project/${projectId}/version`;
+    const params: any = {};
+    if (gameVersion) params.game_versions = JSON.stringify([gameVersion]);
+    if (platforms && platforms.length > 0) {
+        // Map common software names to Modrinth loaders
+        const mappedPlatforms = platforms.map(p => p.toLowerCase() === 'quilt' ? 'fabric' : p.toLowerCase());
+        params.loaders = JSON.stringify(mappedPlatforms);
+    }
+    
     // Parallel fetch project and versions
     const [projectRes, versionsRes] = await Promise.all([
         axios.get(`https://api.modrinth.com/v2/project/${projectId}`, { headers, timeout: 10000 }),
-        axios.get(`https://api.modrinth.com/v2/project/${projectId}/version`, { headers, timeout: 10000 })
+        axios.get(versionUrl, { headers, params, timeout: 10000 })
     ]);
 
     const project = projectRes.data as any;
-    let versions = versionsRes.data as any[];
+    const versions = versionsRes.data as any[];
 
-    // Filter by game version if specified
-    if (gameVersion) {
-        const filtered = versions.filter((v: any) => v.game_versions?.includes(gameVersion));
-        if (filtered.length > 0) versions = filtered;
+    if (!versions.length) {
+        const platformStr = platforms?.join('/') || 'any';
+        throw new Error(`No versions found for ${project.title} on Minecraft ${gameVersion || 'any'} (${platformStr})`);
     }
-
-    // Filter by loaders/platforms if specified
-    if (platforms && platforms.length > 0) {
-        const platformSet = new Set(platforms.map(p => p.toLowerCase()));
-        const filtered = versions.filter((v: any) => 
-            v.loaders?.some((loader: string) => platformSet.has(loader.toLowerCase()))
-        );
-        if (filtered.length > 0) {
-            versions = filtered;
-        } else {
-            // Hardening: If we explicitly requested specific platforms and NONE matched,
-            // do NOT fall back to incompatible versions (like Forge on Paper).
-            throw new Error(`No compatible versions found for requested platforms: ${platforms.join(', ')}`);
-        }
-    }
-
-    if (!versions.length) throw new Error('No compatible versions found for this plugin');
 
     const latest = versions[0];
     const primaryFile = (latest as any).files.find((f: any) => f.primary) || (latest as any).files[0];
 
     if (!primaryFile?.url) throw new Error('No download URL found');
+
+    const dependencies = (latest.dependencies || [])
+        .filter((d: any) => d.dependency_type === 'required')
+        .map((d: any) => ({
+            id: d.project_id,
+            versionId: d.version_id,
+            required: true
+        }));
 
     return {
         url: (primaryFile as any).url,
@@ -206,7 +206,8 @@ export async function getModrinthDownloadUrl(projectId: string, gameVersion?: st
         author: project.author || 'Unknown',
         iconUrl: project.icon_url,
         category: project.categories?.[0] || 'General',
-        externalUrl: `https://modrinth.com/plugin/${project.slug}`
+        externalUrl: `https://modrinth.com/plugin/${project.slug}`,
+        dependencies
     };
 }
 

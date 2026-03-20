@@ -43,7 +43,7 @@ export class ServerConfigService {
 
         // Check Properties
         if (await fs.pathExists(propsPath)) {
-            const props = await this.parseProperties(propsPath);
+            const props = await ServerConfigService.parseProperties(propsPath);
 
             // Mapping for detection
             const mappings: { key: keyof ServerConfig; prop: string; type: 'int' | 'bool' | 'string'; severity: 'high' | 'medium' | 'low' }[] = [
@@ -137,7 +137,8 @@ export class ServerConfigService {
             if (val === undefined || typeof val === 'object') return;
 
             const regex = new RegExp(`^${propName}=.*$`, 'm');
-            const stringVal = String(val);
+            // Escape special characters for Java properties (!, :, =, #)
+            const stringVal = String(val).replace(/([!:=#\\])/g, '\\$1');
 
             if (content.match(regex)) {
                 content = content.replace(regex, `${propName}=${stringVal}`);
@@ -181,15 +182,17 @@ export class ServerConfigService {
         }
     }
 
-    private async parseProperties(filePath: string): Promise<Record<string, string>> {
+    public static async parseProperties(filePath: string): Promise<Record<string, string>> {
         const content = await fs.readFile(filePath, 'utf-8');
         const result: Record<string, string> = {};
-        content.split('\n').forEach(line => {
+        content.split(/\r?\n/).forEach(line => {
             const clean = line.trim();
-            if (clean && !clean.startsWith('#')) {
+            if (clean && !clean.startsWith('#') && !clean.startsWith('!')) {
                 const [key, ...rest] = clean.split('=');
                 if (key) {
-                    result[key.trim()] = rest.join('=').trim();
+                    const val = rest.join('=').trim();
+                    // Unescape special characters (\!, \:, \=, \#, \\)
+                    result[key.trim()] = val.replace(/\\([!:=#\\])/g, '$1');
                 }
             }
         });

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { LogEntry, ServerStatus } from '@shared/types';
-import { Play, Pause, Trash2, ArrowRight, Power, Ban, RotateCcw, ArrowDown, Terminal as TerminalIcon, Wifi } from 'lucide-react';
+import { Play, Pause, Trash2, ArrowRight, Power, Ban, RotateCcw, ArrowDown, Terminal as TerminalIcon, Wifi, Download, Search, Filter, FileText } from 'lucide-react';
 
 import { API } from '@core/services/api';
 import { socketService } from '@core/services/socket';
@@ -32,6 +32,34 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
     const [command, setCommand] = useState('');
     const [isPaused, setIsPaused] = useState(false);
     const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
+    const [isGracefulStopping, setIsGracefulStopping] = useState(false);
+
+    // Command History State & Persistence
+    const [commandHistory, setCommandHistory] = useState<string[]>([]);
+    const [historyIndex, setHistoryIndex] = useState(-1);
+    const [savedCommand, setSavedCommand] = useState(''); // preserves what user was typing before arrowing up
+
+    useEffect(() => {
+        const saved = localStorage.getItem(`console_history_${serverId}`);
+        if (saved) {
+            try {
+                setCommandHistory(JSON.parse(saved));
+            } catch (e) {
+                console.error('Failed to parse command history');
+            }
+        }
+    }, [serverId]);
+
+    useEffect(() => {
+        if (commandHistory.length > 0) {
+            localStorage.setItem(`console_history_${serverId}`, JSON.stringify(commandHistory));
+        }
+    }, [commandHistory, serverId]);
+
+    // Log Filtering
+    const [logFilter, setLogFilter] = useState<Set<string>>(new Set(['INFO', 'WARN', 'ERROR']));
+    const [logSearch, setLogSearch] = useState('');
+    const [showFilters, setShowFilters] = useState(false);
     
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const endRef = useRef<HTMLDivElement>(null);
@@ -47,9 +75,16 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
     const canWrite = can('server.console.write', serverId);
 
     // Notify collab context that we're on console
-    React.useEffect(() => {
+    useEffect(() => {
         if (serverId) updateActiveView(serverId, 'console');
     }, [serverId, updateActiveView]);
+
+    // Socket listener for status updates to clear graceful stopping state
+    useEffect(() => {
+        if (status === ServerStatus.OFFLINE || status === ServerStatus.STOPPING) {
+            setIsGracefulStopping(false);
+        }
+    }, [status]);
 
     // Socket.io & Initial Fetch (Logs Only)
     useEffect(() => {
@@ -67,7 +102,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     })));
                 }
              } catch (e) {
-                 console.error("Failed to sync logs", e);
+                 // Silently fail — logs sync on reconnect
              }
         };
         syncLogs();
@@ -116,6 +151,16 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
         // Send via Socket
         socketService.socket.emit('command', { serverId, command });
         
+        // Push to history (dedup last entry)
+        setCommandHistory(prev => {
+            const trimmed = command.trim();
+            const filtered = prev.filter(c => c !== trimmed);
+            const next = [trimmed, ...filtered].slice(0, 50);
+            return next;
+        });
+        setHistoryIndex(-1);
+        setSavedCommand('');
+
         // Optimistic UI update
         setLogs(prev => [...prev, {
             id: Date.now().toString(),
@@ -128,6 +173,180 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
         setUserHasScrolledUp(false);
         const reducedMotion = user?.preferences?.reducedMotion ?? false;
         setTimeout(() => endRef.current?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth' }), 50);
+    };
+
+    // Command History Navigation (Up/Down arrows) and Ctrl+Enter Submission
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            if (command.trim() && status === ServerStatus.ONLINE) {
+                // Manually construct an event to satisfy the signature if needed, or extract logic
+                // React's onSubmit pass a generic React.FormEvent. Since we don't have a true one here,
+                // we can just cast it or extract the inner logic. handleSend just calls stopPropagation/preventDefault.
+                handleSend(e as unknown as React.FormEvent);
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (commandHistory.length === 0) return;
+            if (historyIndex === -1) setSavedCommand(command);
+            const newIndex = Math.min(historyIndex + 1, commandHistory.length - 1);
+            setHistoryIndex(newIndex);
+            setCommand(commandHistory[newIndex]);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (historyIndex <= 0) {
+                setHistoryIndex(-1);
+                setCommand(savedCommand);
+                return;
+            }
+            const newIndex = historyIndex - 1;
+            setHistoryIndex(newIndex);
+            setCommand(commandHistory[newIndex]);
+        }
+    };
+
+    const handleExportLogs = () => {
+        const content = logs.map(l => `[${l.timestamp}] [${l.level}] ${l.message}`).join('\n');
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `server-${serverId}-logs-${new Date().toISOString().split('T')[0]}.log`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        addToast('success', 'Logs Exported', 'A log file has been generated and downloaded.');
+    };
+
+    const handleDownloadServerLog = async () => {
+        try {
+            await API.downloadServerLog(serverId);
+            addToast('success', 'Full Log Downloaded', 'The latest server log file has been retrieved.');
+        } catch (e: any) {
+            addToast('error', 'Download Failed', e.message);
+        }
+    };
+
+    const renderMessage = (msg: string) => {
+        if (msg.startsWith('>')) {
+            return <span className="text-white font-semibold opacity-90">{msg}</span>;
+        }
+
+        // Improved Telemetry-grade highlighting
+        // 1. Handle Log Levels & Timestamps
+        // Regex to match [HH:mm:ss LEVEL]: or [HH:mm:ss] [STDOUT/INFO]:
+        const logHeaderRegex = /^(\[?\d{2}:\d{2}:\d{2}\]?)\s*(\[.*?\])?\s*(:?)/;
+        const headerMatch = msg.match(logHeaderRegex);
+        
+        let remainingMsg = msg;
+        let headerElements: React.ReactNode[] = [];
+
+        if (headerMatch) {
+            const [fullHeader, timestamp, level] = headerMatch;
+            headerElements.push(
+                <span key="ts" className="text-zinc-500 font-mono tracking-tighter opacity-60 mr-2">{timestamp}</span>
+            );
+            if (level) {
+                const isError = level.includes('ERROR') || level.includes('stderr') || level.includes('FATAL');
+                const isWarn = level.includes('WARN');
+                const isInfo = level.includes('INFO');
+                
+                headerElements.push(
+                    <span key="lvl" className={`font-black uppercase tracking-widest mr-2 ${
+                        isError ? 'text-rose-500' : isWarn ? 'text-amber-500' : isInfo ? 'text-emerald-500' : 'text-zinc-400'
+                    }`}>
+                        {level.replace(/[\[\]]/g, '')}
+                    </span>
+                );
+            }
+            remainingMsg = msg.substring(fullHeader.length).trim();
+        }
+
+        // 2. Process remaining message for keywords and Minecraft § codes
+        // Replace § codes with spans (very basic implementation)
+        const mcColorMap: Record<string, string> = {
+            '0': 'text-[#000000]', '1': 'text-[#0000AA]', '2': 'text-[#00AA00]', '3': 'text-[#00AAAA]',
+            '4': 'text-[#AA0000]', '5': 'text-[#AA00AA]', '6': 'text-[#FFAA00]', '7': 'text-[#AAAAAA]',
+            '8': 'text-[#555555]', '9': 'text-[#5555FF]', 'a': 'text-[#55FF55]', 'b': 'text-[#55FFFF]',
+            'c': 'text-[#FF5555]', 'd': 'text-[#FF55FF]', 'e': 'text-[#FFFF55]', 'f': 'text-[#FFFFFF]',
+        };
+
+        const parts = remainingMsg.split(/(§[0-9a-f]|\[.*?\]|\b\w+ joined\b|\b\w+ left\b|\b\w+ issued server command\b)/g);
+        
+        let currentColorClass = '';
+
+        const content = parts.map((part, i) => {
+            if (part.startsWith('§')) {
+                const code = part[1].toLowerCase();
+                currentColorClass = mcColorMap[code] || '';
+                return null;
+            }
+            if (part.startsWith('[') && part.endsWith(']')) {
+                return <span key={i} className="text-zinc-500 font-bold opacity-40 bg-white/5 px-1 rounded mx-0.5">{part}</span>;
+            }
+            if (part && (part.includes('joined') || part.includes('left'))) {
+                return (
+                    <span key={i} className="text-emerald-400/90 font-bold flex items-center gap-1.5 inline-flex bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10 my-0.5">
+                        <ArrowRight size={10} className={part.includes('left') ? 'rotate-180 text-rose-400' : ''} />
+                        {part}
+                    </span>
+                );
+            }
+            if (part && part.includes('issued server command')) {
+                return <span key={i} className="text-primary/70 italic font-medium opacity-80">{part}</span>;
+            }
+            
+            // Highlight specific technical keywords
+            if (/\b(Exception|Error|Failure|NullPointerException|Crash)\b/i.test(part)) {
+                return <span key={i} className="text-rose-400 font-black underline decoration-rose-500/30 underline-offset-2">{part}</span>;
+            }
+            if (/\b(Done|Success|Finished|Ready|Loaded)\b/i.test(part)) {
+                return <span key={i} className="text-emerald-400 font-bold">{part}</span>;
+            }
+
+            return <span key={i} className={currentColorClass}>{part}</span>;
+        }).filter(Boolean);
+
+        return (
+            <div className="inline-flex flex-wrap items-center">
+                {headerElements}
+                {content}
+            </div>
+        );
+    };
+
+    // Toggle log level filter
+    const toggleLogLevel = (level: string) => {
+        setLogFilter(prev => {
+            const next = new Set(prev);
+            if (next.has(level)) {
+                if (next.size > 1) next.delete(level); // prevent deselecting all
+            } else {
+                next.add(level);
+            }
+            return next;
+        });
+    };
+
+    const handleGracefulStop = async () => {
+        if (!canStop) return;
+        
+        try {
+            if (isGracefulStopping) {
+                await API.cancelGracefulStop(serverId);
+                setIsGracefulStopping(false);
+                addToast('info', 'Shutdown', 'Graceful shutdown cancelled.');
+                return;
+            }
+
+            setIsGracefulStopping(true);
+            await API.gracefulStopServer(serverId, 30);
+            addToast('warning', 'Shutdown', 'Graceful shutdown initiated (30s).');
+        } catch (e: any) {
+            setIsGracefulStopping(false);
+            addToast('error', 'Shutdown Failed', e.message);
+        }
     };
 
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {
@@ -146,6 +365,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     addToast('error', 'Permissions', 'Insufficient permissions to stop server');
                     return;
                 }
+                setIsGracefulStopping(false);
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 addToast('warning', 'Console', 'Termination signal sent.');
                 await API.stopServer(serverId);
@@ -154,6 +374,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     addToast('error', 'Permissions', 'Insufficient permissions to restart server');
                     return;
                 }
+                setIsGracefulStopping(false);
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 addToast('info', 'Console', 'Restarting process...');
                 await API.stopServer(serverId);
@@ -167,7 +388,12 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
     };
 
 
-    const visibleLogs = logs.slice(-250);
+    const filteredLogs = logs.filter(l => {
+        if (!logFilter.has(l.level)) return false;
+        if (logSearch && !l.message.toLowerCase().includes(logSearch.toLowerCase())) return false;
+        return true;
+    });
+    const visibleLogs = filteredLogs.slice(-250);
 
     return (
         <div className="flex flex-col h-[calc(100vh-120px)] rounded-xl border border-border bg-card overflow-hidden shadow-2xl animate-fade-in ring-1 ring-border/50 relative">
@@ -220,6 +446,22 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         </button>
                         <div className="w-[1px] h-4 bg-border mx-1"></div>
                         <button 
+                            onClick={handleGracefulStop}
+                            disabled={status !== ServerStatus.ONLINE || !canStop}
+                            className={`p-2 rounded-md transition-all duration-200 flex items-center gap-2 text-xs font-medium ${
+                                isGracefulStopping 
+                                ? 'bg-amber-500 hover:bg-amber-400 text-black animate-pulse' 
+                                : status === ServerStatus.ONLINE && canStop
+                                ? 'text-amber-500 hover:bg-amber-500/10' 
+                                : 'text-muted-foreground opacity-30 cursor-not-allowed'
+                            }`}
+                            title={isGracefulStopping ? "Cancel Graceful Shutdown" : "Graceful Shutdown (30s)"}
+                        >
+                            {isGracefulStopping ? <RotateCcw size={14} className="animate-spin-slow" /> : <Power size={14} className="opacity-70" />}
+                            <span className="hidden sm:inline">{isGracefulStopping ? 'Cancel' : 'Graceful'}</span>
+                        </button>
+                        <div className="w-[1px] h-4 bg-border mx-1"></div>
+                        <button 
                             onClick={() => handlePower('stop')}
                             disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING || status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING || !canStop}
                             className={`p-2 rounded-md transition-all duration-200 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 disabled:cursor-not-allowed`}
@@ -239,6 +481,28 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                             title={isPaused ? "Resume Output" : "Pause Output"}
                         >
                             {isPaused ? <Play size={14} /> : <Pause size={14} />}
+                        </button>
+                        <button 
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={`p-2 rounded-md border border-transparent hover:border-border transition-colors ${showFilters ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
+                            title="Toggle Filters"
+                        >
+                            <Filter size={14} />
+                        </button>
+                        <button 
+                            onClick={handleExportLogs}
+                            disabled={logs.length === 0}
+                            className="p-2 rounded-md border border-transparent hover:border-border text-muted-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Export Current Buffer"
+                        >
+                            <Download size={14} />
+                        </button>
+                        <button 
+                            onClick={handleDownloadServerLog}
+                            className="p-2 rounded-md border border-transparent hover:border-border text-muted-foreground hover:bg-secondary hover:text-primary transition-colors"
+                            title="Download Latest.log from Server"
+                        >
+                            <FileText size={14} />
                         </button>
                         <button 
                             onClick={() => setLogs([])}
@@ -263,7 +527,45 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     </div>
                     <div className="text-muted-foreground italic flex items-center gap-2">
                         <ArrowRight size={12} />
-                        Local players should use IP <span className="text-emerald-400 font-bold underline cursor-help" title="Use this if you are on the same WiFi/Network">192.168.1.15</span>
+                        Local players should use your machine's LAN IP address
+                    </div>
+                </div>
+            )}
+
+            {/* Filter Bar */}
+            {showFilters && (
+                <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-muted/20 animate-in fade-in slide-in-from-top-1">
+                    <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider mr-1">Level:</span>
+                    {['INFO', 'WARN', 'ERROR'].map(level => (
+                        <button
+                            key={level}
+                            onClick={() => toggleLogLevel(level)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border transition-colors ${
+                                logFilter.has(level)
+                                    ? level === 'ERROR' ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                                    : level === 'WARN' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                    : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                    : 'bg-muted/30 text-muted-foreground/40 border-border/50'
+                            }`}
+                        >
+                            {level}
+                        </button>
+                    ))}
+                    <div className="h-4 w-[1px] bg-border mx-1"></div>
+                    <div className="relative flex-1 max-w-xs">
+                        <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/40" />
+                        <input
+                            type="text"
+                            value={logSearch}
+                            onChange={(e) => setLogSearch(e.target.value)}
+                            placeholder="Search logs..."
+                            className="w-full bg-black/30 border border-border/50 rounded px-6 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/30"
+                        />
+                        {logSearch && (
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground/50">
+                                {visibleLogs.length} match{visibleLogs.length !== 1 ? 'es' : ''}
+                            </span>
+                        )}
                     </div>
                 </div>
             )}
@@ -295,8 +597,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         <p className="text-xs mt-1">Press 'Start' to initialize boot sequence.</p>
                     </div>
                 )}
-                
-                {visibleLogs.map((log) => (
+                                {visibleLogs.map((log) => (
                     <div key={log.id} className="flex gap-3 leading-6 hover:bg-white/5 -mx-4 px-4 transition-colors">
                         <span className="text-muted-foreground/30 select-none w-[70px] shrink-0 pt-0.5 font-mono" style={{ fontSize: '0.9em' }}>{log.timestamp}</span>
                         <span className={`shrink-0 font-bold w-10 pt-0.5 ${
@@ -309,12 +610,13 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         <span className={`break-all whitespace-pre-wrap ${
                             log.level === 'WARN' ? 'text-amber-200/80' : 
                             log.level === 'ERROR' ? 'text-rose-200/80' :
-                            log.message.startsWith('>') ? 'text-white font-semibold' : 'text-zinc-400'
+                            'text-zinc-400'
                         }`}>
-                            {log.message}
+                            {renderMessage(log.message)}
                         </span>
                     </div>
                 ))}
+
                 
                 {logs.length > visibleLogs.length && (
                     <div className="text-center py-2 text-xs text-muted-foreground/40 italic">
@@ -333,8 +635,9 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     <input
                         type="text"
                         value={command}
-                        onChange={(e) => setCommand(e.target.value)}
-                        placeholder={status === ServerStatus.ONLINE ? "Type a command..." : "Server is offline."}
+                        onChange={(e) => { setCommand(e.target.value); setHistoryIndex(-1); }}
+                        onKeyDown={handleKeyDown}
+                        placeholder={status === ServerStatus.ONLINE ? "Type a command... (↑↓ for history)" : "Server is offline."}
                         disabled={status === ServerStatus.OFFLINE}
                         className="flex-1 bg-transparent border-none text-sm font-mono text-zinc-100 focus:outline-none placeholder:text-zinc-500 disabled:cursor-not-allowed"
                     />

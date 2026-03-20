@@ -1,0 +1,25 @@
+{
+  "backups": [
+    {
+      "id": "backup-1771910158021-lqw3yb",
+      "serverId": "local-1771895129726",
+      "filename": "backup-1771910158021-lqw3yb.zip",
+      "size": 577356,
+      "createdAt": "2026-02-24T05:15:58.021Z",
+      "description": "Recovered Archive",
+      "locked": false,
+      "type": "Manual"
+    },
+    {
+      "id": "backup-1771910158021-lqw3yb",
+      "serverId": "local-1771895129726",
+      "filename": "backup-1771910158021-lqw3yb.zip",
+      "size": 577356,
+      "createdAt": "2026-02-24T05:15:58.021Z",
+      "description": "Auto-Save: Pre-fix (telemetry_cleanup)",
+      "type": "Manual",
+      "scope": "world",
+      "sha256": "800e9c1a66ee20ed27c727e9cd2f7fba179b9150e91f0787ea1c706383f28741"
+    }
+  ]
+}

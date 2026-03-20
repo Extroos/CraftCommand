@@ -8,6 +8,7 @@ import { logger } from '../../utils/logger';
 import { notificationService } from './NotificationService';
 import { nodeRegistryService } from '../nodes/NodeRegistryService';
 
+import { setSystemStatus, protocol, sslStatus } from './SystemStatusState';
 import { updateVerifier } from './UpdateVerifier';
 import AdmZip from 'adm-zip';
 
@@ -30,6 +31,8 @@ interface VersionInfo {
     version: string;
     title: string;
     notes: string[];
+    body?: string; // GitHub release body
+    assets?: any[]; // GitHub release assets
     priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     breaking?: boolean;
     minNodeVersion?: string;
@@ -61,6 +64,7 @@ class UpdateService {
     private cachedResult: UpdateCheckResult | null = null;
     private CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
     private checkIntervalId: NodeJS.Timeout | null = null;
+    private currentVersion: string = '0.0.0';
 
     // Phase 2: Update Lifecycle State
     private updateStatus: UpdateStateInfo = { status: 'IDLE', progress: 0 };
@@ -69,17 +73,19 @@ class UpdateService {
     private PLAN_FILE = path.join(process.cwd(), '../update-plan.json');
 
     public initialize() {
-        // Initial check after short delay to allow server to fully boot
+        this.currentVersion = this.getLocalVersion();
+        setSystemStatus(protocol, sslStatus, this.currentVersion);
+        logger.info(`[UpdateService] Initialized. Current Version: v${this.currentVersion} | CWD: ${process.cwd()}`);
+
+        // Initial check after short delay
         setTimeout(() => {
             this.checkForUpdates();
-        }, 60000); // 1 minute delay
+        }, 60000);
 
         // Periodic check
         this.checkIntervalId = setInterval(() => {
             this.checkForUpdates();
         }, this.CHECK_INTERVAL);
-        
-        logger.info('[UpdateService] Initialized with auto-check enabled.');
     }
 
     /**
@@ -140,14 +146,15 @@ class UpdateService {
                 available,
                 currentVersion,
                 latestVersion: remoteData.version,
-                title: remoteData.title,
-                notes: remoteData.notes,
+                title: remoteData.title || `Update v${remoteData.version}`,
+                notes: remoteData.notes || (remoteData.body ? remoteData.body.split('\n') : []),
                 priority: remoteData.priority || (level === 'MAJOR' ? 'CRITICAL' : (level === 'MINOR' ? 'HIGH' : 'LOW')),
                 breaking,
                 incompatible, // General flag
                 incompatibleNodes, // Specific details
-                level: level || undefined
-            };
+                level: level || undefined,
+                assetsAvailable: !!(remoteData.assets && remoteData.assets.length > 0)
+            } as any;
             this.lastCheck = now;
 
             if (available) {
@@ -281,12 +288,36 @@ class UpdateService {
 
     private getLocalVersion(): string {
         try {
-            if (fs.existsSync(this.localVersionFile)) {
-                const data = fs.readJSONSync(this.localVersionFile);
-                return data?.version || '0.0.0';
+            const candidates = [
+                path.join(process.cwd(), 'version.json'),
+                path.join(process.cwd(), '../version.json'),
+                path.join(__dirname, '../../../version.json'),
+                path.join(__dirname, '../../../../version.json')
+            ];
+
+            for (const p of candidates) {
+                if (fs.existsSync(p)) {
+                    const data = fs.readJSONSync(p);
+                    if (data?.version) {
+                        logger.debug(`[UpdateService] Version found at: ${p}`);
+                        return data.version;
+                    }
+                }
+            }
+
+            // Fallback to package.json
+            const pkgCandidates = [
+                path.join(process.cwd(), 'package.json'),
+                path.join(process.cwd(), '../package.json')
+            ];
+            for (const p of pkgCandidates) {
+                if (fs.existsSync(p)) {
+                    const data = fs.readJSONSync(p);
+                    if (data?.version) return data.version;
+                }
             }
         } catch (e) {
-            logger.warn('[UpdateService] Failed to read version.json, defaulting to 0.0.0');
+            logger.warn('[UpdateService] Failed to resolve version, defaulting to 0.0.0');
         }
         return '0.0.0';
     }

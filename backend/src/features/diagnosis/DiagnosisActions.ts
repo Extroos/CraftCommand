@@ -117,6 +117,18 @@ export const DiagnosisActions = {
             await fs.writeFile('logs/latest.log', '--- Log truncated by Auto-Healing ---');
         } catch (e) {}
 
+        // Clear archived logs if they exist
+        try {
+            if (await fs.exists('logs')) {
+                const files = await fs.listFiles('logs');
+                for (const file of files) {
+                    if (file.name.endsWith('.log.gz') || (file.name.endsWith('.log') && file.name !== 'latest.log')) {
+                        await fs.deletePath(path.join('logs', file.name));
+                    }
+                }
+            }
+        } catch (e) {}
+
         // Remove lock files
         try {
             await fs.deletePath('session.lock');
@@ -416,49 +428,58 @@ export const DiagnosisActions = {
     },
 
     /**
-     * Attempts to remove a specific mod file by slug or name
+     * DEPRECATED: CraftCommands NEVER deletes user mods.
+     * This function is kept as a no-op stub for safety.
      */
     removeMod: async (server: ServerConfig, fs: FileSystemManager, modNameOrSlug: string) => {
-        logger.warn(`[DiagnosisAction] Removing mod(s) ${modNameOrSlug} for ${server.id}`);
-        if (await fs.exists('mods')) {
-            const targets = modNameOrSlug.toLowerCase().split(',').map(t => t.trim());
-            const files = await fs.listFiles('mods');
-            for (const file of files) {
-                if (!file.isDirectory && file.name.endsWith('.jar')) {
-                    const normalizedFile = file.name.toLowerCase();
-                    for (const target of targets) {
-                        if (normalizedFile.includes(target) || normalizedFile.startsWith(target + '-')) {
-                            logger.info(`[DiagnosisAction] Found incompatible mod file matching ${target}: ${file.name}. Deleting...`);
-                            await fs.deletePath(`mods/${file.name}`);
-                        }
-                    }
-                }
-            }
-        }
+        logger.info(`[DiagnosisAction] REMOVE_MOD called for "${modNameOrSlug}" but mod deletion is disabled by policy. No action taken.`);
     },
 
     /**
-     * (Placeholder) Attempts to install a missing mod dependency
+     * Attempts to install missing mod dependencies from Modrinth
+     * Handles comma-separated names (e.g. "bossbarlib,smartbrainlib")
      */
     installDependency: async (server: ServerConfig, name: string) => {
-        logger.warn(`[DiagnosisAction] Dependency installation requested for ${name} on ${server.id}`);
-        
         const { ModrinthProjectMappings } = require('./ModDiagnosisRules');
         const { pluginService } = require('../plugins/PluginService');
         
-        let projectId = ModrinthProjectMappings[name];
+        // Handle comma-separated dependencies
+        const deps = name.split(',').map(d => d.trim()).filter(d => d.length > 0);
         
-        // Fallback: If no direct mapping exists, but it looks like a valid lowercase slug, use it directly
-        if (!projectId && /^[a-z0-9-_]+$/.test(name)) {
-            projectId = name;
-        }
+        let installed = 0;
+        let failed = 0;
+        
+        for (const dep of deps) {
+            logger.info(`[DiagnosisAction] Attempting to install dependency: ${dep} for ${server.id}`);
+            
+            let projectId = ModrinthProjectMappings[dep];
+            
+            // Fallback: If no direct mapping exists, try the slug directly
+            if (!projectId && /^[a-z0-9-_]+$/.test(dep)) {
+                projectId = dep;
+            }
 
-        if (projectId) {
-            logger.info(`[DiagnosisAction] Mapping ${name} to Modrinth ID: ${projectId}. Triggering install...`);
-            await pluginService.install(server.id, projectId, 'modrinth');
-        } else {
-            logger.warn(`[DiagnosisAction] No Modrinth mapping found for dependency: ${name}. Automated installation skipped.`);
+            if (projectId) {
+                try {
+                    logger.info(`[DiagnosisAction] Installing ${dep} (Modrinth: ${projectId})...`);
+                    await pluginService.install(server.id, projectId, 'modrinth');
+                    installed++;
+                    logger.success(`[DiagnosisAction] Successfully installed dependency: ${dep}`);
+                } catch (e: any) {
+                    failed++;
+                    logger.error(`[DiagnosisAction] Failed to install ${dep}: ${e.message}`);
+                }
+            } else {
+                failed++;
+                logger.warn(`[DiagnosisAction] No Modrinth mapping found for dependency: ${dep}. Skipping.`);
+            }
         }
+        
+        if (failed > 0 && installed === 0) {
+            throw new Error(`Could not install any of the requested dependencies (${name}). They may not be available on Modrinth.`);
+        }
+        
+        logger.success(`[DiagnosisAction] Dependency installation complete: ${installed} installed, ${failed} failed.`);
     },
 
     /**

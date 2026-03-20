@@ -87,10 +87,68 @@ const AuditLog: React.FC = () => {
             }
 
             if (action === 'FILE_EDIT') return `Modified: ${meta.path || 'unknown file'}`;
+            if (action === 'FOLDER_CREATE') return `Created Directory: ${meta.path}`;
+            if (action === 'FILE_UPLOAD') return `Uploaded: ${meta.filename} to ${meta.path}`;
+            if (action === 'FILE_EXTRACT') return `Extracted: ${meta.path}`;
+            if (action === 'FILE_MOVE') return `Moved: ${meta.source} -> ${meta.dest}`;
+            if (action === 'FILE_COPY') return `Copied: ${meta.source} -> ${meta.dest}`;
+            if (action === 'FILE_COMPRESS') return `Compressed: ${meta.archive} (${meta.count} items)`;
+            if (action === 'FILE_DELETE_BULK') return `Deleted ${meta.count} files/folders`;
+            if (action === 'FILE_DOWNLOAD') return `Downloaded: ${meta.path}`;
+            
             if (action === 'EULA_ACCEPT') return 'Accepted Minecraft EULA';
             
             if (action === 'LOGIN_SUCCESS') return `IP: ${log.ip || 'Unknown'}`;
             if (action === 'LOGIN_FAIL') return `Failed attempt from ${log.ip || 'Unknown'}`;
+
+            if (action.includes('PLUGIN_')) {
+                const name = meta.pluginName || meta.pluginId || 'Unknown plugin';
+                if (action === 'PLUGIN_INSTALL') return `Installed: ${name} (${meta.source})`;
+                if (action === 'PLUGIN_UNINSTALL') return `Uninstalled: ${name}`;
+                if (action === 'PLUGIN_TOGGLE') return `${meta.enabled ? 'Enabled' : 'Disabled'}: ${name}`;
+                if (action === 'PLUGIN_UPDATE') return `Updated: ${name} to ${meta.version}`;
+                if (action === 'PLUGIN_BULK_UPDATE') return `Bulk updated ${meta.count} plugins`;
+                if (action === 'PLUGIN_CONFIG_SAVE') return `Saved Config: ${meta.path} (${name})`;
+            }
+
+            if (action.includes('MAP_')) {
+                if (action === 'MAP_INSTALL') return 'Installed Dynmap Integration';
+                if (action === 'MAP_VERIFY') return 'Verified Map Integrity';
+                if (action === 'MAP_RENDER') return `Triggered Render: ${meta.mode} (Radius: ${meta.radius})`;
+            }
+
+            if (action.includes('BACKUP_')) {
+                if (action === 'BACKUP_CREATE') return `Created Backup: ${meta.backupId.slice(0, 8)}`;
+                if (action === 'BACKUP_DELETE') return `Deleted Backup: ${meta.backupId.slice(0, 8)}`;
+                if (action === 'BACKUP_LOCK') return `Locked Backup: ${meta.backupId.slice(0, 8)}`;
+                if (action === 'BACKUP_UNLOCK') return `Unlocked Backup: ${meta.backupId.slice(0, 8)}`;
+                if (action === 'BACKUP_CLOUD_ADD') return `Added Cloud Dest: ${meta.name} (${meta.provider})`;
+                if (action === 'BACKUP_CLOUD_REMOVE') return `Removed Cloud Dest: ${meta.name}`;
+            }
+
+            if (action.includes('SCHEDULE_')) {
+                if (action === 'SCHEDULE_CREATE') return `Created Schedule: ${meta.taskName} (${meta.type})`;
+                if (action === 'SCHEDULE_UPDATE') return `Updated Schedule: ${meta.taskName}`;
+                if (action === 'SCHEDULE_DELETE') return `Deleted Schedule`;
+            }
+
+            if (action.includes('PROXY_') || action === 'DDNS_UPDATE') {
+                if (action === 'PROXY_LINK') return `Linked Proxy to Server: ${meta.alias}`;
+                if (action === 'PROXY_UNLINK') return `Unlinked Proxy from Server`;
+                if (action === 'DDNS_UPDATE') return `Updated DDNS: ${meta.status?.success ? 'Success' : 'Failed'}`;
+                if (action === 'PROXY_INSTALL') return `Installed Proxy Suite`;
+            }
+
+            if (action.includes('PLAYER_')) {
+                const p = meta.playerName || 'Unknown player';
+                if (action === 'PLAYER_KICK') return `Kicked: ${p} (${meta.reason || 'No reason'})`;
+                if (action === 'PLAYER_OP') return `Opped: ${p}`;
+                if (action === 'PLAYER_DEOP') return `De-opped: ${p}`;
+                if (action === 'PLAYER_WHITELIST_ADD') return `Whitelisted: ${p}`;
+                if (action === 'PLAYER_WHITELIST_REMOVE') return `Un-whitelisted: ${p}`;
+                if (action === 'PLAYER_BAN') return `Banned: ${p}`;
+                if (action === 'PLAYER_PARDON') return `Pardoned: ${p}`;
+            }
 
             if (action.includes('USER_')) {
                 if (meta.email) return `Target: ${meta.email}`;
@@ -98,6 +156,7 @@ const AuditLog: React.FC = () => {
             }
 
             if (action.includes('SERVER_')) {
+                if (action === 'SERVER_RESTORE') return `Restored Backup: ${meta.backupId.slice(0, 8)} ${meta.worldOnly ? '(World Only)' : ''}`;
                 if (meta.name) return `Server: ${meta.name}`;
                 if (meta.port) return `Port: ${meta.port}`;
             }

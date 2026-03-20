@@ -1,7 +1,7 @@
 {
   "name": "craftcommand-frontend",
   "private": true,
-  "version": "1.11.8",
+  "version": "1.12.0",
   "license": "AGPL-3.0-only",
   "author": "Extroos",
   "type": "module",
@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "start:backend": "cd ../backend && npm run start",
     "start:all": "concurrently \"npm run dev\" \"npm run start:backend\" --names \"FRONT,BACK\" --prefix-colors \"cyan,magenta\" --kill-others"
   },

@@ -12,12 +12,18 @@ export class UserRepository implements StorageProvider<UserProfile> {
     }
 
     init() { return this.provider.init(); }
+
+    public async rebind() {
+        this.provider = StorageFactory.get<UserProfile>('users');
+        await this.init();
+    }
     findAll() { return this.provider.findAll(); }
     findById(id: string) { return this.provider.findById(id); }
     findOne(criteria: Partial<UserProfile>) { return this.provider.findOne(criteria); }
     create(item: UserProfile) { return this.provider.create(item); }
     update(id: string, updates: Partial<UserProfile>) { return this.provider.update(id, updates); }
     delete(id: string) { return this.provider.delete(id); }
+    saveAll(items: UserProfile[]) { return this.provider.saveAll(items); }
 
     public findByEmail(email: string): UserProfile | undefined {
         return this.findOne({ email });

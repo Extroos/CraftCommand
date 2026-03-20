@@ -1,13 +1,18 @@
 // CraftCommand Management App
 import React, { useState } from 'react';
+import pkg from '../package.json';
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import Header from './features/ui/Header';
 import Dashboard from './features/dashboard/Dashboard';
+import DashboardPro from './features/dashboard/DashboardPro';
 import Console from './features/servers/Console';
 import Architect from './features/installer/Architect';
 import FileManager from './features/files/FileManager';
+import FileManagerPro from './features/files/FileManagerPro';
 import PlayerManager from './features/servers/PlayerManager';
+import PlayerManagerPro from './features/servers/PlayerManagerPro';
 import PluginManager from './features/plugins/PluginManager';
+import PluginManagerPro from './features/plugins/PluginManagerPro';
 import BackupManager from './features/backups/BackupManager';
 import ScheduleManager from './features/scheduling/ScheduleManager';
 import SettingsManager from './features/servers/SettingsManager';
@@ -24,6 +29,8 @@ import GlobalOperations from './features/system/GlobalOperations';
 import ProxyNetworkManager from './features/network/ProxyNetworkManager';
 import VelocityDashboard from './features/dashboard/VelocityDashboard';
 import { MapManager } from './features/servers/MapManager';
+import { DatabaseManager } from './features/servers/DatabaseManager';
+import { SubuserManager } from './features/servers/SubuserManager';
 
 import StatusPage from './features/servers/StatusPage';
 import { TabView, AppState, ServerConfig } from '@shared/types';
@@ -39,14 +46,64 @@ import { SystemProvider, useSystem } from './features/system/context/SystemConte
 import { usePermissions } from './features/auth/hooks/usePermissions';
 import OperatorChat from './features/collaboration/OperatorChat';
 
+// Reusable shell that wraps every non-login page with Header + layout
+const PageShell: React.FC<{
+    children: React.ReactNode;
+    activeTab: TabView;
+    setActiveTab: (t: TabView) => void;
+    onBackToServerList: () => void;
+    onLogout: () => void;
+    setAppState: (s: AppState) => void;
+    onNavigateProfile: (section?: string) => void;
+    onNavigateUsers: () => void;
+    onNavigateGlobalSettings: () => void;
+    onNavigateAuditLog: () => void;
+    onNavigateOperations: () => void;
+    currentServer: ServerConfig | null;
+    mainClassName?: string;
+    wrapperClassName?: string;
+}> = ({ 
+    children, activeTab, setActiveTab, onBackToServerList, onLogout, setAppState, 
+    onNavigateProfile, onNavigateUsers, onNavigateGlobalSettings, onNavigateAuditLog, onNavigateOperations,
+    currentServer, mainClassName, wrapperClassName 
+}) => {
+    const { settings } = useSystem();
+    const { user, guestPrefs } = useUser();
+    const qualityEnabled = user ? user.preferences.visualQuality : guestPrefs?.visualQuality;
+    const mainClasses = 'bg-background'; // Simplified; background layer handled at root
+
+    return (
+        <div className={wrapperClassName || `min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-hidden`}>
+            <Header
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                onBackToServerList={onBackToServerList}
+                onLogout={onLogout}
+                onNavigateProfile={onNavigateProfile}
+                onNavigateUsers={onNavigateUsers}
+                onNavigateGlobalSettings={onNavigateGlobalSettings}
+                onNavigateAuditLog={onNavigateAuditLog}
+                onNavigateOperations={onNavigateOperations}
+                currentServer={currentServer}
+            />
+            <main className={mainClassName || 'flex-1 px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto py-8 pt-24'}>
+                {children}
+            </main>
+        </div>
+    );
+};
+
 const AppContent: React.FC = () => {
     const { user, isAuthenticated, logout: authLogout, isLoading: authLoading, guestPrefs } = useUser();
     const { servers, currentServer, setCurrentServerById, isLoading: serversLoading } = useServers();
     const { version, settings } = useSystem();
     const { can } = usePermissions();
     
-    // Initialize State - ALWAYS start at LOGIN for fresh console starts
-    const [appState, setAppState] = useState<AppState>('LOGIN');
+    // Initialize State - Support direct link to Public Status Page
+    const [appState, setAppState] = useState<AppState>(
+        window.location.pathname === '/status' ? 'PUBLIC_STATUS' : 'LOGIN'
+    );
+    const [profileSection, setProfileSection] = React.useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<TabView>('DASHBOARD');
     const [isRestoring, setIsRestoring] = useState(true);
 
@@ -77,7 +134,6 @@ const AppContent: React.FC = () => {
     // Auto-navigate authenticated users away from login screen
     React.useEffect(() => {
         if (!authLoading && isAuthenticated && appState === 'LOGIN') {
-            console.log('[App] User is authenticated, navigating to server selection');
             setAppState('SERVER_SELECTION');
         }
     }, [authLoading, isAuthenticated, appState]);
@@ -87,7 +143,6 @@ const AppContent: React.FC = () => {
     React.useEffect(() => {
         const savedServerId = localStorage.getItem('cc_serverId');
         if (appState === 'MANAGE_SERVER' && savedServerId && !currentServer && servers.length > 0) {
-            console.log('[App] Smart Recovery: Found lost server context, restoring...');
             setCurrentServerById(savedServerId);
         }
     }, [servers, currentServer, appState, setCurrentServerById]);
@@ -102,6 +157,24 @@ const AppContent: React.FC = () => {
             setIsRestoring(false);
         }
     }, [serversLoading, appState, setCurrentServerById]);
+
+    // Permission guard: redirect unauthorized users away from protected views (avoids setState during render)
+    React.useEffect(() => {
+        if (appState === 'USER_MANAGEMENT' && !can('users.manage')) {
+            setAppState('SERVER_SELECTION');
+        }
+        if (appState === 'GLOBAL_SETTINGS' && !can('system.settings.manage')) {
+            setAppState('SERVER_SELECTION');
+        }
+        if (appState === 'AUDIT_LOG' && !can('system.audit.view')) {
+            setAppState('SERVER_SELECTION');
+        }
+        if (appState === 'GLOBAL_OPERATIONS') {
+            if (!can('system.nodes.manage') || (settings && !settings.app.distributedNodes?.enabled)) {
+                setAppState('SERVER_SELECTION');
+            }
+        }
+    }, [appState, can, settings]);
 
     const handleLogin = () => {
         setAppState('SERVER_SELECTION');
@@ -219,7 +292,10 @@ const AppContent: React.FC = () => {
                     onSelectServer={handleSelectServer} 
                     onCreateNew={() => setAppState('CREATE_SERVER')} 
                     onLogout={handleLogout}
-                    onNavigateProfile={() => setAppState('USER_PROFILE')}
+                    onNavigateProfile={(section) => {
+                        setProfileSection(section || null);
+                        setAppState('USER_PROFILE');
+                    }}
                     onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
                     onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
                     onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
@@ -238,163 +314,174 @@ const AppContent: React.FC = () => {
         }
         
         if (appState === 'USER_MANAGEMENT') {
-             if (!can('users.manage')) {
-                 setAppState('SERVER_SELECTION');
-                 return null;
-             }
-             return (
-                <div className={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-y-auto`}>
-                     <Header 
-                        activeTab={activeTab} 
-                        setActiveTab={handleNavigateView} 
-                        onBackToServerList={handleBackToServerList}
-                        onLogout={handleLogout}
-                        onNavigateProfile={() => setAppState('USER_PROFILE')}
-                        onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
-                        onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
-                        onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
-                        onNavigateOperations={() => setAppState('GLOBAL_OPERATIONS')}
-                        currentServer={currentServer}
-                    />
-                    <main className="flex-1 px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto py-8 pt-24">
-                        <UsersPage />
-                    </main>
-                </div>
-            );
-        }
-
-        if (appState === 'USER_PROFILE') {
             return (
-                <div className={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-hidden`}>
-                     <Header 
-                        activeTab={activeTab} 
-                        setActiveTab={handleNavigateView} 
-                        onBackToServerList={handleBackToServerList}
-                        onLogout={handleLogout}
-                        onNavigateProfile={() => setAppState('USER_PROFILE')}
-                        onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
-                        onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
-                        onNavigateOperations={() => setAppState('GLOBAL_OPERATIONS')}
-                        currentServer={currentServer}
-                    />
-                    <main className="flex-1 px-4 sm:px-6 lg:px-8 w-full pt-20">
-                        <UserProfileView />
-                    </main>
-                </div>
-            );
-        }
-
-        if (appState === 'GLOBAL_SETTINGS') {
-            if (!can('system.settings.manage')) {
-                setAppState('SERVER_SELECTION');
-                return null;
-            }
-            return (
-                <div className={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-hidden`}>
-                     <Header 
-                        activeTab={activeTab} 
-                        setActiveTab={handleNavigateView} 
-                        onBackToServerList={handleBackToServerList}
-                        onLogout={handleLogout}
-                        onNavigateProfile={() => setAppState('USER_PROFILE')}
-                        onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
-                        onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
-                        onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
-                        currentServer={currentServer}
-                    />
-                    <main className="flex-1 px-4 sm:px-6 lg:px-8 w-full py-8 pt-24">
-                        <GlobalSettingsView />
-                    </main>
-                </div>
-            );
-        }
-
-        if (appState === 'AUDIT_LOG') {
-            if (!can('system.audit.view')) {
-                setAppState('SERVER_SELECTION');
-                return null;
-            }
-            return (
-                <div className={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-hidden`}>
-                     <Header 
-                        activeTab={activeTab} 
-                        setActiveTab={handleNavigateView} 
-                        onBackToServerList={handleBackToServerList}
-                        onLogout={handleLogout}
-                        onNavigateProfile={() => setAppState('USER_PROFILE')}
-                        onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
-                        onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
-                        onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
-                        currentServer={currentServer}
-                    />
-                    <main className="flex-1 px-4 sm:px-6 lg:px-8 w-full py-8 pt-24">
-                        <AuditLog />
-                    </main>
-                </div>
-            );
-        }
-
-        if (appState === 'GLOBAL_OPERATIONS') {
-            if (!can('system.nodes.manage')) {
-                setAppState('SERVER_SELECTION');
-                return null;
-            }
-            if (settings && !settings.app.distributedNodes?.enabled) {
-                setAppState('SERVER_SELECTION');
-                return null;
-            }
-            return (
-                <div className={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-hidden`}>
-                     <Header 
-                        activeTab={activeTab} 
-                        setActiveTab={handleNavigateView} 
-                        onBackToServerList={handleBackToServerList}
-                        onLogout={handleLogout}
-                        onNavigateProfile={() => setAppState('USER_PROFILE')}
-                        onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
-                        onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
-                        onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
-                        onNavigateOperations={() => setAppState('GLOBAL_OPERATIONS')}
-                        currentServer={currentServer}
-                    />
-                    <main className="flex-1 w-full max-w-7xl mx-auto py-8 pt-24">
-                    <GlobalOperations onNavigate={(state) => setAppState(state)} />
-                </main>
-                </div>
-            );
-        }
-
-        return (
-            <div className={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-hidden`}>
-                <Header 
+                <PageShell 
                     activeTab={activeTab} 
                     setActiveTab={handleNavigateView} 
-                    onBackToServerList={handleBackToServerList}
-                    onLogout={handleLogout}
-                    onNavigateProfile={() => setAppState('USER_PROFILE')}
+                    onBackToServerList={handleBackToServerList} 
+                    onLogout={handleLogout} 
+                    setAppState={setAppState} 
+                    onNavigateProfile={(section) => {
+                        setProfileSection(section || null);
+                        setAppState('USER_PROFILE');
+                    }}
                     onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
                     onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
                     onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
                     onNavigateOperations={() => setAppState('GLOBAL_OPERATIONS')}
                     currentServer={currentServer}
-                />
+                    wrapperClassName={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-y-auto`}>
+                    <UsersPage />
+                </PageShell>
+            );
+        }
+
+        if (appState === 'USER_PROFILE') {
+            return (
+                <PageShell 
+                    activeTab={activeTab} 
+                    setActiveTab={handleNavigateView} 
+                    onBackToServerList={handleBackToServerList} 
+                    onLogout={handleLogout} 
+                    setAppState={setAppState} 
+                    onNavigateProfile={(section) => {
+                        setProfileSection(section || null);
+                        setAppState('USER_PROFILE');
+                    }}
+                    onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
+                    onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
+                    onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
+                    onNavigateOperations={() => setAppState('GLOBAL_OPERATIONS')}
+                    currentServer={currentServer}
+                    mainClassName="flex-1 px-4 sm:px-6 lg:px-8 w-full pt-20"
+                    wrapperClassName={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-y-auto`}>
+                    <UserProfileView initialSection={profileSection} onSectionHandled={() => setProfileSection(null)} />
+                </PageShell>
+            );
+        }
+
+        if (appState === 'GLOBAL_SETTINGS') {
+            return (
+                <PageShell 
+                    activeTab={activeTab} 
+                    setActiveTab={handleNavigateView} 
+                    onBackToServerList={handleBackToServerList} 
+                    onLogout={handleLogout} 
+                    setAppState={setAppState} 
+                    onNavigateProfile={(section) => {
+                        setProfileSection(section || null);
+                        setAppState('USER_PROFILE');
+                    }}
+                    onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
+                    onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
+                    onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
+                    onNavigateOperations={() => setAppState('GLOBAL_OPERATIONS')}
+                    currentServer={currentServer}
+                    wrapperClassName={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-y-auto`}>
+                    <GlobalSettingsView />
+                </PageShell>
+            );
+        }
+
+        if (appState === 'AUDIT_LOG') {
+            return (
+                <PageShell 
+                    activeTab={activeTab} 
+                    setActiveTab={handleNavigateView} 
+                    onBackToServerList={handleBackToServerList} 
+                    onLogout={handleLogout} 
+                    setAppState={setAppState} 
+                    onNavigateProfile={(section) => {
+                        setProfileSection(section || null);
+                        setAppState('USER_PROFILE');
+                    }}
+                    onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
+                    onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
+                    onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
+                    onNavigateOperations={() => setAppState('GLOBAL_OPERATIONS')}
+                    currentServer={currentServer}
+                    wrapperClassName={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-y-auto`}>
+                    <AuditLog />
+                </PageShell>
+            );
+        }
+
+        if (appState === 'GLOBAL_OPERATIONS') {
+            return (
+                <PageShell 
+                    activeTab={activeTab} 
+                    setActiveTab={handleNavigateView} 
+                    onBackToServerList={handleBackToServerList} 
+                    onLogout={handleLogout} 
+                    setAppState={setAppState} 
+                    onNavigateProfile={(section) => {
+                        setProfileSection(section || null);
+                        setAppState('USER_PROFILE');
+                    }}
+                    onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
+                    onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
+                    onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
+                    onNavigateOperations={() => setAppState('GLOBAL_OPERATIONS')}
+                    currentServer={currentServer}
+                    mainClassName="flex-1 w-full max-w-7xl mx-auto py-8 pt-24"
+                    wrapperClassName={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-hidden`}>
+                    <GlobalOperations onNavigate={(state) => setAppState(state)} />
+                </PageShell>
+            );
+        }
+
+        return (
+            <PageShell 
+                activeTab={activeTab} 
+                setActiveTab={handleNavigateView} 
+                onBackToServerList={handleBackToServerList} 
+                onLogout={handleLogout} 
+                setAppState={setAppState} 
+                onNavigateProfile={(section) => {
+                    setProfileSection(section || null);
+                    setAppState('USER_PROFILE');
+                }}
+                onNavigateUsers={() => setAppState('USER_MANAGEMENT')}
+                onNavigateGlobalSettings={() => setAppState('GLOBAL_SETTINGS')}
+                onNavigateAuditLog={() => setAppState('AUDIT_LOG')}
+                onNavigateOperations={() => setAppState('GLOBAL_OPERATIONS')}
+                currentServer={currentServer}
+                mainClassName="flex-1 py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full pt-20 overflow-visible"
+                wrapperClassName={`min-h-screen ${mainClasses} text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-hidden`}>
                 
-                <main className="flex-1 py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full pt-20 overflow-visible">
                     {currentServer ? (
                         <ErrorBoundary key={currentServer.id}>
                                     {activeTab === 'DASHBOARD' && (
                                         currentServer.software === 'Velocity' ? (
                                             <VelocityDashboard serverId={currentServer.id} />
                                         ) : (
-                                            <Dashboard serverId={currentServer.id} />
+                                            settings?.app?.professionalMode ? (
+                                                <DashboardPro serverId={currentServer.id} />
+                                            ) : (
+                                                <Dashboard serverId={currentServer.id} />
+                                            )
                                         )
                                     )}
                                     {activeTab === 'CONSOLE' && <Console serverId={currentServer.id} />}
-                                    {activeTab === 'FILES' && <FileManager serverId={currentServer.id} />}
-                                    {activeTab === 'PLUGINS' && <PluginManager serverId={currentServer.id} />}
+                                    {activeTab === 'FILES' && (
+                                        settings?.app?.professionalMode ? (
+                                            <FileManagerPro serverId={currentServer.id} />
+                                        ) : (
+                                            <FileManager serverId={currentServer.id} />
+                                        )
+                                    )}
+                                    {activeTab === 'PLUGINS' && (
+                                        settings?.app?.professionalMode 
+                                            ? <PluginManagerPro serverId={currentServer.id} /> 
+                                            : <PluginManager serverId={currentServer.id} />
+                                    )}
                                     {activeTab === 'SCHEDULES' && <ScheduleManager serverId={currentServer.id} />}
                                     {activeTab === 'BACKUPS' && <BackupManager serverId={currentServer.id} />}
-                                    {activeTab === 'PLAYERS' && <PlayerManager serverId={currentServer.id} />}
+                                    {activeTab === 'PLAYERS' && (
+                                        settings?.app?.professionalMode
+                                            ? <PlayerManagerPro serverId={currentServer.id} />
+                                            : <PlayerManager serverId={currentServer.id} />
+                                    )}
                                     {activeTab === 'ACCESS' && <AccessControl serverId={currentServer.id} />}
                                     {activeTab === 'SETTINGS' && (
                                         <SettingsManager serverId={currentServer.id} />
@@ -402,6 +489,8 @@ const AppContent: React.FC = () => {
                                     {activeTab === 'ARCHITECT' && <Architect />}
                                     {activeTab === 'INTEGRATIONS' && <Integrations serverId={currentServer.id} />}
                                     {activeTab === 'NETWORK' && <ProxyNetworkManager serverId={currentServer.id} />}
+                                    {activeTab === 'DATABASES' && <DatabaseManager serverId={currentServer.id} />}
+                                    {activeTab === 'SUBUSERS' && <SubuserManager serverId={currentServer.id} />}
                                     {activeTab === 'MAP' && <MapManager serverId={currentServer.id} />}
                         </ErrorBoundary>
                     ) : (
@@ -425,17 +514,16 @@ const AppContent: React.FC = () => {
                              </button>
                         </div>
                     )}
-                </main>
 
                 <footer className="py-6 border-t border-border/40 mt-auto">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center text-[11px] font-medium tracking-tight text-muted-foreground/30">
                         <div className="flex items-center gap-2 italic">
-                            CraftCommand Protocol v{version}
+                            CraftCommand Protocol v{pkg.version}
                         </div>
                         <div>Licensed under AGPLv3 &copy; 2026 Extroos</div>
                     </div>
                 </footer>
-            </div>
+            </PageShell>
         );
     };
 
@@ -453,7 +541,7 @@ const AppContent: React.FC = () => {
                             exit={{ opacity: 0 }}
                             className="background-layer"
                             style={{ 
-                                backgroundImage: `url(${activeBg.url.startsWith('/') ? `http://${window.location.hostname}:3001${activeBg.url}` : activeBg.url})`,
+                                backgroundImage: `url(${activeBg.url.startsWith('/') ? activeBg.url : activeBg.url})`,
                                 filter: `blur(${activeBg.blur}px)`,
                                 opacity: activeBg.opacity
                             }}

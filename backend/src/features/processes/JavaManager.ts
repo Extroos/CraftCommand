@@ -19,12 +19,21 @@ export class JavaManager extends EventEmitter {
     public currentStatus: { message: string, percent?: number, phase?: string } | null = null;
 
     // Download portable Java if missing
-    async ensureJava(version: string): Promise<string> {
+    async ensureJava(version: string, serverId?: string): Promise<string> {
         console.log(`[JavaManager] Request to ensure ${version}`);
         
         // 1. SMART CHECK: Check for existing system-wide Java first (v1.12.0)
+        const majorVer = version.replace('Java ', '').trim(); 
+        try {
+            const { stdout, stderr } = await execAsync('java -version');
+            const output = stdout + stderr;
+            if (output.includes(`version "${majorVer}`) || output.includes(`build ${majorVer}`) || output.includes(`version "${version}`)) {
+                console.log(`[JavaManager] Detected compatible system Java: ${majorVer}`);
+                return 'java'; // Use system java
+            }
+        } catch (e) {}
+
         const detected = await this.detectJavaVersions();
-        const majorVer = version.replace('Java ', '').trim();
         
         // Look for a version that matches the major version requested (e.g. 'jdk-17', '17.0.x')
         const matchingSystemJava = detected.find(j => 
@@ -51,12 +60,12 @@ export class JavaManager extends EventEmitter {
         // 3. Fallback: Download it
         console.log(`[JavaManager] No compatible Java found. Downloading ${version}...`);
         this.currentStatus = { message: `Downloading ${version}...` };
-        this.emit('status', this.currentStatus);
-        await this.downloadJava(majorVer, runtimeDir);
+        this.emit('status', { ...this.currentStatus, serverId });
+        await this.downloadJava(majorVer, runtimeDir, serverId);
         return javaBin;
     }
 
-    async downloadJava(majorVer: string, destDir: string) {
+    async downloadJava(majorVer: string, destDir: string, serverId?: string) {
         // Adoptium API (Temurin)
         // https://api.adoptium.net/v3/binary/latest/8/ga/windows/x64/jdk/hotspot/normal/eclipse
         const url = `https://api.adoptium.net/v3/binary/latest/${majorVer}/ga/windows/x64/jdk/hotspot/normal/eclipse`;
@@ -67,50 +76,61 @@ export class JavaManager extends EventEmitter {
 
             console.log(`[JavaManager] Downloading JDK ${majorVer} from ${url}`);
             this.currentStatus = { message: `Downloading Java ${majorVer}...`, phase: 'downloading' };
-            this.emit('status', this.currentStatus);
+            this.emit('status', { ...this.currentStatus, serverId });
             
-            // Throttle progress updates to prevent performance issues
             let lastProgressEmit = 0;
             let lastPercent = 0;
             
-            // Download with progress tracking
+            // Download with streams for better memory efficiency and reliability
             const response = await axios({
                 url,
                 method: 'GET',
-                responseType: 'arraybuffer',
-                timeout: 600000, // 10 minute timeout
-                onDownloadProgress: (progressEvent: any) => {
-                    if (progressEvent.total) {
-                        const now = Date.now();
-                        const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
-                        
-                        // Only emit if: 1 second has passed OR percentage changed by 5% or more
-                        if (now - lastProgressEmit > 1000 || Math.abs(percent - lastPercent) >= 5) {
-                            this.currentStatus = { 
-                                phase: 'downloading',
-                                percent,
-                                message: `Downloading Java ${majorVer}... ${percent}%`
-                            };
-                            this.emit('progress', this.currentStatus);
-                            lastProgressEmit = now;
-                            lastPercent = percent;
-                        }
+                responseType: 'stream',
+                timeout: 300000, 
+            });
+
+            const totalLength = parseInt(response.headers['content-length'] || '0', 10);
+            const writer = fs.createWriteStream(zipPath);
+            
+            let downloaded = 0;
+            const dataStream = response.data as any;
+
+            dataStream.on('data', (chunk: any) => {
+                downloaded += chunk.length;
+                if (totalLength > 0) {
+                    const now = Date.now();
+                    const percent = Math.round((downloaded / totalLength) * 100);
+                    
+                    if (now - lastProgressEmit > 1000 || percent === 100 || Math.abs(percent - lastPercent) >= 5) {
+                        this.currentStatus = { 
+                            phase: 'downloading',
+                            percent,
+                            message: `Downloading Java ${majorVer}... ${percent}%`
+                        };
+                        this.emit('progress', { ...this.currentStatus, serverId });
+                        lastProgressEmit = now;
+                        lastPercent = percent;
                     }
                 }
-            } as any);
+            });
+
+            dataStream.pipe(writer);
+
+            await new Promise((resolve, reject) => {
+                writer.on('finish', () => (resolve as any)());
+                writer.on('error', reject);
+                dataStream.on('error', reject);
+            });
+
+            console.log(`[JavaManager] Download complete.`);
             
-            // Verify download size (JDK should be at least 50MB)
-            const minSize = 50 * 1024 * 1024; // 50MB
-            if ((response.data as any).byteLength < minSize) {
-                throw new Error(`Downloaded file is too small (${((response.data as any).byteLength / 1024 / 1024).toFixed(1)}MB). Download may be corrupted.`);
-            }
-            
-            await fs.writeFile(zipPath, response.data as any);
-            console.log(`[JavaManager] Extraction complete. Size: ${((response.data as any).byteLength / 1024 / 1024).toFixed(1)}MB`);
+            // Update status IMMEDIATELY after download finishes to avoid "frozen at 100%" feeling
+            this.currentStatus = { message: `Verifying and Extracting Java ${majorVer}...`, phase: 'extracting', percent: 100 };
+            this.emit('status', { ...this.currentStatus, serverId });
             
             console.log(`[JavaManager] Extracting JDK ${majorVer}...`);
             this.currentStatus = { message: `Extracting Java ${majorVer}...`, phase: 'extracting' };
-            this.emit('status', this.currentStatus);
+            this.emit('status', { ...this.currentStatus, serverId });
             
             const zip = new AdmZip(zipPath);
             zip.extractAllTo(path.dirname(zipPath), true);
@@ -125,7 +145,7 @@ export class JavaManager extends EventEmitter {
                 const source = path.join(path.dirname(zipPath), jdkFolder);
                 
                 this.currentStatus = { message: `Installing Java ${majorVer}...`, phase: 'installing' };
-                this.emit('status', this.currentStatus);
+                this.emit('status', { ...this.currentStatus, serverId });
                 
                 // Safety: Ensure destination is clear
                 if (await fs.pathExists(destDir)) {
@@ -159,7 +179,8 @@ export class JavaManager extends EventEmitter {
 
             await fs.remove(zipPath);
             console.log(`[JavaManager] JDK ${majorVer} installed to ${destDir}`);
-            this.emit('status', { message: `Java ${majorVer} ready`, phase: 'complete' });
+            this.emit('status', { message: `Java ${majorVer} ready`, phase: 'complete', percent: 100, serverId });
+            this.emit('complete', { serverId });
             this.currentStatus = null; // Clear on success
             
         } catch (error: any) {
@@ -183,7 +204,7 @@ export class JavaManager extends EventEmitter {
                 : `Download failed: ${error.message}`;
             
             this.currentStatus = { message: userMessage, phase: 'failed' };
-            this.emit('error', this.currentStatus);
+            this.emit('error', { ...this.currentStatus, serverId });
             throw error;
         }
     }
@@ -194,9 +215,13 @@ export class JavaManager extends EventEmitter {
         
         // Check system PATH java
         try {
-            const { stdout } = await execAsync('java -version');
-            foundJavas.push({ version: 'System Default', path: 'java' });
-        } catch (e) { /* Java not found on path */ }
+            const { stdout, stderr } = await execAsync('java -version');
+            const output = stdout + stderr; // Capture both stdout and stderr for version info
+            // Attempt to parse version from output
+            const versionMatch = output.match(/(?:java|openjdk) version "(.*?)"/);
+            const versionString = versionMatch ? versionMatch[1] : 'System Default';
+            foundJavas.push({ version: versionString, path: 'java' });
+        } catch (e) { /* Java not found on path or error executing */ }
         
         // Check Managed Runtimes
         const runtimesDir = path.join(__dirname, '../../runtimes');

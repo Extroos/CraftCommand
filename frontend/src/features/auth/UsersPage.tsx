@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useConfirm } from '../ui/hooks/useConfirm';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useUser } from '@features/auth/context/UserContext';
 import { API } from '@core/services/api';
 import { UserProfile, UserRole } from '@shared/types';
@@ -16,6 +18,7 @@ const UsersPage: React.FC = () => {
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
 
     // New User State
     const [newUser, setNewUser] = useState({
@@ -35,7 +38,7 @@ const UsersPage: React.FC = () => {
     const loadUsers = async () => {
         if (!token || !user) return;
         try {
-            const list = await API.getUsers(token);
+            const list = await API.getUsers();
             
             const ROLE_HIERARCHY: Record<string, number> = {
                 'OWNER': 3,
@@ -67,7 +70,7 @@ const UsersPage: React.FC = () => {
         }
 
         try {
-            await API.createUser(newUser, token);
+            await API.createUser(newUser);
             addToast('success', 'User created');
             setIsCreating(false);
             setNewUser({ email: '', username: '', password: '', role: 'VIEWER', customRoleName: '' });
@@ -78,7 +81,13 @@ const UsersPage: React.FC = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this user?')) return;
+        const isConfirmed = await requestConfirm({
+            title: 'Delete User',
+            description: 'Are you sure you want to delete this user? This action cannot be undone.',
+            confirmText: 'Delete User',
+            cancelText: 'Cancel'
+        });
+        if (!isConfirmed) return;
         if (!token) return;
 
         if (!canManageUsers) {
@@ -87,7 +96,7 @@ const UsersPage: React.FC = () => {
         }
 
         try {
-            await API.deleteUser(id, token);
+            await API.deleteUser(id);
             addToast('success', 'User deleted');
             loadUsers();
         } catch (err: any) {
@@ -104,7 +113,7 @@ const UsersPage: React.FC = () => {
         }
 
         try {
-            await API.updateUserAdmin(userId, { customRoleName: alias }, token);
+            await API.updateUserAdmin(userId, { customRoleName: alias });
             addToast('success', 'Alias updated');
             loadUsers();
         } catch (e) {
@@ -299,6 +308,13 @@ const UsersPage: React.FC = () => {
                     </motion.div>
                 ))}
             </div>
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                {...confirmConfig}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+            />
         </div>
     );
 };

@@ -48,10 +48,38 @@ export class StartupManager {
             // 2. Prepare Environment
             await this.prepareEnvironment(server);
 
+            // 2.5 Smart Mod Management: Verify & Resolve dependencies before boot (Fabric/Forge/NeoForge)
+            const softwareLower = (server.software || '').toLowerCase();
+            if (softwareLower.includes('fabric') || softwareLower.includes('forge') || softwareLower.includes('neoforge')) {
+                try {
+                    const { installerService } = require('../installer/InstallerService');
+                    const onLog = (line: string) => processManager.emit('log', { id, line, type: 'stdout' });
+
+                    // Instant Feedback
+                    onLog(`[SmartMod] Pre-boot environment check starting...`);
+
+                    // Pass 1: Verify Compatibility (Move client-only mods)
+                    const filtered = await installerService.verifyServerCompatibility(id, server.workingDirectory, undefined, onLog);
+                    if (filtered.length > 0) {
+                        logger.success(`[StartupManager:${id}] Pre-boot: Moved ${filtered.length} client-side projects to _client_mods/`);
+                    }
+
+                    // Pass 2: Auto-Resolve Dependencies (Install missing required jars)
+                    const loader = softwareLower.includes('neoforge') ? 'NeoForge' : (softwareLower.includes('forge') ? 'Forge' : 'Fabric');
+                    const resolved = await installerService.resolveModDependencies(id, server.workingDirectory, server.version, loader, undefined, onLog);
+                    if (resolved.length > 0) {
+                        logger.success(`[StartupManager:${id}] Pre-boot: Auto-installed ${resolved.length} missing dependencies.`);
+                    }
+                } catch (e: any) {
+                    logger.warn(`[StartupManager:${id}] SmartMod pre-boot processing failed (non-fatal): ${e.message}`);
+                    processManager.emit('log', { id, line: `[SmartMod] ⚠️ Warning: Verification failed: ${e.message}`, type: 'stdout' });
+                }
+            }
+
             // 3. Resolve Java (Skip for Bedrock)
             let javaPath = '';
             if (server.software !== 'Bedrock') {
-                javaPath = await javaManager.ensureJava(server.javaVersion || 'Java 17');
+                javaPath = await javaManager.ensureJava(server.javaVersion || 'Java 17', id);
             }
 
             // 4. Build Command
@@ -60,7 +88,13 @@ export class StartupManager {
 
             // GLOBAL DOCKER ENFORCEMENT
             const settings = systemSettingsService.getSettings();
-            let engine = server.executionEngine || 'native';
+            let engine = server.executionEngine;
+            
+            // Use global default if per-server engine is unset
+            if (!engine || engine === 'default') {
+                engine = settings.app.dockerEnabled ? 'docker' : 'native';
+            }
+
             if (engine === 'docker' && !settings.app.dockerEnabled) {
                 console.warn(`[StartupManager:${id}] Docker is disabled globally. Overriding execution engine to 'native' for safety.`);
                 engine = 'native';
@@ -83,7 +117,11 @@ export class StartupManager {
                 ...env, 
                 executionEngine: engine,
                 dockerImage,
-                SERVER_PORT: Number(server.port)
+                SERVER_PORT: Number(server.port),
+                SERVER_RAM: server.ram,
+                SERVER_SOFTWARE: server.software,
+                DOCKER_CPUS: server.advancedFlags?.dockerCpus || '0.000',
+                EXTRA_PORTS: server.advancedFlags?.extraPorts || ''
             }).catch(e => {
                 logger.error(`[StartupManager:${id}] Background process startup failed unconditionally: ${e.message}`);
             });
@@ -128,7 +166,13 @@ export class StartupManager {
         }
 
         // 2. Forge Specific Checks (Warning only)
-        const exe = server.executable || 'server.jar';
+        let defaultExe = 'server.jar';
+        if (server.software === 'Bedrock') {
+            defaultExe = process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server';
+        } else if (server.software === 'Velocity' || server.type === 'Velocity') {
+            defaultExe = 'velocity.jar';
+        }
+        const exe = server.executable || defaultExe;
         if (exe.endsWith('.bat') || server.software === 'Forge') {
              const argsFile = path.join(cwd, 'user_jvm_args.txt');
              if (await fs.pathExists(argsFile)) {
@@ -168,7 +212,11 @@ export class StartupManager {
             return { cmd, cwd, env: {} };
         }
 
-        const jarFile = server.executable || 'server.jar';
+        let defaultJar = 'server.jar';
+        if (server.software === 'Velocity' || server.type === 'Velocity') {
+            defaultJar = 'velocity.jar';
+        }
+        const jarFile = server.executable || defaultJar;
         
         // Use generic java for Docker, absolute for Native
         const actualJava = engine === 'docker' ? 'java' : `"${javaPath}"`;

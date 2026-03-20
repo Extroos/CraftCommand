@@ -1,0 +1,85 @@
+[
+  {
+    "slug": "libjf",
+    "cs": "optional",
+    "ss": "optional"
+  },
+  {
+    "slug": "slyde",
+    "cs": "required",
+    "ss": "unsupported"
+  },
+  {
+    "slug": "fancymenu",
+    "cs": "required",
+    "ss": "optional"
+  },
+  {
+    "slug": "konkrete",
+    "cs": "optional",
+    "ss": "optional"
+  },
+  {
+    "slug": "melody",
+    "cs": "required",
+    "ss": "unsupported"
+  },
+  {
+    "slug": "sodium",
+    "cs": "required",
+    "ss": "unsupported"
+  },
+  {
+    "slug": "iris",
+    "cs": "required",
+    "ss": "unsupported"
+  },
+  {
+    "slug": "lithium",
+    "cs": "optional",
+    "ss": "optional"
+  },
+  {
+    "slug": "ferritecore",
+    "err": "Request failed with status cod"
+  },
+  {
+    "slug": "modernfix",
+    "cs": "optional",
+    "ss": "optional"
+  },
+  {
+    "slug": "geckolib",
+    "cs": "required",
+    "ss": "optional"
+  },
+  {
+    "slug": "worldedit",
+    "cs": "unsupported",
+    "ss": "required"
+  },
+  {
+    "slug": "architectury",
+    "err": "Request failed with status cod"
+  },
+  {
+    "slug": "cloth-config",
+    "cs": "optional",
+    "ss": "optional"
+  },
+  {
+    "slug": "placeholder-api",
+    "cs": "optional",
+    "ss": "optional"
+  },
+  {
+    "slug": "fabric-api",
+    "cs": "optional",
+    "ss": "optional"
+  },
+  {
+    "slug": "fabric-language-kotlin",
+    "cs": "optional",
+    "ss": "optional"
+  }
+]

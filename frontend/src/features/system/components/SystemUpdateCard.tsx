@@ -5,6 +5,8 @@ import { API } from '@features/core/services/api'; // Using correct path based o
 import { useToast } from '@features/ui/Toast';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
 import { useUser } from '@features/auth/context/UserContext';
+import { useConfirm } from '@features/ui/hooks/useConfirm';
+import { ConfirmDialog } from '@features/ui/ConfirmDialog';
 
 // Types aligning with backend
 export type UpdateStatus = 'IDLE' | 'CHECKING' | 'DOWNLOADING' | 'VERIFYING' | 'READY_TO_INSTALL' | 'ERROR';
@@ -33,6 +35,7 @@ export const SystemUpdateCard: React.FC<SystemUpdateCardProps> = ({ variant = 'c
     const { addToast } = useToast();
     const { user } = useUser();
     const isOwner = user?.role === 'OWNER';
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
 
     useEffect(() => {
         fetchCurrentVersion();
@@ -111,7 +114,13 @@ export const SystemUpdateCard: React.FC<SystemUpdateCardProps> = ({ variant = 'c
     };
 
     const handleRestart = async () => {
-        if (!confirm('This will restart the CraftCommand backend service to apply updates. Active server connections may be briefly interrupted. Continue?')) return;
+        const isConfirmed = await requestConfirm({
+            title: 'Restart System',
+            description: 'This will restart the CraftCommand backend service to apply updates. Active server connections may be briefly interrupted.',
+            confirmText: 'Restart & Apply Updates',
+            cancelText: 'Cancel'
+        });
+        if (!isConfirmed) return;
         
         setIsRestarting(true);
         try {
@@ -386,6 +395,13 @@ export const SystemUpdateCard: React.FC<SystemUpdateCardProps> = ({ variant = 'c
                     </a>
                 </div>
             </div>
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                {...confirmConfig}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+            />
         </motion.div>
     );
 };

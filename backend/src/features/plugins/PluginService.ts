@@ -135,6 +135,28 @@ export class PluginService {
         // Mark server as needing restart
         serverRepository.update(serverId, { needsRestart: true } as any);
         
+        // --- Dependency Resolution ---
+        const deps = (downloadInfo as any).dependencies || [];
+        if (deps.length > 0) {
+            logger.info(`[PluginService] Resolving dependencies for ${plugin.name}...`);
+            for (const dep of deps) {
+                if (dep.required) {
+                    const depExisting = pluginRepository.findBySourceId(dep.id, serverId);
+                    if (!depExisting) {
+                        logger.info(`[PluginService] Auto-installing required dependency: ${dep.id} from ${source}`);
+                        try {
+                            // Recursively install the dependency.
+                            await this.install(serverId, dep.id, source);
+                        } catch (depErr: any) {
+                            logger.error(`[PluginService] Failed to auto-install dependency ${dep.id}: ${depErr.message}`);
+                        }
+                    } else {
+                        logger.info(`[PluginService] Dependency ${dep.id} is already installed.`);
+                    }
+                }
+            }
+        }
+
         if (server.status === ServerStatus.ONLINE || server.status === ServerStatus.STARTING) {
             logger.info(`[PluginService] Plugin ${plugin.name} installed while server is ${server.status}. It will load on the next restart.`);
         } else {
@@ -316,6 +338,29 @@ export class PluginService {
 
         logger.success(`[PluginService] Updated ${plugin.name} from ${plugin.version} to ${downloadInfo.version}. Restart required.`);
         return pluginRepository.findById(pluginId)!;
+    }
+
+    /**
+     * Bulk update multiple plugins for a server.
+     */
+    async bulkUpdate(serverId: string, pluginIds: string[]): Promise<Array<{ pluginId: string; success: boolean; error?: string }>> {
+        const results: Array<{ pluginId: string; success: boolean; error?: string }> = [];
+        const limit = 3; // Max 3 concurrent downloads to avoid overwhelming network/APIs
+        
+        for (let i = 0; i < pluginIds.length; i += limit) {
+            const batch = pluginIds.slice(i, i + limit);
+            await Promise.all(batch.map(async (pluginId) => {
+                try {
+                    await this.update(serverId, pluginId);
+                    results.push({ pluginId, success: true });
+                } catch (e: any) {
+                    logger.error(`[PluginService] Bulk update failed for plugin ${pluginId}: ${e.message}`);
+                    results.push({ pluginId, success: false, error: e.message });
+                }
+            }));
+        }
+
+        return results;
     }
 
     /**

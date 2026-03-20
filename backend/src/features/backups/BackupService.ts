@@ -5,6 +5,7 @@ import extract from 'extract-zip';
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
 import { logger } from '../../utils/logger';
+import { CloudBackupDestination, CloudUploadResult, createCloudProvider } from './CloudBackupProvider';
 
 export interface Backup {
     id: string;
@@ -15,18 +16,96 @@ export interface Backup {
     description?: string;
     locked?: boolean;
     type?: 'Manual' | 'Scheduled' | 'Auto-Save';
-    scope?: 'full' | 'world'; // Track if this was a world-only backup
-    sha256?: string; // Integrity hash
+    scope?: 'full' | 'world';
+    sha256?: string;
+    cloudUploads?: CloudUploadResult[];
 }
 
 export class BackupService extends EventEmitter {
     private backupsDir: string;
-    private activeBackups: Set<string> = new Set(); // Concurrency set
+    private activeBackups: Set<string> = new Set();
+    private destinationsPath: string;
 
     constructor() {
         super();
         this.backupsDir = path.join(__dirname, '../../data/backups');
+        this.destinationsPath = path.join(__dirname, '../../data/cloud-destinations.json');
         fs.ensureDirSync(this.backupsDir);
+    }
+
+    // --- Cloud Destination Management ---
+
+    async getCloudDestinations(): Promise<CloudBackupDestination[]> {
+        try {
+            if (await fs.pathExists(this.destinationsPath)) {
+                return await fs.readJSON(this.destinationsPath);
+            }
+        } catch (e: any) {
+            logger.error(`[BackupService] Failed to load cloud destinations: ${e.message}`);
+        }
+        return [];
+    }
+
+    async saveCloudDestinations(destinations: CloudBackupDestination[]): Promise<void> {
+        await fs.writeJSON(this.destinationsPath, destinations, { spaces: 2 });
+    }
+
+    async addCloudDestination(destination: CloudBackupDestination): Promise<CloudBackupDestination[]> {
+        const destinations = await this.getCloudDestinations();
+        // Prevent duplicate names
+        if (destinations.some(d => d.name === destination.name)) {
+            throw new Error(`A destination named "${destination.name}" already exists.`);
+        }
+        destinations.push(destination);
+        await this.saveCloudDestinations(destinations);
+        return destinations;
+    }
+
+    async removeCloudDestination(name: string): Promise<CloudBackupDestination[]> {
+        let destinations = await this.getCloudDestinations();
+        destinations = destinations.filter(d => d.name !== name);
+        await this.saveCloudDestinations(destinations);
+        return destinations;
+    }
+
+    async testCloudDestination(destination: CloudBackupDestination): Promise<{ success: boolean; message: string }> {
+        try {
+            const provider = createCloudProvider(destination);
+            return await provider.testConnection();
+        } catch (e: any) {
+            return { success: false, message: e.message };
+        }
+    }
+
+    async uploadToCloud(localFilePath: string, remoteFileName: string, metadata: Record<string, any> = {}): Promise<CloudUploadResult[]> {
+        const destinations = await this.getCloudDestinations();
+        const enabled = destinations.filter(d => d.enabled);
+        
+        if (enabled.length === 0) return [];
+
+        const results: CloudUploadResult[] = [];
+        for (const dest of enabled) {
+            try {
+                const provider = createCloudProvider(dest);
+                const result = await provider.upload(localFilePath, remoteFileName, metadata);
+                results.push(result);
+                
+                if (result.success) {
+                    logger.success(`[CloudBackup] Uploaded to "${dest.name}" (${dest.type}): ${result.remotePath}`);
+                } else {
+                    logger.error(`[CloudBackup] Failed to upload to "${dest.name}": ${result.error}`);
+                }
+            } catch (e: any) {
+                results.push({
+                    destination: dest.name,
+                    type: dest.type,
+                    success: false,
+                    error: e.message,
+                    durationMs: 0
+                });
+            }
+        }
+        return results;
     }
 
     // Create a backup of a server
@@ -140,6 +219,21 @@ export class BackupService extends EventEmitter {
             sha256
         };
 
+        // Cloud upload (non-blocking — local backup succeeds regardless)
+        try {
+            this.emit('status', 'Uploading to cloud destinations...');
+            const cloudResults = await this.uploadToCloud(
+                outputPath,
+                `${serverId}/${filename}`,
+                { serverId, backupId, scope: backup.scope }
+            );
+            if (cloudResults.length > 0) {
+                backup.cloudUploads = cloudResults;
+            }
+        } catch (e: any) {
+            logger.warn(`[BackupService] Cloud upload failed (local backup safe): ${e.message}`);
+        }
+
         // Save metadata
         await this.saveBackupMetadata(serverId, backup);
 
@@ -151,6 +245,32 @@ export class BackupService extends EventEmitter {
         } finally {
             this.activeBackups.delete(serverId);
         }
+    }
+
+    /**
+     * Store a mirrored backup received from an agent (Phase 11)
+     */
+    async storeMirroredBackup(nodeId: string, serverId: string, backupId: string, stream: NodeJS.ReadableStream): Promise<void> {
+        const mirrorDir = path.join(this.backupsDir, 'mirrors', nodeId, serverId);
+        await fs.ensureDir(mirrorDir);
+        
+        const filename = `${backupId}.zip`;
+        const filePath = path.join(mirrorDir, filename);
+        const out = fs.createWriteStream(filePath);
+        
+        logger.info(`[BackupService] Receiving mirrored backup ${backupId} for server ${serverId} from node ${nodeId}...`);
+        
+        return new Promise((resolve, reject) => {
+            stream.pipe(out);
+            out.on('finish', () => {
+                logger.success(`[BackupService] Mirrored backup ${backupId} stored at ${filePath}`);
+                resolve();
+            });
+            out.on('error', (err) => {
+                logger.error(`[BackupService] Mirror storage failed for ${backupId}: ${err.message}`);
+                reject(err);
+            });
+        });
     }
 
     private async calculateHash(filePath: string): Promise<string> {
@@ -239,7 +359,8 @@ export class BackupService extends EventEmitter {
     }
 
     // Restore a backup (Atomic / Safe Mode)
-    async restoreBackup(serverDir: string, serverId: string, backupId: string): Promise<void> {
+    async restoreBackup(serverDir: string, serverId: string, backupId: string, options: { scope?: 'full' | 'world' | 'configs' | 'plugins' } = {}): Promise<void> {
+        const scope = options.scope || (options as any).worldOnly ? 'world' : 'full';
         const serverBackupsDir = path.join(this.backupsDir, serverId);
         const backups = await this.listBackups(serverId);
         const backup = backups.find(b => b.id === backupId);
@@ -273,13 +394,49 @@ export class BackupService extends EventEmitter {
             // Move current files to temp safety folder
             await fs.ensureDir(tempRestorePath);
             const items = await fs.readdir(serverDir);
+            
+            // Detect items for the given scope
+            let itemsToRestore: string[] = [];
+            if (scope !== 'full') {
+                itemsToRestore = await this.getItemsForScope(serverDir, scope);
+                logger.info(`[BackupService] Selective restore (${scope}): Targeting: ${itemsToRestore.join(', ')}`);
+            }
+
             for (const item of items) {
                 if (path.resolve(serverDir, item) === this.backupsDir) continue;
-                await fs.move(path.join(serverDir, item), path.join(tempRestorePath, item));
+                
+                // If selective, only move (and later restore) scoped items
+                if (scope !== 'full') {
+                    if (itemsToRestore.includes(item)) {
+                        await fs.move(path.join(serverDir, item), path.join(tempRestorePath, item));
+                    }
+                } else {
+                    await fs.move(path.join(serverDir, item), path.join(tempRestorePath, item));
+                }
             }
 
             this.emit('status', 'Extracting backup...');
-            await extract(backupPath, { dir: serverDir });
+            if (scope !== 'full') {
+                const extractTempId = `.temp_extract_${Date.now()}`;
+                const extractTempPath = path.join(serverBackupsDir, extractTempId);
+                await fs.ensureDir(extractTempPath);
+                
+                try {
+                    await extract(backupPath, { dir: extractTempPath });
+                    const extractedScopedItems = await this.getItemsForScope(extractTempPath, scope);
+                    for (const item of extractedScopedItems) {
+                        const source = path.join(extractTempPath, item);
+                        const dest = path.join(serverDir, item);
+                        if (await fs.pathExists(source)) {
+                            await fs.move(source, dest, { overwrite: true });
+                        }
+                    }
+                } finally {
+                    await fs.remove(extractTempPath).catch(() => {});
+                }
+            } else {
+                await extract(backupPath, { dir: serverDir });
+            }
 
             this.emit('status', 'Restore verification successful. Cleaning up...');
            this.emit('status', 'Restore complete');
@@ -370,6 +527,35 @@ export class BackupService extends EventEmitter {
         backup.locked = !backup.locked; // Default is undefined/false
         await this.saveManifest(serverId, backups);
         return !!backup.locked;
+    }
+
+    // Help determine relevant items for different restore scopes
+    private async getItemsForScope(dir: string, scope: 'world' | 'configs' | 'plugins'): Promise<string[]> {
+        if (scope === 'world') {
+            return await this.detectWorldFolders(dir);
+        }
+        if (scope === 'configs') {
+            const possibleConfigs = [
+                'server.properties', 'whitelist.json', 'ops.json', 
+                'banned-players.json', 'banned-ips.json', 'bukkit.yml', 
+                'spigot.yml', 'paper.yml', 'server.json', 'allowlist.json',
+                'permissions.json', 'config.json', 'eula.txt'
+            ];
+            const found: string[] = [];
+            const items = await fs.readdir(dir);
+            for (const item of items) {
+                if (possibleConfigs.includes(item)) found.push(item);
+            }
+            return found;
+        }
+        if (scope === 'plugins') {
+            const found: string[] = [];
+            const items = await fs.readdir(dir);
+            if (items.includes('plugins')) found.push('plugins');
+            if (items.includes('mods')) found.push('mods');
+            return found;
+        }
+        return [];
     }
 
     // Detect world folders in server directory

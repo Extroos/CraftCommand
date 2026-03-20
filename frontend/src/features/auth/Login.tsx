@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Command, Mail, Lock, ArrowRight, Loader2, Info, Globe } from 'lucide-react';
-
+import { Command, Mail, Lock, ArrowRight, Loader2, Info, Globe, Check } from 'lucide-react';
+import pkg from '../../../../package.json';
 
 import { useToast } from '../ui/Toast';
 import { useUser } from '@features/auth/context/UserContext';
@@ -16,8 +16,9 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isHolding, setIsHolding] = useState(false);
-    const [email, setEmail] = useState('');
+    const [email, setEmail] = useState(() => localStorage.getItem('cc_remembered_email') || '');
     const [password, setPassword] = useState('');
+    const [rememberMe, setRememberMe] = useState(() => !!localStorage.getItem('cc_remembered_email'));
     const { login, logout, user, guestPrefs, theme, twoFactorRequired } = useUser();
     const { addToast } = useToast();
 
@@ -27,6 +28,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+
+        // Persist or clear remembered email
+        if (rememberMe) {
+            localStorage.setItem('cc_remembered_email', email);
+        } else {
+            localStorage.removeItem('cc_remembered_email');
+        }
         
         try {
             const success = await login(email, password);
@@ -43,6 +51,10 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleForgotPassword = () => {
+        addToast('info', 'Password Recovery', 'Contact your server administrator or use the CLI to reset your password.');
     };
 
     const cachedBg = localStorage.getItem('cc_backgrounds');
@@ -159,6 +171,30 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                                     </div>
                                 </div>
 
+                                {/* Remember Me & Forgot Password */}
+                                <div className="flex items-center justify-between">
+                                    <label className="flex items-center gap-2 cursor-pointer group/remember select-none">
+                                        <div 
+                                            className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${
+                                                rememberMe 
+                                                    ? 'bg-white border-white/20' 
+                                                    : 'border-white/10 bg-transparent group-hover/remember:border-white/20'
+                                            }`}
+                                            onClick={(e) => { e.preventDefault(); setRememberMe(!rememberMe); }}
+                                        >
+                                            {rememberMe && <Check size={10} className="text-black" strokeWidth={3} />}
+                                        </div>
+                                        <span className="text-[10px] font-medium text-[#71717a] group-hover/remember:text-[#a1a1aa] transition-colors" onClick={() => setRememberMe(!rememberMe)}>Remember me</span>
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={handleForgotPassword}
+                                        className="text-[10px] font-medium text-[#71717a] hover:text-white transition-colors"
+                                    >
+                                        Forgot password?
+                                    </button>
+                                </div>
+
                                 <button 
                                     type="submit" 
                                     disabled={isLoading}
@@ -208,7 +244,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                     
                     <div className="flex items-center gap-3 opacity-20">
                         <div className="h-[1px] w-8 bg-white"></div>
-                        <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white">v1.11.8</span>
+                        <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white">v{pkg.version}</span>
                         <div className="h-[1px] w-8 bg-white"></div>
                     </div>
                 </motion.div>

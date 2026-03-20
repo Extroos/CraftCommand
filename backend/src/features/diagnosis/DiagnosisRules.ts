@@ -77,6 +77,9 @@ export const MissingDirectoryRule: DiagnosisRule = {
     defaultConfidence: 100,
     triggers: [], // Run periodically/pre-flight
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
+        // Skip if still installing
+        if (server.status === 'INSTALLING') return null;
+
         if (!await fs.pathExists(server.workingDirectory)) {
             return {
                 id: `missing-dir-${server.id}-${Date.now()}`,
@@ -99,21 +102,38 @@ export const InsufficientRamRule: DiagnosisRule = {
     tier: 1,
     defaultConfidence: 100,
     triggers: [], // Run periodically/pre-flight
-    analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
+    analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
         const si = require('systeminformation');
         try {
             const mem = await si.mem();
             const totalGb = mem.total / 1024 / 1024 / 1024;
+            const freeGb = (mem.total - mem.active) / 1024 / 1024 / 1024;
             const allocatedGb = server.ram || 2;
             
-            if (allocatedGb > totalGb) {
+            // Smarter RAM thresholds:
+            // 1. CRITICAL: Allocated RAM >= Total System RAM
+            // 2. WARNING: Allocated RAM > 85% of System RAM OR < 1GB remains for OS
+            
+            if (allocatedGb >= totalGb) {
                 return {
-                    id: `low-ram-${server.id}-${Date.now()}`,
+                    id: `low-ram-crit-${server.id}-${Date.now()}`,
                     ruleId: 'insufficient_ram',
                     severity: 'CRITICAL',
-                    title: 'Insufficient System RAM',
-                    explanation: `This server is configured to use ${allocatedGb}GB RAM, but the host system only has ${totalGb.toFixed(1)}GB total memory. Running it will likely cause a system crash.`,
-                    recommendation: `Lower the RAM allocation in Server Settings (e.g., to ${Math.floor(totalGb * 0.8)}GB) or upgrade the host's physical memory.`,
+                    title: 'System Memory Over-Allocated',
+                    explanation: `This server is allocated ${allocatedGb}GB RAM, but the system only has ${totalGb.toFixed(1)}GB total. This will cause an immediate crash or system lockup.`,
+                    recommendation: `Lower the RAM allocation in Server Settings to ${Math.floor(totalGb * 0.7)}GB or less.`,
+                    timestamp: Date.now()
+                };
+            }
+
+            if (allocatedGb > totalGb * 0.85 || freeGb < 1.0) {
+                return {
+                    id: `low-ram-warn-${server.id}-${Date.now()}`,
+                    ruleId: 'insufficient_ram',
+                    severity: 'WARNING',
+                    title: 'Narrow Memory Headroom',
+                    explanation: `Allocation (${allocatedGb}GB) is very close to system limits (${totalGb.toFixed(1)}GB total, ${freeGb.toFixed(1)}GB free). The OS may become unstable or kill the server under load.`,
+                    recommendation: `Ensure no other heavy applications are running, or reduce allocation slightly for better stability.`,
                     timestamp: Date.now()
                 };
             }
@@ -368,7 +388,8 @@ export const MissingJarRule: DiagnosisRule = {
     defaultConfidence: 100,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
         if (server.software === 'Bedrock') return null;
-        if (server.status === ServerStatus.ONLINE) return null;
+        // Skip if still installing
+        if (server.status === 'INSTALLING') return null;
 
         // Universal Check: Logs OR Direct Filesystem check
         const logMatch = logs.some(l => /Unable to access jarfile/i.test(l));
@@ -687,13 +708,31 @@ export const DiskSpaceRule: DiagnosisRule = {
     tier: 1,
     defaultConfidence: 100,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats): Promise<DiagnosisResult | null> => {
-        if (logs.some(l => /No space left on device/i.test(l))) {
+        const checkSpace = async () => {
+            try {
+                const disk = require('diskusage');
+                const info = await disk.check(server.workingDirectory || process.cwd());
+                const freeMb = info.free / (1024 * 1024);
+                
+                if (freeMb < 200) return 'CRITICAL';
+                if (freeMb < 1024) return 'WARNING';
+            } catch (e) {}
+            return null;
+        };
+
+        const hasLogMatch = logs.some(l => /No space left on device/i.test(l));
+        const spaceSeverity = await checkSpace();
+
+        if (hasLogMatch || spaceSeverity) {
+            const severity = hasLogMatch ? 'CRITICAL' : spaceSeverity!;
             return {
                 id: `disk-${server.id}-${Date.now()}`,
                 ruleId: 'disk_space_full',
-                severity: 'CRITICAL',
-                title: 'Disk Space Full',
-                explanation: 'The server cannot write any more data because the disk is full. This prevents logs, world saves, and player data from being saved.',
+                severity: severity,
+                title: severity === 'CRITICAL' ? 'Disk Space Full' : 'Disk Space Running Low',
+                explanation: severity === 'CRITICAL' 
+                    ? 'The server cannot write any more data because the disk is full. This prevents logs, world saves, and player data from being saved.'
+                    : 'The server disk has less than 1GB of free space remaining. This can cause performance degradation or sudden crashes if a backup starts.',
                 recommendation: 'Check your server drive for large files, old backups, or massive log files and delete them to free up space.',
                 timestamp: Date.now()
             };
@@ -1016,6 +1055,10 @@ export const AikarsFlagsRule: DiagnosisRule = {
     defaultConfidence: 100,
     isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
+        // Only applies to Java servers (Paper/Forge/Spigot)
+        const isGameServer = ['Paper', 'Spigot', 'Purpur', 'Forge', 'NeoForge', 'Fabric', 'Quilt'].includes(server.software);
+        if (!isGameServer) return null;
+
         if (server.ram >= 4 && !server.advancedFlags?.aikarFlags) {
             return {
                 id: `aikar-tip-${server.id}-${Date.now()}`,
@@ -1039,24 +1082,51 @@ export const AikarsFlagsRule: DiagnosisRule = {
 export const TelemetryRule: DiagnosisRule = {
     id: 'telemetry_cleanup',
     name: 'Massive Telemetry Logs',
-    description: 'Detects if log files are becoming too large',
+    description: 'Detects if log files are becoming too large or accumulating excessively',
     triggers: [
         /Stopping!/i,
         /Saving chunks/i
     ],
     tier: 3,
-    defaultConfidence: 80,
+    defaultConfidence: 85,
     isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
-        // Triggered by specific log patterns that imply a long session or frequent restarts
-        if (logs.length > 500) {
+        const logPath = path.join(server.workingDirectory, 'logs', 'latest.log');
+        const logsDir = path.join(server.workingDirectory, 'logs');
+        
+        let fileSizeMb = 0;
+        let fileCount = 0;
+
+        try {
+            if (await fs.pathExists(logPath)) {
+                const stats = await fs.stat(logPath);
+                fileSizeMb = stats.size / (1024 * 1024);
+            }
+            if (await fs.pathExists(logsDir)) {
+                const files = await fs.readdir(logsDir);
+                fileCount = files.length;
+            }
+        } catch (e) {}
+
+        const bufferFull = logs.length >= 2000;
+        
+        // Smarter Logic:
+        // 1. WARNING: Actual massive disk usage (latest.log > 100MB or > 500 files)
+        // 2. INFO: High session activity (Buffer full + moderate size/count)
+        
+        const isWarning = fileSizeMb > 100 || fileCount > 500;
+        const isInfo = (bufferFull && fileSizeMb > 20) || fileCount > 200;
+
+        if (isWarning || isInfo) {
             return {
                 id: `telemetry-${server.id}-${Date.now()}`,
                 ruleId: 'telemetry_cleanup',
-                severity: 'INFO',
-                title: 'Log Management Needed',
-                explanation: 'The server has generated a large amount of telemetry data in this session.',
-                recommendation: 'Cleanup log files and temporary locks to ensure smooth startup next time.',
+                severity: isWarning ? 'WARNING' : 'INFO',
+                title: isWarning ? 'Critical Log Bloat' : 'Log Management Advised',
+                explanation: isWarning 
+                    ? `The server logs have grown extremely large (${Math.round(fileSizeMb)}MB, ${fileCount} files). This can cause disk exhaustion and slow down the panel.`
+                    : `The server has generated a high volume of telemetry data in this session (${logs.length} lines buffered).`,
+                recommendation: 'Cleanup log files and temporary locks to ensure smooth performance.',
                 action: {
                     type: 'CLEANUP_TELEMETRY',
                     payload: { serverId: server.id },
@@ -1283,14 +1353,20 @@ export const TpsLagRule: DiagnosisRule = {
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats): Promise<DiagnosisResult | null> => {
         const lagLines = logs.filter(l => l.includes("Can't keep up!"));
         
-        if (lagLines.length > 0) {
+        // Smarter lagging:
+        // Use INFO for minor occurrences, WARNING for persistent lag.
+        // Sensitivity increased: > 5 for INFO, > 20 for WARNING.
+        if (lagLines.length > 5) {
+            const isPersistent = lagLines.length > 20;
             return {
                 id: `lag-logs-${server.id}-${Date.now()}`,
                 ruleId: 'tps_lag',
-                severity: 'WARNING',
-                title: 'Server Ticking Behind',
-                explanation: `The server is frequently reporting "Can't keep up!". This means the CPU is unable to process game ticks fast enough.`,
-                recommendation: 'Reduce the server simulation distance or remove resource-heavy mods/plugins.',
+                severity: isPersistent ? 'WARNING' : 'INFO',
+                title: isPersistent ? 'Persistent Server Lag' : 'Minor Lag Detected',
+                explanation: isPersistent 
+                    ? `The server is frequently reporting "Can't keep up!". This means the CPU is consistently unable to process game ticks fast enough.`
+                    : 'The server reported "Can\'t keep up!" several times recently. This often happens during heavy world generation or when many chunks are loading.',
+                recommendation: 'If this persists, evaluate your plugin/mod usage or reduce simulation-distance.',
                 timestamp: Date.now()
             };
         }

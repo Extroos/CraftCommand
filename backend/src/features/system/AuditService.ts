@@ -2,6 +2,7 @@ import {  AuditLog, AuditAction, ActivityEvent  } from '@shared/types';
 import { auditRepository } from '../../storage/AuditRepository';
 import { userRepository } from '../../storage/UserRepository';
 import { io } from '../../sockets/index';
+import crypto from 'crypto';
 
 
 
@@ -12,7 +13,7 @@ export class AuditService {
 
     public async log(userId: string, action: AuditAction, resourceId?: string, metadata?: any, ip?: string, userEmail?: string) {
         const entry: AuditLog = {
-            id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            id: crypto.randomUUID(),
             timestamp: Date.now(),
             userId,
             userEmail,

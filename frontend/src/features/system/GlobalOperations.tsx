@@ -26,7 +26,7 @@ interface GlobalOperationsProps {
 
 const GlobalOperations: React.FC<GlobalOperationsProps> = ({ onNavigate }) => {
     const { nodes, refreshSettings } = useSystem();
-    const { servers, refreshServers } = useServers();
+    const { servers, stats, refreshServers } = useServers();
     const { user } = useUser();
     
     const [searchQuery, setSearchQuery] = useState('');
@@ -36,7 +36,7 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = ({ onNavigate }) => {
     const [auditLogs, setAuditLogs] = useState<AuditLogType[]>([]);
 
     // Cluster Statistics
-    const stats = useMemo(() => {
+    const clusterStats = useMemo(() => {
         const totalNodes = Array.isArray(nodes) ? nodes.length : 0;
         const onlineNodes = Array.isArray(nodes) ? nodes.filter(n => n.status === 'ONLINE').length : 0;
         const totalServers = Array.isArray(servers) ? servers.length : 0;
@@ -168,30 +168,30 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = ({ onNavigate }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard 
                     label="Active Nodes" 
-                    value={`${stats.onlineNodes}/${stats.totalNodes}`} 
-                    sub={`${stats.totalNodes - stats.onlineNodes} Offline`}
+                    value={`${clusterStats.onlineNodes}/${clusterStats.totalNodes}`} 
+                    sub={`${clusterStats.totalNodes - clusterStats.onlineNodes} Offline`}
                     icon={<Network className="text-blue-500" />}
-                    trend={stats.onlineNodes === stats.totalNodes ? 'stable' : 'down'}
+                    trend={clusterStats.onlineNodes === clusterStats.totalNodes ? 'stable' : 'down'}
                 />
                 <StatCard 
                     label="Instance Density" 
-                    value={stats.onlineServers} 
-                    sub={`of ${stats.totalServers} Total`}
+                    value={clusterStats.onlineServers} 
+                    sub={`of ${clusterStats.totalServers} Total`}
                     icon={<Server className="text-emerald-500" />}
                 />
                 <StatCard 
                     label="Avg CPU Load" 
-                    value={`${stats.avgCpu}%`} 
+                    value={`${clusterStats.avgCpu}%`} 
                     sub="Across Cluster"
                     icon={<Cpu className="text-amber-500" />}
-                    progress={parseFloat(stats.avgCpu.toString())}
+                    progress={parseFloat(clusterStats.avgCpu.toString())}
                 />
                 <StatCard 
                     label="Mem Commitment" 
-                    value={`${stats.totalMemUsed} GB`} 
-                    sub={`of ${stats.totalMemTotal} GB`}
+                    value={`${clusterStats.totalMemUsed} GB`} 
+                    sub={`of ${clusterStats.totalMemTotal} GB`}
                     icon={<MemoryStick className="text-violet-500" />}
-                    progress={parseFloat(stats.memPercent.toString())}
+                    progress={parseFloat(clusterStats.memPercent.toString())}
                 />
             </div>
 
@@ -359,7 +359,7 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = ({ onNavigate }) => {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3 text-xs font-mono text-muted-foreground">
-                                                <span className="flex items-center gap-1"><Cpu size={12} /> {server.status === 'ONLINE' ? '8.4%' : '0%'}</span>
+                                                <span className="flex items-center gap-1"><Cpu size={12} /> {server.status === 'ONLINE' ? `${(stats[server.id]?.cpu || 0).toFixed(1)}%` : '0%'}</span>
                                                 <span className="flex items-center gap-1"><MemoryStick size={12} /> {server.ram}GB</span>
                                             </div>
                                         </td>

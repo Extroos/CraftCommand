@@ -89,6 +89,11 @@ export abstract class JsonRepository<T extends { id: string }> implements Storag
         }
         return false;
     }
+
+    public saveAll(items: T[]): void {
+        this.data = [...items];
+        this.save();
+    }
 }
 
 export class GenericJsonProvider<T extends { id: string }> extends JsonRepository<T> {

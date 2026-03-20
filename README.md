@@ -2,15 +2,6 @@
   
 # CraftCommand
 
-```text
-  _____              __ _   _____                                                _
- / ____|            / _| | / ____|                                        | | | |
-| |     _ __ __ _ _| |_| || |     ___  _ __ ___  _ __ ___   __ _ _ __   __| |
-| |    | '__/ _` |_   _| || |    / _ \| '_ ` _ \| '_ ` _ \ / _` | '_ \ / _` |
-| |____| | | (_| | | | | || |___| (_) | | | | | | | | | | | (_| | | | | (_| |
- \_____|_|  \__,_| |_| |_| \_____\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|\__,_|
-```
-
 **The Professional Hybrid Cloud Platform for Java & Bedrock Infrastructure**
 
 ![version](https://img.shields.io/badge/version-v1.12.0-emerald)
@@ -65,7 +56,7 @@ _Manage multiple servers with a professional, data-dense interface._
 
 While other platforms focus on being general-purpose containers, CraftCommand is built as a **specialized orchestrator** with vertical integration for game server lifecycles.
 
-### 🧠 Modpack Intelligence Engine (v1.12.0)
+### Modpack Intelligence Engine (v1.12.0)
 
 Stop fighting mod crashes. Our **Triple-Layer Mod Stabilization** ensures your modpacks boot correctly the first time.
 
@@ -73,7 +64,7 @@ Stop fighting mod crashes. Our **Triple-Layer Mod Stabilization** ensures your m
 - **Transitive Dependency Resolver**: Scans `fabric.mod.json`/`mods.toml` and auto-installs missing dependencies from Modrinth.
 - **JiJ (Jar-in-Jar) Intelligence**: Detects embedded libraries to prevent duplicate mod conflicts before they even load.
 
-### 🛡️ Enterprise-Grade Security Suite
+### Enterprise-Grade Security Suite
 
 Your infrastructure is only as safe as its weakest link. We provide mandatory protection for your cluster.
 
@@ -81,7 +72,7 @@ Your infrastructure is only as safe as its weakest link. We provide mandatory pr
 - **Session Revocation**: View active sessions and perform a **Global Logout** to instantly invalidate all JWT tokens across the cluster.
 - **Systems Integrity**: Cryptographically signed updates (Ed25519) with SHA256 integrity verification, preventing supply-chain attacks.
 
-### 🌀 Hybrid Orchestration & Auto-Healing
+### Hybrid Orchestration & Auto-Healing
 
 Scale horizontally without the complexity of deep Docker management or Kubernetes.
 
@@ -89,7 +80,7 @@ Scale horizontally without the complexity of deep Docker management or Kubernete
 - **Chained Automation Engine**: Build multi-action sequences (e.g., `Save-All -> Backup -> Update -> Restart`) with a full 5-field Cron parser.
 - **Distributed Node Orchestration**: Enroll remote hosts in seconds using **Zero-Knowledge** pair-bonding and unified resource telemetry.
 
-### 🛠️ Key Differentiators
+### Key Differentiators
 
 1.  **Intelligent Diagnosis Engine**: Don't just see a crash—understand it. Our heuristic engine (v2.1) identifies over 40 common failure points (EULA, Java version, port conflicts, corrupted mods) and offers one-click auto-fixes.
 2.  **Cryptographically Secure Updates**: Your infrastructure is only as safe as its updates. We use industry-standard **Ed25519 signatures** and SHA256 integrity verification for every system update, preventing supply-chain attacks.
@@ -170,7 +161,7 @@ _Zero-config remote connectivity_
 
 ---
 
-## 💎 Operational Excellence (v1.12.0)
+## Operational Excellence (v1.12.0)
 
 **Built for stability. Optimized for performance.**
 

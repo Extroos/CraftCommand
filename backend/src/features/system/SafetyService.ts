@@ -23,7 +23,12 @@ export class SafetyService {
         const errors: { code: string, message: string }[] = [];
 
         // 1. Check Server Executable exists
-        const defaultExe = server.software === 'Bedrock' ? (process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server') : 'server.jar';
+        let defaultExe = 'server.jar';
+        if (server.software === 'Bedrock') {
+            defaultExe = process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server';
+        } else if (server.software === 'Velocity' || (server as any).type === 'Velocity') {
+            defaultExe = 'velocity.jar';
+        }
         const exeName = server.executable || defaultExe;
         const exePath = path.join(server.workingDirectory, exeName);
 
@@ -101,6 +106,31 @@ export class SafetyService {
         } catch (e: any) {
             // Ignore if SI fails, strict check only if safe
             if (e instanceof SafetyError) throw e;
+        }
+
+        // 5. Proactive Diagnosis (NEW)
+        // If the server has existing logs, run a quick diagnosis to prevent starting a "known-to-be-broken" config
+        try {
+            const logPath = path.join(server.workingDirectory, 'logs', 'latest.log');
+            if (fs.existsSync(logPath)) {
+                const { diagnosisService } = require('../diagnosis/DiagnosisService');
+                const logContent = await fs.readFile(logPath, 'utf8');
+                const logs = logContent.split('\n').slice(-300); // Last 300 lines are enough for structural issues
+                
+                const diagnosis = await diagnosisService.diagnose(server, logs, { cpu: 0, ram: 0, disk: 0 });
+                const criticalMismatches = diagnosis.filter(d => d.ruleId === 'incompatible_mods' && d.severity === 'CRITICAL');
+                
+                if (criticalMismatches.length > 0) {
+                    const mismatch = criticalMismatches[0];
+                    // WARN but don't block — the old logs may be stale after a fix was applied.
+                    // The server will fail on its own if mods are truly still incompatible.
+                    logger.warn(`[Safety] Previous crash detected incompatible mods for ${server.id}: ${mismatch.explanation}. Allowing startup attempt.`);
+                }
+            }
+        } catch (diagErr: any) {
+            if (diagErr instanceof SafetyError) throw diagErr;
+            // Ignore other diagnosis errors to not block startup if diagnosis fails
+            logger.debug(`[Safety] Pre-flight diagnosis skipped: ${diagErr.message}`);
         }
 
         logger.success(`[Safety] ${server.name} passed pre-flight checks.`);

@@ -26,7 +26,7 @@ import {
     Info
 } from 'lucide-react';
 
-import { DiscordConfig, GlobalSettings, DiscordBotConfig } from '@shared/types';
+import { DiscordConfig, GlobalSettings, DiscordBotConfig, WebhookConfig, WebhookTrigger } from '@shared/types';
 import { API } from '@core/services/api';
 import { useToast } from '../ui/Toast';
 import { useServers } from '@features/servers/context/ServerContext';
@@ -71,11 +71,48 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
     const [isSyncing, setIsSyncing] = useState(false);
     const [discordStatus, setDiscordStatus] = useState<{ status: string, user: any, lastError?: string | null, latency?: number, guilds?: number }>({ status: 'offline', user: null, lastError: null, latency: 0, guilds: 0 });
     const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     
     const { addToast } = useToast();
     const { can } = usePermissions();
     const { user } = useUser();
     const { currentServer, updateServerConfig } = useServers();
+    
+    // Webhook Entity Persistence
+    const [webhookId, setWebhookId] = useState<string | null>(null);
+    const [isTesting, setIsTesting] = useState(false);
+
+    useEffect(() => {
+        if (serverId) {
+            fetchWebhook();
+        }
+    }, [serverId]);
+
+    const fetchWebhook = async () => {
+        try {
+            const webhooks = await API.getWebhooks(serverId);
+            // CraftCommand currently supports one primary discord webhook per server in this UI
+            const primary = webhooks.find(w => w.name.includes('Discord') || w.triggers.length > 0);
+            if (primary) {
+                setWebhookId(primary.id);
+                setWebhookConfig({
+                    enabled: primary.enabled,
+                    webhookUrl: primary.url,
+                    botName: primary.name,
+                    avatarUrl: primary.avatarUrl || '',
+                    events: {
+                        onStart: primary.triggers.includes('SERVER_START'),
+                        onStop: primary.triggers.includes('SERVER_STOP'),
+                        onJoin: primary.triggers.includes('PLAYER_JOIN'),
+                        onLeave: primary.triggers.includes('PLAYER_LEAVE'),
+                        onCrash: primary.triggers.includes('SERVER_CRASH')
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('Failed to fetch server webhooks:', e);
+        }
+    };
 
     useEffect(() => {
         if (activeTab === 'bot') {
@@ -119,14 +156,51 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
             addToast('error', 'Permissions', 'Insufficient permissions to manage server integrations');
             return;
         }
-        const updates = { discordConfig: webhookConfig };
+        setIsSaving(true);
+        
+        const triggers: WebhookTrigger[] = [];
+        if (webhookConfig.events.onStart) triggers.push('SERVER_START');
+        if (webhookConfig.events.onStop) triggers.push('SERVER_STOP');
+        if (webhookConfig.events.onJoin) triggers.push('PLAYER_JOIN');
+        if (webhookConfig.events.onLeave) triggers.push('PLAYER_LEAVE');
+        if (webhookConfig.events.onCrash) triggers.push('SERVER_CRASH');
+
+        const payload = {
+            name: webhookConfig.botName || 'Discord Webhook',
+            url: webhookConfig.webhookUrl,
+            enabled: webhookConfig.enabled,
+            triggers,
+            avatarUrl: webhookConfig.avatarUrl,
+            serverId
+        };
+
         try {
-            await API.updateServer(serverId, updates);
-            updateServerConfig(serverId, updates);
+            if (webhookId) {
+                await API.updateWebhook({ ...payload, id: webhookId });
+            } else {
+                const created = await API.createWebhook(serverId, payload);
+                setWebhookId(created.id);
+            }
+            
             setIsDirty(false);
-            addToast('success', 'Webhook Saved', 'Server webhook settings updated.');
+            addToast('success', 'Webhook Saved', 'Server webhook settings synchronized with high-priority gateway.');
         } catch (e) {
             addToast('error', 'Save Failed', 'Could not update server integrations.');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleTestWebhook = async () => {
+        if (!webhookId) return;
+        setIsTesting(true);
+        try {
+            await API.testWebhook(webhookId);
+            addToast('success', 'Test Dispatched', 'Check your Discord channel for the payload.');
+        } catch (e: any) {
+            addToast('error', 'Test Failed', e.message);
+        } finally {
+            setIsTesting(false);
         }
     };
 
@@ -136,12 +210,15 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
             addToast('error', 'Permissions', 'Insufficient permissions to modify global bot settings');
             return;
         }
+        setIsSaving(true);
         try {
             await API.updateGlobalSettings({ ...globalSettings, discordBot: botConfig });
             setIsDirty(false);
             addToast('success', 'Bot Config Saved', 'Global Discord Bot settings updated.');
         } catch (e) {
             addToast('error', 'Save Failed', 'Could not update global settings.');
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -297,18 +374,30 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                     </div>
                 </div>
 
-                 <button 
-                    onClick={handleSaveWebhooks}
-                    disabled={!isDirty || !can('server.integrations.manage', serverId)}
-                    title={!can('server.integrations.manage', serverId) ? 'Insufficient Permissions' : ''}
-                    className={`w-full py-3 rounded-xl font-black text-[10px] uppercase tracking-[0.25em] flex items-center justify-center gap-2 transition-all shadow-lg ${
-                        isDirty && can('server.integrations.manage', serverId)
-                        ? 'bg-primary text-primary-foreground hover:scale-[1.01] shadow-primary/20' 
-                        : 'bg-muted text-muted-foreground border border-border/50 opacity-50 cursor-not-allowed'
-                    }`}
-                >
-                    <Save size={12} className={(isDirty && can('server.integrations.manage', serverId)) ? "animate-pulse" : ""} /> Save Internal Configuration
-                </button>
+                <div className="flex gap-3">
+                    <button 
+                        onClick={handleSaveWebhooks}
+                        disabled={!isDirty || isSaving || !can('server.integrations.manage', serverId)}
+                        className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-[0.25em] flex items-center justify-center gap-2 transition-all shadow-lg ${
+                            isDirty && !isSaving && can('server.integrations.manage', serverId)
+                            ? 'bg-primary text-primary-foreground hover:scale-[1.01] shadow-primary/20' 
+                            : 'bg-muted text-muted-foreground border border-border/50 opacity-50 cursor-not-allowed'
+                        }`}
+                    >
+                        {isSaving ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />} 
+                        {isSaving ? 'Synchronizing...' : 'Save Configuration'}
+                    </button>
+                    {webhookId && (
+                        <button 
+                            onClick={handleTestWebhook}
+                            disabled={isTesting || !can('server.integrations.manage', serverId)}
+                            className="px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-[0.25em] flex items-center justify-center gap-2 transition-all shadow-lg bg-zinc-800 text-foreground border border-border/60 hover:bg-zinc-700 disabled:opacity-50"
+                        >
+                            {isTesting ? <RefreshCw size={12} className="animate-spin" /> : <Send size={12} />}
+                            Test
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="bg-[#1e1f22] border border-black/40 rounded-xl overflow-hidden shadow-2xl flex flex-col h-fit font-sans">
@@ -479,15 +568,16 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                     <div className="flex gap-3">
                          <button 
                             onClick={handleSaveBot}
-                            disabled={!isDirty || !can('system.integrations.manage')}
+                            disabled={!isDirty || isSaving || !can('system.integrations.manage')}
                             title={!can('system.integrations.manage') ? 'Insufficient Permissions' : ''}
                              className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-[0.25em] flex items-center justify-center gap-2 transition-all shadow-lg ${
-                                isDirty && can('system.integrations.manage')
+                                isDirty && !isSaving && can('system.integrations.manage')
                                 ? 'bg-primary text-primary-foreground hover:scale-[1.01] shadow-primary/20' 
                                 : 'bg-muted text-muted-foreground border border-border/50 opacity-50 cursor-not-allowed'
                             }`}
                         >
-                            <Save size={12} /> Commit Configuration
+                            {isSaving ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />}
+                            {isSaving ? 'Committing...' : 'Commit Configuration'}
                         </button>
                         <button 
                             onClick={handleSyncCommands}

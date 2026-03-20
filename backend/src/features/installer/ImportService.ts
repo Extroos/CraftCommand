@@ -256,9 +256,16 @@ class ImportService {
         }
 
         // 3. Detailed Property Extraction
+        let motd = 'A Minecraft Server';
         if (serverProperties) {
             const portMatch = serverProperties.match(/^server-port\s*=\s*(\d+)/m);
             if (portMatch) port = parseInt(portMatch[1]);
+
+            const motdMatch = serverProperties.match(/^motd\s*=\s*(.*)/m);
+            if (motdMatch) {
+                // Quick unescape for analysis (v1.12.0)
+                motd = motdMatch[1].trim().replace(/\\([!:=#\\])/g, '$1');
+            }
 
             // Track if online-mode is disabled (useful for migration warnings)
             const onlineMatch = serverProperties.match(/^online-mode\s*=\s*(\w+)/m);
@@ -285,6 +292,7 @@ class ImportService {
             version,
             executable,
             port,
+            motd,
             ram,
             javaVersion,
             isModded,

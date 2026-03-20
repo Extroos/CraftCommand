@@ -6,6 +6,7 @@ import { proxyService } from './ProxyService';
 import { startupManager } from '../servers/StartupManager';
 import { getServer, saveServer } from '../servers/ServerService';
 import { ServerStatus } from '@shared/types';
+import { auditService } from '../system/AuditService';
 
 const router = Router();
 
@@ -18,6 +19,7 @@ router.post('/proxy/link', verifyToken, requireRole(['OWNER', 'ADMIN', 'MANAGER'
     try {
         proxyService.linkServer(proxyId, backendId, alias);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'PROXY_LINK', backendId, { proxyId, alias });
     } catch (e) {
         res.status(500).json({ error: (e as Error).message });
     }
@@ -43,6 +45,7 @@ router.post('/proxy/unlink', verifyToken, requireRole(['OWNER', 'ADMIN', 'MANAGE
         }
         
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'PROXY_UNLINK', backendId, { proxyId });
     } catch (e) {
         res.status(500).json({ error: (e as Error).message });
     }
@@ -72,6 +75,7 @@ router.post('/proxy/unlink-by-server', verifyToken, requireRole(['OWNER', 'ADMIN
         }
 
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'PROXY_UNLINK', serverId, { proxyId: proxy.id });
     } catch (e) {
         res.status(500).json({ error: (e as Error).message });
     }
@@ -154,6 +158,7 @@ router.post('/ddns/update', verifyToken, requireRole(['OWNER', 'ADMIN']), async 
     try {
         const status = await networkService.updateDdns(serverId);
         res.json(status);
+        auditService.log((req as any).user.id, 'DDNS_UPDATE', serverId, { status });
     } catch (e) {
         res.status(500).json({ error: (e as Error).message });
     }
@@ -168,6 +173,7 @@ router.get('/ddns/update', verifyToken, requireRole(['OWNER', 'ADMIN']), async (
     try {
         const status = await networkService.updateDdns(serverId);
         res.json(status);
+        auditService.log((req as any).user.id, 'DDNS_UPDATE', serverId, { status, method: 'GET' });
     } catch (e) {
         res.status(500).json({ error: (e as Error).message });
     }
@@ -189,6 +195,7 @@ router.post('/proxy/install-via-suite', verifyToken, requireRole(['OWNER', 'ADMI
     try {
         await proxyService.installViaSuite(proxyId);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'PROXY_INSTALL', proxyId);
     } catch (e) {
         res.status(500).json({ error: (e as Error).message });
     }

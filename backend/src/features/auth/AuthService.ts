@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { auditService } from '../system/AuditService';
 import { systemSettingsService } from '../system/SystemSettingsService';
 import { userRepository } from '../../storage/UserRepository';
+import { sessionRepository } from '../../storage/SessionRepository';
 import { ROLE_HIERARCHY } from '@shared/constants/roles';
 import { generateSecret, generateURI, verify } from 'otplib';
 import QRCode from 'qrcode';
@@ -100,11 +101,27 @@ class AuthService {
             return { user: safeUser as UserProfile, token: loginToken, twoFactorRequired: true };
         }
 
+        // Create session
+        const sessionId = crypto.randomUUID();
+        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        
+        sessionRepository.create({
+            id: sessionId,
+            userId: user.id,
+            createdAt: Date.now(),
+            expiresAt
+        });
+
         // Update last login
         userRepository.update(user.id, { lastLogin: Date.now() });
         auditService.log(user.id, 'LOGIN_SUCCESS', undefined, undefined, undefined, user.email);
         
-        const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, secret, { expiresIn: '7d' });
+        const token = jwt.sign({ 
+            id: user.id, 
+            email: user.email, 
+            role: user.role,
+            jti: sessionId 
+        }, secret, { expiresIn: '7d' });
         
         return { user: safeUser as UserProfile, token };
     }
@@ -212,6 +229,14 @@ class AuthService {
 
         // --- Deep Merge Logic for Persistence Sync (Prevents overwriting whole ACLs) ---
         const finalUpdates = { ...updates };
+
+        // SECURITY: Handle password updates
+        if (updates.password) {
+            this.validatePassword(updates.password);
+            finalUpdates.passwordHash = bcrypt.hashSync(updates.password, 10);
+            delete finalUpdates.password;
+        }
+        delete finalUpdates.passwordHash; // Protect against raw passwordHash updates if still present in input
 
         // 1. Merge serverAcl instead of replacing
         if (updates.serverAcl) {
@@ -413,6 +438,58 @@ class AuthService {
         auditService.log(userId, 'USER_UPDATE', userId, { action: '2FA_DISABLED' });
     }
 
+    // --- Secure Password Change ---
+
+    async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+        const user = userRepository.findById(userId);
+        if (!user) throw new NotFoundError('User not found');
+        if (!user.passwordHash) throw new ValidationError('Account has no password set');
+
+        // Verify current password
+        const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
+        if (!isValid) throw new UnauthorizedError('Current password is incorrect');
+
+        // Validate new password
+        this.validatePassword(newPassword);
+
+        // Ensure new password is different
+        const isSame = await bcrypt.compare(newPassword, user.passwordHash);
+        if (isSame) throw new ValidationError('New password must be different from current password');
+
+        // Hash and save
+        const passwordHash = await bcrypt.hash(newPassword, 10);
+        userRepository.update(userId, { passwordHash });
+
+        auditService.log(userId, 'USER_UPDATE', userId, { action: 'PASSWORD_CHANGED' });
+    }
+
+    // --- 2FA Backup Code Regeneration ---
+
+    async regenerateBackupCodes(userId: string, password: string, code: string): Promise<{ backupCodes: string[] }> {
+        const user = userRepository.findById(userId);
+        if (!user || !user.twoFactorEnabled || !user.twoFactorSecretEncrypted) {
+            throw new ValidationError('2FA is not enabled');
+        }
+
+        // Verify password
+        const passValid = await bcrypt.compare(password, user.passwordHash!);
+        if (!passValid) throw new UnauthorizedError('Invalid password');
+
+        // Verify TOTP code
+        const secret = this.decrypt(user.twoFactorSecretEncrypted);
+        const { valid: codeValid } = await verify({ token: code, secret });
+        if (!codeValid) throw new UnauthorizedError('Invalid 2FA code');
+
+        // Generate new backup codes
+        const plainBackupCodes = Array.from({ length: 10 }, () => crypto.randomBytes(4).toString('hex'));
+        const hashedBackupCodes = plainBackupCodes.map(c => bcrypt.hashSync(c, 10));
+
+        userRepository.update(userId, { twoFactorBackupCodesHashed: hashedBackupCodes });
+        auditService.log(userId, 'USER_UPDATE', userId, { action: '2FA_BACKUP_REGEN' });
+
+        return { backupCodes: plainBackupCodes };
+    }
+
     deleteUser(id: string, actor?: UserProfile) {
         const user = userRepository.findById(id);
         if (!user) throw new Error('User not found');
@@ -426,6 +503,46 @@ class AuthService {
         if (user.role === 'OWNER') throw new Error('Cannot delete Owner. Demote first.');
 
         userRepository.delete(id);
+    }
+
+    // --- Session Revocation ---
+
+    async getSessions(userId: string) {
+        return sessionRepository.findByUserId(userId);
+    }
+
+    async revokeSession(sessionId: string, actorId: string) {
+        const session = sessionRepository.findById(sessionId);
+        if (!session) throw new NotFoundError('Session not found');
+
+        // Security: Can only revoke own session or if admin (canManage check omitted here for simplicity, assuming UI filters)
+        // Actually let's add a basic check
+        if (session.userId !== actorId) {
+            const actor = userRepository.findById(actorId);
+            const target = userRepository.findById(session.userId);
+            if (!actor || !target || !this.canManage(actor.role, target.role)) {
+                throw new UnauthorizedError('Insufficient permissions to revoke this session');
+            }
+        }
+
+        sessionRepository.update(sessionId, { revokedAt: Date.now() });
+        auditService.log(actorId, 'USER_UPDATE', session.userId, { action: 'SESSION_REVOKED', sessionId });
+    }
+
+    async revokeAllSessions(userId: string, actorId: string) {
+        const sessions = sessionRepository.findActiveByUserId(userId);
+        for (const session of sessions) {
+            sessionRepository.update(session.id, { revokedAt: Date.now() });
+        }
+        auditService.log(actorId, 'USER_UPDATE', userId, { action: 'ALL_SESSIONS_REVOKED' });
+    }
+
+    async isSessionValid(sessionId: string): Promise<boolean> {
+        const session = sessionRepository.findById(sessionId);
+        if (!session) return false;
+        if (session.revokedAt) return false;
+        if (session.expiresAt < Date.now()) return false;
+        return true;
     }
 }
 

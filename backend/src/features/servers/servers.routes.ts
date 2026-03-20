@@ -10,13 +10,14 @@ import { javaManager } from '../processes/JavaManager';
 import { FileSystemManager } from '../files/FileSystemManager';
 import { installerService } from '../installer/InstallerService';
 import { importService } from '../installer/ImportService';
-import { getServers, saveServer, getServer, removeServer, updateServer, diagnoseServer, startServer, stopServer } from './ServerService';
+import { getServers, saveServer, getServer, removeServer, updateServer, diagnoseServer, startServer, stopServer, cloneServer, resetSftpPassword, getServerPorts, assignServerPort, rotateServerPort } from './ServerService';
 import { serverConfigService } from './ServerConfigService';
 import { AppError } from '../../utils/AppError';
 import { auditService } from '../system/AuditService';
 import { ServerConfig, ServerStatus } from '@shared/types';
 import { DATA_DIR, SERVERS_ROOT, DATA_PATHS } from '../../constants';
 import { autoHealingManager } from '../diagnosis/AutoHealingManager';
+import { autoHealingService } from './AutoHealingService';
 import sharp from 'sharp';
 
 
@@ -314,6 +315,7 @@ router.get('/', optionalVerifyToken, (req, res) => {
 
             return {
                 ...s,
+                ...cached,
                 status,
                 iconUrl: getIconUrl(s)
             };
@@ -418,6 +420,32 @@ router.post('/:id/heal', verifyToken, requirePermission('server.settings'), asyn
     } catch (e: any) {
         console.error(`[Servers] Manual fix failed for ${id}:`, e);
         res.status(500).json({ error: e.message || 'Failed to apply automatic fix.' });
+    }
+});
+
+// Reset Stability/Health Status
+router.post('/:id/health/reset', verifyToken, requirePermission('server.settings'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { autoHealingService } = require('./AutoHealingService');
+        autoHealingService.resetStabilityMarker(id);
+        res.json({ success: true, message: 'Stability marker reset successfully.' });
+        auditService.log((req as any).user.id, 'SERVER_HEAL_RESET', id);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Reset Stability/Health Status
+router.post('/:id/health/reset', verifyToken, requirePermission('server.settings'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { autoHealingService } = require('./AutoHealingService');
+        autoHealingService.resetStabilityMarker(id);
+        res.json({ success: true, message: 'Stability marker reset successfully.' });
+        auditService.log((req as any).user.id, 'SERVER_HEAL_RESET', id);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -597,6 +625,32 @@ router.post('/:id/stop', requirePermission('server.stop'), async (req, res) => {
     }
 });
 
+// Graceful Stop
+router.post('/:id/stop/graceful', requirePermission('server.stop'), async (req, res) => {
+    const { id } = req.params;
+    const { delay } = req.body;
+    
+    try {
+        processManager.gracefulStop(id, delay || 30);
+        res.json({ success: true, status: ServerStatus.STOPPING, message: `Graceful shutdown initiated with ${delay || 30}s delay.` });
+        auditService.log((req as any).user.id, 'SERVER_STOP_GRACEFUL', id, { delay: delay || 30 }).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Cancel Graceful Stop
+router.post('/:id/stop/cancel', requirePermission('server.stop'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        processManager.cancelGracefulStop(id);
+        res.json({ success: true, message: 'Graceful shutdown cancelled.' });
+        auditService.log((req as any).user.id, 'SERVER_STOP_CANCEL', id).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Delete Server
 router.delete('/:id', requirePermission('server.delete'), async (req, res) => {
     const { id } = req.params;
@@ -606,6 +660,21 @@ router.delete('/:id', requirePermission('server.delete'), async (req, res) => {
         res.json({ success: true });
         auditService.log((req as any).user.id, 'SERVER_DELETE', id).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Clone Server
+router.post('/:id/clone', requirePermission('server.create'), async (req, res) => {
+    const { id } = req.params;
+    const { name } = req.body;
+    
+    try {
+        const clone = await cloneServer(id, name);
+        res.json(clone);
+        auditService.log((req as any).user.id, 'SERVER_CREATE', clone.id, { clonedFrom: id, name: clone.name }).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
+    } catch (e: any) {
+        logger.error(`[Clone] Failed for ${id}: ${e.message}`);
         res.status(500).json({ error: e.message });
     }
 });
@@ -622,6 +691,55 @@ router.patch('/:id', requirePermission('server.settings'), async (req, res) => {
         auditService.log((req as any).user.id, 'SERVER_UPDATE', id, { updates: Object.keys(updates) });
     } catch (e: any) {
         if (e.message === 'Server not found') return res.status(404).json({ error: 'Server not found' });
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// --- Connectivity & Networking Extensions (Phase 108) ---
+
+// Reset SFTP Password
+router.post('/:id/sftp/reset', requirePermission('server.settings'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await resetSftpPassword(id);
+        res.json(result);
+        auditService.log((req as any).user.id, 'SERVER_UPDATE', id, { detail: 'SFTP Password Reset' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Get Server Port Mappings
+router.get('/:id/ports', verifyToken, requirePermission('server.view'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const ports = getServerPorts(id);
+        res.json(ports);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Allocate Additional Port
+router.post('/:id/ports', requirePermission('server.settings'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const newPort = await assignServerPort(id);
+        res.json(newPort);
+        auditService.log((req as any).user.id, 'SERVER_UPDATE', id, { detail: 'Allocated additional port', port: newPort.port });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Rotate Additional Port
+router.patch('/:id/ports/:portId/rotate', requirePermission('server.settings'), async (req, res) => {
+    const { id, portId } = req.params;
+    try {
+        const updatedPort = await rotateServerPort(id, portId);
+        res.json(updatedPort);
+        auditService.log((req as any).user.id, 'SERVER_UPDATE', id, { detail: 'Rotated additional port', portId, newPort: updatedPort.port });
+    } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
@@ -756,6 +874,7 @@ router.post('/:id/files/content', requirePermission('server.files.write'), async
     try {
         await fsManager.writeFile(relativePath, content);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'FILE_EDIT', id, { path: relativePath });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -774,6 +893,7 @@ router.post('/:id/files/folder', requirePermission('server.files.write'), async 
     try {
         await fsManager.createDirectory(relativePath);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'FOLDER_CREATE', id, { path: relativePath });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -797,6 +917,27 @@ router.get('/:id/files', verifyToken, requirePermission('server.files.read'), as
     }
 });
 
+// Search Files
+router.get('/:id/files/search', verifyToken, requirePermission('server.files.read'), async (req, res) => {
+    const { id } = req.params;
+    const { query, dir } = req.query;
+    const server = getServer(id);
+    
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+    if (!query || typeof query !== 'string' || query.length < 2) {
+        return res.status(400).json({ error: 'Search query must be at least 2 characters.' });
+    }
+
+    const fsManager = new FileSystemManager(server.workingDirectory);
+    try {
+        const searchContent = req.query.content === 'true';
+        const results = await fsManager.searchFiles(query, (dir as string) || '.', 100, searchContent);
+        res.json(results);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Delete Files (Accepts array of paths in body)
 router.delete('/:id/files', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
@@ -812,6 +953,7 @@ router.delete('/:id/files', requirePermission('server.files.write'), async (req,
             await fsManager.deletePath(p);
         }
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'FILE_DELETE_BULK', id, { paths, count: paths.length });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -828,6 +970,7 @@ router.post('/:id/files/move', requirePermission('server.files.write'), async (r
     try {
         await fsManager.move(source, dest);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'FILE_MOVE', id, { source, dest });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -844,6 +987,7 @@ router.post('/:id/files/copy', requirePermission('server.files.write'), async (r
     try {
         await fsManager.copy(source, dest);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'FILE_COPY', id, { source, dest });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -860,6 +1004,7 @@ router.post('/:id/files/compress', requirePermission('server.files.write'), asyn
     try {
         await fsManager.compress(paths, name);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'FILE_COMPRESS', id, { paths, count: paths.length, archive: name });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -881,6 +1026,7 @@ router.get('/:id/files/download', verifyToken, requirePermission('server.files.r
         
         if (await fs.pathExists(filePath)) {
              res.download(filePath);
+             auditService.log((req as any).user.id, 'FILE_DOWNLOAD', id, { path: relativePath });
         } else {
              res.status(404).json({ error: 'File not found' });
         }
@@ -917,6 +1063,7 @@ router.post('/:id/files/upload', requirePermission('server.files.write'), upload
         await fs.move(req.file.path, targetPath, { overwrite: true });
         
         res.json({ success: true, filename: req.file.originalname, path: relativePath || '/' });
+        auditService.log((req as any).user.id, 'FILE_UPLOAD', id, { filename: req.file.originalname, path: relativePath || '/' });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -978,6 +1125,7 @@ router.post('/:id/files/extract', requirePermission('server.files.write'), async
         console.log(`[Extract] Cleanup complete.`);
         
         res.json({ success: true, message: 'File extracted successfully' });
+        auditService.log((req as any).user.id, 'FILE_EXTRACT', id, { path: filePath });
     } catch (e: any) {
         console.error(`[Extract] Error:`, e);
         res.status(500).json({ error: e.message });
@@ -1026,7 +1174,7 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
         } else if (type === 'fabric') {
             await installerService.installFabric(id, server.workingDirectory, version || '1.21.1', onProgress);
         } else if (type === 'modpack' && url) {
-            await installerService.installModpackFromZip(id, server.workingDirectory, url, version, onProgress);
+            await installerService.installModpackFromZip(id, server.workingDirectory, url, version, onProgress, server.software);
         } else if (type === 'forge') {
             console.log(`[Installation] Starting Async Forge Install for ${id}`);
             installerService.installForge(id, server.workingDirectory, version || '1.21.1', (req.body as any).localModpack, build, onProgress)
@@ -1161,6 +1309,7 @@ router.post('/:id/schedules', async (req, res) => {
     try {
         await scheduleService.addTask(id, task);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'SCHEDULE_CREATE', id, { taskName: task.name, type: task.type });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1173,6 +1322,7 @@ router.put('/:id/schedules/:taskId', async (req, res) => {
     try {
         await scheduleService.updateTask(id, task);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'SCHEDULE_UPDATE', id, { taskId: task.id, taskName: task.name });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1184,6 +1334,7 @@ router.delete('/:id/schedules/:taskId', async (req, res) => {
     try {
         await scheduleService.removeTask(id, taskId);
         res.json({ success: true });
+        auditService.log((req as any).user.id, 'SCHEDULE_DELETE', id, { taskId });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1199,6 +1350,7 @@ router.post('/:id/backups/:backupId/lock', async (req, res) => {
     try {
         const isLocked = await backupService.toggleLock(id, backupId);
         res.json({ success: true, locked: isLocked });
+        auditService.log((req as any).user.id, isLocked ? 'BACKUP_LOCK' : 'BACKUP_UNLOCK', id, { backupId });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1221,8 +1373,9 @@ router.post('/:id/backups', async (req, res) => {
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
-        const backup = await backupService.createBackup(server.workingDirectory, id, description, worldOnly);
+        const backup = await processManager.createBackup(id, server.workingDirectory, description, worldOnly);
         res.json(backup);
+        auditService.log((req as any).user.id, 'BACKUP_CREATE', id, { backupId: backup.id, description, worldOnly });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1246,6 +1399,7 @@ router.get('/:id/backups', async (req, res) => {
 // Restore backup
 router.post('/:id/backups/:backupId/restore', async (req, res) => {
     const { id, backupId } = req.params;
+    const { worldOnly } = req.body;
     const server = getServer(id);
     
     if (!server) return res.status(404).json({ error: 'Server not found' });
@@ -1264,8 +1418,17 @@ router.post('/:id/backups/:backupId/restore', async (req, res) => {
             }
         }
 
-        await backupService.restoreBackup(server.workingDirectory, id, backupId);
+        await processManager.restoreBackup(id, server.workingDirectory, backupId, worldOnly);
+        
+        // Re-sync config if full restore took place
+        if (!worldOnly) {
+             await serverConfigService.enforceConfig(server);
+        }
+
+        await startServer(id);
         res.json({ success: true, message: 'Backup restored successfully' });
+        
+        auditService.log((req as any).user.id, 'SERVER_RESTORE', id, { backupId, worldOnly: !!worldOnly });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1281,6 +1444,7 @@ router.delete('/:id/backups/:backupId', async (req, res) => {
     try {
         await backupService.deleteBackup(id, backupId);
         res.json({ success: true, message: 'Backup deleted' });
+        auditService.log((req as any).user.id, 'BACKUP_DELETE', id, { backupId });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1304,6 +1468,62 @@ router.get('/:id/backups/:backupId/download', async (req, res) => {
 
 
 
+
+// ==================== CLOUD BACKUP DESTINATIONS ====================
+
+// List cloud destinations
+router.get('/cloud-destinations', verifyToken, requirePermission('server.settings'), async (_req, res) => {
+    try {
+        const destinations = await backupService.getCloudDestinations();
+        res.json(destinations);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Add cloud destination
+router.post('/cloud-destinations', requirePermission('server.settings'), async (req, res) => {
+    try {
+        const destinations = await backupService.addCloudDestination(req.body);
+        res.json(destinations);
+        auditService.log((req as any).user.id, 'BACKUP_CLOUD_ADD', undefined, { provider: req.body.provider, name: req.body.name });
+    } catch (e: any) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+// Test cloud destination
+router.post('/cloud-destinations/test', requirePermission('server.settings'), async (req, res) => {
+    try {
+        const result = await backupService.testCloudDestination(req.body);
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Remove cloud destination
+router.delete('/cloud-destinations/:name', requirePermission('server.settings'), async (req, res) => {
+    try {
+        const destinations = await backupService.removeCloudDestination(req.params.name);
+        res.json(destinations);
+        auditService.log((req as any).user.id, 'BACKUP_CLOUD_REMOVE', undefined, { name: req.params.name });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Health & Auto-Healing Routes
+router.post('/:id/health/reset', requirePermission('server.manage'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        await autoHealingService.resetStabilityMarker(id);
+        auditService.log((req as any).user.id, 'SERVER_HEAL_RESET', id);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
 // ==================== PLAYER ROUTES ====================
 
@@ -1334,6 +1554,7 @@ router.post('/:id/kick-player', async (req, res) => {
     try {
         await playerService.kickPlayer(id, name, reason);
         res.json({ success: true, message: `Kicked ${name}` });
+        auditService.log((req as any).user.id, 'PLAYER_KICK', id, { playerName: name, reason });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1351,6 +1572,10 @@ router.post('/:id/players/:listType', async (req, res) => {
     try {
         const result = await playerService.addPlayer(id, listType as any, identifier);
         res.json(result);
+        
+        const actionMap: any = { 'ops': 'PLAYER_OP', 'banned-players': 'PLAYER_BAN', 'whitelist': 'PLAYER_WHITELIST_ADD' };
+        const action = actionMap[listType] || 'USER_UPDATE';
+        auditService.log((req as any).user.id, action as any, id, { playerName: identifier });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1365,6 +1590,10 @@ router.delete('/:id/players/:listType/:identifier', async (req, res) => {
     try {
         const result = await playerService.removePlayer(id, listType as any, identifier);
         res.json(result);
+
+        const actionMap: any = { 'ops': 'PLAYER_DEOP', 'banned-players': 'PLAYER_PARDON', 'whitelist': 'PLAYER_WHITELIST_REMOVE' };
+        const action = actionMap[listType] || 'USER_UPDATE';
+        auditService.log((req as any).user.id, action as any, id, { playerName: identifier });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

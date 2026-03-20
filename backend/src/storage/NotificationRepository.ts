@@ -11,11 +11,17 @@ class NotificationRepository implements StorageProvider<Notification> {
     }
 
     init() { return this.provider.init(); }
+
+    public async rebind() {
+        this.provider = StorageFactory.get<Notification>('notifications');
+        await this.init();
+    }
     findAll() { return this.provider.findAll(); }
     findById(id: string) { return this.provider.findById(id); }
     findOne(criteria: Partial<Notification>) { return this.provider.findOne(criteria); }
     create(item: Notification) { return this.provider.create(item); }
     update(id: string, updates: Partial<Notification>) { return this.provider.update(id, updates); }
+    saveAll(items: Notification[]) { return this.provider.saveAll(items); }
 
     public delete(id: string): boolean {
         const notification = this.findById(id);
@@ -53,12 +59,20 @@ class NotificationRepository implements StorageProvider<Notification> {
     }
 
     public markAllAsRead(userId: string): void {
-        const notifications = this.getForUser(userId);
-        notifications.forEach(n => {
-            if (!n.read) {
-                this.update(n.id, { read: true });
+        const notifications = this.findAll();
+        let changed = false;
+        
+        const updated = notifications.map(n => {
+            if ((n.userId === userId || n.userId === 'ALL') && !n.read) {
+                changed = true;
+                return { ...n, read: true };
             }
+            return n;
         });
+
+        if (changed) {
+            this.saveAll(updated);
+        }
     }
 
     public prune(maxCount: number = 100): void {
@@ -71,13 +85,12 @@ class NotificationRepository implements StorageProvider<Notification> {
             // For now, let's just delete the extras one by one or leave as is.
             // A better approach for JsonRepository is to expose a setAll or similar.
             // Let's assume for now we just delete the oldest ones.
-            const toDelete = all.slice(maxCount);
-            // Only prune dismissible notifications
-            toDelete.forEach(n => {
-                if (n.dismissible !== false) {
-                    this.delete(n.id);
-                }
-            });
+            const toPrune = all.slice(maxCount).filter(n => n.dismissible !== false);
+            if (toPrune.length > 0) {
+                const toPruneIds = new Set(toPrune.map(n => n.id));
+                const updated = all.filter(n => !toPruneIds.has(n.id));
+                this.saveAll(updated);
+            }
         }
     }
 }

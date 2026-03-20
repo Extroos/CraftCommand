@@ -75,10 +75,11 @@ const DEFAULT_TEMPLATES: ServerTemplate[] = [
         id: 'velocity-latest',
         name: 'Velocity Proxy',
         type: 'Velocity',
-        version: '3.4.0',
+        version: '3.4.0-SNAPSHOT',
         description: 'High-performance Minecraft proxy. Link multiple servers together.',
         recommendedRam: 1024,
-        javaVersion: 21
+        javaVersion: 21,
+        executable: 'velocity.jar'
     }
 ];
 
@@ -125,7 +126,7 @@ export class TemplateService {
         logger.info(`[TemplateService] Installing ${template.name} on ${server.name}...`);
 
         if (template.downloadUrl) {
-            await installerService.installModpackFromZip(serverId, server.workingDirectory, template.downloadUrl);
+            await installerService.installModpackFromZip(serverId, server.workingDirectory, template.downloadUrl, template.version, undefined, template.type);
             return;
         }
 
@@ -157,7 +158,7 @@ export class TemplateService {
             case 'Modpack':
                 const modpackUrl = options?.customUrl || template.downloadUrl;
                 if (!modpackUrl) throw new Error('Modpack installation requires a custom URL or project ID.');
-                await installerService.installModpackFromZip(serverId, server.workingDirectory, modpackUrl, template.version);
+                await installerService.installModpackFromZip(serverId, server.workingDirectory, modpackUrl, template.version, undefined, template.type);
                 break;
             default:
                 throw new Error(`Unsupported template type: ${template.type}`);

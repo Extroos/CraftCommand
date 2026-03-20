@@ -12,6 +12,8 @@ import { useToast } from '../ui/Toast';
 import { useUser } from '@features/auth/context/UserContext';
 import { NodeInfo, NodeStatus } from '@shared/types';
 import { AddNodeWizard } from './wizard/AddNodeWizard';
+import { useConfirm } from '../ui/hooks/useConfirm';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 const STATUS_COLORS: Record<string, string> = {
     [NodeStatus.ONLINE]: 'bg-emerald-500',
@@ -202,6 +204,7 @@ const NodesManager: React.FC = () => {
     const [showWizard, setShowWizard] = useState(false);
     const [fixingId, setFixingId] = useState<string | null>(null);
     const { addToast } = useToast();
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
     
     // Track previous status to prevent notification spam
     const lastStatuses = useRef<Record<string, string>>({});
@@ -259,7 +262,14 @@ const NodesManager: React.FC = () => {
 
     // Actions
     const handleRemove = async (nodeId: string, nodeName: string) => {
-        if (!confirm(`Remove node "${nodeName}"? This cannot be undone.`)) return;
+        const isConfirmed = await requestConfirm({
+            title: 'Remove Node',
+            description: `Remove node "${nodeName}"? This cannot be undone.`,
+            confirmText: 'Remove',
+            cancelText: 'Cancel'
+        });
+        if (!isConfirmed) return;
+
         try {
             await API.removeNode(nodeId);
             setNodes(prev => prev.filter(n => n.id !== nodeId));
@@ -270,7 +280,14 @@ const NodesManager: React.FC = () => {
     };
 
     const handleShutdown = async (nodeId: string, nodeName: string) => {
-        if (!confirm(`Shutdown node agent "${nodeName}"? The process will terminate and must be restarted manually on the remote host.`)) return;
+        const isConfirmed = await requestConfirm({
+            title: 'Shutdown Node',
+            description: `Shutdown node agent "${nodeName}"? The process will terminate and must be restarted manually on the remote host.`,
+            confirmText: 'Shutdown',
+            cancelText: 'Cancel'
+        });
+        if (!isConfirmed) return;
+
         try {
             await API.shutdownNode(nodeId);
             addToast('success', 'Shutdown Sent', `Shutdown command sent to "${nodeName}".`);
@@ -399,6 +416,13 @@ const NodesManager: React.FC = () => {
                     }}
                 />
             )}
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                {...confirmConfig}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+            />
         </div>
     );
 };

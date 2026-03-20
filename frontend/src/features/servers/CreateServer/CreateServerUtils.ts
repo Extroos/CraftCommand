@@ -56,7 +56,60 @@ export const synthesizeDefaultState = (
     // 2. Synchronize Java Version
     newData.javaVersion = getRecommendedJavaForVersion(newData.version, software) as any;
 
+    // 3. Clear Template (If switching software manually, we shouldn't keep a ghost template)
+    if (software !== currentData.software) {
+        newData.templateId = undefined;
+        newData.modpackUrl = undefined;
+    }
+
     return newData;
+};
+
+export const syncFormDataForModpack = (
+    pack: { id: string; title: string; game_versions?: string[] },
+    loader: string,
+    currentData: FormData,
+    bedrockVersions?: { latest: string }
+): FormData => {
+    // 1. Map lower-case Modrinth loader to software option
+    const loaderMap: Record<string, string> = {
+        'fabric': 'Fabric',
+        'forge': 'Forge',
+        'neoforge': 'NeoForge',
+        'quilt': 'Fabric',
+        'paper': 'Paper',
+        'spigot': 'Paper'
+    };
+    const targetSoftware = loaderMap[loader] || currentData.software;
+
+    // 2. Smart version selection (Find best match between mod and panel)
+    const panelVersions = [
+        "1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", 
+        "1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.21", "1.20.6", "1.20.4", "1.20.1",
+        "1.19.4", "1.19.2", "1.18.2", "1.17.1", "1.16.5", "1.12.2", "1.8.9", "1.8.8", "1.7.10"
+    ];
+
+    let bestVersion = currentData.version;
+    if (pack.game_versions && pack.game_versions.length > 0) {
+        const common = pack.game_versions.filter(v => panelVersions.includes(v));
+        if (common.length > 0) {
+            common.sort((a, b) => panelVersions.indexOf(a) - panelVersions.indexOf(b));
+            bestVersion = common[0];
+        } else {
+            bestVersion = pack.game_versions[pack.game_versions.length - 1];
+        }
+    }
+
+    const base = synthesizeDefaultState(targetSoftware, currentData, bedrockVersions);
+    
+    return {
+        ...base, 
+        name: pack.title, 
+        software: targetSoftware,
+        modpackUrl: `modrinth:${pack.id}`,
+        version: bestVersion,
+        javaVersion: getRecommendedJavaForVersion(bestVersion, targetSoftware) as any
+    };
 };
 
 export const validateFormData = (data: FormData): { isValid: boolean; error?: string } => {

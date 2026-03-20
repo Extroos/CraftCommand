@@ -17,6 +17,11 @@ export const PluginFolderMissingRule: DiagnosisRule = {
         const supports = ['Paper', 'Spigot', 'Purpur', 'BungeeCord', 'Velocity'].includes(server.software);
         if (!supports || !server.workingDirectory) return null;
 
+        // Guard: Skip if the server hasn't been initialized yet (executable missing)
+        const execFile = server.executable || (server.software === 'Bedrock' ? 'bedrock_server.exe' : 'server.jar');
+        const jarPath = path.isAbsolute(execFile) ? execFile : path.join(server.workingDirectory, execFile);
+        if (!(await fs.pathExists(jarPath))) return null;
+
         const pluginsDir = path.join(server.workingDirectory, 'plugins');
         if (!(await fs.pathExists(pluginsDir))) {
             return {

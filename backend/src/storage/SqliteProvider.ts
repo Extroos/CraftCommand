@@ -114,6 +114,17 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
         return success;
     }
 
+    saveAll(items: T[]): void {
+        const stmt = this.db.prepare(`INSERT OR REPLACE INTO ${this.tableName} (id, data) VALUES (?, ?)`);
+        const tx = this.db.transaction((items: T[]) => {
+            for (const item of items) {
+                stmt.run(item.id, JSON.stringify(item));
+            }
+        });
+        tx(items);
+        this.syncToJson();
+    }
+
     /**
      * Safe Downgrade Helper: Syncs the current SQL state back to JSON.
      * This ensures that if the user toggles back to JSON mode, their data is intact.

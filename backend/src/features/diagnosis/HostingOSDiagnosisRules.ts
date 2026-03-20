@@ -61,48 +61,6 @@ export const ThermalAlertRule: DiagnosisRule = {
 };
 
 /**
- * WARNING: Disk usage is high system-wide.
- */
-export const DiskPressureRule: DiagnosisRule = {
-    id: 'hosting_disk_pressure',
-    name: 'Disk Space Pressure',
-    description: 'Warns when system disk usage exceeds 85%, indicating risk of running out of space.',
-    tier: 1,
-    defaultConfidence: 90,
-    triggers: [],
-    analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
-        if (server.status !== 'ONLINE') return null;
-
-        const { hostingOSService } = await import('../system/HostingOSService');
-        const health = await hostingOSService.getHealth();
-
-        if (health.disk.usagePercent < 85) return null;
-
-        const severity = health.disk.usagePercent >= 95 ? 'CRITICAL' : 'WARNING';
-        const freeGB = health.disk.freeGB;
-
-        // Find the largest server directories
-        const topServers = health.serverDiskUsage
-            .slice(0, 3)
-            .map(s => `${s.serverName} (${s.sizeMB}MB)`)
-            .join(', ');
-
-        return {
-            id: `hosting-disk-${server.id}-${Date.now()}`,
-            ruleId: 'hosting_disk_pressure',
-            severity,
-            title: `Disk Space ${severity === 'CRITICAL' ? 'Critical' : 'Low'}: ${freeGB}GB Free (${health.disk.usagePercent}% used)`,
-            explanation: `The system disk is ${health.disk.usagePercent}% full with only ${freeGB}GB remaining. Servers using the most space: ${topServers || 'N/A'}. Total server disk usage: ${health.totalServerDiskMB}MB.`,
-            recommendation: severity === 'CRITICAL'
-                ? 'Immediately free disk space: delete old backups, prune world data, or remove unused servers. Running out of disk space can corrupt world saves.'
-                : 'Consider cleaning up backups, pruning old worlds, or expanding storage. Use the Cache Management panel to clear temporary files.',
-            confidence: 95,
-            timestamp: Date.now()
-        };
-    }
-};
-
-/**
  * WARNING: System memory pressure — barely any free RAM for new servers.
  */
 export const MemoryPressureRule: DiagnosisRule = {
@@ -135,6 +93,5 @@ export const MemoryPressureRule: DiagnosisRule = {
 
 export const HostingOSRules: DiagnosisRule[] = [
     ThermalAlertRule,
-    DiskPressureRule,
     MemoryPressureRule
 ];

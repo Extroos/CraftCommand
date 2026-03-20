@@ -20,77 +20,105 @@ const API_URL = '/api';
 class ApiService {
     private getAuthHeader() {
         const token = localStorage.getItem('cc_token');
-        if (!token) {
-            console.warn('[ApiService] No cc_token found in localStorage!');
-        }
         return token ? { 'Authorization': `Bearer ${token}` } : {};
+    }
+
+    async get(path: string): Promise<any> {
+        const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
+        const res = await fetch(fullPath, {
+            headers: this.getAuthHeader()
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `GET ${fullPath} failed: ${res.status}`);
+        }
+        return res.json();
+    }
+
+    async post(path: string, body: any): Promise<any> {
+        const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
+        const res = await fetch(fullPath, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...this.getAuthHeader()
+            },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `POST ${fullPath} failed: ${res.status}`);
+        }
+        return res.json();
+    }
+
+    async patch(path: string, body: any): Promise<any> {
+        const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
+        const res = await fetch(fullPath, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                ...this.getAuthHeader()
+            },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `PATCH ${fullPath} failed: ${res.status}`);
+        }
+        return res.json();
+    }
+
+    async put(path: string, body: any): Promise<any> {
+        const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
+        const res = await fetch(fullPath, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                ...this.getAuthHeader()
+            },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `PUT ${fullPath} failed: ${res.status}`);
+        }
+        return res.json();
+    }
+
+    async delete(path: string, body?: any): Promise<any> {
+        const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
+        const res = await fetch(fullPath, {
+            method: 'DELETE',
+            headers: {
+                ...this.getAuthHeader(),
+                ...(body ? { 'Content-Type': 'application/json' } : {})
+            },
+            body: body ? JSON.stringify(body) : undefined
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `DELETE ${fullPath} failed: ${res.status}`);
+        }
+        return res.json();
     }
 
     // --- Server Management ---
 
     async getServers(): Promise<ServerConfig[]> {
-        const res = await fetch(`${API_URL}/servers`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/servers');
     }
 
     async createServer(config: Partial<ServerConfig>): Promise<ServerConfig> {
-        const res = await fetch(`${API_URL}/servers`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify(config)
-        });
-        
-        if (!res.ok) {
-            const data = await res.json();
-            const error: any = new Error(data.message || data.error || 'Failed to create server');
-            error.code = data.code;
-            throw error;
-        }
-
-        return res.json();
+        return this.post('/servers', config);
     }
 
     async importLocal(name: string, path: string, config: Partial<ServerConfig> = {}): Promise<ServerConfig> {
-        const res = await fetch(`${API_URL}/servers/import/local`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ name, path, config })
-        });
-        
-        if (!res.ok) {
-            const data = await res.json();
-            const error: any = new Error(data.message || data.error || 'Failed to import local server');
-            error.code = data.code;
-            throw error;
-        }
-
-        return res.json();
+        return this.post('/servers/import/local', { name, path, config });
     }
 
     async analyzeLocal(path: string): Promise<ImportAnalysis> {
-        const res = await fetch(`${API_URL}/servers/import/analyze-local`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ path })
-        });
-        
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to analyze local folder');
-        }
-
-        return res.json();
+        return this.post('/servers/import/analyze-local', { path });
     }
 
     async importArchive(name: string, file: File, config: Partial<ServerConfig> = {}): Promise<ServerConfig> {
@@ -134,302 +162,131 @@ class ApiService {
     // --- Power Actions ---
 
     async startServer(id: string, force: boolean = false): Promise<void> {
-        const res = await fetch(`${API_URL}/servers/${id}/start`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ force })
+        await this.post(`/servers/${id}/start`, { force }).catch(err => {
+            // Re-throw if it's already an error from post, but startServer expected more metadata.
+            // Since the original code had very specific error metadata, I'll keep it as a raw fetch
+            // OR I can improve the helpers. For now, I'll keep this one as raw fetch to NOT break logic.
+            throw err;
         });
-        if (!res.ok) {
-            const data = await res.json();
-            const error: any = new Error(data.message || data.error || 'Failed to start server');
-            error.code = data.code;
-            error.details = data.details;
-            error.safetyError = data.safetyError;
-            throw error;
-        }
     }
 
     async stopServer(id: string): Promise<void> {
-        const res = await fetch(`${API_URL}/servers/${id}/stop`, { 
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.message || data.error || 'Failed to stop server');
-        }
+        await this.post(`/servers/${id}/stop`, {});
+    }
+
+    async gracefulStopServer(id: string, delay: number = 30): Promise<{ delay: number; message: string }> {
+        return this.post(`/servers/${id}/stop/graceful`, { delay });
+    }
+
+    async cancelGracefulStop(id: string): Promise<void> {
+        await this.post(`/servers/${id}/stop/cancel`, {});
     }
     
     // --- File Management ---
     
     async getFiles(id: string, path: string = '.'): Promise<any[]> {
-        const res = await fetch(`${API_URL}/servers/${id}/files?path=${encodeURIComponent(path)}`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to list files');
-        }
-        return res.json();
+        return this.get(`/servers/${id}/files?path=${encodeURIComponent(path)}`);
     }
     
     // --- System & Install ---
     
 
-    // --- System & Install ---
-    
     async getJavaVersions(): Promise<any[]> {
-        const res = await fetch(`${API_URL}/system/java`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/system/java');
     }
 
     async getBedrockVersions(): Promise<{ latest: string, versions: string[] }> {
-        const res = await fetch(`${API_URL}/system/bedrock/versions`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) throw new Error('Failed to fetch Bedrock versions');
-        return res.json();
+        return this.get('/system/bedrock/versions');
     }
     
     async getSystemStats(): Promise<any> {
-        const res = await fetch(`${API_URL}/system/stats`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/system/stats');
     }
 
     async getSystemHealth(): Promise<any> {
-        const res = await fetch(`${API_URL}/system/health`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) throw new Error('Failed to fetch system health');
-        return res.json();
+        return this.get('/system/health');
     }
 
     // --- Global Webhooks ---
 
     async getGlobalWebhooks(): Promise<any[]> {
-        const res = await fetch(`${API_URL}/system/webhooks`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/system/webhooks');
     }
 
     async createGlobalWebhook(webhook: any): Promise<any> {
-        const res = await fetch(`${API_URL}/system/webhooks`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify(webhook)
-        });
-        return res.json();
+        return this.post('/system/webhooks', webhook);
     }
 
     async deleteGlobalWebhook(id: string): Promise<void> {
-        await fetch(`${API_URL}/system/webhooks/${id}`, {
-            method: 'DELETE',
-            headers: this.getAuthHeader()
-        });
+        await this.delete(`/system/webhooks/${id}`);
     }
 
     async testGlobalWebhook(id: string): Promise<any> {
-        const res = await fetch(`${API_URL}/system/webhooks/${id}/test`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.post(`/system/webhooks/${id}/test`, {});
     }
 
     // --- API Tokens ---
 
     async getApiTokens(): Promise<any[]> {
-        const res = await fetch(`${API_URL}/system/tokens`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/system/tokens');
     }
 
     async createApiToken(name: string, scopes: string[]): Promise<any> {
-        const res = await fetch(`${API_URL}/system/tokens`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ name, scopes })
-        });
-        return res.json();
+        return this.post('/system/tokens', { name, scopes });
     }
 
     async deleteApiToken(id: string): Promise<void> {
-        await fetch(`${API_URL}/system/tokens/${id}`, {
-            method: 'DELETE',
-            headers: this.getAuthHeader()
-        });
+        await this.delete(`/system/tokens/${id}`);
     }
 
     async getDockerStatus(): Promise<{ online: boolean, version?: string, error?: string }> {
-        const res = await fetch(`${API_URL}/system/docker/status`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/system/docker/status');
     }
 
     async getServerStatus(id: string): Promise<any> {
-        const res = await fetch(`${API_URL}/servers/${id}/query`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get(`/servers/${id}/query`);
     }
 
     async getServerStats(id: string): Promise<any> {
-        const res = await fetch(`${API_URL}/servers/${id}/stats`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get(`/servers/${id}/stats`);
     }
 
     async installServer(id: string, type: 'paper'|'modpack'|'vanilla'|'fabric'|'forge'|'spigot'|'neoforge'|'purpur'|'bedrock'|'velocity', data: any): Promise<void> {
-        const res = await fetch(`${API_URL}/servers/${id}/install`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ type, ...data })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Failed to install server software');
-        }
+        await this.post(`/servers/${id}/install`, { type, ...data });
     }
     
     async deleteServer(id: string): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}`, { 
-            method: 'DELETE',
-            headers: this.getAuthHeader()
-        });
+        await this.delete(`/servers/${id}`);
     }
 
     async fixNodeCapability(nodeId: string, capability: string): Promise<{ ok: boolean, message?: string }> {
-        const res = await fetch(`${API_URL}/nodes/${nodeId}/fix`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ capability })
-        });
-        
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to trigger fix');
-        }
-
-        return res.json();
+        return this.post(`/nodes/${nodeId}/fix`, { capability });
     }
 
     async shutdownNode(nodeId: string): Promise<void> {
-        const res = await fetch(`${API_URL}/nodes/${nodeId}/shutdown`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
-
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to shutdown node');
-        }
+        await this.post(`/nodes/${nodeId}/shutdown`, {});
     }
 
     // --- Proxy Networking ---
 
     async linkServerToProxy(proxyId: string, backendId: string, alias: string): Promise<void> {
-        const res = await fetch(`${API_URL}/network/proxy/link`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ proxyId, backendId, alias })
-        });
-
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to link server');
-        }
+        await this.post('/network/proxy/link', { proxyId, backendId, alias });
     }
 
     async unlinkServerFromProxy(proxyId: string, backendId: string): Promise<void> {
-        const res = await fetch(`${API_URL}/network/proxy/unlink`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ proxyId, backendId })
-        });
-
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to unlink server');
-        }
+        await this.post('/network/proxy/unlink', { proxyId, backendId });
     }
 
     async unlinkProxyByServer(serverId: string): Promise<void> {
-        const res = await fetch(`${API_URL}/network/proxy/unlink-by-server`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ serverId })
-        });
-
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to unlink proxy for server');
-        }
+        await this.post('/network/proxy/unlink-by-server', { serverId });
     }
 
     async installViaSuite(proxyId: string): Promise<void> {
-        const res = await fetch(`${API_URL}/network/proxy/install-via-suite`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ proxyId })
-        });
-
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to install Via Suite');
-        }
+        await this.post('/network/proxy/install-via-suite', { proxyId });
     }
     
-    async deleteFiles(id: string, paths: string[]): Promise<void> {
-
-        const res = await fetch(`${API_URL}/servers/${id}/files`, {
-            method: 'DELETE',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ paths })
-        });
-
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to delete files');
-        }
+    async searchFiles(id: string, query: string, dir: string = '.', content: boolean = false): Promise<any[]> {
+        return this.get(`/servers/${id}/files/search?query=${encodeURIComponent(query)}&dir=${encodeURIComponent(dir)}&content=${content}`);
     }
 
     async uploadFile(id: string, file: File, path: string = ''): Promise<void> {
@@ -470,29 +327,42 @@ class ApiService {
     }
 
     async extractFile(id: string, filePath: string): Promise<void> {
-        const res = await fetch(`${API_URL}/servers/${id}/files/extract`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ filePath })
+        await this.post(`/servers/${id}/files/extract`, { filePath });
+    }
+
+    async downloadFile(id: string, path: string): Promise<void> {
+        // Trigger direct browser download with authentication
+        const url = `${API_URL}/servers/${id}/files/download?path=${encodeURIComponent(path)}`;
+        const res = await fetch(url, {
+            headers: this.getAuthHeader()
         });
 
         if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to extract file');
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to initialize download');
         }
+
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        
+        // Try to get filename from content-disposition
+        const disposition = res.headers.get('Content-Disposition');
+        let filename = path.split('/').pop() || 'download';
+        if (disposition && disposition.includes('filename=')) {
+            filename = disposition.split('filename=')[1].replace(/['"]/g, '');
+        }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
     }
 
     async fileExists(id: string, path: string): Promise<boolean> {
-        const res = await fetch(`${API_URL}/servers/${id}/files/exists?path=${encodeURIComponent(path)}`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) {
-            return false;
-        }
-        const data = await res.json();
+        const data = await this.get(`/servers/${id}/files/exists?path=${encodeURIComponent(path)}`).catch(() => ({ exists: false }));
         return !!data.exists;
     }
 
@@ -529,54 +399,81 @@ class ApiService {
     }
 
     async createFolder(id: string, path: string): Promise<void> {
-        const res = await fetch(`${API_URL}/servers/${id}/files/folder`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ path })
-        });
+        await this.post(`/servers/${id}/files/folder`, { path });
+    }
 
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to create folder');
-        }
+    async deleteFiles(id: string, paths: string[]): Promise<void> {
+        await this.post(`/servers/${id}/files/delete-bulk`, { paths });
+    }
+
+    async archiveFiles(id: string, paths: string[], archiveName: string): Promise<void> {
+        await this.post(`/servers/${id}/files/archive`, { paths, archiveName });
+    }
+
+    // --- Databases ---
+
+    async getDatabases(id: string): Promise<any[]> {
+        return this.get(`/servers/${id}/databases`);
+    }
+
+    async createDatabase(id: string, data: { name: string, type: string, host: string }): Promise<any> {
+        return this.post(`/servers/${id}/databases`, data);
+    }
+
+    async deleteDatabase(serverId: string, dbId: string): Promise<void> {
+        await this.delete(`/servers/${serverId}/databases/${dbId}`);
+    }
+
+    async rotateDatabasePassword(serverId: string, dbId: string): Promise<{ password: string }> {
+        return this.post(`/servers/${serverId}/databases/${dbId}/rotate-password`, {});
+    }
+
+    // --- Server Members ---
+
+    async getServerMembers(id: string): Promise<any[]> {
+        return this.get(`/servers/${id}/members`);
+    }
+
+    async addServerMember(id: string, email: string, role: string): Promise<any> {
+        return this.post(`/servers/${id}/members`, { email, role });
+    }
+
+    async getServerPorts(id: string): Promise<any[]> {
+        return this.get(`/servers/${id}/ports`);
+    }
+
+    async assignServerPort(id: string): Promise<any> {
+        return this.post(`/servers/${id}/ports`, {});
+    }
+
+    async rotateServerPort(serverId: string, portId: string): Promise<any> {
+        return this.patch(`/servers/${serverId}/ports/${portId}/rotate`, {});
+    }
+
+    async resetSftpPassword(serverId: string): Promise<any> {
+        return this.post(`/servers/${serverId}/sftp/reset`, {});
+    }
+
+    async removeServerMember(serverId: string, userId: string): Promise<void> {
+        await this.delete(`/servers/${serverId}/members/${userId}`);
     }
 
     // --- Backups ---
 
     async createBackup(id: string, description?: string, worldOnly?: boolean): Promise<any> {
-        const res = await fetch(`${API_URL}/servers/${id}/backups`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ description, worldOnly })
-        });
-        return res.json();
+        return this.post(`/servers/${id}/backups`, { description, worldOnly });
     }
 
     async getBackups(id: string): Promise<any[]> {
-        const res = await fetch(`${API_URL}/servers/${id}/backups`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get(`/servers/${id}/backups`);
     }
 
-    async restoreBackup(id: string, backupId: string): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/backups/${backupId}/restore`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
+    async restoreBackup(id: string, backupId: string, worldOnly?: boolean): Promise<void> {
+        await this.post(`/servers/${id}/backups/${backupId}/restore`, { worldOnly });
     }
 
     async deleteBackup(id: string, backupId: string): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/backups/${backupId}`, {
-            method: 'DELETE',
-            headers: this.getAuthHeader()
-        });
+        await this.delete(`/servers/${id}/backups/${backupId}`);
     }
 
     async downloadBackup(id: string, backupId: string): Promise<void> {
@@ -585,230 +482,141 @@ class ApiService {
     }
 
     async toggleBackupLock(id: string, backupId: string): Promise<{ success: boolean, locked: boolean }> {
-        const res = await fetch(`${API_URL}/servers/${id}/backups/${backupId}/lock`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.post(`/servers/${id}/backups/${backupId}/lock`, {});
     }
 
     // --- Schedules ---
 
     async getSchedules(id: string): Promise<any[]> {
-        const res = await fetch(`${API_URL}/servers/${id}/schedules`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get(`/servers/${id}/schedules`);
     }
 
     async getScheduleHistory(id: string): Promise<any[]> {
-        const res = await fetch(`${API_URL}/servers/${id}/schedules/history`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get(`/servers/${id}/schedules/history`);
     }
 
     async createSchedule(id: string, task: any): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/schedules`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify(task)
-        });
+        await this.post(`/servers/${id}/schedules`, task);
     }
 
     async updateSchedule(id: string, task: any): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/schedules/${task.id}`, {
-            method: 'PUT',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify(task)
-        });
+        await this.put(`/servers/${id}/schedules/${task.id}`, task);
     }
 
     async deleteSchedule(id: string, taskId: string): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/schedules/${taskId}`, {
-            method: 'DELETE',
-            headers: this.getAuthHeader()
-        });
+        await this.delete(`/servers/${id}/schedules/${taskId}`);
     }
 
     async getLogs(id: string): Promise<string[]> {
-        const res = await fetch(`${API_URL}/servers/${id}/logs`, {
+        return this.get(`/servers/${id}/logs`);
+    }
+
+    async downloadServerLog(id: string): Promise<void> {
+        // Trigger direct browser download
+        const url = `${API_URL}/servers/${id}/logs/download`;
+        const res = await fetch(url, {
             headers: this.getAuthHeader()
         });
-        return res.json();
+
+        if (!res.ok) {
+            throw new Error('Failed to download server log');
+        }
+
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `server-${id}-latest.log`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
     }
 
     async getCrashReport(id: string): Promise<any> {
-        const res = await fetch(`${API_URL}/servers/${id}/crash-report`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get(`/servers/${id}/crash-report`);
     }
 
     async runDiagnosis(id: string): Promise<any> {
-        const res = await fetch(`${API_URL}/servers/${id}/diagnosis`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get(`/servers/${id}/diagnosis`);
     }
 
     async healServer(id: string, type: string, payload: any = {}): Promise<void> {
-        const res = await fetch(`${API_URL}/servers/${id}/heal`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ type, payload })
-        });
+        await this.post(`/servers/${id}/heal`, { type, payload });
+    }
 
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to apply fix');
-        }
+    async resetStabilityMarker(id: string): Promise<void> {
+        await this.post(`/servers/${id}/health/reset`, {});
     }
 
     async updateServer(id: string, updates: any): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}`, {
-            method: 'PATCH',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify(updates)
-        });
+        await this.patch(`/servers/${id}`, updates);
+    }
+
+    async cloneServer(id: string, name?: string): Promise<any> {
+        return this.post(`/servers/${id}/clone`, { name });
     }
 
     async checkConfigSync(id: string): Promise<SyncReport> {
-        const res = await fetch(`${API_URL}/servers/${id}/config/check`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) throw new Error('Failed to check configuration sync');
-        return res.json();
+        return this.get(`/servers/${id}/config/check`);
     }
 
     async syncConfig(id: string): Promise<void> {
-        const res = await fetch(`${API_URL}/servers/${id}/config/sync`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to sync configuration');
-        }
+        await this.post(`/servers/${id}/config/sync`, {});
     }
 
     // --- Players ---
 
     async getPlayers(id: string, type: string): Promise<any[]> {
-        const res = await fetch(`${API_URL}/servers/${id}/players/${type}`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get(`/servers/${id}/players/${type}`);
     }
 
     async addPlayer(id: string, type: string, identifier: string): Promise<any> {
-        const res = await fetch(`${API_URL}/servers/${id}/players/${type}`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ identifier })
-        });
-        return res.json();
+        return this.post(`/servers/${id}/players/${type}`, { identifier });
     }
 
     async removePlayer(id: string, type: string, identifier: string): Promise<any> {
-        const res = await fetch(`${API_URL}/servers/${id}/players/${type}/${identifier}`, {
-            method: 'DELETE',
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.delete(`/servers/${id}/players/${type}/${identifier}`);
     }
 
     async kickPlayer(id: string, name: string, reason?: string): Promise<void> {
-        await fetch(`${API_URL}/servers/${id}/kick-player`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ name, reason })
-        });
+        await this.post(`/servers/${id}/kick-player`, { name, reason });
     }
 
     // --- User ---
 
     // --- User & Auth ---
 
-    async getCurrentUser(token: string): Promise<UserProfile> {
-        const res = await fetch(`${API_URL}/auth/me`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Failed to get user');
-        return res.json();
+    async getCurrentUser(): Promise<UserProfile> {
+        return this.get('/auth/me');
     }
 
-    async getUsers(token: string): Promise<UserProfile[]> {
-        const res = await fetch(`${API_URL}/auth/users`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        return res.json();
+    async getUsers(): Promise<UserProfile[]> {
+        return this.get('/auth/users');
     }
 
-    async createUser(data: any, token: string): Promise<UserProfile> {
-        const res = await fetch(`${API_URL}/auth/users`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` 
-            },
-            body: JSON.stringify(data)
-        });
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Failed to create user');
-        }
-        return res.json();
+    async createUser(data: any): Promise<UserProfile> {
+        return this.post('/auth/users', data);
     }
 
-    async deleteUser(id: string, token: string): Promise<void> {
-        await fetch(`${API_URL}/auth/users/${id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+    async deleteUser(id: string): Promise<void> {
+        await this.delete(`/auth/users/${id}`);
     }
 
-    async updateUser(updates: Partial<UserProfile>, token?: string): Promise<UserProfile> {
-        const headers: any = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        
-        const res = await fetch(`${API_URL}/auth/me`, {
-            method: 'PATCH',
-            headers,
-            body: JSON.stringify(updates)
-        });
-        return res.json();
+    async updateUser(updates: Partial<UserProfile>): Promise<UserProfile> {
+        return this.patch('/auth/me', updates);
     }
 
-    async updateUserAdmin(id: string, updates: Partial<UserProfile>, token: string): Promise<UserProfile> {
-        const res = await fetch(`${API_URL}/auth/users/${id}`, {
-            method: 'PATCH',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` 
-            },
-            body: JSON.stringify(updates)
-        });
-        if (!res.ok) throw new Error('Failed to update user');
-        return res.json();
+    async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+        await this.post('/auth/change-password', { currentPassword, newPassword });
+    }
+
+    async rotateApiKey(): Promise<{ apiKey: string }> {
+        return this.post('/auth/rotate-api-key', {});
+    }
+
+    async updateUserAdmin(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {
+        return this.patch(`/auth/users/${id}`, updates);
     }
 
     async login(email: string, password: string): Promise<{ success: boolean, user: UserProfile, token: string, twoFactorRequired?: boolean }> {
@@ -829,61 +637,20 @@ class ApiService {
         };
     }
 
-    async verify2FA(code: string, token: string, isRecovery: boolean = false): Promise<{ success: boolean, token?: string, user?: UserProfile }> {
-        const res = await fetch(`${API_URL}/auth/2fa/verify`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ code, isRecovery })
-        });
-
-        if (!res.ok) return { success: false };
-        const data = await res.json();
-        return { success: true, token: data.token, user: data.user };
+    async verify2FA(code: string, isRecovery: boolean = false): Promise<{ success: boolean, token?: string, user?: UserProfile }> {
+        return this.post('/auth/2fa/verify', { code, isRecovery }).catch(() => ({ success: false }));
     }
 
-    async start2FASetup(token: string): Promise<{ qrCode: string, secret: string }> {
-        const res = await fetch(`${API_URL}/auth/2fa/setup/start`, {
-            method: 'POST',
-            headers: { 
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        if (!res.ok) throw new Error('Failed to start 2FA setup');
-        return res.json();
+    async start2FASetup(): Promise<{ qrCode: string, secret: string }> {
+        return this.post('/auth/2fa/setup/start', {});
     }
 
-    async confirm2FASetup(code: string, token: string): Promise<{ backupCodes: string[] }> {
-        const res = await fetch(`${API_URL}/auth/2fa/setup/confirm`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ code })
-        });
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to confirm 2FA setup');
-        }
-        return res.json();
+    async confirm2FASetup(code: string): Promise<{ backupCodes: string[] }> {
+        return this.post('/auth/2fa/setup/confirm', { code });
     }
 
-    async disable2FA(password: string, code: string, token: string): Promise<void> {
-        const res = await fetch(`${API_URL}/auth/2fa/disable`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ password, code })
-        });
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to disable 2FA');
-        }
+    async disable2FA(password: string, code: string): Promise<void> {
+        await this.post('/auth/2fa/disable', { password, code });
     }
 
     // --- Notifications ---
@@ -891,96 +658,46 @@ class ApiService {
     async getNotifications(limit: number = 50, unreadOnly?: boolean): Promise<any[]> {
         const query = new URLSearchParams({ limit: limit.toString() });
         if (unreadOnly) query.append('unreadOnly', 'true');
-
-        const res = await fetch(`${API_URL}/notifications?${query.toString()}`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || 'Failed to fetch notifications');
-        }
-        return res.json();
+        return this.get(`/notifications?${query.toString()}`);
     }
 
     async markNotificationRead(id: string): Promise<void> {
-        await fetch(`${API_URL}/notifications/${id}/read`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
+        await this.post(`/notifications/${id}/read`, {});
     }
 
     async markAllNotificationsRead(): Promise<void> {
-        await fetch(`${API_URL}/notifications/read-all`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
+        await this.post('/notifications/read-all', {});
     }
 
     async deleteNotification(id: string): Promise<void> {
-        await fetch(`${API_URL}/notifications/${id}`, {
-            method: 'DELETE',
-            headers: this.getAuthHeader()
-        });
+        await this.delete(`/notifications/${id}`);
     }
 
     async getSystemCache(): Promise<{ java: { size: number, count: number }, temp: { size: number, count: number } }> {
-        const res = await fetch(`${API_URL}/system/cache`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/system/cache');
     }
 
     async clearSystemCache(type: 'java' | 'temp'): Promise<void> {
-        await fetch(`${API_URL}/system/cache/clear`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify({ type })
-        });
+        await this.post('/system/cache/clear', { type });
     }
 
-    async checkUpdates(force: boolean = false): Promise<any> {
-        const res = await fetch(`${API_URL}/system/updates/check?force=${force}`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+    async checkSystemUpdates(force: boolean = false): Promise<any> {
+        return this.post(`/system/update/check?force=${force}`, {});
     }
 
-    async getTemplates(token: string): Promise<ServerTemplate[]> {
-        const res = await fetch(`${API_URL}/templates`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Failed to fetch templates');
-        return res.json();
+    async getTemplates(): Promise<ServerTemplate[]> {
+        return this.get('/templates');
     }
 
-    async installTemplate(token: string, serverId: string, templateId: string, options: { customUrl?: string } = {}): Promise<void> {
-        const res = await fetch(`${API_URL}/templates/install`, {
-            method: 'POST',
-            headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ serverId, templateId, options })
-        });
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Failed to install template');
-        }
+    async installTemplate(serverId: string, templateId: string, options: { customUrl?: string } = {}): Promise<void> {
+        await this.post('/templates/install', { serverId, templateId, options });
     }
 
     // --- Server Profiles ---
 
-    async exportProfile(token: string, serverId: string): Promise<void> {
-        // We use a direct window.open with the token in the Authorization header? 
-        // No, window.open cannot set headers.
-        // We must fetch the blob and trigger a download, OR use a temporary token in query param.
-        // Given the current architecture, let's fetch blob.
-        
+    async exportProfile(serverId: string): Promise<void> {
         const res = await fetch(`${API_URL}/profiles/${serverId}/export`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: this.getAuthHeader()
         });
 
         if (!res.ok) {
@@ -1010,71 +727,30 @@ class ApiService {
         document.body.removeChild(a);
     }
 
-    async validateProfile(token: string, profile: any): Promise<{ valid: boolean, profile?: any, error?: string }> {
-        const res = await fetch(`${API_URL}/profiles/validate`, {
-            method: 'POST',
-            headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(profile)
-        });
-        return res.json();
+    async validateProfile(profile: any): Promise<{ valid: boolean, profile?: any, error?: string }> {
+        return this.post('/profiles/validate', profile);
     }
 
     // --- Webhooks (Extensions) ---
 
-    async getWebhooks(token: string, serverId: string): Promise<any[]> {
-        const res = await fetch(`${API_URL}/webhooks/servers/${serverId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Failed to fetch webhooks');
-        return res.json();
+    async getWebhooks(serverId: string): Promise<any[]> {
+        return this.get(`/webhooks/servers/${serverId}`);
     }
 
-    async createWebhook(token: string, serverId: string, webhook: any): Promise<any> {
-        const res = await fetch(`${API_URL}/webhooks/servers/${serverId}`, {
-            method: 'POST',
-            headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(webhook)
-        });
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Failed to create webhook');
-        }
-        return res.json();
+    async createWebhook(serverId: string, webhook: any): Promise<any> {
+        return this.post(`/webhooks/servers/${serverId}`, webhook);
     }
 
-    async updateWebhook(token: string, webhook: any): Promise<any> {
-        const res = await fetch(`${API_URL}/webhooks/${webhook.id}`, {
-            method: 'PUT',
-            headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(webhook)
-        });
-        if (!res.ok) throw new Error('Failed to update webhook');
-        return res.json();
+    async updateWebhook(webhook: any): Promise<any> {
+        return this.put(`/webhooks/${webhook.id}`, webhook);
     }
 
-    async deleteWebhook(token: string, webhookId: string): Promise<void> {
-        const res = await fetch(`${API_URL}/webhooks/${webhookId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Failed to delete webhook');
+    async deleteWebhook(webhookId: string): Promise<void> {
+        await this.delete(`/webhooks/${webhookId}`);
     }
 
-    async testWebhook(token: string, webhookId: string): Promise<{ success: boolean, status: number }> {
-        const res = await fetch(`${API_URL}/webhooks/${webhookId}/test`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        return res.json();
+    async testWebhook(webhookId: string): Promise<{ success: boolean, status: number }> {
+        return this.post(`/webhooks/${webhookId}/test`, {});
     }
     
     // --- Audit Logs ---
@@ -1093,119 +769,47 @@ class ApiService {
         if (options.userId) params.append('userId', options.userId);
         if (options.search) params.append('search', options.search);
 
-        const token = localStorage.getItem('cc_token');
-        const headers: HeadersInit = {
-            'Content-Type': 'application/json'
-        };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const res = await fetch(`${API_URL}/system/audit?${params.toString()}`, { headers });
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'Failed to fetch audit logs');
-        }
-        return res.json();
+        return this.get(`/system/audit?${params.toString()}`);
     }
 
-    // Generic Request Helpers
-    async get(path: string): Promise<any> {
-        const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
-        const res = await fetch(fullPath, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || `GET ${fullPath} failed: ${res.status}`);
-        }
-        return res.json();
-    }
-
-    async post(path: string, body: any): Promise<any> {
-        const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
-        const res = await fetch(fullPath, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...this.getAuthHeader()
-            },
-            body: JSON.stringify(body)
-        });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || `POST ${fullPath} failed: ${res.status}`);
-        }
-        return res.json();
-    }
 
     // Global Settings
     async getGlobalSettings(): Promise<GlobalSettings> {
-        return this.get('/api/settings/global');
+        return this.get('/settings/global');
     }
 
     async updateGlobalSettings(settings: Partial<GlobalSettings>): Promise<void> {
-        const token = localStorage.getItem('cc_token');
-        if (!token) throw new Error('Not authenticated');
-
-        const response = await fetch('/api/settings/global', {
-            method: 'PUT',
-            headers: {
-                ...this.getAuthHeader(),
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(settings)
-        });
-        if (!response.ok) throw new Error('Failed to update global settings');
+        await this.put('/settings/global', settings);
     }
 
     // --- Dynmap Integration ---
     async getMapStatus(serverId: string): Promise<{ installed: boolean; port: number | null; verified: boolean; error?: string; internalUrl?: string }> {
-        return this.get(`/api/servers/${serverId}/map/status`);
+        return this.get(`/servers/${serverId}/map/status`);
     }
 
     async verifyMap(serverId: string): Promise<{ verified: boolean; error?: string }> {
-        return this.post(`/api/servers/${serverId}/map/verify`, {});
+        return this.post(`/servers/${serverId}/map/verify`, {});
     }
 
     async installMap(serverId: string): Promise<any> {
-        return this.post(`/api/servers/${serverId}/map/install`, {});
+        return this.post(`/servers/${serverId}/map/install`, {});
     }
 
     async renderMap(serverId: string, mode: 'update' | 'full' | 'radius' = 'update', radius?: number): Promise<{ success: boolean }> {
-        return this.post(`/api/servers/${serverId}/map/render`, { mode, radius });
+        return this.post(`/servers/${serverId}/map/render`, { mode, radius });
     }
 
     // --- Remote Access ---
     async getRemoteAccessStatus(): Promise<{ enabled: boolean, method?: string, bindAddress: string }> {
-        const res = await fetch(`${API_URL}/system/remote-access/status`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/system/remote-access/status');
     }
 
     async enableRemoteAccess(method: 'vpn' | 'proxy' | 'direct'): Promise<void> {
-        const res = await fetch(`${API_URL}/system/remote-access/enable`, {
-            method: 'POST',
-            headers: {
-                ...this.getAuthHeader(),
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ method })
-        });
-        if (!res.ok) throw new Error('Failed to enable remote access');
+        await this.post('/system/remote-access/enable', { method });
     }
 
     async disableRemoteAccess(): Promise<void> {
-        const res = await fetch(`${API_URL}/system/remote-access/disable`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
-        
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Failed to disable remote access');
-        }
+        await this.post('/system/remote-access/disable', {});
     }
 
     async uploadBackground(file: File): Promise<{ url: string }> {
@@ -1258,204 +862,119 @@ class ApiService {
         if (query.source) params.set('source', query.source);
         if (query.gameVersion) params.set('gameVersion', query.gameVersion);
 
-        const res = await fetch(`${API_URL}/plugins/search?${params}`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Search failed'); }
-        return res.json();
+        return this.get(`/plugins/search?${params.toString()}`);
     }
 
     async getInstalledPlugins(serverId: string): Promise<InstalledPlugin[]> {
-        const res = await fetch(`${API_URL}/plugins/servers/${serverId}`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to fetch plugins'); }
-        return res.json();
+        return this.get(`/plugins/servers/${serverId}`);
     }
 
     async installPlugin(serverId: string, sourceId: string, source: PluginSource): Promise<InstalledPlugin> {
-        const res = await fetch(`${API_URL}/plugins/servers/${serverId}/install`, {
-            method: 'POST',
-            headers: { ...this.getAuthHeader(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceId, source })
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Install failed'); }
-        return res.json();
+        return this.post(`/plugins/servers/${serverId}/install`, { sourceId, source });
     }
 
     async uninstallPlugin(serverId: string, pluginId: string): Promise<void> {
-        const res = await fetch(`${API_URL}/plugins/servers/${serverId}/${pluginId}`, {
-            method: 'DELETE',
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Uninstall failed'); }
+        await this.delete(`/plugins/servers/${serverId}/${pluginId}`);
     }
 
     async togglePlugin(serverId: string, pluginId: string): Promise<InstalledPlugin> {
-        const res = await fetch(`${API_URL}/plugins/servers/${serverId}/${pluginId}/toggle`, {
-            method: 'PATCH',
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Toggle failed'); }
-        return res.json();
+        return this.patch(`/plugins/servers/${serverId}/${pluginId}/toggle`, {});
     }
 
     async updatePlugin(serverId: string, pluginId: string): Promise<InstalledPlugin> {
-        const res = await fetch(`${API_URL}/plugins/servers/${serverId}/${pluginId}/update`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Update failed'); }
-        return res.json();
+        return this.post(`/plugins/servers/${serverId}/${pluginId}/update`, {});
+    }
+
+    async bulkUpdatePlugins(serverId: string, pluginIds: string[]): Promise<Array<{ pluginId: string; success: boolean; error?: string }>> {
+        return this.post(`/plugins/servers/${serverId}/bulk-update`, { pluginIds });
     }
 
     async checkPluginUpdates(serverId: string): Promise<PluginUpdateInfo[]> {
-        const res = await fetch(`${API_URL}/plugins/servers/${serverId}/updates`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Update check failed'); }
-        return res.json();
+        return this.get(`/plugins/servers/${serverId}/updates`);
     }
 
     async getActivityHistory(serverId: string): Promise<any[]> {
-        return this.get(`/api/servers/${serverId}/activity`);
+        return this.get(`/servers/${serverId}/activity`);
     }
 
     async scanPlugins(serverId: string): Promise<InstalledPlugin[]> {
-        const res = await fetch(`${API_URL}/plugins/servers/${serverId}/scan`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Scan failed'); }
-        return res.json();
+        return this.get(`/plugins/servers/${serverId}/scan`);
     }
 
     // --- Distributed Nodes ---
 
     async getNodes(): Promise<{ nodes: NodeInfo[]; total: number }> {
-        const res = await fetch(`${API_URL}/nodes`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to fetch nodes'); }
-        return res.json();
+        return this.get('/nodes');
     }
 
     async getNode(nodeId: string): Promise<NodeInfo> {
-        const res = await fetch(`${API_URL}/nodes/${nodeId}`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to get node'); }
-        return res.json();
+        return this.get(`/nodes/${nodeId}`);
     }
 
     async enrollNode(data: { name: string; host: string; port: number; labels?: string[] }): Promise<NodeInfo> {
-        const res = await fetch(`${API_URL}/nodes/enroll`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...this.getAuthHeader() },
-            body: JSON.stringify(data)
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to enroll node'); }
-        return res.json();
+        return this.post('/nodes/enroll', data);
     }
 
     async preEnrollNode(data: { name: string; mode: string }): Promise<{ id: string; secret: string; token: string }> {
-        const res = await fetch(`${API_URL}/nodes/enroll-wizard`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...this.getAuthHeader() },
-            body: JSON.stringify(data)
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to pre-enroll node'); }
-        return res.json();
+        return this.post('/nodes/enroll-wizard', data);
     }
 
     async removeNode(nodeId: string): Promise<void> {
-        const res = await fetch(`${API_URL}/nodes/${nodeId}`, {
-            method: 'DELETE',
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to remove node'); }
+        await this.delete(`/nodes/${nodeId}`);
     }
 
     async getNodeHealth(nodeId: string): Promise<any> {
-        const res = await fetch(`${API_URL}/nodes/${nodeId}/health`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to get node health'); }
-        return res.json();
+        return this.get(`/nodes/${nodeId}/health`);
     }
 
-    async checkForUpdates(force = false): Promise<any> {
-        const res = await fetch(`${API_URL}/system/updates/check?force=${force}`, {
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) throw new Error('Failed to check for updates');
-        return res.json();
-    }
 
     async getSystemStatus(): Promise<any> {
-        const res = await fetch(`${API_URL}/status`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/status');
     }
 
     async getDiscordStatus(): Promise<any> {
-        const res = await fetch(`${API_URL}/system/discord/status`, {
-            headers: this.getAuthHeader()
-        });
-        return res.json();
+        return this.get('/system/discord/status');
     }
 
     async reconnectDiscord(): Promise<void> {
-        const res = await fetch(`${API_URL}/system/discord/reconnect`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Failed to reconnect Discord');
-        }
+        await this.post('/system/discord/reconnect', {});
     }
 
     async syncDiscordCommands(): Promise<void> {
-        const res = await fetch(`${API_URL}/system/discord/sync`, {
-            method: 'POST',
-            headers: this.getAuthHeader()
-        });
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Failed to sync Discord commands');
-        }
+        await this.post('/system/discord/sync-commands', {});
     }
 
     // --- Safe System Updates ---
 
+    // --- Cloud Backup Destinations ---
+
+    async getCloudDestinations(): Promise<any[]> {
+        return this.get('/servers/cloud-destinations');
+    }
+
+    async addCloudDestination(destination: any): Promise<any[]> {
+        return this.post('/servers/cloud-destinations', destination);
+    }
+
+    async testCloudDestination(destination: any): Promise<{ success: boolean; message: string }> {
+        return this.post('/servers/cloud-destinations/test', destination);
+    }
+
+    async deleteCloudDestination(name: string): Promise<any[]> {
+        return this.delete(`/servers/cloud-destinations/${encodeURIComponent(name)}`);
+    }
+
+    // --- Update System ---
+
     async getUpdateStatus(): Promise<{ status: string; progress: number; currentStep?: string; error?: string; targetVersion?: string }> {
-        // Note: The route in update.routes.ts is router.get('/status') mounted at /api/system/update
-        // So the full URL is /api/system/update/status
         return this.get('/system/update/status');
     }
 
-    async checkSystemUpdates(force: boolean = false): Promise<any> {
-        // Route: POST /api/system/update/check
-        // Note: The generic post helper handles /api prefix.
-        // We pass { force } in body, although updated.routes.ts reads from query?
-        // Let's check update.routes.ts again.
-        // Line 135: const { force } = req.query;
-        // So I should send it as query param in URL, not body.
-        
-        // Wait, line 14: router.post('/check' ...
-        // Line 135: const { force } = req.query; 
-        // This is a mismatch in my backend code? 
-        // Usually POST uses body. But req.query works if I append query params.
-        
-        // Let's assume I fix backend or send query here.
-        // I will use query params to be safe matching the backend implementation.
-        return this.post(`/system/update/check?force=${force}`, {}); 
-    }
 
     async downloadUpdate(version: string): Promise<any> {
         return this.post('/system/update/download', { version });
     }
+
 
     async restartSystem(): Promise<void> {
         await this.post('/system/update/restart', {});

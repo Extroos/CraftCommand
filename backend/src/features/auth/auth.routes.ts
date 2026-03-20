@@ -56,7 +56,25 @@ router.post('/2fa/verify', async (req, res) => {
         }
 
         const user = authService.getUser(decoded.id);
-        const token = jwt.sign({ id: user!.id, email: user!.email, role: user!.role }, secret, { expiresIn: '7d' });
+        
+        // Phase 12: Create session on 2FA success
+        const sessionId = crypto.randomUUID();
+        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        
+        const { sessionRepository } = require('../../storage/SessionRepository');
+        sessionRepository.create({
+            id: sessionId,
+            userId: user!.id,
+            createdAt: Date.now(),
+            expiresAt
+        });
+
+        const token = jwt.sign({ 
+            id: user!.id, 
+            email: user!.email, 
+            role: user!.role,
+            jti: sessionId
+        }, secret, { expiresIn: '7d' });
         
         auditService.log(user!.id, 'AUTH_2FA_SUCCESS', undefined, { type: isTotp ? 'totp' : 'recovery' }, req.ip, user!.email);
         
@@ -106,15 +124,27 @@ router.post('/2fa/disable', verifyToken, async (req, res) => {
     }
 });
 
-// Optional: Regenerate Backup Codes
+// Regenerate Backup Codes
 router.post('/2fa/backup/regen', verifyToken, async (req, res) => {
     const user = (req as any).user;
     const { password, code } = req.body;
     try {
-        // We reuse disable logic flow or similar validation
-        // For simplicity, let's just implement a direct service method later if needed
-        // For now, disabling and re-enabling works, but a direct regen is better UX.
-        res.status(501).json({ error: 'Not implemented yet' });
+        const result = await authService.regenerateBackupCodes(user.id, password, code);
+        auditService.log(user.id, 'AUTH_2FA_BACKUP_REGEN', undefined, undefined, req.ip, user.email);
+        res.json(result);
+    } catch (e: any) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+// Change Password (self-service)
+router.post('/change-password', verifyToken, async (req, res) => {
+    const user = (req as any).user;
+    const { currentPassword, newPassword } = req.body;
+    try {
+        await authService.changePassword(user.id, currentPassword, newPassword);
+        auditService.log(user.id, 'USER_UPDATE', user.id, { action: 'PASSWORD_CHANGED' }, req.ip, user.email);
+        res.json({ success: true });
     } catch (e: any) {
         res.status(400).json({ error: e.message });
     }
@@ -190,6 +220,42 @@ router.delete('/users/:id', verifyToken, requirePermission('users.manage'), (req
         res.json({ success: true });
     } catch (e: any) {
         res.status(403).json({ error: e.message });
+    }
+});
+
+// --- Session Management ---
+
+// List sessions for current user
+router.get('/sessions', verifyToken, async (req, res) => {
+    const user = (req as any).user;
+    try {
+        const sessions = await authService.getSessions(user.id);
+        res.json(sessions);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Revoke a specific session
+router.post('/sessions/:sessionId/revoke', verifyToken, async (req, res) => {
+    const user = (req as any).user;
+    const { sessionId } = req.params;
+    try {
+        await authService.revokeSession(sessionId, user.id);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+// Revoke all sessions
+router.post('/sessions/revoke-all', verifyToken, async (req, res) => {
+    const user = (req as any).user;
+    try {
+        await authService.revokeAllSessions(user.id, user.id);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(400).json({ error: e.message });
     }
 });
 
