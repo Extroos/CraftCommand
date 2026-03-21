@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-cd /d "%~dp0"
+cd /d "%~dp0."
 
 :: --- CONSOLE SETUP ---
 mode con cols=80 lines=42
@@ -16,7 +16,7 @@ set "CY=%E%[93m"
 set "CC=%E%[96m"
 set "CM=%E%[95m"
 set "CW=%E%[97m"
-set "CD=%E%[90m"
+set "CGY=%E%[90m"
 set "CB=%E%[94m"
 set "BOLD=%E%[1m"
 
@@ -51,7 +51,7 @@ title CraftCommand v%CC_VERSION%
 if not exist "node_modules" (
     echo.
     echo   %CY%%BOLD% INITIAL SETUP DETECTED %R%
-    echo   %CD%Setting up core dependencies for first launch...%R%
+    echo   %CGY%Setting up core dependencies for first launch...%R%
     call npm install >nul 2>nul
     if !errorlevel! neq 0 (
         echo   %CR%[ERROR] Dependency installation failed. Check your network.%R%
@@ -63,7 +63,7 @@ if not exist "node_modules" (
 if not exist ".env" (
     echo.
     echo   %CY%%BOLD% CONFIG GENERATION %R%
-    echo   %CD%Generating secure environment configuration...%R%
+    echo   %CGY%Generating secure environment configuration...%R%
     if not exist ".env.example" (
         echo   %CR%%BOLD% ERROR %R%  .env.example not found. 
         pause
@@ -76,7 +76,7 @@ if not exist ".env" (
 :: --- UPDATE CHECK ---
 if not exist "version.json" goto SKIP_UPDATE_CHECK
 echo.
-echo   %CD%Checking for updates... %R%
+echo   %CGY%Checking for updates... %R%
 (
 echo $wc = New-Object System.Net.WebClient
 echo $wc.Headers.Add^('User-Agent', 'CraftCommand-Launcher'^)
@@ -103,11 +103,11 @@ del "%TEMP%\cc_au.txt" >nul 2>nul
 
 echo.
 echo   %CY%%BOLD% UPDATE AVAILABLE %R%
-echo   %CD%New version detected on GitHub.%R%
+echo   %CGY%New version detected on GitHub.%R%
 echo.
 
 if "!AUTO_UPDATE!"=="true" (
-    echo   %CY%Do you want to install this update? %CD%(y/n)%R%
+    echo   %CY%Do you want to install this update? %CGY%(y/n)%R%
     set /p u_choice="  %CC%^> %R%"
     if /i "!u_choice!"=="y" (
         echo.
@@ -116,7 +116,7 @@ if "!AUTO_UPDATE!"=="true" (
         if !errorlevel! equ 0 (
             echo.
             echo   %CG%%BOLD%+%R%  Update installed successfully.
-            echo   %CD%    Please restart the launcher to apply changes.%R%
+            echo   %CGY%    Please restart the launcher to apply changes.%R%
             pause
             exit
         ) else (
@@ -127,7 +127,7 @@ if "!AUTO_UPDATE!"=="true" (
     )
 ) else (
     echo   %CY%  Auto-Update is DISABLED in System Settings.%R%
-    echo   %CD%  Enable it in the dashboard to install updates.%R%
+    echo   %CGY%  Enable it in the dashboard to install updates.%R%
     echo.
     pause
 )
@@ -137,12 +137,12 @@ if "!AUTO_UPDATE!"=="true" (
 :: --- ASSET SYNC ---
 if not exist "backend\data\settings.json" goto SKIP_ASSET_SYNC
 
-<nul set /p "=%CD%  Syncing assets... %R%"
+<nul set /p "=%CGY%  Syncing assets... %R%"
 powershell -NoProfile -Command "$s = Get-Content 'backend\data\settings.json' -Raw | ConvertFrom-Json; if ($s.app.updateWeb -eq $true) { exit 1 } else { exit 0 }"
 if !errorlevel! equ 1 (
     node scripts/update-web-cli.cjs
 ) else (
-    echo %CD%Skipped.%R%
+    echo %CGY%Skipped.%R%
 )
 
 :SKIP_ASSET_SYNC
@@ -209,21 +209,21 @@ echo  %CC%  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═�
 set "LOCAL_IP=127.0.0.1"
 for /f "tokens=4" %%a in ('route print ^| findstr 0.0.0.0 ^| findstr /V "0.0.0.0.0"') do set "LOCAL_IP=%%a"
 
-echo  %CD%------------------------------------------------------------------------%R%
-echo   %BOLD%%CW%v!CC_VERSION!%R%  %CD%:%R%  %CG%%BOLD%ONLINE%R%  %CD%:%R%  %CD%IPV4: %CB%!LOCAL_IP!%R%  %CD%:%R%  %CD%NODE: %CM%WDL-ADMIN-01%R%
-echo  %CD%------------------------------------------------------------------------%R%
-echo  %CD%[01]%R% %CG%%BOLD%LAUNCH PLATFORM%R%        %CD%Boot (Backend ^& Frontend)%R%
-echo  %CD%[02]%R% %CC%SECURITY: HTTPS%R%        %CD%Caddy Automation / SSL%R%
-echo  %CD%[03]%R% %CC%NETWORK: REMOTE%R%        %CD%Tunnels ^& Mesh VPNs%R%
+echo  %CGY%------------------------------------------------------------------------%R%
+echo   %BOLD%%CW%v!CC_VERSION!%R%  %CGY%:%R%  %CG%%BOLD%ONLINE%R%  %CGY%:%R%  %CGY%IPV4: %CB%!LOCAL_IP!%R%  %CGY%:%R%  %CGY%NODE: %CM%WDL-ADMIN-01%R%
+echo  %CGY%------------------------------------------------------------------------%R%
+echo  %CGY%[01]%R% %CG%%BOLD%LAUNCH PLATFORM%R%        %CGY%Boot (Backend ^& Frontend)%R%
+echo  %CGY%[02]%R% %CC%SECURITY: HTTPS%R%        %CGY%Caddy Automation / SSL%R%
+echo  %CGY%[03]%R% %CC%NETWORK: REMOTE%R%        %CGY%Tunnels ^& Mesh VPNs%R%
 echo.
-echo  %CD%[04]%R% %CY%SYSTEM DIAGNOSTICS%R%     %CD%Connectivity ^& Integrity%R%
-echo  %CD%[05]%R% %CY%SYSTEM MAINTENANCE%R%     %CD%Environment Reconstruction%R%
+echo  %CGY%[04]%R% %CY%SYSTEM DIAGNOSTICS%R%     %CGY%Connectivity ^& Integrity%R%
+echo  %CGY%[05]%R% %CY%SYSTEM MAINTENANCE%R%     %CGY%Environment Reconstruction%R%
 echo.
-echo  %CD%[06]%R% %CM%NODE ORCHESTRATION%R%     %CD%Distributed Node Agent%R%
-echo  %CD%[08]%R% %CR%EMERGENCY: ISOLATE%R%     %CD%Immediate Panic Kill%R%
-echo  %CD%------------------------------------------------------------------------%R%
-echo   %BOLD%%CW%[00]%R% %CD%POWER OFF%R%
-echo  %CD%------------------------------------------------------------------------%R%
+echo  %CGY%[06]%R% %CM%NODE ORCHESTRATION%R%     %CGY%Distributed Node Agent%R%
+echo  %CGY%[08]%R% %CR%EMERGENCY: ISOLATE%R%     %CGY%Immediate Panic Kill%R%
+echo  %CGY%------------------------------------------------------------------------%R%
+echo   %BOLD%%CW%[00]%R% %CGY%POWER OFF%R%
+echo  %CGY%------------------------------------------------------------------------%R%
 set /p choice="  %CC%%BOLD%TERM: %R%"
 
 if "%choice%"=="1" goto START
@@ -253,7 +253,7 @@ goto MENU
 cls
 echo.
 echo  %CC%%BOLD% PLATFORM LAUNCH SEQUENCE%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
 
 :: Check Node.js
@@ -277,8 +277,8 @@ if %errorlevel% neq 0 (
 )
 
 for /f "delims=" %%v in ('node -v') do set "NODE_V=%%v"
-echo   %CG%%BOLD%+%R%  Runtime         %CD%!NODE_V!%R%
-echo   %CG%%BOLD%+%R%  Platform        %CD%CraftCommand v!CC_VERSION!%R%
+echo   %CG%%BOLD%+%R%  Runtime         %CGY%!NODE_V!%R%
+echo   %CG%%BOLD%+%R%  Platform        %CGY%CraftCommand v!CC_VERSION!%R%
 
 :: Smart Install
 set MISSING_DEPS=0
@@ -291,13 +291,13 @@ if "%MISSING_DEPS%"=="1" (
     echo.
     echo   %CY%%BOLD%!%R%  First-time setup: installing dependencies
     echo.
-    echo     %CD%[1/3]%R% Frontend
+    echo     %CGY%[1/3]%R% Frontend
     cd frontend && call npm install >nul 2>nul && cd ..
-    echo     %CD%[2/3]%R% Backend
+    echo     %CGY%[2/3]%R% Backend
     cd backend && call npm install >nul 2>nul && cd ..
-    echo     %CD%[3/4]%R% Root
+    echo     %CGY%[3/4]%R% Root
     call npm install >nul 2>nul
-    echo     %CD%[4/4]%R% Node Agent
+    echo     %CGY%[4/4]%R% Node Agent
     cd agent && call npm install >nul 2>nul && cd ..
     echo.
     echo   %CG%%BOLD%+%R%  Dependencies resolved
@@ -321,18 +321,18 @@ if exist "backend\data\settings.json" (
 )
 
 echo.
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo   Protocol   %BOLD%%CG%!B_TYPE!%R%
 echo   Access     %BOLD%%CC%!ACC_URL!%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
-echo   %CD%Streaming logs...%R%
+echo   %CGY%Streaming logs...%R%
 echo.
 
 call npm run start:all
 if %errorlevel% neq 0 (
     echo.
-    echo   %CR%%BOLD%X%R%  Process terminated  %CD%Exit code: %errorlevel%%R%
+    echo   %CR%%BOLD%X%R%  Process terminated  %CGY%Exit code: %errorlevel%%R%
     pause
 )
 goto MENU
@@ -344,19 +344,19 @@ goto MENU
 cls
 echo.
 echo  %CC%%BOLD% REMOTE ACCESS%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
-echo  %CD%%BOLD% CONNECTIVITY%R%
-echo   %BOLD%%CW%1%R%  %CG%Mesh VPN%R%                  %CD%Tailscale / ZeroTier%R%
-echo   %BOLD%%CW%2%R%  %CG%Zero-Config Tunnel%R%         %CD%Playit.gg%R%
-echo   %BOLD%%CW%3%R%  %CC%Web Share%R%                  %CD%Cloudflare Tunnel%R%
-echo   %BOLD%%CW%4%R%  %CC%Direct Bind%R%                %CD%Manual Port Forward%R%
+echo  %CGY%%BOLD% CONNECTIVITY%R%
+echo   %BOLD%%CW%1%R%  %CG%Mesh VPN%R%                  %CGY%Tailscale / ZeroTier%R%
+echo   %BOLD%%CW%2%R%  %CG%Zero-Config Tunnel%R%         %CGY%Playit.gg%R%
+echo   %BOLD%%CW%3%R%  %CC%Web Share%R%                  %CGY%Cloudflare Tunnel%R%
+echo   %BOLD%%CW%4%R%  %CC%Direct Bind%R%                %CGY%Manual Port Forward%R%
 echo.
-echo  %CD%%BOLD% CONTROL%R%
-echo   %BOLD%%CW%5%R%  %CR%Disable All%R%                %CD%Kill remote bridges%R%
-echo   %BOLD%%CW%0%R%  %CD%Back%R%
+echo  %CGY%%BOLD% CONTROL%R%
+echo   %BOLD%%CW%5%R%  %CR%Disable All%R%                %CGY%Kill remote bridges%R%
+echo   %BOLD%%CW%0%R%  %CGY%Back%R%
 echo.
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
 <nul set /p "=  %CC%%BOLD%^> %R%"
 set /p r_choice=""
@@ -393,14 +393,14 @@ goto REMOTE_SETUP
 cls
 echo.
 echo  %CC%%BOLD% HTTPS CONFIGURATION%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
-echo   %BOLD%%CW%1%R%  %CG%Automated Caddy%R%            %CD%One-click HTTPS%R%
-echo   %BOLD%%CW%2%R%  %CY%Manual Certificates%R%        %CD%Bind custom PEM/CRT%R%
-echo   %BOLD%%CW%3%R%  %CR%Disable HTTPS%R%              %CD%Revert to HTTP%R%
-echo   %BOLD%%CW%0%R%  %CD%Back%R%
+echo   %BOLD%%CW%1%R%  %CG%Automated Caddy%R%            %CGY%One-click HTTPS%R%
+echo   %BOLD%%CW%2%R%  %CY%Manual Certificates%R%        %CGY%Bind custom PEM/CRT%R%
+echo   %BOLD%%CW%3%R%  %CR%Disable HTTPS%R%              %CGY%Revert to HTTP%R%
+echo   %BOLD%%CW%0%R%  %CGY%Back%R%
 echo.
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
 <nul set /p "=  %CC%%BOLD%^> %R%"
 set /p h_choice=""
@@ -421,9 +421,9 @@ goto HTTPS_MENU
 cls
 echo.
 echo  %CC%%BOLD% AUTOMATED HTTPS%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
-<nul set /p "=  Domain %CD%(e.g. panel.example.com)%CW%: %R%"
+<nul set /p "=  Domain %CGY%(e.g. panel.example.com)%CW%: %R%"
 set /p DOMAIN=""
 echo.
 call node scripts/ops/install-caddy.cjs
@@ -440,7 +440,7 @@ goto MENU
 cls
 echo.
 echo  %CC%%BOLD% MANUAL SSL BINDING%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
 <nul set /p "=  Certificate (.pem/.crt): "
 set /p CERT_PATH=""
@@ -460,7 +460,7 @@ goto MENU
 cls
 echo.
 echo  %CR%%BOLD% NETWORK ISOLATION%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
 echo   Terminating external bridges...
 taskkill /f /im caddy.exe >nul 2>nul
@@ -486,7 +486,7 @@ goto MENU
 cls
 echo.
 echo  %CY%%BOLD% STABILITY AUDIT%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
 echo   Running diagnostics...
 echo.
@@ -502,23 +502,23 @@ goto MENU
 cls
 echo.
 echo  %CY%%BOLD% MAINTENANCE MODE%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
-<nul set /p "=  Flush and reinstall all deps? %CD%(y/n)%CW%: %R%"
+<nul set /p "=  Flush and reinstall all deps? %CGY%(y/n)%CW%: %R%"
 set confirm=
 set /p confirm=""
 if /i not "!confirm!"=="y" goto MENU
 
 echo.
-echo   %CD%[1/3]%R% Flushing node_modules...
+echo   %CGY%[1/3]%R% Flushing node_modules...
 if exist "frontend\node_modules" rmdir /s /q "frontend\node_modules"
 if exist "backend\node_modules" rmdir /s /q "backend\node_modules"
 if exist "node_modules" rmdir /s /q "node_modules"
 
-echo   %CD%[2/3]%R% Reinstalling frontend...
+echo   %CGY%[2/3]%R% Reinstalling frontend...
 cd frontend && call npm install && cd ..
 
-echo   %CD%[3/3]%R% Reinstalling backend...
+echo   %CGY%[3/3]%R% Reinstalling backend...
 cd backend && call npm install && cd ..
 call npm install
 
@@ -535,7 +535,7 @@ goto MENU
 cls
 echo.
 echo  %CM%%BOLD% NODE AGENT%R%
-echo  %CD%-----------------------------------------------------------------------%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
 <nul set /p "=  Node ID:     "
 set /p N_ID=""
