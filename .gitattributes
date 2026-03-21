@@ -1,0 +1,7 @@
+# Set the default behavior, in case people don't have core.autocrlf set.
+* text=auto
+
+# Explicitly declare Windows batch files to always use CRLF line endings.
+# This prevents CMD parsing errors (_VAL is not recognized) when users download the repository as a ZIP from GitHub.
+*.bat text eol=crlf
+*.cmd text eol=crlf
