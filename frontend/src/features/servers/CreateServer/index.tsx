@@ -215,6 +215,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                 if (!formData.modpackUrl) {
                     switch (formData.software) {
                         case 'Paper': 
+                        case 'Purpur':
                             await API.installServer(server.id, formData.usePurpur ? 'purpur' : 'paper', installOpts); 
                             break;
                         case 'Vanilla': await API.installServer(server.id, 'vanilla', installOpts); break;

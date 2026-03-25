@@ -425,14 +425,15 @@ export const MissingJarRule: DiagnosisRule = {
                 }
             } catch (e) {}
 
+            const softwareName = server.software || 'Server';
             return {
                 id: `missing-jar-${server.id}-${Date.now()}`,
                 ruleId: 'missing_jar',
                 severity: 'CRITICAL',
-                title: 'Server Executable Missing',
+                title: `${softwareName} Executable Missing`,
                 explanation: suggestion 
-                    ? `The server file '${execFile}' is missing, but we found '${suggestion}' in your folder. Did you rename it?`
-                    : `The server file '${execFile}' could not be found. Expected path: "${jarPath}"`,
+                    ? `The ${softwareName} file '${execFile}' is missing, but we found '${suggestion}' in your folder. Did you rename it?`
+                    : `The ${softwareName} executable file '${execFile}' could not be found. Expected path: "${jarPath}"`,
                 recommendation: suggestion
                     ? `Update your "Executable" setting to "${suggestion}" or rename the file back to "${execFile}".`
                     : `Ensure the file "${execFile}" exists in your server folder, or update the "Executable" setting in the dashboard to match your actual filename.`,
