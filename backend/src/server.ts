@@ -1,5 +1,15 @@
 import path from 'path';
 import dotenv from 'dotenv';
+
+function validateEnvironment() {
+    const required = ['JWT_SECRET', 'BACKEND_PORT'];
+    const missing = required.filter(key => !process.env[key]);
+    if (missing.length > 0) {
+        console.error(`\n[CRITICAL] Missing required environment variables: ${missing.join(', ')}`);
+        console.error(`Please check your .env file in the root directory.\n`);
+        process.exit(1);
+    }
+}
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 import express from 'express';
 import cors from 'cors';
@@ -165,6 +175,7 @@ const startup = async () => {
 };
 
 const startMain = async () => {
+    validateEnvironment();
     await initHttpServer();
 
     const io = new Server(httpServer, {

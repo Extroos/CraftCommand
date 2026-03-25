@@ -1,4 +1,5 @@
 import { Server, Socket } from 'socket.io';
+import DOMPurify from 'isomorphic-dompurify';
 import { socketAuthMiddleware } from './middleware/authMiddleware';
 import { jitterMiddleware } from './middleware/JitterMiddleware';
 import { registerBroadcasters } from './broadcasters';
@@ -93,11 +94,7 @@ const isRateLimited = (userId: string): boolean => {
 
 // ===== Sanitize message content =====
 const sanitize = (content: string): string => {
-    return content
-        .trim()
-        .substring(0, 500) // Hard length limit
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;'); // Prevent XSS in log viewers
+    return DOMPurify.sanitize(content.trim().substring(0, 500));
 };
 
 // ===== Emit an activity event (persisted & broadcast) =====
@@ -403,6 +400,16 @@ export const setupSocket = (socketIo: Server) => {
         socket.on('disconnect', () => {
             console.log(`[Socket] ✗ Disconnected: ${user.username} [${socket.id}]`);
 
+            // Release all locks held by this socket (#6 — Ghost Locks)
+            const released = lockingService.releaseAllForSocket(socket.id);
+            if (released.length > 0) {
+                console.log(`[Locking] Released ${released.length} lock(s) for disconnected socket ${socket.id}`);
+                for (const resourceId of released) {
+                    const serverId = resourceId.split(':')[1];
+                    const room = serverId && serverId !== 'global' ? `server:${serverId}` : 'server:global';
+                    io.to(room).emit('lock:update', { resourceId, lock: null });
+                }
+            }
             const affectedServers = presenceTracker.disconnectSocket(socket.id);
             for (const serverId of affectedServers) {
                 io.to(`server:${serverId}`).emit('presence:update', {

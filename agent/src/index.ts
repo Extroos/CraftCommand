@@ -126,6 +126,7 @@ interface ManagedServer {
     startTime: number;
     logBuffer: { line: string; type: 'stdout' | 'stderr' }[];
     flushTimer: NodeJS.Timeout | null;
+    readonly MAX_LOG_BUFFER: 1000;
 }
 
 const managedServers: Map<string, ManagedServer> = new Map();
@@ -153,6 +154,11 @@ function flushLogBuffer(managed: ManagedServer, socket: Socket): void {
 
 function bufferLog(managed: ManagedServer, line: string, type: 'stdout' | 'stderr', socket: Socket): void {
     managed.logBuffer.push({ line, type });
+
+    // FIFO trim if buffer exceeds limit (#8 — Memory stability)
+    if (managed.logBuffer.length > 1000) {
+        managed.logBuffer = managed.logBuffer.slice(-500); 
+    }
 
     // Force flush if buffer is full
     if (managed.logBuffer.length >= LOG_BATCH_MAX_LINES) {
@@ -263,7 +269,8 @@ function startLocalServer(
         serverId,
         startTime: Date.now(),
         logBuffer: [],
-        flushTimer: null
+        flushTimer: null,
+        MAX_LOG_BUFFER: 1000
     };
 
     managedServers.set(serverId, managed);
@@ -359,7 +366,8 @@ function adoptLocalServer(
         serverId,
         startTime: Date.now(), // Approximate
         logBuffer: [],
-        flushTimer: null
+        flushTimer: null,
+        MAX_LOG_BUFFER: 1000
     };
 
     managedServers.set(serverId, managed);
@@ -401,7 +409,11 @@ async function scanAndAdoptZombies(socket: Socket): Promise<void> {
                 // Basic liveness check
                 try {
                     process.kill(pid, 0);
-                    adoptLocalServer(serverId, pid, serverDir, socket);
+                    
+                    // #12 — Zombie Adoption: ONLY adopt if not already managed!
+                    if (!managedServers.has(serverId)) {
+                        adoptLocalServer(serverId, pid, serverDir, socket);
+                    }
                 } catch {
                     // Stale PID file
                     log(`Removing stale PID file for "${serverId}"`);
@@ -471,27 +483,30 @@ function sendCommandToServer(serverId: string, command: string): void {
 
 let sharedSnapshot: any = null;
 let lastScanTime = 0;
-let isScanning = false;
+let scanPromise: Promise<any> | null = null;
 
 async function getSystemSnapshot(): Promise<any> {
     const now = Date.now();
     if (sharedSnapshot && (now - lastScanTime < 2500)) {
         return sharedSnapshot;
     }
-    if (isScanning) {
-        while (isScanning) {
-            await new Promise(r => setTimeout(r, 100));
+    
+    // If scan in progress, wait for it (no busy-wait #3 — CPU efficiency)
+    if (scanPromise) {
+        return await scanPromise;
+    }
+
+    scanPromise = (async () => {
+        try {
+            sharedSnapshot = await si.processes();
+            lastScanTime = Date.now();
+            return sharedSnapshot;
+        } finally {
+            scanPromise = null;
         }
-        return sharedSnapshot;
-    }
-    isScanning = true;
-    try {
-        sharedSnapshot = await si.processes();
-        lastScanTime = Date.now();
-    } finally {
-        isScanning = false;
-    }
-    return sharedSnapshot;
+    })();
+    
+    return await scanPromise;
 }
 
 async function collectServerStats(serverId: string): Promise<{ cpu: number; memory: number; pid?: number }> {
