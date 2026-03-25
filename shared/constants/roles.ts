@@ -24,6 +24,10 @@ export type Permission =
     | 'server.integrations.read'
     | 'server.map.view'
     | 'server.map.manage'
+    | 'server.members.read'
+    | 'server.members.manage'
+    | 'server.databases.read'
+    | 'server.databases.manage'
     | 'server.create' 
     | 'server.delete' 
     | 'server.manage'
@@ -51,6 +55,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
         'server.plugins.read', 'server.plugins.view', 'server.plugins.manage', 
         'server.proxy.manage', 'server.integrations.manage', 'server.integrations.read',
         'server.map.view', 'server.map.manage',
+        'server.members.read', 'server.members.manage',
+        'server.databases.read', 'server.databases.manage',
         'server.create', 'server.delete', 'server.manage', 'users.manage',
         'system.settings.manage', 'system.audit.view', 'system.audit.read', 'system.nodes.manage', 'system.integrations.manage',
         'system.remote_access.manage'
@@ -63,6 +69,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
         'server.plugins.read', 'server.plugins.view', 'server.plugins.manage', 
         'server.proxy.manage', 'server.integrations.manage', 'server.integrations.read',
         'server.map.view', 'server.map.manage',
+        'server.members.read', 'server.members.manage',
+        'server.databases.read', 'server.databases.manage',
         'server.create', 'server.delete', 'server.manage', 'users.manage',
         'system.settings.manage', 'system.audit.view', 'system.audit.read', 'system.nodes.manage', 'system.integrations.manage'
     ],
@@ -73,10 +81,13 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
         'server.backups.read', 'server.backups.manage', 'server.schedules.read', 'server.schedules.manage',
         'server.plugins.read', 'server.plugins.view', 'server.plugins.manage', 
         'server.proxy.manage', 'server.integrations.manage', 'server.integrations.read',
-        'server.map.view', 'server.map.manage'
+        'server.map.view', 'server.map.manage',
+        'server.members.read', 'server.members.manage',
+        'server.databases.read', 'server.databases.manage'
     ],
     'VIEWER': [
         'server.view', 'server.console.read', 'server.files.read', 'server.plugins.view', 'server.plugins.read',
-        'server.backups.read', 'server.schedules.read', 'server.integrations.read', 'server.map.view'
+        'server.backups.read', 'server.schedules.read', 'server.integrations.read', 'server.map.view',
+        'server.members.read', 'server.databases.read'
     ]
 };

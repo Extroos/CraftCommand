@@ -10,6 +10,7 @@ import { useUser } from '@features/auth/context/UserContext';
 import { useCollaboration } from '@features/collaboration/context/CollaborationContext';
 import { useSystem } from '@features/system/context/SystemContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
+import DashboardPro from './DashboardPro';
 
 interface DashboardProps {
     serverId: string;
@@ -57,13 +58,18 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     const { servers, stats: allStats, logs, players, updateServerStatus, javaDownloadStatus } = useServers();
     const { user } = useUser();
     const { can } = usePermissions();
+    const { settings, nodes } = useSystem();
+    const isPro = settings?.app?.professionalMode ?? false;
     const server = servers.find(s => s.id === serverId);
+
+    if (isPro) {
+        return <DashboardPro serverId={serverId} />;
+    }
 
     // Check if software is Java-based
     const isJavaPlatform = server?.software && !['Bedrock', 'Velocity'].includes(server.software);
     
     const { sendChat } = useCollaboration();
-    const { hostMode, settings } = useSystem();
     const stats = allStats[serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, tps: "0.00", pid: 0 };
     const status = server?.status || ServerStatus.OFFLINE;
 
@@ -446,7 +452,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
                     { label: 'UPTIME', value: formatUptime(displayUptimeValue), sub: 'SESSION DURATION', detail: '', icon: <Clock size={16} className="text-foreground/40" />, status: status === ServerStatus.ONLINE ? 'ONLINE' : 'OFFLINE' },
-                    { label: 'TICK RATE', value: (typeof stats.tps === 'number' ? stats.tps : parseFloat(stats.tps as string) || 0).toFixed(2), unit: 'TPS', sub: '', detail: '', icon: <Activity size={16} className="text-foreground/40" />, line: true },
+                    { label: 'TICK RATE', value: Number(stats.tps || 0).toFixed(2), unit: 'TPS', sub: '', detail: '', icon: <Activity size={16} className="text-foreground/40" />, line: true },
                     { label: 'PLAYERS', value: stats.players, unit: ` / ${server.maxPlayers || '20'}`, sub: '', detail: '', icon: <Users size={16} className="text-foreground/40" />, heads: true },
                     { label: 'LATENCY', value: stats.latency, unit: 'ms', sub: '', detail: '', icon: <Zap size={16} className="text-foreground/40" />, signal: true }
                 ].map((m, i) => (
@@ -468,15 +474,18 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                             )}
                             {m.label === 'TICK RATE' && (() => {
                                 const tps = typeof stats.tps === 'number' ? stats.tps : parseFloat(stats.tps as string) || 0;
+                                const isOffline = status !== ServerStatus.ONLINE;
                                 return (
                                     <div className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-widest ${
-                                        tps >= 19 
-                                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                                            : tps >= 15 
-                                                ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
-                                                : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                                        isOffline
+                                            ? 'bg-secondary/20 border-border text-foreground/30'
+                                            : tps >= 19 
+                                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                                                : tps >= 15 
+                                                    ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
+                                                    : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
                                     }`}>
-                                        {tps >= 19 ? 'OPTIMAL' : tps >= 15 ? 'DEGRADED' : <span className="text-[7px] sm:text-[9px]">CRITICAL</span>}
+                                        {isOffline ? 'OFFLINE' : tps >= 19 ? 'OPTIMAL' : tps >= 15 ? 'DEGRADED' : <span className="text-[7px] sm:text-[9px]">CRITICAL</span>}
                                     </div>
                                 );
                             })()}
@@ -606,7 +615,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                     )}
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 relative border-t sm:border-t-0 border-white/5 pt-2 sm:pt-0">
-                    <div className="text-[9px] font-mono text-white/5 uppercase tracking-widest hidden xs:block">Live_v2.4</div>
+                    <div className="text-[9px] font-mono text-white/20 uppercase tracking-widest hidden xs:block">Live_v1.12.5</div>
                     <div className="flex gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/20" />
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/10" />

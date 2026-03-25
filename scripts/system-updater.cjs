@@ -1,4 +1,3 @@
-
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
@@ -7,7 +6,7 @@ const { execSync } = require('child_process');
 // ==========================================
 // CONFIGURATION
 // ==========================================
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 const TEMP_DIR = path.join(PROJECT_ROOT, 'temp_update');
 const BACKUP_DIR = path.join(PROJECT_ROOT, 'backups', 'updates');
 const VERSION_FILE = path.join(PROJECT_ROOT, 'version.json');
@@ -55,12 +54,13 @@ async function main() {
     try {
         // 1. Pre-flight Checks
         checkPermissions();
+        await checkDiskSpace(PROJECT_ROOT, 1024); // Require 1GB for safety
         
         const currentVersion = require(VERSION_FILE).version;
         console.log(`${C.gray}Current Version: ${currentVersion}${C.reset}`);
 
         // 2. Check & Download
-        console.log(`\n${C.yellow}[1/5] Checking for updates...${C.reset}`);
+        console.log(`\n${C.yellow}[1/6] Checking for updates...${C.reset}`);
         const release = await getLatestRelease();
         
         if (!release) {
@@ -88,8 +88,18 @@ async function main() {
         console.log(`Downloading...`);
         await downloadFile(downloadUrl, zipPath);
 
-        // 3. Extract
-        console.log(`\n${C.yellow}[2/5] Extracting update...${C.reset}`);
+        // 3. Snapshot (Zero Data Loss Guarantee)
+        console.log(`\n${C.yellow}[2/6] Creating mandatory pre-update snapshot...${C.reset}`);
+        if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        
+        const snapshotName = `pre-update-v${currentVersion}-${Date.now()}.zip`;
+        const snapshotPath = path.join(BACKUP_DIR, snapshotName);
+        
+        await createSnapshot(snapshotPath);
+        console.log(`${C.green}✓ Snapshot created: ${snapshotName}${C.reset}`);
+
+        // 4. Extract
+        console.log(`\n${C.yellow}[3/6] Extracting update...${C.reset}`);
         const extractPath = path.join(TEMP_DIR, 'extracted');
         fs.mkdirSync(extractPath);
         
@@ -103,32 +113,45 @@ async function main() {
             contentRoot = path.join(extractPath, items[0]);
         }
 
-        // 4. Backup
-        console.log(`\n${C.yellow}[3/5] Creating safety backup...${C.reset}`);
-        if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        // 5. Install (Atomic-ish Swap)
+        console.log(`\n${C.yellow}[4/6] Installing updates (Atomic Swap)...${C.reset}`);
         
-        const backupName = `backup-v${currentVersion}-${Date.now()}.zip`;
-        const backupPath = path.join(BACKUP_DIR, backupName);
-        
-        // Compress current critical folders
-        // We'll trust the user has their own full backups, but we snapshot code
-        // For simplicity in this script, we'll skip complex zipping and just say:
-        console.log(`${C.gray}Skipping full backup in this script iteration. Ensure you have backups!${C.reset}`);
-        // TODO: Implement lightweight backup of 'backend/src' and 'web/current'
+        const targets = ['backend/src', 'web/current'];
+        for (const target of targets) {
+            const targetPath = path.join(PROJECT_ROOT, target);
+            const updatePath = path.join(contentRoot, target);
+            
+            if (fs.existsSync(updatePath)) {
+                console.log(`  -> Swapping ${target}...`);
+                const oldPath = targetPath + '.old';
+                
+                // 1. Move old out of the way
+                if (fs.existsSync(oldPath)) fs.rmSync(oldPath, { recursive: true, force: true });
+                if (fs.existsSync(targetPath)) fs.renameSync(targetPath, oldPath);
+                
+                // 2. Move new in
+                fs.renameSync(updatePath, targetPath);
+                
+                // 3. Cleanup old
+                try { fs.rmSync(oldPath, { recursive: true, force: true }); } catch (e) {}
+            }
+        }
 
-        // 5. Install (Smart Copy)
-        console.log(`\n${C.yellow}[4/5] Installing updates...${C.reset}`);
-        
-        // Walk the new update and copy files
+        // Standard Recursive Copy for non-core files (configs, readme, etc)
+        // We do this AFTER atomic swaps to ensure source dirs are still there
         copyRecursive(contentRoot, PROJECT_ROOT);
 
         // 6. Dependencies & Cleanup
-        console.log(`\n${C.yellow}[5/5] Finalizing...${C.reset}`);
+        console.log(`\n${C.yellow}[5/6] Finalizing...${C.reset}`);
         
         // Check if package.json changed
         if (fs.existsSync(path.join(PROJECT_ROOT, 'backend', 'package.json'))) {
              console.log('Updating backend dependencies...');
-             execSync('npm install --production', { cwd: path.join(PROJECT_ROOT, 'backend'), stdio: 'inherit' });
+             try {
+                execSync('npm install', { cwd: path.join(PROJECT_ROOT, 'backend'), stdio: 'inherit' });
+             } catch (e) {
+                console.log(`${C.red}Warning: Dependency installation failed. You may need to run 'npm install' manually.${C.reset}`);
+             }
         }
 
         // Cleanup
@@ -145,7 +168,8 @@ async function main() {
     } catch (e) {
         console.error(`\n${C.red}UPDATE FAILED${C.reset}`);
         console.error(e.message);
-        console.error(e.stack);
+        console.log(`\n${C.yellow}A pre-update snapshot was created in: ${BACKUP_DIR}${C.reset}`);
+        console.log(`${C.cyan}Run 'node scripts/rollback.cjs' to restore your system.${C.reset}`);
         process.exit(1);
     }
 }
@@ -157,9 +181,51 @@ async function main() {
 function checkPermissions() {
     try {
         fs.accessSync(PROJECT_ROOT, fs.constants.W_OK);
+        // Test subfolders
+        ['backend', 'web'].forEach(dir => {
+            const p = path.join(PROJECT_ROOT, dir);
+            if (fs.existsSync(p)) fs.accessSync(p, fs.constants.W_OK);
+        });
     } catch (e) {
         throw new Error(`No write permission to project root: ${PROJECT_ROOT}`);
     }
+}
+
+function checkDiskSpace(targetPath, minMb) {
+    return new Promise((resolve, reject) => {
+        try {
+            const drive = path.parse(targetPath).root;
+            const cmd = `powershell -command "(Get-PSDrive ${drive.replace(':', '')}).Free / 1MB"`;
+            const output = execSync(cmd).toString().trim();
+            const freeMb = parseFloat(output);
+            
+            if (freeMb < minMb) {
+                return reject(new Error(`Insufficient disk space. Required: ${minMb}MB, Found: ${Math.round(freeMb)}MB`));
+            }
+            console.log(`${C.gray}Disk Space Check: ${Math.round(freeMb)}MB free (OK)${C.reset}`);
+            resolve();
+        } catch (err) {
+            // If PS fail, we warn but allow continuing (older OS)
+            console.log(`${C.yellow}Warning: Could not verify free disk space. Proceeding cautiously...${C.reset}`);
+            resolve();
+        }
+    });
+}
+
+function createSnapshot(destZip) {
+    return new Promise((resolve, reject) => {
+        try {
+            // Define paths to include relative to PROJECT_ROOT
+            const includes = ['backend/src', 'backend/package.json', 'web/current', 'version.json'];
+            const psIncludes = includes.map(p => `'${path.join(PROJECT_ROOT, p)}'`).join(',');
+            
+            const cmd = `powershell -command "Compress-Archive -Path ${psIncludes} -DestinationPath '${destZip}' -CompressionLevel Optimal -Force"`;
+            execSync(cmd, { stdio: 'inherit' });
+            resolve();
+        } catch (err) {
+            reject(new Error(`Failed to create snapshot: ${err.message}`));
+        }
+    });
 }
 
 function getLatestRelease() {

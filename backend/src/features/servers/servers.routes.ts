@@ -16,9 +16,11 @@ import { AppError } from '../../utils/AppError';
 import { auditService } from '../system/AuditService';
 import { ServerConfig, ServerStatus } from '@shared/types';
 import { DATA_DIR, SERVERS_ROOT, DATA_PATHS } from '../../constants';
-import { autoHealingManager } from '../diagnosis/AutoHealingManager';
-import { autoHealingService } from './AutoHealingService';
+import { autoHealingService } from '../diagnosis/AutoHealingService';
 import sharp from 'sharp';
+import { databaseService } from './DatabaseService';
+import { ValidationUtils } from '../../utils/ValidationUtils';
+import { serverRepository } from '../../storage/ServerRepository';
 
 
 const util = require('minecraft-server-util');
@@ -76,7 +78,7 @@ router.post('/import/local', requirePermission('server.create'), async (req, res
         const server = await importService.importLocal(name, absolutePath, config);
         res.json(server);
         
-        auditService.log((req as any).user.id, 'SERVER_IMPORT_LOCAL', server.id, { name, path: absolutePath });
+        auditService.log((req as any).user.id, 'SERVER_IMPORT_LOCAL', server.id, { name, path: absolutePath }, req.ip);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -102,7 +104,7 @@ router.post('/import/archive', requirePermission('server.create'), upload.single
         const server = await importService.importArchive(name, req.file.path, config ? JSON.parse(config) : {});
         res.json(server);
         
-        auditService.log((req as any).user.id, 'SERVER_IMPORT_ARCHIVE', server.id, { name });
+        auditService.log((req as any).user.id, 'SERVER_IMPORT_ARCHIVE', server.id, { name }, req.ip);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -413,10 +415,10 @@ router.post('/:id/heal', verifyToken, requirePermission('server.settings'), asyn
     }
 
     try {
-        await autoHealingManager.executeFix(id, type, payload || {});
+        await autoHealingService.executeFix(id, type, payload || {});
         res.json({ success: true, message: `Successfully applied fix: ${type}` });
         
-        auditService.log((req as any).user.id, 'SERVER_HEAL', id, { type, payload });
+        auditService.log((req as any).user.id, 'SERVER_HEAL', id, { type, payload }, req.ip);
     } catch (e: any) {
         console.error(`[Servers] Manual fix failed for ${id}:`, e);
         res.status(500).json({ error: e.message || 'Failed to apply automatic fix.' });
@@ -427,27 +429,15 @@ router.post('/:id/heal', verifyToken, requirePermission('server.settings'), asyn
 router.post('/:id/health/reset', verifyToken, requirePermission('server.settings'), async (req, res) => {
     const { id } = req.params;
     try {
-        const { autoHealingService } = require('./AutoHealingService');
+        const { autoHealingService } = require('../diagnosis/AutoHealingService');
         autoHealingService.resetStabilityMarker(id);
         res.json({ success: true, message: 'Stability marker reset successfully.' });
-        auditService.log((req as any).user.id, 'SERVER_HEAL_RESET', id);
+        auditService.log((req as any).user.id, 'SERVER_HEAL_RESET', id, undefined, req.ip);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-// Reset Stability/Health Status
-router.post('/:id/health/reset', verifyToken, requirePermission('server.settings'), async (req, res) => {
-    const { id } = req.params;
-    try {
-        const { autoHealingService } = require('./AutoHealingService');
-        autoHealingService.resetStabilityMarker(id);
-        res.json({ success: true, message: 'Stability marker reset successfully.' });
-        auditService.log((req as any).user.id, 'SERVER_HEAL_RESET', id);
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
 
 // Create Server
 // Import at top (assumed added in previous step or handled by imports logic, but I'll add the logic inline or rely on auto-import)
@@ -461,7 +451,7 @@ router.post('/', requirePermission('server.create'), async (req, res) => {
     
     // Phase 4: Handle Automatic Node Selection
     if (config.nodeId === 'auto') {
-        const ramGB = config.ram || 2;
+        const ramGB = ValidationUtils.validateRam(config.ram || 2);
         const result = nodeSchedulerService.findBestNode(ramGB);
         
         if (!result.selectedNode) {
@@ -522,10 +512,10 @@ router.post('/', requirePermission('server.create'), async (req, res) => {
     const id = `local-${Date.now()}`;
     
     // Custom Folder Name Logic
-    let dirName = id;
+    let dirName = ValidationUtils.validateId(id, 'Server ID');
     if (config.folderName) {
         if (!validateFolderName(config.folderName)) {
-            return res.status(400).json({ error: 'Folder name must be alphanumeric and cannot be a reserved system name (e.g. "backend", "logs").' });
+            throw new AppError(400, 'INVALID_FOLDER', 'Folder name must be alphanumeric and cannot be a reserved system name.');
         }
         dirName = config.folderName;
     }
@@ -564,7 +554,7 @@ router.post('/', requirePermission('server.create'), async (req, res) => {
     const { fileWatcherService } = await import('../files/FileWatcherService');
     fileWatcherService.watchServer(id, serverDir);
 
-    auditService.log((req as any).user.id, 'SERVER_CREATE', id, { name: config.name });
+    auditService.log((req as any).user.id, 'SERVER_CREATE', id, { name: config.name }, req.ip);
 
     res.json(newServer);
 });
@@ -579,7 +569,7 @@ router.post('/:id/start', requirePermission('server.start'), async (req, res) =>
     try {
         await startServer(id, !!force);
         res.json({ success: true, status: ServerStatus.STARTING });
-        auditService.log((req as any).user.id, 'SERVER_START', id, { force: !!force }).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
+        auditService.log((req as any).user.id, 'SERVER_START', id, { force: !!force }, req.ip).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
         console.error(`[Server:${id}] Start Route failed:`, e);
         if (e instanceof AppError) {
@@ -605,7 +595,7 @@ router.post('/:id/stop', requirePermission('server.stop'), async (req, res) => {
     try {
         await stopServer(id, !!force);
         res.json({ success: true, status: ServerStatus.STOPPING });
-        auditService.log((req as any).user.id, 'SERVER_STOP', id, { force: !!force }).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
+        auditService.log((req as any).user.id, 'SERVER_STOP', id, { force: !!force }, req.ip).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
         logger.error(`[Server:${id}] Stop Route failed: ${e.message} ${e.stack || ''}`);
         if (e.message.includes('Server is initializing')) {
@@ -633,7 +623,7 @@ router.post('/:id/stop/graceful', requirePermission('server.stop'), async (req, 
     try {
         processManager.gracefulStop(id, delay || 30);
         res.json({ success: true, status: ServerStatus.STOPPING, message: `Graceful shutdown initiated with ${delay || 30}s delay.` });
-        auditService.log((req as any).user.id, 'SERVER_STOP_GRACEFUL', id, { delay: delay || 30 }).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
+        auditService.log((req as any).user.id, 'SERVER_STOP_GRACEFUL', id, { delay: delay || 30 }, req.ip).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -645,7 +635,7 @@ router.post('/:id/stop/cancel', requirePermission('server.stop'), async (req, re
     try {
         processManager.cancelGracefulStop(id);
         res.json({ success: true, message: 'Graceful shutdown cancelled.' });
-        auditService.log((req as any).user.id, 'SERVER_STOP_CANCEL', id).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
+        auditService.log((req as any).user.id, 'SERVER_STOP_CANCEL', id, undefined, req.ip).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -658,7 +648,7 @@ router.delete('/:id', requirePermission('server.delete'), async (req, res) => {
     try {
         await removeServer(id);
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'SERVER_DELETE', id).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
+        auditService.log((req as any).user.id, 'SERVER_DELETE', id, undefined, req.ip).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -672,7 +662,7 @@ router.post('/:id/clone', requirePermission('server.create'), async (req, res) =
     try {
         const clone = await cloneServer(id, name);
         res.json(clone);
-        auditService.log((req as any).user.id, 'SERVER_CREATE', clone.id, { clonedFrom: id, name: clone.name }).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
+        auditService.log((req as any).user.id, 'SERVER_CREATE', clone.id, { clonedFrom: id, name: clone.name }, req.ip).catch(e => logger.error(`[Audit] Failed: ${e.message}`));
     } catch (e: any) {
         logger.error(`[Clone] Failed for ${id}: ${e.message}`);
         res.status(500).json({ error: e.message });
@@ -688,7 +678,7 @@ router.patch('/:id', requirePermission('server.settings'), async (req, res) => {
         const updatedServer = await updateServer(id, updates);
         res.json(updatedServer);
 
-        auditService.log((req as any).user.id, 'SERVER_UPDATE', id, { updates: Object.keys(updates) });
+        auditService.log((req as any).user.id, 'SERVER_UPDATE', id, { updates: Object.keys(updates) }, req.ip);
     } catch (e: any) {
         if (e.message === 'Server not found') return res.status(404).json({ error: 'Server not found' });
         res.status(500).json({ error: e.message });
@@ -1340,6 +1330,18 @@ router.delete('/:id/schedules/:taskId', async (req, res) => {
     }
 });
 
+// Run Schedule Now (Manual Trigger)
+router.post('/:id/schedules/:taskId/run', async (req, res) => {
+    const { id, taskId } = req.params;
+    try {
+        await scheduleService.runTaskNow(id, taskId);
+        res.json({ success: true });
+        auditService.log((req as any).user.id, 'SCHEDULE_RUN_NOW' as any, id, { taskId });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ==================== BACKUP ROUTES ====================
 
 import { backupService } from '../backups/BackupService';
@@ -1508,6 +1510,94 @@ router.delete('/cloud-destinations/:name', requirePermission('server.settings'),
         const destinations = await backupService.removeCloudDestination(req.params.name);
         res.json(destinations);
         auditService.log((req as any).user.id, 'BACKUP_CLOUD_REMOVE', undefined, { name: req.params.name });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
+// ==================== MEMBER ROUTES ====================
+
+// Get Server Members
+router.get('/:id/members', verifyToken, requirePermission('server.view'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const members = await serverRepository.getMembers(id);
+        res.json(members);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Add Server Member
+router.post('/:id/members', verifyToken, requirePermission('server.settings'), async (req, res) => {
+    const { id } = req.params;
+    const { email, role } = req.body;
+    try {
+        await serverRepository.addMember(id, email, role);
+        res.json({ success: true });
+        auditService.log((req as any).user.id, 'USER_UPDATE', id, { action: 'MEMBER_ADD', email, role });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Remove Server Member
+router.delete('/:id/members/:userId', verifyToken, requirePermission('server.settings'), async (req, res) => {
+    const { id, userId } = req.params;
+    try {
+        await serverRepository.removeMember(id, userId);
+        res.json({ success: true });
+        auditService.log((req as any).user.id, 'USER_UPDATE', id, { action: 'MEMBER_REMOVE', userId });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ==================== DATABASE ROUTES ====================
+
+// Get Server Databases
+router.get('/:id/databases', verifyToken, requirePermission('server.view'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const databases = await databaseService.getDatabases(id);
+        res.json(databases);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Provision New Database
+router.post('/:id/databases', verifyToken, requirePermission('server.databases.manage'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const newDb = await databaseService.createDatabase(id, req.body);
+        res.json(newDb);
+        auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', id, { detail: 'Provisioned database', name: newDb.name });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Delete Database
+router.delete('/:id/databases/:dbId', verifyToken, requirePermission('server.databases.manage'), async (req, res) => {
+    const { id, dbId } = req.params;
+    try {
+        await databaseService.deleteDatabase(id, dbId);
+        res.json({ success: true });
+        auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', id, { detail: 'Deleted database', dbId });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Rotate Database Password
+router.post('/:id/databases/:dbId/rotate', verifyToken, requirePermission('server.databases.manage'), async (req, res) => {
+    const { id, dbId } = req.params;
+    try {
+        const result = await databaseService.rotateDatabasePassword(id, dbId);
+        res.json(result);
+        auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', id, { detail: 'Rotated database password', dbId });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

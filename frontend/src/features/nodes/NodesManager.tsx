@@ -19,7 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
     [NodeStatus.ONLINE]: 'bg-emerald-500',
     [NodeStatus.OFFLINE]: 'bg-zinc-500',
     [NodeStatus.DEGRADED]: 'bg-amber-500',
-    [NodeStatus.ENROLLING]: 'bg-blue-500'
+    [NodeStatus.ENROLLING]: 'bg-zinc-400'
 };
 
 const NodeCard: React.FC<{ 
@@ -49,21 +49,21 @@ const NodeCard: React.FC<{
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className={`group relative overflow-hidden rounded-xl border transition-all duration-500 ${
+            className={`group relative overflow-hidden rounded border transition-all duration-500 ${
                 isLocal 
-                ? 'bg-gradient-to-br from-cyan-950/10 via-background to-background border-cyan-500/20' 
-                : 'bg-card border-white/5 hover:border-white/10'
-            } ${user?.preferences.visualQuality ? 'glass-morphism' : ''}`}
+                ? 'bg-zinc-900 border-zinc-700' 
+                : 'bg-card border-border hover:border-zinc-700'
+            }`}
         >
             {/* Header / Status Bar */}
-            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-white/10 to-transparent group-hover:via-cyan-500/50 transition-all duration-700" />
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-border group-hover:bg-zinc-500/30 transition-all duration-700" />
             
             <div className="p-5 space-y-5">
                 {/* ID & Type Header */}
                 <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                            isOnline ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-zinc-500'
+                        <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 transition-colors ${
+                            isOnline ? 'bg-secondary text-foreground border border-border' : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
                         }`}>
                             {isLocal ? <Monitor size={20} /> : <Server size={20} />}
                         </div>
@@ -71,7 +71,7 @@ const NodeCard: React.FC<{
                             <div className="flex items-center gap-2">
                                 <h3 className="font-bold text-white text-sm tracking-tight">{node.name}</h3>
                                 {isLocal && (
-                                    <span className="px-1.5 py-0.5 rounded-[4px] bg-cyan-500/10 border border-cyan-500/20 text-[9px] font-bold text-cyan-500 uppercase tracking-wider">
+                                    <span className="px-1.5 py-0.5 rounded-[4px] bg-zinc-800 border border-zinc-700 text-[9px] font-black text-zinc-400 uppercase tracking-widest">
                                         Host System
                                     </span>
                                 )}
@@ -84,8 +84,8 @@ const NodeCard: React.FC<{
                         </div>
                     </div>
 
-                    <div className={`px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                        isOnline ? 'bg-emerald-500/5 border-emerald-500/10 text-emerald-500' : 'bg-zinc-500/5 border-white/5 text-zinc-500'
+                    <div className={`px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                        isOnline ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-zinc-500/10 border-border text-zinc-500'
                     }`}>
                         <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-500'}`} />
                         {node.status}
@@ -95,14 +95,14 @@ const NodeCard: React.FC<{
                 {/* Metrics Grid */}
                 <div className="grid grid-cols-2 gap-3">
                     {/* CPU */}
-                    <div className="bg-black/20 rounded-lg p-2.5 border border-white/5 space-y-2">
-                        <div className="flex justify-between items-center text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                    <div className="bg-black/20 rounded p-2.5 border border-border/40 space-y-2">
+                        <div className="flex justify-between items-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
                             <span className="flex items-center gap-1.5"><Cpu size={10} /> CPU Load</span>
-                            <span className={isOnline ? 'text-white' : ''}>{isOnline ? `${node.health?.cpu || 0}%` : '-'}</span>
+                            <span className={isOnline ? 'text-foreground' : ''}>{isOnline ? `${node.health?.cpu || 0}%` : '-'}</span>
                         </div>
-                        <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
                             <motion.div 
-                                className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400"
+                                className="h-full bg-zinc-400"
                                 initial={{ width: 0 }}
                                 animate={{ width: `${Math.min(node.health?.cpu || 0, 100)}%` }}
                                 transition={{ duration: 1 }}
@@ -111,18 +111,18 @@ const NodeCard: React.FC<{
                     </div>
 
                     {/* RAM */}
-                    <div className="bg-black/20 rounded-lg p-2.5 border border-white/5 space-y-2">
-                        <div className="flex justify-between items-center text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                    <div className="bg-black/20 rounded p-2.5 border border-border/40 space-y-2">
+                        <div className="flex justify-between items-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
                             <span className="flex items-center gap-1.5"><MemoryStick size={10} /> Memory</span>
-                            <span className={isOnline ? 'text-white' : ''}>
+                            <span className={isOnline ? 'text-foreground' : ''}>
                                 {isOnline && node.health?.memoryTotal 
                                     ? `${Math.round((node.health.memoryUsed / node.health.memoryTotal) * 100)}%` 
                                     : '-'}
                             </span>
                         </div>
-                        <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
                             <motion.div 
-                                className="h-full bg-gradient-to-r from-violet-600 to-violet-400"
+                                className="h-full bg-zinc-400"
                                 initial={{ width: 0 }}
                                 animate={{ width: `${node.health?.memoryTotal ? (node.health.memoryUsed / node.health.memoryTotal) * 100 : 0}%` }}
                                 transition={{ duration: 1 }}
@@ -138,7 +138,7 @@ const NodeCard: React.FC<{
                         {isOnline && node.capabilities && (
                             <div className="flex -space-x-2">
                                 <div className={`w-7 h-7 rounded-full flex items-center justify-center border-2 border-[#1a1b1e] text-[10px] ${
-                                        node.capabilities.docker ? 'bg-sky-500/20 text-sky-400' : 'bg-zinc-800 text-zinc-600'
+                                        node.capabilities.docker ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-800 text-zinc-600'
                                     }`} title={node.capabilities.docker ? 'Docker Ready' : 'Docker Missing'}>
                                     <Box size={12} />
                                 </div>
@@ -318,9 +318,9 @@ const NodesManager: React.FC = () => {
 
     if (loading && nodes.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 text-white/20 animate-pulse">
-                <RefreshCw size={32} className="animate-spin mb-4 opacity-50" />
-                <span className="text-sm font-mono uppercase tracking-widest">Scanning Infrastructure...</span>
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/30 animate-pulse">
+                <RefreshCw size={32} className="animate-spin mb-4" />
+                <span className="text-xs font-black uppercase tracking-[0.2em]">Synchronizing Cluster Data...</span>
             </div>
         );
     }
@@ -335,7 +335,7 @@ const NodesManager: React.FC = () => {
                 </div>
                 <button
                     onClick={() => setShowWizard(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-lg text-sm font-bold shadow-lg shadow-cyan-500/20 transition-all hover:scale-[1.02]"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background rounded border border-border text-xs font-extrabold uppercase tracking-widest hover:bg-foreground/90 transition-all shadow-sm"
                 >
                     <Plus size={16} strokeWidth={3} />
                     Enroll Node

@@ -42,7 +42,7 @@ export const getServerCapabilities = (software: string): ServerCapabilities => {
     // Default Java Server (Paper, Spigot, Forge, etc.)
     return {
         softwareCategory: 'JAVA',
-        supportsPlugins: sw === 'paper' || sw === 'spigot' || sw === 'purpur',
+        supportsPlugins: sw === 'paper' || sw === 'spigot' || sw === 'purpur' || sw === 'folia',
         supportsModpacks: sw === 'forge' || sw === 'fabric' || sw === 'neoforge' || sw === 'modpack',
         supportsJava: true,
         supportsJvmFlags: true,

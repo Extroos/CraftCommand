@@ -164,6 +164,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
         if (webhookConfig.events.onJoin) triggers.push('PLAYER_JOIN');
         if (webhookConfig.events.onLeave) triggers.push('PLAYER_LEAVE');
         if (webhookConfig.events.onCrash) triggers.push('SERVER_CRASH');
+        if ((webhookConfig.events as any).onBackup) triggers.push('BACKUP_COMPLETE' as any);
 
         const payload = {
             name: webhookConfig.botName || 'Discord Webhook',
@@ -347,7 +348,9 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                             { id: 'onStart', label: 'Startup Sequence', icon: <Power size={12} className="text-emerald-500" /> },
                             { id: 'onStop', label: 'Shutdown Hook', icon: <Power size={12} className="text-rose-500" /> },
                             { id: 'onJoin', label: 'Player Association', icon: <UserPlus size={12} className="text-blue-500" /> },
+                            { id: 'onLeave', label: 'Player Departure', icon: <UserMinus size={12} className="text-indigo-500" /> },
                             { id: 'onCrash', label: 'Failure Recovery', icon: <AlertTriangle size={12} className="text-red-500" /> },
+                            { id: 'onBackup', label: 'Backup Complete', icon: <Save size={12} className="text-cyan-500" /> },
                         ].map((event) => (
                             <label key={event.id} className="flex items-center justify-between p-3 rounded-xl bg-black/10 border border-border/20 hover:bg-black/20 hover:border-primary/20 cursor-pointer transition-all group">
                                 <div className="flex items-center gap-3">

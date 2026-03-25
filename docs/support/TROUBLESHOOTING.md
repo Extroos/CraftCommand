@@ -17,7 +17,7 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 ### 1. Server Starts then Immediately Stops
 
 - **Cause**: You likely haven't accepted the EULA.
-- **Fix**: Check the console for a message requiring an "Accept" interaction, or go to the server folder and set `eula=true` in `eula.txt`. Note that in **v1.12.0**, the Doctor may skip this check on the first boot to reduce noise.
+- **Fix**: Check the console for a message requiring an "Accept" interaction, or go to the server folder and set `eula=true` in `eula.txt`. Note that in **v1.12.5**, the Doctor may skip this check on the first boot to reduce noise.
 
 ### 2. Modpack Crash on First Boot
 

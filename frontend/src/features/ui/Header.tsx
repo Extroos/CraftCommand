@@ -310,10 +310,10 @@ const Header: React.FC<HeaderProps> = ({
                         
                         <button
                             onClick={() => onNavigateProfile('2FA')}
-                            className={`px-2.5 py-1.5 rounded border text-[10px] font-bold uppercase tracking-widest hidden sm:flex items-center gap-2 transition-colors ${user?.twoFactorEnabled ? 'bg-emerald-500/5 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/10' : 'bg-zinc-900/40 text-muted-foreground border-border hover:bg-zinc-900/60 hover:text-foreground'}`}
+                            className={`px-2 py-1 rounded-md border hidden sm:flex items-center justify-center transition-colors ${user?.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground'}`}
+                            title={user?.twoFactorEnabled ? '2FA Protected' : 'Security: Off'}
                         >
                             <Shield size={14} className={user?.twoFactorEnabled ? 'fill-emerald-500/20' : ''} />
-                            <span className="hidden xl:block">{user?.twoFactorEnabled ? '2FA Protected' : 'Security: Off'}</span>
                         </button>
 
                         <div className="h-4 w-[1px] bg-border/60 hidden sm:block"></div>
@@ -372,9 +372,15 @@ const Header: React.FC<HeaderProps> = ({
                         <div className="hidden md:block relative" ref={userRef}>
                             <button onClick={(e) => { e.stopPropagation(); setUserDropdown(!userDropdown); }} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-secondary/50 transition-colors border border-transparent hover:border-border group">
                                 <div className="text-right"><div className="text-xs font-bold text-foreground">{user?.username}</div><div className="text-[10px] text-muted-foreground">{user?.role}</div></div>
-                                <div className="h-8 w-8 rounded-full bg-secondary border border-border overflow-hidden relative">
-                                    {user?.avatarUrl ? <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary"><User size={16} /></div>}
-                                    {user?.twoFactorEnabled && <div className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white rounded-full p-0.5 border border-background shadow-sm"><Shield size={8} className="fill-current" /></div>}
+                                <div className="relative">
+                                    <div className="h-8 w-8 rounded-full bg-secondary border border-border overflow-hidden">
+                                        {user?.avatarUrl ? <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary"><User size={16} /></div>}
+                                    </div>
+                                    {user?.twoFactorEnabled && (
+                                        <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 border-2 border-background shadow-lg z-10">
+                                            <Shield size={10} className="fill-current" />
+                                        </div>
+                                    )}
                                 </div>
                             </button>
                             <AnimatePresence>{userDropdown && (
@@ -442,9 +448,9 @@ const Header: React.FC<HeaderProps> = ({
                                 <div className="space-y-4">
                                     <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] px-2">Subsystem Status</p>
                                     <div className="px-2">{getStatusUI()}</div>
-                                    <button onClick={() => { onNavigateProfile('2FA'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center justify-between px-3 py-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${user?.twoFactorEnabled ? 'bg-emerald-500/5 text-emerald-500 border-emerald-500/20' : 'bg-zinc-900/40 text-muted-foreground border-border'}`}>
-                                        <div className="flex items-center gap-2"><Shield size={16} /> {user?.twoFactorEnabled ? '2FA Protected' : 'Security: Off'}</div>
-                                        <ChevronLeft size={14} className="rotate-180 opacity-40" />
+                                    <button onClick={() => { onNavigateProfile('2FA'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center justify-center px-4 py-2.5 rounded-lg border transition-all ${user?.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-muted/30 text-muted-foreground border-border'}`}>
+                                        <Shield size={16} className={user?.twoFactorEnabled ? 'fill-emerald-500/20' : ''} />
+                                        <ChevronLeft size={14} className="rotate-180 opacity-40 ml-auto" />
                                     </button>
                                 </div>
                             </div>

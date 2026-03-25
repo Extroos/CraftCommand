@@ -1,5 +1,7 @@
 import { logger } from '../../utils/logger';
 import path from 'path';
+import { ServerStatus } from '@shared/types';
+
 import fs from 'fs-extra';
 import { processManager } from '../processes/ProcessManager';
 import { javaManager } from '../processes/JavaManager';
@@ -122,8 +124,21 @@ export class StartupManager {
                 SERVER_SOFTWARE: server.software,
                 DOCKER_CPUS: server.advancedFlags?.dockerCpus || '0.000',
                 EXTRA_PORTS: server.advancedFlags?.extraPorts || ''
-            }).catch(e => {
+            }).catch(async e => {
                 logger.error(`[StartupManager:${id}] Background process startup failed unconditionally: ${e.message}`);
+                
+                // Rule 1: No Silent Failures. Reset state gracefully.
+                try {
+                    const { serverRepository } = await import('../../storage/ServerRepository');
+                    const s = serverRepository.findById(id);
+                    if (s) {
+                        serverRepository.update(id, { ...s, status: ServerStatus.OFFLINE });
+                        processManager.updateCachedStatus(id, { online: false, status: ServerStatus.OFFLINE });
+                        processManager.emit('status', { id, status: ServerStatus.OFFLINE });
+                    }
+                } catch (recoveryErr) {
+                    logger.error(`[StartupManager:${id}] State recovery failed: ${recoveryErr}`);
+                }
             });
 
             // 6. Clear Restart Flag (Hardening)
@@ -411,8 +426,8 @@ export class StartupManager {
                     content += `\n\n${forcedHostsBlock}`;
 
                     if (content.trim() !== originalContent.trim()) {
-                        await fs.writeFile(configPath, content.trim() + '\n');
-                        logger.info(`[StartupManager] Robustly synced Velocity Network Model for ${server.name}`);
+                        await SafeFileOperation.writeWithBackup(configPath, content.trim() + '\n');
+                        logger.info(`[StartupManager] Robustly synced Velocity Network Model for ${server.name} (Atomic)`);
                     }
 
                     // 6. Ensure forwarding secret files etc. are synced
@@ -479,7 +494,7 @@ export class StartupManager {
                     logger.info(`[StartupManager:${server.id}] Enforced online-mode=false for proxy compliance.`);
                 }
                 
-                await fs.writeFile(propsPath, content);
+                await SafeFileOperation.writeWithBackup(propsPath, content);
 
                 // 4. FORWARDING REVERT (Spigot/Paper)
                 if (software.includes('spigot')) {
@@ -491,7 +506,7 @@ export class StartupManager {
                         } else {
                             spigotContent = spigotContent.replace(/bungeecord:\s*true/g, 'bungeecord: false');
                         }
-                        await fs.writeFile(spigotPath, spigotContent);
+                        await SafeFileOperation.writeWithBackup(spigotPath, spigotContent);
                     }
                 }
 
@@ -546,15 +561,15 @@ export class StartupManager {
                             content = content.replace(/(secret:\s*)['"]?.*?['"]?(\n|$)/, `$1'${secret}'$2`);
                         }
                         
-                        await fs.writeFile(configPath, content);
-                        logger.info(`[StartupManager:${server.id}] Synced Velocity forwarding to ${path.basename(configPath)}`);
+                        await SafeFileOperation.writeWithBackup(configPath, content);
+                        logger.info(`[StartupManager:${server.id}] Synced Velocity forwarding to ${path.basename(configPath)} (Atomic)`);
                     }
                 } else {
                     // REVERT: Disable Velocity forwarding if not linked
                     if (content.match(/velocity:\s*\n\s*enabled:\s*true/)) {
                         content = content.replace(/(velocity:\s*\n\s*enabled:\s*)true/, '$1false');
-                        await fs.writeFile(configPath, content);
-                        logger.info(`[StartupManager:${server.id}] Disabled Velocity forwarding in ${path.basename(configPath)}`);
+                        await SafeFileOperation.writeWithBackup(configPath, content);
+                        logger.info(`[StartupManager:${server.id}] Disabled Velocity forwarding in ${path.basename(configPath)} (Atomic)`);
                     }
                 }
             } catch (e) {

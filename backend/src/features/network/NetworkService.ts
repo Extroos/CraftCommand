@@ -57,9 +57,12 @@ class NetworkService extends EventEmitter {
 
     private saveState() {
         try {
-            fs.writeJSONSync(NETWORK_STATE_FILE, this.state, { spaces: 4 });
+            const tempPath = `${NETWORK_STATE_FILE}.tmp`;
+            fs.writeJSONSync(tempPath, this.state, { spaces: 4 });
+            fs.moveSync(tempPath, NETWORK_STATE_FILE, { overwrite: true });
         } catch (e) {
             console.error('[NetworkService] Failed to save state:', e);
+            try { if (fs.existsSync(`${NETWORK_STATE_FILE}.tmp`)) fs.unlinkSync(`${NETWORK_STATE_FILE}.tmp`); } catch (err) {}
         }
     }
 

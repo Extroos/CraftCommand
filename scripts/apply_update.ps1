@@ -31,72 +31,69 @@ try {
         throw "Update bundle seems corrupted: backend/package.json missing in source."
     }
 
-    # 1. Backup
-    Write-Host "`n[UPDATE] [1/3] Creating Backup..." -ForegroundColor Yellow
+    # 1. Snapshot (Zero Data Loss Guarantee)
+    Write-Host "`n[UPDATE] [1/3] Creating Pre-Update Snapshot..." -ForegroundColor Yellow
     if (-not (Test-Path $backupDir)) {
         New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
     }
     
-    $exclude = @('node_modules', 'data', 'logs', 'uploads', '.env')
+    $snapshotName = "pre-update-v$version-$((Get-Date).Ticks).zip"
+    $snapshotPath = Join-Path $backupDir $snapshotName
     
-    Get-ChildItem -Path $BackendDir -Exclude $exclude | ForEach-Object {
-        $dest = Join-Path $backupDir $_.Name
-        if ($_.PSIsContainer) {
-            Copy-Item -Path "$($_.FullName)\*" -Destination $dest -Recurse -Force -ErrorAction SilentlyContinue
-        }
-        else {
-            Copy-Item -Path $_.FullName -Destination $dest -Force
-        }
-    }
-    Write-Host "[UPDATE] Backup complete." -ForegroundColor Green
+    # Snapshot core code and version info
+    $includes = @("backend/src", "backend/package.json", "web/current", "version.json")
+    $includePaths = $includes | ForEach-Object { Join-Path $Root $_ }
+    
+    Compress-Archive -Path $includePaths -DestinationPath $snapshotPath -CompressionLevel Optimal -Force
+    Write-Host "[UPDATE] Snapshot created: $snapshotName" -ForegroundColor Green
 
-    # 2. Apply Files (Atomic-ish Swap)
+    # 2. Apply Files (Atomic Swap Pattern)
     Write-Host "`n[UPDATE] [2/3] Applying Update Files..." -ForegroundColor Yellow
     
     if (-not (Test-Path $sourceDir)) {
         throw "Source directory missing: $sourceDir"
     }
 
-    $protected = @('data', '.env', 'uploads', 'config', 'node_modules', 'minecraft_servers', 'logs')
-
-    # Atomic swap: We'll rename old dirs and move new ones if possible, 
-    # but for local Windows, Copy-Item -Force is often safer against locks.
-    # We will however verify the target exists after copy.
-
-    Get-ChildItem -Path $sourceDir | ForEach-Object {
-        if ($protected -contains $_.Name) {
-            Write-Warning "  [SKIP] Protected path found in update bundle: $($_.Name)"
-            return
+    # Core Directories to swap atomically
+    $coreDirs = @("backend\src", "web\current")
+    
+    foreach ($dir in $coreDirs) {
+        $sourcePath = Join-Path $sourceDir $dir
+        $targetPath = Join-Path $Root $dir
+        
+        if (Test-Path $sourcePath) {
+            Write-Host "  -> Atomic Swap: $dir"
+            $oldPath = "$targetPath.old"
+            
+            # Move old out of the way
+            if (Test-Path $oldPath) { Remove-Item $oldPath -Recurse -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $targetPath) { Rename-Item -Path $targetPath -NewName "$dir.old" -Force }
+            
+            # Move new in
+            if (-not (Test-Path (Split-Path $targetPath))) { New-Item -ItemType Directory -Force -Path (Split-Path $targetPath) | Out-Null }
+            Move-Item -Path $sourcePath -Destination $targetPath -Force
+            
+            # Cleanup old
+            Remove-Item $oldPath -Recurse -Force -ErrorAction SilentlyContinue
         }
+    }
+
+    # Standard Overlay for non-core files (configs, readme, etc)
+    $protected = @('data', '.env', 'uploads', 'config', 'node_modules', 'minecraft_servers', 'logs')
+    Get-ChildItem -Path $sourceDir | ForEach-Object {
+        if ($protected -contains $_.Name) { return }
+        if ($coreDirs -contains "backend\$($_.Name)" -or $coreDirs -contains "web\$($_.Name)") { return }
         
         $dest = Join-Path $Root $_.Name
-        Write-Host "  -> Updating: $($_.Name)"
-        
-        if ($_.PSIsContainer) {
-            if (-not (Test-Path $dest)) {
-                New-Item -ItemType Directory -Force -Path $dest | Out-Null
-            }
-            Copy-Item -Path "$($_.FullName)\*" -Destination $dest -Recurse -Force
-        }
-        else {
-            Copy-Item -Path $_.FullName -Destination $dest -Force
-        }
-
-        # Verification
-        if (-not (Test-Path $dest)) {
-            throw "Failed to verify file application: $dest"
-        }
+        Write-Host "  -> Syncing: $($_.Name)"
+        Copy-Item -Path $_.FullName -Destination $Root -Recurse -Force
     }
     
     # 3. Cleanup & Signal
     Write-Host "`n[UPDATE] [3/3] Finalizing..." -ForegroundColor Yellow
-    
-    # Cleanup extracted files
     Remove-Item $sourceDir -Recurse -Force -ErrorAction SilentlyContinue
-
     Remove-Item $PlanFile -Force
     
-    # Create flag for dependency update
     $flagFile = Join-Path $Root "update_applied.flag"
     New-Item -ItemType File -Force -Path $flagFile | Out-Null
     
@@ -105,6 +102,8 @@ try {
 }
 catch {
     Write-Error "[UPDATE] CRITICAL FAILURE: $($_.Exception.Message)"
-    Write-Host "[UPDATE] Attempting to restore from backup is recommended manually." -ForegroundColor Red
+    Write-Host "`n[UPDATE] RECOVERY REQUIRED" -ForegroundColor Red
+    Write-Host "[UPDATE] Snapshot created in: $backupDir" -ForegroundColor Cyan
+    Write-Host "[UPDATE] Run: 'powershell -ExecutionPolicy Bypass -File scripts\rollback.ps1'" -ForegroundColor Cyan
     exit 1
 }

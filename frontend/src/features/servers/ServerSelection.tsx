@@ -7,15 +7,12 @@ import { API } from '@core/services/api';
 import { useToast } from '../ui/Toast';
 import ImportServerModal from './ImportServerModal';
 
+import { useNavigate } from 'react-router-dom';
+
 interface ServerSelectionProps {
     onSelectServer: (server: ServerConfig) => void;
     onCreateNew: () => void;
     onLogout: () => void;
-    onNavigateProfile: (section?: string) => void;
-    onNavigateUsers: () => void;
-    onNavigateGlobalSettings: () => void;
-    onNavigateAuditLog: () => void;
-    onNavigateOperations: () => void;
 }
 
 import { useUser } from '@features/auth/context/UserContext';
@@ -29,10 +26,9 @@ import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 
 const ServerSelection: React.FC<ServerSelectionProps> = ({ 
-    onSelectServer, onCreateNew, onLogout, 
-    onNavigateProfile, onNavigateUsers, onNavigateGlobalSettings, onNavigateAuditLog,
-    onNavigateOperations
+    onSelectServer, onCreateNew, onLogout
 }) => {
+    const navigate = useNavigate();
     const { servers, refreshServers, installProgress, stats } = useServers();
     const { user } = useUser();
     const { nodes, settings } = useSystem();
@@ -162,8 +158,17 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
         }
     };
 
-    const cachedBg = localStorage.getItem('cc_backgrounds');
-    const hasBg = cachedBg ? JSON.parse(cachedBg).global || JSON.parse(cachedBg).serverSelection : false;
+    const hasBg = useMemo(() => {
+        const cached = localStorage.getItem('cc_backgrounds');
+        if (!cached) return false;
+        try {
+            const parsed = JSON.parse(cached);
+            return parsed.global || parsed.serverSelection;
+        } catch (e) {
+            return false;
+        }
+    }, []);
+
     const bgClass = hasBg ? 'bg-transparent-if-bg' : 'bg-background';
 
     return (
@@ -212,27 +217,27 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                         transition={{ duration: 0.15 }}
-                                        className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-2xl z-50 p-1"
+                                        className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-md shadow-lg z-50 p-1"
                                     >
                                         <div className="p-2 border-b border-border/50 mb-1">
                                             <p className="text-xs font-semibold text-foreground truncate">{user?.email || 'Guest'}</p>
                                             <p className="text-[10px] text-muted-foreground mt-0.5">Signed in</p>
                                         </div>
-                                        <button onClick={() => { onNavigateProfile(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UserIcon size={16} /> User Profile</button>
+                                        <button onClick={() => { navigate('/profile'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UserIcon size={16} /> User Profile</button>
                                         {user?.role === 'OWNER' && (
-                                            <button onClick={() => { onNavigateGlobalSettings(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Settings size={16} /> System Config</button>
+                                            <button onClick={() => { navigate('/settings'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Settings size={16} /> System Config</button>
                                         )}
                                         {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
                                             <>
-                                                <button onClick={() => { onNavigateUsers(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UsersIcon size={16} /> Manage Users</button>
-                                                <button onClick={() => { onNavigateAuditLog(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Shield size={16} /> Audit Log</button>
+                                                <button onClick={() => { navigate('/users'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UsersIcon size={16} /> Manage Users</button>
+                                                <button onClick={() => { navigate('/audit'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Shield size={16} /> Audit Log</button>
                                             </>
                                         )}
                                         {(user?.role === 'OWNER' || user?.role === 'ADMIN') && settings?.app?.distributedNodes?.enabled && (
-                                            <button onClick={() => { onNavigateOperations(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-primary hover:bg-primary/10 transition-colors mb-1"><Activity size={16} /> Global Operations</button>
+                                            <button onClick={() => { navigate('/operations'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-primary hover:bg-primary/10 transition-colors mb-1"><Activity size={16} /> Global Operations</button>
                                         )}
                                         <div className="h-[1px] bg-border/50 my-1 mx-2"></div>
-                                        <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"><LogOut size={16} /> Sign Out</button>
+                                        <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-rose-500 hover:bg-rose-500/10 transition-colors"><LogOut size={16} /> Sign Out</button>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
@@ -240,7 +245,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                         
                         <div className="flex gap-2">
                             <button onClick={() => setShowImportModal(true)} className="bg-secondary border border-border text-foreground hover:bg-muted px-5 py-2.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all shadow-sm"><FileInput size={16} /> Import Server</button>
-                            <button onClick={onCreateNew} className={`px-5 py-2.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${user?.preferences.visualQuality ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:scale-105 active:scale-95' : 'bg-foreground text-background hover:bg-foreground/90 shadow-lg shadow-white/5'}`}><Plus size={16} /> Deploy New Instance</button>
+                            <button onClick={onCreateNew} className={`px-5 py-2.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${user?.preferences.visualQuality ? 'bg-primary text-primary-foreground shadow-md shadow-primary/10 hover:opacity-90 active:scale-95' : 'bg-foreground text-background hover:bg-foreground/90 shadow-sm'}`}><Plus size={16} /> Deploy New Instance</button>
                         </div>
                     </div>
                 </div>
@@ -292,13 +297,10 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                             <stop offset="0%" stopColor={lighterColor} />
                                             <stop offset="100%" stopColor={color} />
                                         </linearGradient>
-                                        <filter id={`glow-${gradientId}`}>
-                                            <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor={color} floodOpacity="0.4" />
-                                        </filter>
                                     </defs>
                                     {tickMarks}
                                     <path d={`M ${strokeW} ${cy} A ${r} ${r} 0 0 1 ${internalWidth - strokeW} ${cy}`} fill="none" stroke="currentColor" className="text-foreground/[0.07]" strokeWidth={strokeW} strokeLinecap="round" />
-                                    <path d={`M ${strokeW} ${cy} A ${r} ${r} 0 0 1 ${internalWidth - strokeW} ${cy}`} fill="none" stroke={`url(#${gradientId})`} strokeWidth={strokeW} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} filter={pct > 0 ? `url(#glow-${gradientId})` : undefined} style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                                    <path d={`M ${strokeW} ${cy} A ${r} ${r} 0 0 1 ${internalWidth - strokeW} ${cy}`} fill="none" stroke={`url(#${gradientId})`} strokeWidth={strokeW} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }} />
                                     <text x={cx} y={cy - 10} textAnchor="middle" className="fill-foreground font-bold font-mono" style={{ fontSize: 44 }}>{typeof value === 'number' ? (value % 1 === 0 ? value : value.toFixed(1)) : value}</text>
                                     <text x={cx} y={cy + 12} textAnchor="middle" className="fill-muted-foreground font-medium" style={{ fontSize: 16, letterSpacing: '0.05em' }}>{unit}</text>
                                 </svg>
@@ -336,7 +338,6 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                             strokeDasharray={`${Math.max(0, segLen - gap)} ${circumference - Math.max(0, segLen - gap)}`}
                                             strokeDashoffset={-accOffset} transform={`rotate(-90 ${internalSize/2} ${internalSize/2})`}
                                             style={{ transition: 'stroke-dasharray 0.6s ease, stroke-dashoffset 0.6s ease' }}
-                                            filter={seg.color === '#22c55e' ? 'url(#donut-glow)' : undefined}
                                         />
                                     );
                                     accOffset += segLen;
@@ -357,10 +358,9 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                             <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="rounded-full overflow-visible">
                                 <defs>
                                     <linearGradient id={`rg-${barId}`}><stop offset="0%" stopColor={barColor + '60'} /><stop offset="100%" stopColor={barColor} /></linearGradient>
-                                    <filter id={`rf-${barId}`}><feDropShadow dx="0" dy="0" stdDeviation="2" floodColor={barColor} floodOpacity="0.35" /></filter>
                                 </defs>
                                 <rect x={0} y={0} width={width} height={height} rx={height/2} fill="currentColor" className="text-foreground/[0.06]" />
-                                <rect x={0} y={0} width={Math.max(height, width * pct / 100)} height={height} rx={height/2} fill={`url(#rg-${barId})`} filter={`url(#rf-${barId})`} style={{ transition: 'width 0.6s ease' }} />
+                                <rect x={0} y={0} width={Math.max(height, width * pct / 100)} height={height} rx={height/2} fill={`url(#rg-${barId})`} style={{ transition: 'width 0.6s ease' }} />
                             </svg>
                         );
                     };
@@ -375,9 +375,8 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                         const glowId = `mg-${color.replace('#', '')}`;
                         return (
                             <svg width={size} height={size} className="transform -rotate-90">
-                                <defs><filter id={glowId}><feDropShadow dx="0" dy="0" stdDeviation="1.5" floodColor={color} floodOpacity="0.4" /></filter></defs>
                                 <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" className="text-foreground/[0.07]" strokeWidth={sw} />
-                                <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} filter={`url(#${glowId})`} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+                                <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
                             </svg>
                         );
                     };
@@ -424,7 +423,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                         <DonutChart online={onlineServers.length} offline={offlineServers.length} crashed={crashedServers.length} size={100} />
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-4 justify-between">
-                                                <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Online</span></div>
+                                                <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Online</span></div>
                                                 <span className="text-sm font-bold text-foreground tabular-nums">{onlineServers.length}</span>
                                             </div>
                                             <div className="flex items-center gap-4 justify-between">
@@ -433,7 +432,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                             </div>
                                             {crashedServers.length > 0 && (
                                                 <div className="flex items-center gap-4 justify-between">
-                                                    <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Crashed</span></div>
+                                                    <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-rose-500" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Crashed</span></div>
                                                     <span className="text-sm font-bold text-rose-500 tabular-nums">{crashedServers.length}</span>
                                                 </div>
                                             )}
@@ -535,7 +534,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                     ))}
                                 </div>
                                 {/* View Toggle */}
-                                <div className="flex items-center gap-0.5 bg-secondary/30 rounded-lg border border-border/50 p-0.5">
+                                <div className="flex items-center gap-0.5 bg-secondary/30 rounded-md border border-border/50 p-0.5">
                                     <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground/60 hover:text-foreground'}`}><LayoutList size={14} /></button>
                                     <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground/60 hover:text-foreground'}`}><LayoutGrid size={14} /></button>
                                 </div>
@@ -558,7 +557,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                             {/* Server Cards Container */}
                             <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 gap-3' : 'space-y-2'}>
                             {sortedServers.length === 0 ? (
-                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`${viewMode === 'grid' ? 'col-span-2' : ''} rounded-xl border border-dashed border-border/30 py-24 flex flex-col items-center gap-5 ${user?.preferences.visualQuality ? 'glass-morphism bg-secondary/5' : 'bg-card'}`}>
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`${viewMode === 'grid' ? 'col-span-2' : ''} rounded-md border border-dashed border-border/30 py-24 flex flex-col items-center gap-5 ${user?.preferences.visualQuality ? 'glass-morphism bg-secondary/5' : 'bg-card'}`}>
                                     <div className="w-16 h-16 rounded-full bg-secondary/30 border border-border/50 flex items-center justify-center">
                                         {searchQuery ? <Search className="text-foreground/20" size={28} /> : <Server className="text-foreground/20" size={28} strokeWidth={1.5} />}
                                     </div>
@@ -589,9 +588,9 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                 return (
                                     <div key={server.id}
                                         onClick={() => onSelectServer(server)}
-                                        className={`group rounded-xl border transition-all cursor-pointer overflow-hidden ${
+                                        className={`group rounded-md border transition-all cursor-pointer overflow-hidden ${
                                             isOnline ? 'border-l-2 border-l-emerald-500/40 border-border/80' : 'border-border/80'
-                                        } ${user?.preferences.visualQuality ? 'glass-morphism hover:border-primary/30 hover:scale-[1.005]' : 'bg-card hover:border-border-strong hover:shadow-md'}`}>
+                                        } ${user?.preferences.visualQuality ? 'glass-morphism hover:border-primary/30 hover:scale-[1.005]' : 'bg-card hover:border-border-strong'}`}>
                                         <div className={`flex ${viewMode === 'grid' ? 'flex-col gap-3 p-4' : 'items-center gap-5 p-4'}`}>
                                             {/* Status icon */}
                                             <div className="relative flex-shrink-0">
@@ -606,7 +605,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                                      isTransitioning ? <RotateCw size={20} className="animate-spin" /> :
                                                      <Server size={20} />}
                                                 </div>
-                                                {isOnline && <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-card bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]" />}
+                                                {isOnline && <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-card bg-emerald-500" />}
                                             </div>
 
                                             {/* Server info */}
@@ -635,7 +634,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
 
                                             {/* Live metrics */}
                                             {isOnline && stat && (
-                                                <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-2 xlg:grid-cols-5 gap-3 w-full bg-secondary/10 p-3.5 rounded-xl border border-border/40" : "hidden md:flex items-center gap-5 flex-shrink-0"}>
+                                                <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-2 xlg:grid-cols-5 gap-3 w-full bg-secondary/10 p-3.5 rounded-md border border-border/40" : "hidden md:flex items-center gap-5 flex-shrink-0"}>
                                                     <div className="flex items-center gap-2">
                                                         <div className="relative">
                                                             <MiniRing value={cpuVal} max={100} color={serverCpuColor} />
@@ -682,7 +681,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                             <div className={`flex flex-shrink-0 ${viewMode === 'grid' ? 'w-full gap-2 mt-2' : 'items-center gap-1'}`}>
                                                 <button onClick={(e) => { e.stopPropagation(); setCloningServer(server); setNewCloneName(`${server.name} (Clone)`); }} className={`p-2 rounded-lg opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-all text-foreground hover:bg-secondary ${viewMode === 'grid' ? 'bg-secondary/40 !opacity-100' : ''}`} title="Clone"><Copy size={14} /></button>
                                                 <button disabled={isOnline || server.status === ServerStatus.STARTING || isInstalling} onClick={(e) => handleDelete(e, server.id, server.name)} className={`p-2 rounded-lg opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-all ${(isOnline || server.status === ServerStatus.STARTING || isInstalling) ? 'text-foreground/15 cursor-not-allowed' : 'text-foreground hover:text-rose-500 hover:bg-rose-500/10'} ${viewMode === 'grid' ? 'bg-secondary/40 !opacity-100' : ''}`} title="Delete"><Trash2 size={14} /></button>
-                                                <div className={`px-4 py-1.5 rounded-lg bg-primary/10 border border-primary/20 hover:bg-primary hover:text-primary-foreground text-primary transition-all text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 ${viewMode === 'grid' ? 'flex-1 ml-auto' : 'ml-1'}`}>
+                                                <div className={`px-4 py-1.5 rounded-md bg-primary/10 border border-primary/20 hover:bg-primary hover:text-primary-foreground text-primary transition-all text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 ${viewMode === 'grid' ? 'flex-1 ml-auto' : 'ml-1'}`}>
                                                     Connect <ArrowRight size={12} className={viewMode === 'list' ? 'ml-1' : ''} />
                                                 </div>
                                             </div>
@@ -719,7 +718,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                     )}
 
                     {(!Array.isArray(sortedServers) || sortedServers.length === 0) && (
-                        <div className="w-full py-24 border border-dashed border-border/30 rounded-xl flex flex-col items-center justify-center gap-6 select-none">
+                        <div className="w-full py-24 border border-dashed border-border/30 rounded-md flex flex-col items-center justify-center gap-6 select-none">
                             {searchQuery ? <Search className="text-foreground/10" size={48} strokeWidth={1.5} /> : <Server className="text-foreground/10" size={48} strokeWidth={1.5} />}
                             <p className="text-[13px] text-muted-foreground/50 font-medium tracking-tight">{searchQuery ? `No servers matching "${searchQuery}".` : 'No local instances found.'}</p>
                         </div>
@@ -739,7 +738,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                 }}
                                 key={server.id}
                                 onClick={() => onSelectServer(server)}
-                                className={`group relative border border-border transition-all cursor-pointer overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-xl p-5 hover:scale-[1.01] hover:border-primary/30' : 'bg-card rounded-lg p-4 hover:border-border-strong shadow-sm hover:shadow-md'}`}
+                                className={`group relative border border-border transition-all cursor-pointer overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-md p-5 hover:border-primary/30' : 'bg-card rounded-md p-4 hover:border-border-strong shadow-sm'}`}
                             >
                                 <div className="flex items-center gap-6">
                                     <div className="relative">
@@ -754,7 +753,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                              isTransitioning ? <RotateCw size={24} className="animate-spin text-amber-500" /> : 
                                              <Server size={24} />}
                                         </div>
-                                        {isOnline && <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>}
+                                        {isOnline && <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background bg-emerald-500"></div>}
                                         {isTransitioning && <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background bg-amber-500 animate-pulse"></div>}
                                     </div>
 
@@ -810,7 +809,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                 <AnimatePresence>
                     {cloningServer && (
                         <div className="fixed inset-0 bg-background/80 z-[60] flex items-center justify-center p-6 backdrop-blur-sm">
-                            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+                            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-card border border-border rounded-md shadow-xl w-full max-w-md overflow-hidden flex flex-col">
                                 <form onSubmit={handleClone}>
                                     <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-secondary/20">
                                         <div className="flex items-center gap-3">
@@ -830,8 +829,8 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                         </div>
                                     </div>
                                     <div className="p-4 bg-secondary/10 border-t border-border flex gap-3">
-                                        <button type="button" onClick={() => setCloningServer(null)} className="flex-1 py-2.5 text-xs font-bold text-muted-foreground hover:bg-secondary rounded-lg transition-all">Cancel</button>
-                                        <button type="submit" disabled={isCloning || !newCloneName.trim()} className="flex-[2] py-2.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2">
+                                        <button type="button" onClick={() => setCloningServer(null)} className="flex-1 py-2.5 text-xs font-bold text-muted-foreground hover:bg-secondary rounded-md transition-all">Cancel</button>
+                                        <button type="submit" disabled={isCloning || !newCloneName.trim()} className="flex-[2] py-2.5 bg-primary text-primary-foreground rounded-md text-xs font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2">
                                             {isCloning ? <Loader2 size={14} className="animate-spin" /> : <><CheckCircle2 size={14} /> Initialize Clone</>}
                                         </button>
                                     </div>

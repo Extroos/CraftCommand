@@ -1,7 +1,7 @@
 {
   "name": "craftcommand",
   "private": true,
-  "version": "1.12.0",
+  "version": "1.12.5",
   "license": "AGPL-3.0-only",
   "author": "Extroos",
   "scripts": {

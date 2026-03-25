@@ -43,7 +43,13 @@ exampleLines.forEach(line => {
 
 if (addedCount > 0) {
     console.log(`[EnvSync] Adding ${addedCount} missing variable(s) from .env.example...`);
-    fs.appendFileSync(envPath, '\n# Added by System Update\n' + newLines.join('\n') + '\n');
+    const newContent = fs.readFileSync(envPath, 'utf-8') + '\n# Added by System Update\n' + newLines.join('\n') + '\n';
+    
+    // Atomic Write
+    const tmpPath = envPath + '.tmp';
+    fs.writeFileSync(tmpPath, newContent);
+    fs.renameSync(tmpPath, envPath);
+    
     console.log('[EnvSync] .env synchronized.');
 } else {
     console.log('[EnvSync] .env is up to date.');

@@ -397,11 +397,38 @@ export class NodeRegistryService extends EventEmitter {
         if (!node) return false;
 
         node.lastHeartbeat = Date.now();
-        node.status = NodeStatus.ONLINE;
         if (health) node.health = health;
+
+        // 1. Determine Status Based on Health Metrics (Core Rule 5/7)
+        let newStatus = NodeStatus.ONLINE;
+
+        if (health) {
+            const memPercent = (health.memoryUsed / health.memoryTotal) * 100;
+            const isCpuStressed = health.cpu > 90;
+            const isMemStressed = memPercent > 95;
+
+            if (isCpuStressed || isMemStressed) {
+                newStatus = NodeStatus.DEGRADED;
+                if (node.status !== NodeStatus.DEGRADED) {
+                    logger.warn(`[NodeRegistry] Node "${node.name}" (${nodeId}) is DEGRADED: ${isCpuStressed ? 'CPU Stressed' : ''} ${isMemStressed ? 'RAM Stressed' : ''}`);
+                }
+            }
+        }
+
+            // 2. Transition Back if Healthy
+            if (node.status !== newStatus) {
+                // Only transition if we are not in a PROTECTED state (RECOVERING or ENROLLING)
+                // unless the new status is a failure state.
+                const isRecovering = node.status === NodeStatus.RECOVERING;
+                const isEnrolling = node.status === NodeStatus.ENROLLING;
+
+                if ((!isRecovering && !isEnrolling) || newStatus === NodeStatus.DEGRADED) {
+                    node.status = newStatus;
+                    this.emit('status', { nodeId, status: node.status, node });
+                }
+            }
         
         this.scheduleSave(); // Debounced — heartbeats are frequent
-        this.emit('status', { nodeId, status: node.status, node });
         return true;
     }
 
@@ -431,6 +458,21 @@ export class NodeRegistryService extends EventEmitter {
             }
         }
         if (changed) this.scheduleSave();
+    }
+    
+    /**
+     * Manually update the status of a node.
+     */
+    updateStatus(nodeId: string, status: NodeStatus): void {
+        const node = this.nodes.get(nodeId);
+        if (!node) return;
+        
+        if (node.status !== status) {
+            node.status = status;
+            this.dirty = true;
+            this.scheduleSave();
+            this.emit('status', { nodeId, status, node });
+        }
     }
 
     /**

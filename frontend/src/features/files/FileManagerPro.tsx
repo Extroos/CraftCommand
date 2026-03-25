@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
     Folder, File as FileIcon, FileCode, Archive, Home, ChevronRight, 
-    Download, Trash2, Save, X, 
+    Download, Trash2, Save, X, Pencil,
     UploadCloud, FolderPlus, FilePlus, Search, 
     CornerUpLeft, SortAsc, SortDesc, Loader2, Shield, Copy
 } from 'lucide-react';
@@ -10,6 +10,12 @@ import { FileNode } from '@shared/types';
 import { useToast } from '../ui/Toast';
 import { useConfirm } from '../ui/hooks/useConfirm';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+
+import CodeMirror from '@uiw/react-codemirror';
+import { json } from '@codemirror/lang-json';
+import { yaml } from '@codemirror/lang-yaml';
+import { StreamLanguage } from '@codemirror/language';
+import { properties } from '@codemirror/legacy-modes/mode/properties';
 
 
 import { API } from '@core/services/api';
@@ -52,12 +58,18 @@ interface FileTreeNodeProps {
     onSelect: (node: FileNode) => void;
     currentPath: string[];
     editorFile: any;
+    presence: any;
+    serverId: string;
+    userId?: string;
 }
 
-const FileTreeNode: React.FC<FileTreeNodeProps> = ({ node, level, treeCache, expandedFolders, onToggle, onSelect, currentPath, editorFile }) => {
+const FileTreeNode: React.FC<FileTreeNodeProps> = ({ node, level, treeCache, expandedFolders, onToggle, onSelect, currentPath, editorFile, presence, serverId, userId }) => {
     const isExpanded = expandedFolders.has(node.path);
     const isSelected = currentPath.join('/') === node.path || editorFile?.node.path === node.path;
     const children = treeCache[node.path];
+    
+    // Check for collaboration presence
+    const isCollabActive = !node.isDirectory && presence[serverId]?.some((p: any) => p.activeView === `files:${node.name}` && p.userId !== userId);
 
     return (
         <div className="w-full">
@@ -88,6 +100,10 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({ node, level, treeCache, exp
                 <span className={`text-xs truncate font-medium transition-colors ${node.type === 'folder' ? 'text-foreground/90' : ''} ${isSelected ? 'text-primary font-semibold' : ''}`} title={node.name}>
                     {node.name}
                 </span>
+
+                {isCollabActive && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-auto shrink-0" title="Being edited by others" />
+                )}
             </div>
             
             {isExpanded && children && (
@@ -103,6 +119,9 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({ node, level, treeCache, exp
                             onSelect={onSelect}
                             currentPath={currentPath}
                             editorFile={editorFile}
+                            presence={presence}
+                            serverId={serverId}
+                            userId={userId}
                         />
                     ))}
                 </div>
@@ -134,11 +153,12 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
     const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
     
     // Modals & Actions
-    const [editorFile, setEditorFile] = useState<{ node: FileNode, content: string } | null>(null);
+    const [editorFile, setEditorFile] = useState<{ node: FileNode, content: string, originalContent?: string } | null>(null);
     const [uploadProgress, setUploadProgress] = useState<{ visible: boolean, progress: number, filename: string }>({ visible: false, progress: 0, filename: '' });
     const [newItemModal, setNewItemModal] = useState<{ type: 'file' | 'folder' | null, value: string }>({ type: null, value: '' });
     const [deletingItemIds, setDeletingItemIds] = useState<Set<string>>(new Set());
     const [extractingItemIds, setExtractingItemIds] = useState<Set<string>>(new Set());
+    const [renamingFile, setRenamingFile] = useState<{ id: string; name: string; path: string } | null>(null);
     const [searchResults, setSearchResults] = useState<any[] | null>(null);
     const [isSearchingServer, setIsSearchingServer] = useState(false);
     const [searchInContent, setSearchInContent] = useState(false);
@@ -218,7 +238,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
         } else {
             try {
                 const content = await API.getFileContent(serverId, node.path);
-                setEditorFile({ node: node, content });
+                setEditorFile({ node: node, content, originalContent: content });
                 updateActiveView(serverId, `files:${node.name}`);
             } catch (e) {
                 addToast('error', 'Read Error', 'Could not read file content.');
@@ -418,6 +438,27 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
         }
     };
 
+    const handleRename = async (file: { id: string; path: string; name: string }, newName: string) => {
+        if (!newName || newName === file.name) {
+            setRenamingFile(null);
+            return;
+        }
+        if (!canManage) {
+            addToast('error', 'Access Denied', 'You do not have permission to rename files.');
+            return;
+        }
+        try {
+            const parentDir = file.path.substring(0, file.path.lastIndexOf('/'));
+            const dest = parentDir ? `${parentDir}/${newName}` : newName;
+            await API.moveFile(serverId, file.path, dest);
+            addToast('success', 'Renamed', `${file.name} → ${newName}`);
+            setRenamingFile(null);
+            fetchFiles();
+        } catch (e: any) {
+            addToast('error', 'Rename Failed', e.message || 'Could not rename file.');
+        }
+    };
+
     const processUpload = async (file: File) => {
         if (!canManage) return;
         const fileSize = file.size > 1024 * 1024 
@@ -472,7 +513,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
         try {
             await API.saveFileContent(serverId, editorFile.node.path, editorFile.content);
             addToast('success', 'File Saved', editorFile.node.name);
-            setEditorFile(null);
+            setEditorFile({ ...editorFile, originalContent: editorFile.content });
         } catch (e) {
             addToast('error', 'Save Failed', 'Failed to save file content.');
         }
@@ -505,11 +546,11 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
             onDrop={handleDrop}
         >
             {/* Header Toolbar */}
-            <div className={`border border-border p-4 flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+            <div className="bg-card border border-border p-4 flex flex-col md:flex-row items-center justify-between gap-4 rounded-md shadow-sm">
                 <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto no-scrollbar py-0.5">
                     <button 
                         onClick={() => { setCurrentPath([]); setSelectedIds(new Set()); }}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-secondary transition-colors shrink-0 ${currentPath.length === 0 ? 'bg-primary/10 text-primary font-bold border border-primary/20' : 'text-muted-foreground border border-transparent'}`}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-md hover:bg-secondary transition-colors shrink-0 ${currentPath.length === 0 ? 'bg-primary/10 text-primary font-bold border border-primary/20' : 'text-muted-foreground border border-transparent'}`}
                     >
                         <Home size={14} />
                         <span className="text-[10px] font-black tracking-[0.1em] uppercase">Root</span>
@@ -555,12 +596,12 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                     if (!e.target.value) setSearchResults(null);
                                 }}
                                 onKeyDown={(e) => e.key === 'Enter' && handleServerSearch()}
-                                className="w-full bg-secondary/30 border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                className="w-full bg-secondary/30 border border-border rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                             />
                         </div>
                         <button 
                             onClick={() => setSearchInContent(!searchInContent)}
-                            className={`px-2 rounded-lg border text-[10px] font-bold transition-all ${searchInContent ? 'bg-primary/20 border-primary text-primary' : 'bg-secondary/30 border-border text-muted-foreground'}`}
+                            className={`px-2 rounded-md border text-[10px] font-bold transition-all ${searchInContent ? 'bg-primary/20 border-primary text-primary' : 'bg-secondary/30 border-border text-muted-foreground'}`}
                             title="Search in file content (Grep)"
                         >
                             GREP
@@ -568,7 +609,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                         <button 
                             onClick={handleServerSearch}
                             disabled={isSearchingServer || searchTerm.length < 2}
-                            className="p-2 bg-secondary/50 hover:bg-secondary border border-border rounded-lg text-muted-foreground transition-all"
+                            className="p-2 bg-secondary/50 hover:bg-secondary border border-border rounded-md text-muted-foreground transition-all"
                             title="Search All Files"
                         >
                             {isSearchingServer ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
@@ -577,10 +618,10 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                     <div className="flex gap-2 shrink-0">
                         {canManage && (
                             <>
-                                <button onClick={() => setNewItemModal({ type: 'file', value: '' })} className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg border border-transparent hover:border-border transition-all" title="New File">
+                                <button onClick={() => setNewItemModal({ type: 'file', value: '' })} className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md border border-transparent hover:border-border transition-all" title="New File">
                                     <FilePlus size={18} />
                                 </button>
-                                <button onClick={() => setNewItemModal({ type: 'folder', value: '' })} className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg border border-transparent hover:border-border transition-all" title="New Folder">
+                                <button onClick={() => setNewItemModal({ type: 'folder', value: '' })} className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md border border-transparent hover:border-border transition-all" title="New Folder">
                                     <FolderPlus size={18} />
                                 </button>
                                 <input 
@@ -589,7 +630,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                     className="hidden" 
                                     onChange={handleFileSelect} 
                                 />
-                                <button onClick={() => fileInputRef.current?.click()} className="px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 shadow-sm">
+                                <button onClick={() => fileInputRef.current?.click()} className="px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 transition-all flex items-center gap-2 shadow-sm">
                                     <UploadCloud size={16} /> <span>Upload</span>
                                 </button>
                             </>
@@ -600,7 +641,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
 
             <div className="flex-1 flex gap-4 overflow-hidden relative">
                 {/* Left Sidebar: File Tree */}
-                <div className={`w-64 md:w-72 border flex flex-col overflow-hidden transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl border-border/50' : 'bg-card rounded-xl shadow-sm border-border'}`}>
+                <div className="w-64 md:w-72 border border-border flex flex-col overflow-hidden bg-card rounded-md shadow-sm">
                      <div className="p-3 border-b border-border bg-muted/20 font-semibold text-xs text-muted-foreground tracking-wider uppercase flex items-center justify-between">
                          <span className="flex items-center gap-2"><Folder size={14} className="text-primary"/> Explorer</span>
                      </div>
@@ -620,13 +661,16 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                   onSelect={handleTreeSelect}
                                   currentPath={currentPath}
                                   editorFile={editorFile}
+                                  presence={presence}
+                                  serverId={serverId}
+                                  userId={user?.id}
                               />
                           ))}
                      </div>
                 </div>
 
                 {/* Right Pane: Editor OR Table View */}
-                <div className={`flex-1 border overflow-hidden relative flex flex-col transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl border-border/50' : 'bg-card rounded-xl shadow-sm border-border'}`}>
+                <div className="flex-1 border border-border overflow-hidden relative flex flex-col bg-card rounded-md shadow-sm">
                     {editorFile ? (
                         <div className="flex flex-col h-full bg-[#0d0d0d] font-mono text-sm leading-6">
                             <div className="flex items-center justify-between p-3 border-b border-border/40 bg-[#09090b]">
@@ -647,23 +691,38 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                         </button>
                                     )}
                                     <button 
-                                        onClick={() => { setEditorFile(null); updateActiveView(serverId, 'files'); }}
+                                        onClick={async () => {
+                                            if (editorFile && editorFile.content !== editorFile.originalContent) {
+                                                const discard = await requestConfirm({
+                                                    title: 'Unsaved Changes',
+                                                    description: `You have unsaved changes in ${editorFile.node.name}. Discard them?`,
+                                                    confirmText: 'Discard Changes',
+                                                    cancelText: 'Keep Editing'
+                                                });
+                                                if (!discard) return;
+                                            }
+                                            setEditorFile(null); 
+                                            updateActiveView(serverId, 'files');
+                                        }}
                                         className="p-1.5 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-md transition-colors"
                                     >
                                         <X size={16} />
                                     </button>
                                 </div>
                             </div>
-                            <div className="flex-1 flex overflow-hidden relative">
-                                <div className="bg-[#09090b] text-muted-foreground/30 text-right pr-3 pt-4 select-none w-10 border-r border-border/30 shrink-0 text-xs">
-                                    {editorFile.content.split('\n').map((_, i) => (
-                                        <div key={i}>{i + 1}</div>
-                                    ))}
-                                </div>
-                                <textarea
+                            <div className="flex-1 overflow-hidden relative bg-[#09090b] fm-codemirror-wrapper">
+                                <CodeMirror
                                     value={editorFile.content}
-                                    onChange={(e) => setEditorFile({ ...editorFile, content: e.target.value })}
-                                    className="flex-1 w-full bg-transparent text-zinc-300 p-4 focus:outline-none resize-none whitespace-pre"
+                                    height="100%"
+                                    theme="dark"
+                                    className="absolute inset-0 w-full h-full text-sm font-mono"
+                                    extensions={
+                                        editorFile.node.name.toLowerCase().endsWith('.json') ? [json()] :
+                                        (editorFile.node.name.toLowerCase().endsWith('.yml') || editorFile.node.name.toLowerCase().endsWith('.yaml')) ? [yaml()] :
+                                        editorFile.node.name.toLowerCase().endsWith('.properties') ? [StreamLanguage.define(properties)] :
+                                        []
+                                    }
+                                    onChange={(val) => setEditorFile({ ...editorFile, content: val })}
                                     spellCheck={false}
                                     onKeyDown={(e) => {
                                         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -759,7 +818,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                                             type="checkbox" 
                                                             checked={isSelected}
                                                             onChange={() => handleSelect(file.id, true)}
-                                                            className="rounded border-border bg-secondary text-primary focus:ring-primary/50"
+                                                            className="rounded-sm border-border bg-secondary text-primary focus:ring-primary/50"
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -781,22 +840,38 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                                             }}
                                                         >
                                                             {getFileIcon(file.type)}
-                                                            <span className={`font-medium transition-colors ${file.type === 'folder' ? 'text-foreground group-hover:text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
-                                                                {file.name}
-                                                            </span>
+                                                            {renamingFile?.id === file.id ? (
+                                                                <input
+                                                                    autoFocus
+                                                                    type="text"
+                                                                    defaultValue={renamingFile.name}
+                                                                    className="bg-secondary border border-primary/40 rounded-md px-2 py-0.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary min-w-[200px]"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    onKeyDown={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (e.key === 'Enter') handleRename(renamingFile, (e.target as HTMLInputElement).value);
+                                                                        if (e.key === 'Escape') setRenamingFile(null);
+                                                                    }}
+                                                                    onBlur={(e) => handleRename(renamingFile, e.target.value)}
+                                                                />
+                                                            ) : (
+                                                                <span className={`font-medium transition-colors ${file.type === 'folder' ? 'text-foreground group-hover:text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                                                                    {file.name}
+                                                                </span>
+                                                            )}
                                                             {file.snippet && (
                                                                 <span className="text-[10px] text-muted-foreground/60 italic truncate max-w-xs ml-2">
                                                                     {file.snippet}
                                                                 </span>
                                                             )}
                                                             {!file.isDirectory && presence[serverId]?.some(p => p.activeView === `files:${file.name}` && p.userId !== user?.id) && (
-                                                                <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-500 animate-pulse border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
+                                                                <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-[9px] font-bold text-emerald-500 animate-pulse border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
                                                                     <div className="w-1 h-1 rounded-full bg-emerald-500" />
                                                                     LIVE
                                                                 </span>
                                                             )}
                                                             {extractingItemIds.has(file.path) && (
-                                                                <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-blue-500/10 text-[9px] font-bold text-blue-500 animate-pulse border border-blue-500/20">
+                                                                <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-sm bg-blue-500/10 text-[9px] font-bold text-blue-500 animate-pulse border border-blue-500/20">
                                                                     <Loader2 size={10} className="animate-spin" />
                                                                     EXTRACTING
                                                                 </span>
@@ -817,10 +892,21 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                                                 e.stopPropagation();
                                                                 handleDownload(file.path, file.name);
                                                             }}
-                                                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Download"
+                                                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Download"
                                                         >
                                                             <Download size={14} />
                                                         </button>
+                                                            {canManage && !file.isProtected && (
+                                                                <button 
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setRenamingFile({ id: file.id, name: file.name, path: file.path });
+                                                                    }}
+                                                                    className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Rename"
+                                                                >
+                                                                    <Pencil size={14} />
+                                                                </button>
+                                                            )}
                                                             {file.name.endsWith('.zip') && canManage && (
                                                                 <button 
                                                                     onClick={(e) => {
@@ -830,7 +916,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                                                             : file.name;
                                                                         handleExtract(filePath, file.name);
                                                                     }}
-                                                                    className="p-1.5 rounded hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 transition-colors" 
+                                                                    className="p-1.5 rounded-md hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 transition-colors" 
                                                                     title="Extract ZIP"
                                                                 >
                                                                     <Archive size={14} />
@@ -843,7 +929,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                                                         handleDelete(new Set([file.id]));
                                                                     }}
                                                                     disabled={file.isProtected || deletingItemIds.has(file.id)}
-                                                                    className={`p-1.5 rounded transition-colors ${file.isProtected ? 'text-muted-foreground/30 cursor-not-allowed' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'}`} title="Delete"
+                                                                    className={`p-1.5 rounded-md transition-colors ${file.isProtected ? 'text-muted-foreground/30 cursor-not-allowed' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'}`} title="Delete"
                                                                 >
                                                                     {deletingItemIds.has(file.id) ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                                                                 </button>
@@ -858,8 +944,8 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                             </div>
                             {/* Drag Overlay */}
                             {isDragging && (
-                                <div className="absolute inset-0 bg-background z-50 flex flex-col items-center justify-center border-2 border-dashed border-primary m-4 rounded-xl animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
-                                    <UploadCloud size={64} className="text-primary animate-bounce" />
+                                <div className="absolute inset-0 bg-background z-50 flex flex-col items-center justify-center border-2 border-dashed border-primary m-4 rounded-md animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
+                                    <UploadCloud size={64} className="text-primary animate-pulse" />
                                     <h3 className="text-xl font-bold mt-4">Drop files to upload</h3>
                                     <p className="text-muted-foreground">Files will be added to /{currentPath.join('/')}</p>
                                 </div>
@@ -871,7 +957,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
 
             {/* Bottom Actions Bar (Selection) */}
             {selectedIds.size > 0 && (
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-full shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-10 fade-in duration-300 z-40">
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-md shadow-lg flex items-center gap-6 animate-in slide-in-from-bottom-10 fade-in duration-300 z-40">
                     <span className="font-bold text-sm">{selectedIds.size} selected</span>
                     <div className="h-4 w-[1px] bg-background/20"></div>
                     <div className="flex gap-2">
@@ -894,7 +980,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                     }
                                 }
                             }}
-                            className="p-2 hover:bg-background/20 rounded-full transition-colors" title="Archive Selection"
+                            className="p-2 hover:bg-background/20 rounded-md transition-colors" title="Archive Selection"
                         >
                             <Archive size={18} />
                         </button>
@@ -910,14 +996,14 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                                 }
                                 addToast('success', 'Downloads Finished', 'Batch download complete.');
                             }}
-                            className="p-2 hover:bg-background/20 rounded-full transition-colors" title="Download Selection"
+                            className="p-2 hover:bg-background/20 rounded-md transition-colors" title="Download Selection"
                         >
                             <Download size={18} />
                         </button>
                          {canManage && (
                              <button 
                                 onClick={() => handleDelete()}
-                                className="p-2 hover:bg-red-500 hover:text-white rounded-full transition-colors" title="Delete Selection"
+                                className="p-2 hover:bg-red-500 hover:text-white rounded-md transition-colors" title="Delete Selection"
                             >
                                 <Trash2 size={18} />
                             </button>
@@ -934,7 +1020,7 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
 
             {/* Upload Progress Toast */}
             {uploadProgress.visible && (
-                <div className="fixed bottom-6 right-6 bg-card border border-border shadow-xl rounded-xl p-4 w-80 animate-in slide-in-from-bottom-5 fade-in z-50">
+                <div className="fixed bottom-6 right-6 bg-card border border-border shadow-md rounded-md p-4 w-80 animate-in slide-in-from-bottom-5 fade-in z-50">
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium flex items-center gap-2">
                             <Loader2 className="animate-spin text-primary" size={14} /> Uploading...
@@ -942,9 +1028,9 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
                         <span className="text-xs text-muted-foreground">{Math.round(uploadProgress.progress)}%</span>
                     </div>
                     <p className="text-xs text-muted-foreground truncate mb-3">{uploadProgress.filename}</p>
-                    <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                    <div className="h-1.5 w-full bg-secondary rounded-sm overflow-hidden">
                         <div 
-                            className="h-full bg-primary rounded-full transition-all duration-100 ease-out"
+                            className="h-full bg-primary rounded-sm transition-all duration-100 ease-out"
                             style={{ width: `${uploadProgress.progress}%` }}
                         ></div>
                     </div>
@@ -954,20 +1040,20 @@ const FileManagerPro: React.FC<FileManagerProps> = ({ serverId }) => {
             {/* Create Item Modal */}
             {newItemModal.type && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
-                    <div className="bg-card border border-border p-6 rounded-xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                    <div className="bg-card border border-border p-6 rounded-md w-full max-w-sm shadow-lg animate-in zoom-in-95">
                         <h3 className="text-lg font-bold mb-4">Create New {newItemModal.type === 'folder' ? 'Folder' : 'File'}</h3>
                         <input 
                             autoFocus
                             type="text" 
-                            className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground mb-4 focus:outline-none focus:ring-1 focus:ring-primary"
+                            className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-foreground mb-4 focus:outline-none focus:ring-1 focus:ring-primary"
                             placeholder={newItemModal.type === 'folder' ? 'folder_name' : 'filename.txt'}
                             value={newItemModal.value}
                             onChange={(e) => setNewItemModal({ ...newItemModal, value: e.target.value })}
                             onKeyDown={(e) => e.key === 'Enter' && handleCreateItem()}
                         />
                         <div className="flex gap-2">
-                            <button onClick={() => setNewItemModal({ type: null, value: '' })} className="flex-1 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary rounded-lg transition-colors">Cancel</button>
-                            <button onClick={handleCreateItem} className="flex-1 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">Create</button>
+                            <button onClick={() => setNewItemModal({ type: null, value: '' })} className="flex-1 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary rounded-md transition-colors">Cancel</button>
+                            <button onClick={handleCreateItem} className="flex-1 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">Create</button>
                         </div>
                     </div>
                 </div>

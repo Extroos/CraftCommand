@@ -7,6 +7,9 @@ import { useToast } from '../ui/Toast';
 import { useConfirm } from '../ui/hooks/useConfirm';
 import { API } from '@core/services/api';
 import CreateDatabaseModal from './components/CreateDatabaseModal';
+import DatabaseCredentialsModal from './components/DatabaseCredentialsModal';
+import { usePermissions } from '../auth/hooks/usePermissions';
+import { AnimatePresence } from 'framer-motion';
 
 interface DatabaseManagerProps {
     serverId: string;
@@ -15,9 +18,14 @@ interface DatabaseManagerProps {
 export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) => {
     const { addToast } = useToast();
     const { confirm } = useConfirm();
+    const { can } = usePermissions();
     const [databases, setDatabases] = React.useState<any[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
     const [showCreateModal, setShowCreateModal] = React.useState(false);
+    const [selectedDbForCreds, setSelectedDbForCreds] = React.useState<any | null>(null);
+
+    const canManageDB = can('server.databases.manage', serverId);
+    const canReadDB = can('server.databases.read', serverId);
 
     const fetchDatabases = React.useCallback(async () => {
         setIsLoading(true);
@@ -57,12 +65,14 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                     </h2>
                     <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">Managed SQL & NoSQL Provisioning</p>
                 </div>
-                <button 
-                    onClick={() => setShowCreateModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.2)]"
-                >
-                    <Plus size={14} /> New Instance
-                </button>
+                {canManageDB && (
+                    <button 
+                        onClick={() => setShowCreateModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.2)]"
+                    >
+                        <Plus size={14} /> New Instance
+                    </button>
+                )}
             </div>
 
             <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">
@@ -109,38 +119,43 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                                         <td className="px-4 py-3 text-primary/70 font-bold font-mono text-[10px]">
                                             {db.username}
                                         </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <div className="flex items-center justify-end gap-2 opacity-30 group-hover:opacity-100 transition-opacity">
-                                                <button 
-                                                    onClick={() => addToast('info', 'Credentials', `Host: ${db.host}\nUser: ${db.username}\nPass: [Look in Console/Logs]`)}
-                                                    className="p-1.5 hover:text-primary transition-colors hover:bg-primary/10 rounded" title="View Connection Details"
-                                                >
-                                                    <Eye size={12} />
-                                                </button>
-                                                <button 
-                                                    onClick={async () => {
-                                                        const res = await confirm({
-                                                            title: 'Drop Database',
-                                                            description: `Are you sure you want to permanently delete \`${db.name}\`? All data will be lost.`,
-                                                            isDestructive: true
-                                                        });
-                                                        if (res) {
-                                                            try {
-                                                                await API.deleteDatabase(serverId, db.id);
-                                                                addToast('warning', 'Database Purged', `Instance ${db.name} has been deleted.`);
-                                                                fetchDatabases();
-                                                            } catch (e) {
-                                                                addToast('error', 'Action Failed', 'Failed to delete database.');
-                                                            }
-                                                        }
-                                                    }}
-                                                    className="p-1.5 hover:text-rose-500 transition-colors hover:bg-rose-500/10 rounded" 
-                                                    title="Delete Instance"
-                                                >
-                                                    <Trash2 size={12} />
-                                                </button>
-                                            </div>
-                                        </td>
+                                         <td className="px-4 py-3 text-right">
+                                             <div className="flex items-center justify-end gap-2 opacity-30 group-hover:opacity-100 transition-opacity">
+                                                 {canReadDB && (
+                                                     <button 
+                                                         onClick={() => setSelectedDbForCreds(db)}
+                                                         className="p-1.5 hover:text-primary transition-colors hover:bg-primary/10 rounded" title="View Connection Details"
+                                                     >
+                                                         <Eye size={12} />
+                                                     </button>
+                                                 )}
+                                                 {canManageDB && (
+                                                     <button 
+                                                         onClick={async () => {
+                                                             const res = await confirm({
+                                                                 title: 'Drop Database',
+                                                                 description: `Are you sure you want to permanently delete \`${db.name}\`? All data will be lost.`,
+                                                                 isDestructive: true
+                                                             });
+                                                             if (res) {
+                                                                 try {
+                                                                     await API.deleteDatabase(serverId, db.id);
+                                                                     addToast('warning', 'Database Purged', `Instance ${db.name} has been deleted.`);
+                                                                     fetchDatabases();
+                                                                 } catch (e: any) {
+                                                                     const errorMsg = e.response?.data?.error || e.message || 'Failed to delete database.';
+                                                                     addToast('error', 'Action Failed', errorMsg);
+                                                                 }
+                                                             }
+                                                         }}
+                                                         className="p-1.5 hover:text-rose-500 transition-colors hover:bg-rose-500/10 rounded" 
+                                                         title="Delete Instance"
+                                                     >
+                                                         <Trash2 size={12} />
+                                                     </button>
+                                                 )}
+                                             </div>
+                                         </td>
                                     </tr>
                                 ))
                             )}
@@ -153,13 +168,21 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                 </div>
             </div>
 
-            {showCreateModal && (
-                <CreateDatabaseModal 
-                    serverId={serverId}
-                    onClose={() => setShowCreateModal(false)}
-                    onCreate={handleCreateDb}
-                />
-            )}
+            <AnimatePresence>
+                {showCreateModal && (
+                    <CreateDatabaseModal 
+                        serverId={serverId}
+                        onClose={() => setShowCreateModal(false)}
+                        onCreate={handleCreateDb}
+                    />
+                )}
+                {selectedDbForCreds && (
+                    <DatabaseCredentialsModal 
+                        db={selectedDbForCreds}
+                        onClose={() => setSelectedDbForCreds(null)}
+                    />
+                )}
+            </AnimatePresence>
         </motion.div>
     );
 };

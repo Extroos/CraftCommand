@@ -18,15 +18,16 @@ export const NodeVersionMismatchRule: DiagnosisRule = {
         const node = nodeRegistryService.getNode(server.nodeId);
         if (!node) return null;
 
-        // Simple version compatibility check (could be more complex)
+        // Compare agent version against panel version for compatibility
         const panelVersion = require('../../../version.json').version;
-        if (node.protocolVersion !== panelVersion) {
+        const agentVersion = node.agentVersion || 'unknown';
+        if (agentVersion !== 'unknown' && agentVersion !== panelVersion) {
             return {
                 id: `node-ver-${server.nodeId}-${Date.now()}`,
                 ruleId: 'node_version_mismatch',
                 severity: 'WARNING',
-                title: 'Node Protocol Mismatch',
-                explanation: `Node "${node.name}" is running version ${node.protocolVersion}, but the panel is version ${panelVersion}. This may lead to synchronization issues.`,
+                title: 'Node Version Mismatch',
+                explanation: `Node "${node.name}" agent is running v${agentVersion}, but the panel is v${panelVersion}. This may lead to synchronization issues.`,
                 recommendation: 'Update the Node Agent to the same version as the Panel.',
                 timestamp: Date.now()
             };
@@ -58,8 +59,8 @@ export const NodeStarvationRule: DiagnosisRule = {
         const memUsage = (Number(node.health.memoryUsed) / Number(node.health.memoryTotal)) * 100;
         const cpuUsage = Number(node.health.cpu);
 
-        const isRamStarved = memUsage > 98;
-        const isCpuStarved = cpuUsage > 98;
+        const isRamStarved = memUsage > 95;
+        const isCpuStarved = cpuUsage > 90;
 
         if (isRamStarved || isCpuStarved) {
             const reason = isRamStarved ? 'RAM' : 'CPU';

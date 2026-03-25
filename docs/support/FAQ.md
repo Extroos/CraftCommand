@@ -8,7 +8,7 @@ Yes. CraftCommand is open-source and released under the AGPLv3 license. You can 
 
 ### Does it support Modpacks?
 
-Absolutely. The system includes a **Modpack Intelligence Engine (v1.12.0)** that automatically detects, resolves dependencies, and quarantines client-side only mods from CurseForge and Modrinth.
+Absolutely. The system includes a **Modpack Intelligence Engine (v1.12.5)** that automatically detects, resolves dependencies, and quarantines client-side only mods from CurseForge and Modrinth.
 
 ### Does it support Minecraft 1.21.1+?
 

@@ -23,9 +23,10 @@ import { processManager } from './features/processes/ProcessManager';
 import { fileWatcherService } from './features/files/FileWatcherService';
 import { discordService } from './features/integrations/DiscordService';
 import { systemSettingsService } from './features/system/SystemSettingsService';
-import { autoHealingService } from './features/servers/AutoHealingService';
+import { autoHealingService } from './features/diagnosis/AutoHealingService';
 import { updateService } from './features/system/UpdateService';
 import { migrationService } from './features/system/MigrationService';
+import { healthTelemetryService } from './features/system/HealthTelemetryService';
 import { errorHandler } from './middleware/errorHandler';
 import os from 'os';
 
@@ -115,6 +116,7 @@ const startup = async () => {
         await remoteAccessService.initialize();
         autoHealingService.initialize();
         updateService.initialize();
+        healthTelemetryService.getGlobalHealth(); // Side effect: ensure singleton is active
         
         // Start Embedded Agent (if enabled)
         const { localAgentManager } = await import('./features/nodes/LocalAgentManager');

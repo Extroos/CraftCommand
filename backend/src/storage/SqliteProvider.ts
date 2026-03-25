@@ -25,25 +25,46 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
             )
         `);
 
-        // Auto-Migration: If DB is empty and migration path is provided, try to load from existing JSON
+        // Migration logic: Atomicity and Safety (v1.12.0)
+        // Check if migration is needed (Table is empty AND migration JSON exists)
         const count = this.db.prepare(`SELECT COUNT(*) as count FROM ${this.tableName}`).get() as { count: number };
-        if (count.count === 0 && this.migrationJsonPath) {
-            const jsonPath = path.join(process.cwd(), 'data', this.migrationJsonPath);
-            if (fs.existsSync(jsonPath)) {
-                try {
-                    console.log(`[SqliteProvider] Migrating data from ${this.migrationJsonPath}...`);
-                    const jsonData = fs.readJSONSync(jsonPath);
-                    if (Array.isArray(jsonData)) {
-                        const insert = this.db.prepare(`INSERT INTO ${this.tableName} (id, data) VALUES (?, ?)`);
-                        const tx = this.db.transaction((items: any[]) => {
-                            for (const item of items) insert.run(item.id, JSON.stringify(item));
-                        });
-                        tx(jsonData);
-                        console.log(`[SqliteProvider] Migrated ${jsonData.length} items from ${this.migrationJsonPath}.`);
-                    }
-                } catch (e) {
-                    console.error(`[SqliteProvider] Migration from ${this.migrationJsonPath} failed:`, e);
+        const jsonPath = this.migrationJsonPath ? path.join(process.cwd(), 'data', this.migrationJsonPath) : null;
+        
+        if (count.count === 0 && jsonPath && fs.existsSync(jsonPath)) {
+            const migrationMarker = `${jsonPath}.migrated`;
+            
+            // If the marker exists, we already migrated (or tried and failed in a way that needs manual intervention)
+            if (fs.existsSync(migrationMarker)) {
+                console.warn(`[SqliteProvider] Migration marker found for ${this.tableName}. Skipping auto-migration to prevent data cycles.`);
+                return;
+            }
+
+            try {
+                console.log(`[SqliteProvider] DATA SAFETY: Backing up ${this.migrationJsonPath} before migration...`);
+                fs.copySync(jsonPath, `${jsonPath}.bak`);
+
+                console.log(`[SqliteProvider] Migrating data from ${this.migrationJsonPath} to SQLite...`);
+                const jsonData = fs.readJSONSync(jsonPath);
+                
+                if (Array.isArray(jsonData) && jsonData.length > 0) {
+                    const insert = this.db.prepare(`INSERT INTO ${this.tableName} (id, data) VALUES (?, ?)`);
+                    const tx = this.db.transaction((items: any[]) => {
+                        for (const item of items) insert.run(item.id, JSON.stringify(item));
+                    });
+                    tx(jsonData);
+                    console.log(`[SqliteProvider] Migrated ${jsonData.length} items to SQLite.`);
+                    
+                    // Create marker to prevent repeat migrations
+                    fs.writeFileSync(migrationMarker, new Date().toISOString());
+                } else {
+                    console.log(`[SqliteProvider] No data in ${this.migrationJsonPath} to migrate.`);
                 }
+            } catch (e: any) {
+                console.error(`[SqliteProvider] CRITICAL MIGRATION FAILURE for ${this.tableName}:`, e);
+                // We keep the backup (.bak) but DO NOT proceed to create a marker.
+                // Re-throw to prevent system from starting in a broken state if possible,
+                // or at least signal that the provider is unsafe.
+                throw new Error(`Migration to SQLite failed for ${this.tableName}: ${e.message}`);
             }
         }
     }

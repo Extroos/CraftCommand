@@ -204,18 +204,18 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                             <p className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-tighter leading-tight">Stateful Packet Inspection (SPI) & Throttling</p>
                         </div>
 
-                        {/* Geographic Lock Placeholder */}
-                        <div className="space-y-1 group/select">
-                            <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground group-hover/select:text-foreground">Geographic Lock</label>
+                        {/* Geographic Lock — Coming Soon */}
+                        <div className="space-y-1 group/select opacity-50">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Geographic Lock</label>
+                                <span className="text-[7px] font-black uppercase tracking-widest text-muted-foreground/40 bg-muted/40 px-1.5 py-0.5 rounded">Coming Soon</span>
+                            </div>
                             <div className="relative">
-                                <select className="w-full bg-background border border-border/60 rounded-md px-2.5 py-1.5 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors">
+                                <select disabled className="w-full bg-muted/20 border border-border/40 rounded-md px-2.5 py-1.5 text-[11px] text-muted-foreground/60 focus:outline-none appearance-none cursor-not-allowed">
                                     <option value="">Status: Global (OPEN)</option>
-                                    <option value="US">Region: North America</option>
-                                    <option value="EU">Region: Europe</option>
-                                    <option value="ASIA">Region: Asia</option>
                                 </select>
-                                <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/40">
-                                    <ChevronDown size={12} /> {/* Assuming ChevronDown is imported, wait I didn't import ChevronDown in SecuritySettings, I will add it */}
+                                <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/20">
+                                    <ChevronDown size={12} />
                                 </div>
                             </div>
                         </div>
@@ -239,8 +239,9 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                     </div>
                     
                     <p className="text-[9px] font-bold text-muted-foreground/60 mb-4 leading-relaxed uppercase tracking-tight">Core assets (server.jar, eula.txt) are under kernel-level write-protection.</p>
-                    <button className="w-full py-1.5 bg-primary/5 text-primary/80 border border-primary/20 rounded-md text-[9px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all">
+                    <button disabled className="w-full py-1.5 bg-muted/20 text-muted-foreground/40 border border-border/30 rounded-md text-[9px] font-black uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2">
                         Perform MD5/SHA2 Validation
+                        <span className="text-[7px] font-black bg-muted/40 px-1.5 py-0.5 rounded">Coming Soon</span>
                     </button>
                 </motion.div>
             </div>

@@ -7,7 +7,8 @@ import { discordService } from '../integrations/DiscordService';
 import { auditService } from './AuditService';
 import { verifyToken, requireRole, requirePermission } from '../../middleware/authMiddleware';
 import { installerService } from '../installer/InstallerService';
-import { autoHealingService } from '../servers/AutoHealingService';
+import { autoHealingService } from '../diagnosis/AutoHealingService';
+import { healthTelemetryService } from './HealthTelemetryService';
 import { migrationService } from './MigrationService';
 
 const router = express.Router();
@@ -20,15 +21,12 @@ router.get('/stats', async (req, res) => {
 });
 
 // Real-time Health Telemetry (AutoHealing v3)
-router.get('/health', verifyToken, async (req, res) => {
+router.get('/health', verifyToken, (req, res) => {
     try {
-        const stats = await getSystemStats(); // Basic stats
-        const hostHealth = await autoHealingService.checkHostHealth(); // Detailed IO/Sentinel stats
-        const stabilityMarkers = autoHealingService.getAllStabilityMarkers();
+        const platformHealth = healthTelemetryService.getGlobalHealth();
         
         res.json({
-            ...hostHealth,
-            stabilityMarkers,
+            ...platformHealth,
             uptime: process.uptime(),
             timestamp: Date.now()
         });
@@ -152,14 +150,16 @@ router.post('/remote-access/enable', verifyToken, requirePermission('system.remo
 
 // Audit Log
 router.get('/audit', verifyToken, requireRole(['OWNER', 'ADMIN']), (req, res) => {
-    const { limit, offset, action, userId, resourceId, search } = req.query;
+    const { limit, offset, action, userId, resourceId, search, startDate, endDate } = req.query;
     const result = auditService.getLogs({
         limit: limit ? parseInt(limit as string) : 50,
         offset: offset ? parseInt(offset as string) : 0,
         action: action as string,
         userId: userId as string,
         resourceId: resourceId as string,
-        search: search as string
+        search: search as string,
+        startDate: startDate as string,
+        endDate: endDate as string
     });
     res.json(result);
 });

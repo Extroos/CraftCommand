@@ -7,6 +7,7 @@ import { useToast } from '../ui/Toast';
 import { useConfirm } from '../ui/hooks/useConfirm';
 import { API } from '@core/services/api';
 import InviteMemberModal from './components/InviteMemberModal';
+import { usePermissions } from '../auth/hooks/usePermissions';
 
 interface SubuserManagerProps {
     serverId: string;
@@ -15,9 +16,12 @@ interface SubuserManagerProps {
 export const SubuserManager: React.FC<SubuserManagerProps> = ({ serverId }) => {
     const { addToast } = useToast();
     const { confirm } = useConfirm();
+    const { can } = usePermissions();
     const [members, setMembers] = React.useState<any[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
     const [showInviteModal, setShowInviteModal] = React.useState(false);
+
+    const canManageMembers = can('server.members.manage', serverId);
 
     const fetchMembers = React.useCallback(async () => {
         setIsLoading(true);
@@ -75,12 +79,14 @@ export const SubuserManager: React.FC<SubuserManagerProps> = ({ serverId }) => {
                     </h2>
                     <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">Hierarchical Member Management</p>
                 </div>
-                <button 
-                    onClick={() => setShowInviteModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.2)]"
-                >
-                    <UserPlus size={14} /> Invite Member
-                </button>
+                {canManageMembers && (
+                    <button 
+                        onClick={() => setShowInviteModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.2)]"
+                    >
+                        <UserPlus size={14} /> Invite Member
+                    </button>
+                )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -122,13 +128,15 @@ export const SubuserManager: React.FC<SubuserManagerProps> = ({ serverId }) => {
                             </div>
 
                             <div className="flex items-center gap-2">
-                                <button 
-                                    onClick={() => handleRemove(member.id, member.username || member.email)}
-                                    className="p-2 text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                    title="Revoke Access"
-                                >
-                                    <Trash2 size={12} />
-                                </button>
+                                {canManageMembers && member.role !== 'OWNER' && (
+                                    <button 
+                                        onClick={() => handleRemove(member.id, member.username || member.email)}
+                                        className="p-2 text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                        title="Revoke Access"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ))

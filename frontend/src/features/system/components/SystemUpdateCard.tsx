@@ -7,6 +7,7 @@ import { usePermissions } from '@features/auth/hooks/usePermissions';
 import { useUser } from '@features/auth/context/UserContext';
 import { useConfirm } from '@features/ui/hooks/useConfirm';
 import { ConfirmDialog } from '@features/ui/ConfirmDialog';
+import { useSystem } from '@features/system/context/SystemContext';
 
 // Types aligning with backend
 export type UpdateStatus = 'IDLE' | 'CHECKING' | 'DOWNLOADING' | 'VERIFYING' | 'READY_TO_INSTALL' | 'ERROR';
@@ -34,6 +35,7 @@ export const SystemUpdateCard: React.FC<SystemUpdateCardProps> = ({ variant = 'c
     
     const { addToast } = useToast();
     const { user } = useUser();
+    const { triggerRestart } = useSystem();
     const isOwner = user?.role === 'OWNER';
     const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
 
@@ -125,12 +127,10 @@ export const SystemUpdateCard: React.FC<SystemUpdateCardProps> = ({ variant = 'c
         setIsRestarting(true);
         try {
             await API.restartSystem();
-            addToast('success', 'System Restarting', 'Backend is restarting. The page will reload shortly.');
+            addToast('success', 'System Restarting', 'Backend is restarting. The suite will re-initialize shortly.');
             
-            // Wait and reload page
-            setTimeout(() => {
-                window.location.reload();
-            }, 5000);
+            // Trigger global restarting state
+            triggerRestart();
         } catch (e: any) {
             addToast('error', 'Restart Failed', e.message);
             setIsRestarting(false);

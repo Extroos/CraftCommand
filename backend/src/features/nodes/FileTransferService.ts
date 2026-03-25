@@ -35,7 +35,7 @@ export interface FileManifestEntry {
 export interface TransferProgress {
     serverId: string;
     nodeId: string;
-    phase: 'scanning' | 'transferring' | 'verifying' | 'complete' | 'error';
+    phase: 'scanning' | 'transferring' | 'reconnecting' | 'verifying' | 'complete' | 'error';
     totalFiles: number;
     transferredFiles: number;
     totalBytes: number;
@@ -179,8 +179,31 @@ export async function transferServerFiles(
             const end = Math.min(start + CHUNK_SIZE, content.length);
             const chunk = content.subarray(start, end);
 
+            // Jitter-tolerant pause loop: wait up to 60 seconds if node drops
+            let waitTime = 0;
+            const originalPhase = progress.phase;
+            
+            while (!isAgentConnected(nodeId) && waitTime < 60) {
+                if (waitTime === 0) {
+                    logger.warn(`[FileTransfer] Node "${nodeId}" disconnected. Pausing transfer up to 60s for reconnect...`);
+                    progress.phase = 'reconnecting';
+                    onProgress?.(progress);
+                }
+                await new Promise(r => setTimeout(r, 1000));
+                waitTime++;
+            }
+ 
             if (!isAgentConnected(nodeId)) {
-                throw new Error(`Transfer interrupted: Node Agent "${nodeId}" disconnected.`);
+                progress.phase = 'error';
+                progress.error = `Transfer interrupted: Node Agent "${nodeId}" disconnected permanently (60s timeout).`;
+                onProgress?.(progress);
+                throw new Error(progress.error);
+            }
+ 
+            if (waitTime > 0) {
+                logger.info(`[FileTransfer] Node "${nodeId}" reconnected. Resuming chunk ${i}/${totalChunks}...`);
+                progress.phase = originalPhase;
+                onProgress?.(progress);
             }
 
             let retries = 3;

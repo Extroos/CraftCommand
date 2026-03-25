@@ -285,6 +285,7 @@ export class RemoteRunner extends EventEmitter implements IServerRunner {
                 this.runningServers.add(serverId);
                 restored++;
                 logger.info(`[RemoteRunner] Restored tracking for server ${serverId} on node ${nodeId}.`);
+                this.emit('sync-recover', { id: serverId });
             }
         }
         if (restored > 0) {

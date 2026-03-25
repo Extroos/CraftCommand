@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ScheduleTask } from '@shared/types';
-import { CalendarClock, Plus, Play, Pause, Trash2, Clock, Command, Check, X, Loader2 } from 'lucide-react';
+import { CalendarClock, Plus, Play, Pause, Trash2, Clock, Command, Check, X, Loader2, Copy, Zap, List, History, Settings2 } from 'lucide-react';
 import { API } from '@core/services/api';
 import { useToast } from '../ui/Toast';
 import { useServers } from '@features/servers/context/ServerContext';
@@ -18,6 +18,7 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
     const { addToast } = useToast();
     const { can } = usePermissions();
     const [executionHistory, setExecutionHistory] = useState<any[]>([]);
+    const [activeTab, setActiveTab] = useState<'schedules' | 'history'>('schedules');
     const [isCreating, setIsCreating] = useState(false);
     const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
     const [newTask, setNewTask] = useState({ 
@@ -30,18 +31,23 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
     const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
     const { schedules: globalSchedules, refreshServerData, loading } = useServers();
     const [localTasks, setLocalTasks] = useState<ScheduleTask[]>([]);
+    const [editingTask, setEditingTask] = useState<ScheduleTask | null>(null);
     const [showOptimistic, setShowOptimistic] = useState(false);
+
+    const scheduleCount = (globalSchedules[serverId] || []).length; // Stable primitive
 
     useEffect(() => {
         setLocalTasks(globalSchedules[serverId] || []);
-    }, [serverId, globalSchedules[serverId]]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [serverId, scheduleCount]);
 
     useEffect(() => {
         if (!globalSchedules[serverId]) {
             refreshServerData(serverId);
         }
         fetchHistory();
-    }, [serverId, globalSchedules[serverId], refreshServerData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [serverId]);
 
     const fetchSchedules = async () => {
         await refreshServerData(serverId);
@@ -116,22 +122,103 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
         }
     };
 
-    const formatNextRun = (nextRun?: string) => {
+    const CountdownTimer: React.FC<{ nextRun?: string }> = ({ nextRun }) => {
+        const [timeLeft, setTimeLeft] = useState(() => formatNextRunLive(nextRun));
+
+        useEffect(() => {
+            if (!nextRun || isNaN(new Date(nextRun).getTime())) return;
+            const timer = setInterval(() => {
+                setTimeLeft(formatNextRunLive(nextRun));
+            }, 1000);
+            return () => clearInterval(timer);
+        }, [nextRun]);
+
+        return <span>{timeLeft}</span>;
+    };
+
+    const formatNextRunLive = (nextRun?: string) => {
         if (!nextRun) return 'Calculating...';
         try {
             const date = new Date(nextRun);
             if (isNaN(date.getTime())) return nextRun;
             const now = new Date();
             const diffMs = date.getTime() - now.getTime();
-            const diffMins = Math.round(diffMs / 60000);
-            if (diffMins < 1) return 'Any moment';
-            if (diffMins < 60) return `in ${diffMins}m`;
-            const diffHours = Math.round(diffMins / 60);
-            if (diffHours < 24) return `in ${diffHours}h`;
+            if (diffMs < 0) return 'Any moment';
+            
+            const diffSecs = Math.floor(diffMs / 1000);
+            if (diffSecs < 60) return `in ${diffSecs}s`;
+            
+            const diffMins = Math.floor(diffSecs / 60);
+            const remainingSecs = diffSecs % 60;
+            if (diffMins < 60) return `in ${diffMins}m ${remainingSecs}s`;
+            
+            const diffHours = Math.floor(diffMins / 60);
+            const remainingMins = diffMins % 60;
+            if (diffHours < 24) return `in ${diffHours}h ${remainingMins}m`;
+            
             return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         } catch {
             return nextRun;
         }
+    };
+
+    const describeCron = (cron: string): string => {
+        const preset = cronPresets.find(p => p.value === cron);
+        if (preset) return preset.label;
+        const parts = cron.split(' ');
+        if (parts.length !== 5) return cron;
+        const [min, hour, day, month, weekday] = parts;
+        if (min === '0' && hour === '0' && day === '*' && month === '*' && weekday === '*') return 'Daily at midnight';
+        if (min === '0' && hour !== '*' && day === '*' && month === '*' && weekday === '*') return `Daily at ${hour}:00`;
+        if (min.startsWith('*/')) return `Every ${min.slice(2)} minutes`;
+        if (min === '0' && hour.startsWith('*/')) return `Every ${hour.slice(2)} hours`;
+        return cron;
+    };
+
+    const handleRunNow = async (task: ScheduleTask) => {
+        if (!can('server.schedules.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions');
+            return;
+        }
+        setPendingTaskIds(prev => new Set(prev).add(task.id));
+        try {
+            await API.runScheduleNow(serverId, task.id);
+            addToast('success', 'Triggered', `"${task.name}" executed manually.`);
+            setTimeout(() => fetchHistory(), 1500);
+        } catch (e: any) {
+            addToast('error', 'Run Failed', e.message || 'Could not execute task.');
+        } finally {
+            setPendingTaskIds(prev => {
+                const next = new Set(prev);
+                next.delete(task.id);
+                return next;
+            });
+        }
+    };
+
+    const handleEdit = (task: ScheduleTask) => {
+        setEditingTask(task);
+        setNewTask({
+            name: task.name,
+            cron: task.cron,
+            actions: task.actions ? [...task.actions] : [{ type: 'command', command: task.command || '' }],
+            scheduleType: task.runOnce ? 'once' : 'recurring',
+            runAt: task.runAt ? task.runAt.slice(0, 16) : ''
+        });
+        setIsCreating(true);
+    };
+
+    const handleDuplicate = (task: ScheduleTask) => {
+        setEditingTask(null);
+        setNewTask({
+            name: `${task.name} (Copy)`,
+            cron: task.cron,
+            actions: task.actions ? [...task.actions] : [{ type: 'command', command: task.command || '' }],
+            scheduleType: task.runOnce ? 'once' : 'recurring',
+            runAt: ''
+        });
+        setIsCreating(true);
+        addToast('info', 'Duplicated', `Pre-filled from "${task.name}". Edit and save.`);
     };
 
     const cronPresets = [
@@ -144,45 +231,71 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
         { label: 'Every Friday midnight', value: '0 0 * * FRI' },
         { label: 'Every Sunday 3 AM', value: '0 3 * * SUN' },
     ];
-    const handleCreate = async () => {
+    const handleSave = async () => {
         if (!newTask.name || newTask.actions.length === 0) return;
+        
+        // Simple Cron Validation for Recurring Tasks
+        if (newTask.scheduleType === 'recurring') {
+            const cronParts = newTask.cron.trim().split(/\s+/);
+            if (cronParts.length !== 5) {
+                addToast('error', 'Invalid Cron', 'Cron expression must have exactly 5 parts (min hour day month weekday).');
+                return;
+            }
+            // Basic character check (digits, *, /, -, ,)
+            const cronRegex = /^[0-9\*\/\-\,a-zA-Z\s]+$/;
+            if (!cronRegex.test(newTask.cron)) {
+                addToast('error', 'Invalid Cron', 'Cron expression contains illegal characters.');
+                return;
+            }
+        }
+
         if (newTask.scheduleType === 'once' && !newTask.runAt) {
             addToast('error', 'Missing Date', 'Please select a date and time for the one-time task.');
             return;
         }
         if (!can('server.schedules.manage', serverId)) {
-            addToast('error', 'Permissions', 'Insufficient permissions to create schedules');
+            addToast('error', 'Permissions', 'Insufficient permissions to manage schedules');
             return;
         }
         
         const task: ScheduleTask = {
-            id: Date.now().toString(),
+            id: editingTask?.id || Date.now().toString(),
             serverId,
             name: newTask.name,
             cron: newTask.scheduleType === 'once' ? '* * * * *' : newTask.cron,
-            command: newTask.actions[0]?.command || '', // Legacy sync
+            command: newTask.actions[0]?.command || '', 
             actions: newTask.actions,
-            lastRun: 'Never',
-            nextRun: newTask.scheduleType === 'once' ? newTask.runAt : 'Calculated...',
-            isActive: true,
+            lastRun: editingTask?.lastRun || 'Never',
+            nextRun: editingTask?.nextRun || (newTask.scheduleType === 'once' ? newTask.runAt : 'Calculated...'),
+            isActive: editingTask ? editingTask.isActive : true,
             runOnce: newTask.scheduleType === 'once',
             runAt: newTask.scheduleType === 'once' ? new Date(newTask.runAt).toISOString() : undefined
         };
 
         try {
-            // Optimistic update
-            setLocalTasks(prev => [...prev, task]);
+            if (editingTask) {
+                setLocalTasks(prev => prev.map(t => t.id === task.id ? task : t));
+                await API.updateSchedule(serverId, task);
+                addToast('success', 'Schedule Updated', `"${task.name}" has been modified.`);
+            } else {
+                setLocalTasks(prev => [...prev, task]);
+                await API.createSchedule(serverId, task);
+                addToast('success', 'Schedule Created', newTask.scheduleType === 'once' ? 'One-time task scheduled.' : 'Recurring automation added.');
+            }
+            
             setIsCreating(false);
+            setEditingTask(null);
             setNewTask({ name: '', cron: '0 * * * *', actions: [{ type: 'command', command: '' }], scheduleType: 'recurring', runAt: '' });
             
-            await API.createSchedule(serverId, task);
-            addToast('success', 'Schedule Created', newTask.scheduleType === 'once' ? 'One-time task scheduled.' : 'Recurring automation added.');
-            
-            // Background refresh to catch any server-side generated fields (like nextRun/lastRun)
             setTimeout(() => refreshServerData(serverId), 1000);
         } catch (e) {
-            setLocalTasks(prev => prev.filter(t => t.id !== task.id));
-            addToast('error', 'Creation Failed', 'Could not create schedule.');
+            if (editingTask) {
+                // Refresh to revert
+                refreshServerData(serverId);
+            } else {
+                setLocalTasks(prev => prev.filter(t => t.id !== task.id));
+            }
+            addToast('error', 'Save Failed', 'Could not save schedule.');
         }
     };
 
@@ -202,15 +315,42 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
     }
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-120px)] animate-fade-in overflow-y-auto pb-10">
+        <div className="flex flex-col h-[calc(100vh-120px)] animate-fade-in relative pt-2">
+            
+            {/* Tabs */}
+            <div className="flex gap-2 mb-4 px-1">
+                <button
+                    onClick={() => setActiveTab('schedules')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                        activeTab === 'schedules' 
+                            ? 'bg-primary text-primary-foreground shadow-md' 
+                            : 'bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground'
+                    }`}
+                >
+                    <List size={16} /> Configurations
+                </button>
+                <button
+                    onClick={() => setActiveTab('history')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                        activeTab === 'history' 
+                            ? 'bg-primary text-primary-foreground shadow-md' 
+                            : 'bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground'
+                    }`}
+                >
+                    <History size={16} /> Execution History
+                </button>
+            </div>
+
+            {activeTab === 'schedules' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 overflow-y-auto pb-10 custom-scrollbar pr-2">
             {/* Left Column: Info & Creator */}
             <div className="lg:col-span-1 space-y-6">
                 <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-primary/10 text-primary rounded-lg"><CalendarClock size={20} /></div>
                         <div>
-                            <h2 className="text-lg font-bold">Automation</h2>
-                            <p className="text-xs text-muted-foreground">Schedule commands using Cron syntax.</p>
+                            <h2 className="text-lg font-bold">{editingTask ? 'Edit Task' : 'Automation'}</h2>
+                            <p className="text-xs text-muted-foreground">{editingTask ? `Modifying ${editingTask.name}` : 'Schedule commands using Cron syntax.'}</p>
                         </div>
                     </div>
 
@@ -336,18 +476,18 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
                             </div>
                             <div className="flex gap-2 pt-2">
                                 <button 
-                                    onClick={handleCreate} 
+                                    onClick={handleSave} 
                                     disabled={!can('server.schedules.manage', serverId)}
                                     className="flex-1 bg-primary text-primary-foreground py-2 rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
                                 >
-                                    Save Task
+                                    {editingTask ? 'Update Task' : 'Save Task'}
                                 </button>
-                                <button onClick={() => { setIsCreating(false); setNewTask({ name: '', cron: '0 * * * *', actions: [{ type: 'command', command: '' }], scheduleType: 'recurring', runAt: '' }); }} className="flex-1 bg-secondary text-foreground py-2 rounded-lg text-xs font-medium hover:bg-secondary/80">Cancel</button>
+                                <button onClick={() => { setIsCreating(false); setEditingTask(null); setNewTask({ name: '', cron: '0 * * * *', actions: [{ type: 'command', command: '' }], scheduleType: 'recurring', runAt: '' }); }} className="flex-1 bg-secondary text-foreground py-2 rounded-lg text-xs font-medium hover:bg-secondary/80">Cancel</button>
                             </div>
                         </div>
                     ) : (
                         <button 
-                            onClick={() => setIsCreating(true)}
+                            onClick={() => { setEditingTask(null); setIsCreating(true); }}
                             disabled={!can('server.schedules.manage', serverId)}
                             title={!can('server.schedules.manage', serverId) ? 'Insufficient Permissions' : ''}
                             className={`w-full py-3 border border-dashed border-border rounded-lg transition-all flex items-center justify-center gap-2 text-sm font-medium ${
@@ -405,7 +545,8 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
                                     </h3>
                                     <div className="flex items-center gap-2 mt-1">
                                         {!task.runOnce && <code className="bg-secondary px-1.5 py-0.5 rounded text-xs font-mono text-emerald-500">{task.cron}</code>}
-                                        <span className="text-xs text-muted-foreground">Next: {formatNextRun(task.nextRun)}</span>
+                                        {!task.runOnce && <span className="text-[10px] text-muted-foreground/60 italic">{describeCron(task.cron)}</span>}
+                                        <span className="text-xs text-muted-foreground">Next: <CountdownTimer nextRun={task.nextRun} /></span>
                                     </div>
                                 </div>
                             </div>
@@ -415,6 +556,7 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
                                     disabled={pendingTaskIds.has(task.id) || !can('server.schedules.manage', serverId)}
                                     className={`p-2 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${task.isActive ? 'text-amber-500 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
                                     title={!can('server.schedules.manage', serverId) ? 'Insufficient Permissions' : (task.isActive ? "Pause Schedule" : "Resume Schedule")}
+                                    aria-label={task.isActive ? "Pause Schedule" : "Resume Schedule"}
                                 >
                                     {pendingTaskIds.has(task.id) ? (
                                         <Loader2 size={16} className="animate-spin" />
@@ -423,10 +565,38 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
                                     )}
                                 </button>
                                 <button 
+                                    onClick={() => handleRunNow(task)}
+                                    disabled={pendingTaskIds.has(task.id) || !can('server.schedules.manage', serverId)}
+                                    className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Run Now"
+                                    aria-label="Run Now"
+                                >
+                                    <Zap size={16} />
+                                </button>
+                                <button 
+                                    onClick={() => handleDuplicate(task)}
+                                    disabled={!can('server.schedules.manage', serverId)}
+                                    className="p-2 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Duplicate Schedule"
+                                    aria-label="Duplicate Schedule"
+                                >
+                                    <Copy size={16} />
+                                </button>
+                                <button 
+                                    onClick={() => handleEdit(task)}
+                                    disabled={!can('server.schedules.manage', serverId)}
+                                    className="p-2 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Edit Schedule"
+                                    aria-label="Edit Schedule"
+                                >
+                                    <Settings2 size={16} />
+                                </button>
+                                <button 
                                     onClick={() => deleteTask(task.id)}
                                     disabled={pendingTaskIds.has(task.id) || !can('server.schedules.manage', serverId)}
                                     className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                                     title={!can('server.schedules.manage', serverId) ? 'Insufficient Permissions' : 'Delete Schedule'}
+                                    aria-label="Delete Schedule"
                                 >
                                     <Trash2 size={16} />
                                 </button>
@@ -457,10 +627,13 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
                     </div>
                 ))}
             </div>
+            </div>
+            )}
 
             {/* History Panel */}
-            <div className="lg:col-span-3 bg-card border border-border rounded-xl p-6">
-                <h3 className="font-bold mb-4 flex items-center gap-2"><Clock size={16} /> Execution Audit Log</h3>
+            {activeTab === 'history' && (
+            <div className="bg-card border border-border rounded-xl p-6 overflow-y-auto custom-scrollbar h-full">
+                <h3 className="font-bold mb-4 flex items-center gap-2"><History size={16} /> Execution Audit Log</h3>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
                         <thead className="text-xs text-muted-foreground uppercase bg-secondary/50">
@@ -492,6 +665,7 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ serverId }) => {
                     </table>
                 </div>
             </div>
+            )}
 
             <ConfirmDialog 
                 isOpen={isConfirmOpen}

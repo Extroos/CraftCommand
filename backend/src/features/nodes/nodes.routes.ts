@@ -5,6 +5,7 @@ import { systemSettingsService } from '../system/SystemSettingsService';
 import { verifyToken, requireRole } from '../../middleware/authMiddleware';
 import { nodeEnrollmentService } from './NodeEnrollmentService';
 import { backupService } from '../backups/BackupService';
+import { ValidationUtils } from '../../utils/ValidationUtils';
 
 const router = Router();
 
@@ -68,10 +69,18 @@ router.get('/recommend', verifyToken, requireRole(['OWNER', 'ADMIN']), requireDi
     }
 });
 
+import rateLimit from 'express-rate-limit';
+
+const nodeEnrollLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: 'Too many enrollment attempts, please try again later' }
+});
+
 /**
  * POST /api/nodes/enroll — Enroll a new node
  */
-router.post('/enroll', verifyToken, requireRole(['OWNER']), requireDistributedNodes, (req, res) => {
+router.post('/enroll', verifyToken, nodeEnrollLimiter, requireRole(['OWNER']), requireDistributedNodes, (req, res) => {
     try {
         const { name, host, port, labels } = req.body;
 
@@ -82,11 +91,18 @@ router.post('/enroll', verifyToken, requireRole(['OWNER']), requireDistributedNo
             });
         }
 
-        if (typeof port !== 'number' || port < 1 || port > 65535) {
-            return res.status(400).json({ error: 'Port must be a number between 1 and 65535.' });
-        }
+        const validHost = ValidationUtils.validateHost(host);
+        const validPort = ValidationUtils.validatePort(port);
+        const validName = ValidationUtils.validateId(name, 'Node Name');
 
-        const node = nodeRegistryService.enroll(name, host, port, labels || []);
+        const node = nodeRegistryService.enroll(validName, validHost, validPort, labels || []);
+        
+        auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', node.id, {
+            action: 'NODE_ENROLL',
+            name: node.name,
+            host: node.host
+        }, req.ip);
+
         res.status(201).json(node);
     } catch (error: any) {
         // Service throws descriptive errors for duplicates, invalid input, etc.
@@ -254,7 +270,7 @@ router.post('/:id/fix', verifyToken, requireRole(['OWNER']), requireDistributedN
             action: 'NODE_CAPABILITY_FIX',
             capability,
             nodeName: node.name
-        });
+        }, req.ip);
 
     } catch (error: any) {
         console.error('[Nodes] Failed to trigger fix:', error);
@@ -295,7 +311,7 @@ router.post('/:id/shutdown', verifyToken, requireRole(['OWNER']), requireDistrib
         auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', id, {
             action: 'NODE_SHUTDOWN',
             nodeName: node.name
-        });
+        }, req.ip);
 
     } catch (error: any) {
         console.error('[Nodes] Failed to shutdown node:', error);
@@ -322,7 +338,37 @@ router.post('/:id/backups/intake', async (req, res) => {
         if (!node) return res.status(404).json({ error: 'Node not found.' });
 
         if (!nodeRegistryService.verifySecret(id, nodeSecret)) {
+            // Audit failed intake attempt
+            auditService.log('SYSTEM', 'PERMISSION_DENIED', serverId, { 
+                action: 'BACKUP_INTAKE_FAIL', 
+                reason: 'INVALID_SECRET',
+                nodeId: id
+            }, req.ip);
             return res.status(401).json({ error: 'Invalid node secret.' });
+        }
+
+        // --- Security Hardening: Node-Server Cross-Validation (Phase 8) ---
+        const { serverRepository } = require('../../storage/ServerRepository');
+        const server = serverRepository.findById(serverId);
+        
+        if (!server) {
+            return res.status(404).json({ error: 'Target server not found.' });
+        }
+
+        // Logic: A node can only intake backups for servers it is actually hosting.
+        // If server.nodeId is 'local' or undefined, it belongs to the host.
+        const serverNodeId = server.nodeId || 'local';
+        const reportingNodeId = id || 'local';
+
+        if (serverNodeId !== reportingNodeId) {
+            logger.error(`[Security] Node ${id} attempted to intake backup for server ${serverId} which belongs to node ${serverNodeId}!`);
+            auditService.log('SYSTEM', 'PERMISSION_DENIED', serverId, {
+                action: 'BACKUP_INTAKE_FAIL',
+                reason: 'NODE_MISMATCH',
+                expected: serverNodeId,
+                actual: reportingNodeId
+            }, req.ip);
+            return res.status(403).json({ error: 'Access denied: Server is not assigned to this node.' });
         }
 
         // Store the mirrored backup

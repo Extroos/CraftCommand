@@ -7,6 +7,7 @@ import { IServerRunner } from './runners/IServerRunner';
 import { NetUtils } from '../../utils/NetUtils';
 import { logger } from '../../utils/logger';
 import { statsRingBuffer } from '../diagnosis/StatsRingBuffer';
+import { ErrorCode, SystemError } from '../../utils/ErrorCodes';
 
 class ProcessManager extends EventEmitter {
     private activeRunners: Map<string, IServerRunner> = new Map();
@@ -18,6 +19,7 @@ class ProcessManager extends EventEmitter {
     private gracefulShutdowns: Map<string, boolean> = new Map();
     private updatingStatuses: Set<string> = new Set();
     private startupLocks: Set<string> = new Set();
+    private startupTimeouts: Map<string, NodeJS.Timeout> = new Map();
     private players: Map<string, Set<string>> = new Map();
     private readonly MAX_LOGS = 1000;
     private lastEmittedStatus: Map<string, string> = new Map();
@@ -36,6 +38,24 @@ class ProcessManager extends EventEmitter {
         const dockerRunner = runnerFactory.getRunner('docker') as any;
         if (dockerRunner.syncActiveContainers) {
             await dockerRunner.syncActiveContainers();
+        }
+
+        // --- REMOTE RUNNER DESYNC FIX (Phase 3) ---
+        const remoteRunner = runnerFactory.getRunner('remote') as any;
+        if (remoteRunner) {
+            remoteRunner.on('sync-recover', (data: { id: string }) => {
+                logger.info(`[ProcessManager:${data.id}] Node Agent reconnected! Recovering ONLINE state...`);
+                // Force state back to online immediately
+                this.updateCachedStatus(data.id, { online: true, status: ServerStatus.ONLINE });
+                
+                // Persist recovery so next panel reboot isn't confused
+                const { getServer, saveServer } = require('../servers/ServerService');
+                const server = getServer(data.id);
+                if (server) {
+                    server.status = ServerStatus.ONLINE;
+                    saveServer(server);
+                }
+            });
         }
     }
 
@@ -58,7 +78,7 @@ class ProcessManager extends EventEmitter {
                         const isPortBound = await NetUtils.checkPort(server.port);
                         if (isPortBound) {
                             logger.info(`[ProcessManager:${id}] Reachability Sync: Detected responsive port ${server.port}. Forcing ONLINE.`);
-                            this.startupLocks.delete(id);
+                            this.clearStartupLock(id);
                             this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE });
                         }
                     }
@@ -188,24 +208,52 @@ class ProcessManager extends EventEmitter {
         this.startupLocks.add(id);
         logger.info(`[ProcessManager] Initializing server ${id} using ${engine} engine.`);
 
+        // --- STARTUP TIMEOUT (Rule #1: Stability under failure) ---
+        // If the server doesn't boot within 5 minutes, forcibly unlock it.
+        const timeout = setTimeout(async () => {
+            if (this.startupLocks.has(id)) {
+                logger.warn(`[ProcessManager:${id}] Startup timed out after 5 minutes! Unlocking to prevent eternal hang.`);
+                this.clearStartupLock(id);
+                // Check if port actually bound despite missing logs
+                const isPortBound = env.SERVER_PORT ? await NetUtils.checkPort(env.SERVER_PORT) : false;
+                if (!isPortBound) {
+                    this.updateCachedStatus(id, { 
+                        online: false, 
+                        status: ServerStatus.CRASHED,
+                        errorCode: ErrorCode.E_PROC_TIMEOUT 
+                    });
+                    this.maybeEmitStatus(id, ServerStatus.CRASHED);
+                } else {
+                    this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE });
+                }
+            }
+        }, 5 * 60 * 1000);
+        this.startupTimeouts.set(id, timeout);
+
         this.attachRunnerListeners(id, runner);
 
         try {
             await runner.start(id, runCommand, cwd, env);
-            // --- RACE CONDITION GUARD ---
-            // Only emit STARTING if the server is still managed.
-            // If it crashed during startup, handleServerClose would have already 
-            // set it to CRASHED or offline.
             if (this.activeRunners.has(id)) {
                 this.maybeEmitStatus(id, ServerStatus.STARTING);
             }
-        } catch (err) {
+        } catch (err: any) {
             this.cleanupRunner(id);
+            // Wrap in SystemError if not already one
+            if (!(err instanceof SystemError)) {
+                throw new SystemError(ErrorCode.E_PROC_SPAWN_FAIL, err.message);
+            }
             throw err;
         }
+    }
 
-        this.maybeEmitStatus(id, ServerStatus.STARTING);
-
+    private clearStartupLock(id: string) {
+        this.startupLocks.delete(id);
+        const timeout = this.startupTimeouts.get(id);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.startupTimeouts.delete(id);
+        }
     }
 
     private attachRunnerListeners(id: string, runner: IServerRunner, initialStatus: ServerStatus = ServerStatus.STARTING) {
@@ -255,7 +303,7 @@ class ProcessManager extends EventEmitter {
 
         if (this.startupLocks.has(id)) {
             if (line.includes('Done (') || line.includes('Listening on')) {
-                this.startupLocks.delete(id);
+                this.clearStartupLock(id);
                 this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE });
             }
         }
@@ -356,7 +404,7 @@ class ProcessManager extends EventEmitter {
 
     private handleServerClose(id: string, code: number) {
         logger.info(`[ProcessManager] Server ${id} closed with code ${code}`);
-        this.startupLocks.delete(id);
+        this.clearStartupLock(id);
 
         const isIntentional = this.stoppingServers.has(id);
         const finalStatus = (!isIntentional && code !== 0 && code !== null) ? ServerStatus.CRASHED : ServerStatus.OFFLINE;
@@ -385,7 +433,7 @@ class ProcessManager extends EventEmitter {
         const runner = this.activeRunners.get(id);
         if (runner) {
             if (this.startupLocks.has(id) && !force) {
-                throw new Error('Server is initializing. Use force stop if necessary.');
+                throw new SystemError(ErrorCode.E_PROC_TIMEOUT, 'Server is initializing. Use force stop if necessary.');
             }
             this.stoppingServers.add(id);
 
@@ -634,7 +682,7 @@ class ProcessManager extends EventEmitter {
         if (data.online && current.status === ServerStatus.STARTING) {
             data.status = ServerStatus.ONLINE;
             this.onlineTimes.set(id, Date.now());
-            this.startupLocks.delete(id);
+            this.clearStartupLock(id);
         }
         if (data.status) this.maybeEmitStatus(id, data.status);
         this.statusCache.set(id, { ...current, ...data, lastUpdate: Date.now() });
@@ -694,6 +742,8 @@ class ProcessManager extends EventEmitter {
         // 1. Stop Sync Loops
         // (We can't easily stop the private intervals without refactoring to store their IDs, 
         // but since the process is exiting, we just need to stop spawning NEW things)
+        Array.from(this.startupTimeouts.values()).forEach(clearTimeout);
+        this.startupTimeouts.clear();
         this.startupLocks.clear();
 
         // 2. Kill all Active Runners

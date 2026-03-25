@@ -541,9 +541,9 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                         <div className="flex items-center gap-2">
                             <span className="text-sm font-mono font-black tabular-nums" style={{ color: tpsColor }}>{displayTps.toFixed(1)}</span>
                             <span className="text-[9px] font-bold text-foreground/20">TPS</span>
-                            <div className={`w-1.5 h-1.5 rounded-full ${displayTps >= 18 ? 'bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]' : displayTps >= 15 ? 'bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]' : displayTps > 0 ? 'bg-rose-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]' : 'bg-zinc-600'}`} />
-                            <span className={`text-[8px] font-bold uppercase tracking-wider ${displayTps >= 18 ? 'text-emerald-500' : displayTps >= 15 ? 'text-amber-500' : displayTps > 0 ? 'text-rose-500' : 'text-foreground/20'}`}>
-                                {displayTps >= 18 ? 'Healthy' : displayTps >= 15 ? 'Degraded' : displayTps > 0 ? 'Critical' : 'Offline'}
+                            <div className={`w-1.5 h-1.5 rounded-full ${status === ServerStatus.ONLINE ? (displayTps >= 18 ? 'bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]' : displayTps >= 15 ? 'bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]' : 'bg-rose-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]') : 'bg-zinc-600'}`} />
+                            <span className={`text-[8px] font-bold uppercase tracking-wider ${status === ServerStatus.ONLINE ? (displayTps >= 18 ? 'text-emerald-500' : displayTps >= 15 ? 'text-amber-500' : 'text-rose-500') : 'text-foreground/20'}`}>
+                                {status === ServerStatus.ONLINE ? (displayTps >= 18 ? 'Healthy' : displayTps >= 15 ? 'Degraded' : 'Critical') : 'Offline'}
                             </span>
                         </div>
                     </div>
@@ -622,7 +622,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                     )}
                 </div>
                 <div className="flex items-center gap-4 shrink-0 relative">
-                    <div className="text-[9px] font-mono text-white/5 uppercase tracking-widest">Live_v2.4</div>
+                    <div className="text-[9px] font-mono text-white/20 uppercase tracking-widest">Live_v1.12.5</div>
                     <div className="flex gap-1">
                         <div className="w-1 h-1 rounded-full bg-emerald-500/20" />
                         <div className="w-1 h-1 rounded-full bg-emerald-500/10" />

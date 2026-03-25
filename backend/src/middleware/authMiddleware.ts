@@ -72,10 +72,21 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
 
         // Verify Session (Phase 12)
         if (decoded.jti) {
-            const isValid = await authService.isSessionValid(decoded.jti);
-            if (!isValid) {
+            const { sessionRepository } = require('../storage/SessionRepository');
+            const session = sessionRepository.findById(decoded.jti);
+            
+            if (!session || session.expiresAt < Date.now() || session.revokedAt) {
                  console.warn(`[AuthMiddleware] Revoked or expired session: ${decoded.jti} for user ${user.email}`);
                  return res.status(401).json({ error: 'Session has been revoked or expired. Please login again.' });
+            }
+
+            // Phase 8: Strict IP Binding
+            const enforceIp = settings?.app?.security?.ipSessionBinding ?? false;
+            if (enforceIp && session.ipAddress && session.ipAddress !== req.ip) {
+                 console.error(`[Security] Session IP Mismatch! Session: ${session.ipAddress}, Request: ${req.ip} (User: ${user.email})`);
+                 return res.status(401).json({ 
+                     error: 'Security Alert: Your IP address has changed since login. Please login again for your protection.' 
+                 });
             }
         }
 

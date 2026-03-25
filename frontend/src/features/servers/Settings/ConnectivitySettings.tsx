@@ -305,28 +305,10 @@ export const ConnectivitySettings: React.FC<ConnectivitySettingsProps> = ({ curr
                     className="p-5 bg-card rounded-md border border-border/40 shadow-sm"
                 >
                     <h3 className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] mb-4">Traffic Statistics</h3>
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-end border-b border-border/20 pb-2">
-                            <div>
-                                <p className="text-[10px] font-bold text-muted-foreground/80">Bandwidth In</p>
-                                <p className="text-xl font-mono text-primary/80 tabular-nums">1.4 <span className="text-[10px] opacity-40">GB</span></p>
-                            </div>
-                            <Activity size={14} className="text-emerald-500/40 mb-1" />
-                        </div>
-                        <div className="flex justify-between items-end border-b border-border/20 pb-2">
-                            <div>
-                                <p className="text-[10px] font-bold text-muted-foreground/80">Bandwidth Out</p>
-                                <p className="text-xl font-mono text-primary/80 tabular-nums">4.8 <span className="text-[10px] opacity-40">GB</span></p>
-                            </div>
-                            <Activity size={14} className="text-emerald-500/40 mb-1" />
-                        </div>
-                        <div className="flex justify-between items-end">
-                            <div>
-                                <p className="text-[10px] font-bold text-muted-foreground/80">Direct Hits (24h)</p>
-                                <p className="text-xl font-mono text-primary/80 tabular-nums">142</p>
-                            </div>
-                            <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[8px] font-black uppercase tracking-tighter mb-1">Normal</span>
-                        </div>
+                    <div className="flex flex-col items-center justify-center py-6 text-center">
+                        <Activity size={20} className="text-muted-foreground/15 mb-2" />
+                        <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-wider">Metrics Unavailable</p>
+                        <p className="text-[8px] text-muted-foreground/25 mt-1 leading-relaxed max-w-[140px]">Network traffic monitoring requires an active data collection agent</p>
                     </div>
                 </motion.div>
 

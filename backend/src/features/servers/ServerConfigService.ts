@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import {  ServerConfig  } from '@shared/types';
 import { logger } from '../../utils/logger';
+import { SafeFileOperation } from '../../utils/fs';
 
 export interface ConfigMismatch {
     setting: string;
@@ -177,8 +178,8 @@ export class ServerConfigService {
         }
 
         if (modified) {
-            await fs.writeFile(propsPath, content);
-            logger.info(`[ConfigService] Enforced DB settings on ${server.name}`);
+            await SafeFileOperation.writeWithBackup(propsPath, content);
+            logger.info(`[ConfigService] Enforced DB settings on ${server.name} (Atomic)`);
         }
     }
 

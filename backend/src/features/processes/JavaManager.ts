@@ -44,8 +44,13 @@ export class JavaManager extends EventEmitter {
         );
 
         if (matchingSystemJava && matchingSystemJava.path !== 'java') {
-            logger.info(`[JavaManager] Preferred system Java found for ${version}: ${matchingSystemJava.path}`);
-            return matchingSystemJava.path;
+            // Hardening: Verify the path actually exists on disk (prevent ghost paths)
+            if (await fs.pathExists(matchingSystemJava.path)) {
+                logger.info(`[JavaManager] Preferred system Java found for ${version}: ${matchingSystemJava.path}`);
+                return matchingSystemJava.path;
+            } else {
+                logger.warn(`[JavaManager] System Java path ${matchingSystemJava.path} detected but missing on disk. Skipping.`);
+            }
         }
 
         const runtimeDir = path.join(__dirname, '../../runtimes', majorVer);

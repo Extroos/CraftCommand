@@ -29,7 +29,7 @@ Because Minecraft servers are prone to external failures, the following are simu
 - **Abrupt Termination**: Killing the background worker or server process to verify state recovery and "Ghost Protection."
 - **NBT Overflows**: Stress-testing the logger and console buffer with high-velocity data.
 
-## 4. Security & Authentication (v1.12.0)
+## 4. Security & Authentication (v1.12.5)
 
 Mandatory checks for every stable release:
 

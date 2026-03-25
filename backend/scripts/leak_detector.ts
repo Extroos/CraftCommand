@@ -1,6 +1,6 @@
 import { processManager } from '../src/features/processes/ProcessManager';
 import { registerBroadcasters } from '../src/sockets/broadcasters';
-import { autoHealingService } from '../src/features/servers/AutoHealingService';
+import { autoHealingService } from '../src/features/diagnosis/AutoHealingService';
 import { logger } from '../src/utils/logger';
 
 async function testBroadcasterIdempotency() {

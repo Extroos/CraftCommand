@@ -16,6 +16,18 @@ const loginLimiter = rateLimit({
     message: { error: 'Too many login attempts, please try again later' }
 });
 
+const verify2FALimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: 'Too many 2FA attempts, please try again later' }
+});
+
+const sensitiveActionLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 5,
+    message: { error: 'Too many sensitive actions, please try again later' }
+});
+
 // Login
 router.post('/login', loginLimiter, async (req, res) => {
     const { email, password } = req.body;
@@ -31,7 +43,7 @@ router.post('/login', loginLimiter, async (req, res) => {
 });
 
 // Verify 2FA
-router.post('/2fa/verify', async (req, res) => {
+router.post('/2fa/verify', verify2FALimiter, async (req, res) => {
     const { loginToken, code } = req.body;
     try {
         const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
@@ -59,12 +71,14 @@ router.post('/2fa/verify', async (req, res) => {
         
         // Phase 12: Create session on 2FA success
         const sessionId = crypto.randomUUID();
-        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        const expiresAt = Date.now() + 1 * 24 * 60 * 60 * 1000; // 24 hours
         
         const { sessionRepository } = require('../../storage/SessionRepository');
         sessionRepository.create({
             id: sessionId,
             userId: user!.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
             createdAt: Date.now(),
             expiresAt
         });
@@ -74,14 +88,14 @@ router.post('/2fa/verify', async (req, res) => {
             email: user!.email, 
             role: user!.role,
             jti: sessionId
-        }, secret, { expiresIn: '7d' });
+        }, secret, { expiresIn: '24h' });
         
         auditService.log(user!.id, 'AUTH_2FA_SUCCESS', undefined, { type: isTotp ? 'totp' : 'recovery' }, req.ip, user!.email);
         
         // Update last login on success
         userRepository.update(user!.id, { lastLogin: Date.now() });
 
-        res.json({ user, token });
+        res.json({ success: true, user, token });
     } catch (e: any) {
         res.status(401).json({ error: 'Session expired or invalid' });
     }
@@ -105,7 +119,7 @@ router.post('/2fa/setup/confirm', verifyToken, async (req, res) => {
     try {
         const result = await authService.confirm2FASetup(user.id, code);
         auditService.log(user.id, 'AUTH_2FA_ENABLE', undefined, undefined, req.ip, user.email);
-        res.json(result);
+        res.json({ success: true, ...result });
     } catch (e: any) {
         res.status(400).json({ error: e.message });
     }
@@ -138,7 +152,7 @@ router.post('/2fa/backup/regen', verifyToken, async (req, res) => {
 });
 
 // Change Password (self-service)
-router.post('/change-password', verifyToken, async (req, res) => {
+router.post('/change-password', verifyToken, sensitiveActionLimiter, async (req, res) => {
     const user = (req as any).user;
     const { currentPassword, newPassword } = req.body;
     try {
@@ -164,6 +178,17 @@ router.patch('/me', verifyToken, (req, res) => {
         res.json(updated);
     } catch (e: any) {
         res.status(403).json({ error: e.message });
+    }
+});
+
+// Rotate API Key
+router.post('/rotate-api-key', verifyToken, async (req, res) => {
+    const user = (req as any).user;
+    try {
+        const apiKey = await authService.rotateApiKey(user.id);
+        res.json({ apiKey });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
 });
 

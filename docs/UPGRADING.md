@@ -31,7 +31,7 @@ If you are a developer or using a custom fork:
 
 ## v1.12.x: Security & Modpack Intelligence
 
-Version 1.12.0 is a mandatory security update.
+Version 1.12.5 is a mandatory security update.
 
 - **2FA Migration**: If you previously used a placeholder 2FA guide, you must now enable the **Native 2FA Security Suite** in your Profile settings.
 - **Mobile Optimization**: This version introduces a professional `viewport` meta tag. If you are using a custom frontend build, ensure your `index.html` is synchronized with the latest source to enable mobile responsiveness.

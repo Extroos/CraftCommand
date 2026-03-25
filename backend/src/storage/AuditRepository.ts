@@ -40,7 +40,9 @@ export class AuditRepository implements StorageProvider<AuditLog> {
         action?: string, 
         userId?: string, 
         resourceId?: string, 
-        search?: string 
+        search?: string,
+        startDate?: string,
+        endDate?: string
     } = {}): { logs: AuditLog[], total: number } {
         let filtered = this.findAll().sort((a, b) => b.timestamp - a.timestamp);
 
@@ -65,6 +67,16 @@ export class AuditRepository implements StorageProvider<AuditLog> {
                 (l.resourceId && l.resourceId.toLowerCase().includes(s)) ||
                 (l.metadata && JSON.stringify(l.metadata).toLowerCase().includes(s))
             );
+        }
+
+        if (options.startDate) {
+            const start = new Date(options.startDate).getTime();
+            if (!isNaN(start)) filtered = filtered.filter(l => l.timestamp >= start);
+        }
+        if (options.endDate) {
+            const end = new Date(options.endDate).getTime();
+            // inclusive of the end date till 23:59:59
+            if (!isNaN(end)) filtered = filtered.filter(l => l.timestamp <= end + 86399999);
         }
 
         const total = filtered.length;

@@ -7,6 +7,8 @@ import { exec } from 'child_process';
 import util from 'util';
 import treeKill from 'tree-kill';
 import { backupService } from '../../backups/BackupService';
+import { logger } from '../../../utils/logger';
+
 
 const execAsync = util.promisify(exec);
 
@@ -73,15 +75,31 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
     }
 
     async stop(id: string, force: boolean = false): Promise<void> {
-        const process = this.processes.get(id);
-        if (process && process.pid) {
+        const child = this.processes.get(id);
+        if (child && child.pid) {
+            const watchdogPid = child.pid;
+            
             if (force) {
                 // Use tree-kill to ensure the entire process tree (shell + child) is killed
-                treeKill(process.pid, 'SIGKILL', (err) => {
-                    if (err) console.error(`[NativeRunner] Failed to force kill ${id}:`, err);
+                treeKill(watchdogPid, 'SIGKILL', (err) => {
+                    if (err) logger.error(`[NativeRunner] Failed to force kill ${id}: ${err.message}`);
                 });
+                this.processes.delete(id);
             } else {
-                process.stdin?.write("stop\n");
+                child.stdin?.write("stop\n");
+                
+                // Hardening: Escalation Watchdog (v1.12.0)
+                // If the server doesn't shut down gracefully within 15s, force kill it.
+                setTimeout(() => {
+                    const stillRunning = this.processes.get(id);
+                    if (stillRunning && stillRunning.pid === watchdogPid) {
+                        logger.warn(`[NativeRunner] Server ${id} (PID ${watchdogPid}) failed to stop gracefully in 15s. Escalating to SIGKILL.`);
+                        treeKill(watchdogPid, 'SIGKILL', (err) => {
+                            if (err) logger.error(`[NativeRunner] Watchdog failed to SIGKILL ${id}: ${err.message}`);
+                        });
+                        this.processes.delete(id);
+                    }
+                }, 15000);
             }
         }
     }
@@ -104,8 +122,8 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
     }
 
     private static sharedSnapshot: any = null;
+    private static scanPromise: Promise<any> | null = null;
     private static lastScanTime: number = 0;
-    private static isScanning: boolean = false;
 
     private async getSystemSnapshot() {
         const now = Date.now();
@@ -114,22 +132,23 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
             return NativeRunner.sharedSnapshot;
         }
 
-        // Prevent concurrent identical scans
-        if (NativeRunner.isScanning) {
-            while (NativeRunner.isScanning) {
-                await new Promise(r => setTimeout(r, 100));
-            }
-            return NativeRunner.sharedSnapshot;
+        // Check if a scan is already in progress
+        if (NativeRunner.scanPromise) {
+            return NativeRunner.scanPromise;
         }
 
-        NativeRunner.isScanning = true;
-        try {
-            NativeRunner.sharedSnapshot = await si.processes();
-            NativeRunner.lastScanTime = Date.now();
-        } finally {
-            NativeRunner.isScanning = false;
-        }
-        return NativeRunner.sharedSnapshot;
+        // Start a new scan and store the promise
+        NativeRunner.scanPromise = (async () => {
+            try {
+                NativeRunner.sharedSnapshot = await si.processes();
+                NativeRunner.lastScanTime = Date.now();
+                return NativeRunner.sharedSnapshot;
+            } finally {
+                NativeRunner.scanPromise = null;
+            }
+        })();
+
+        return NativeRunner.scanPromise;
     }
 
     async getStats(id: string): Promise<RunnerStats> {

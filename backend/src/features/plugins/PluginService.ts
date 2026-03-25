@@ -35,7 +35,25 @@ export class PluginService {
     /**
      * Install a plugin from a marketplace source.
      */
-    async install(serverId: string, sourceId: string, source: PluginSource): Promise<InstalledPlugin> {
+    async install(
+        serverId: string, 
+        sourceId: string, 
+        source: PluginSource, 
+        _visited: Set<string> = new Set(), 
+        _depth: number = 0
+    ): Promise<InstalledPlugin> {
+        // --- Cycle & Depth Guard (Hardening v1.12.0) ---
+        if (_depth > 5) {
+            throw new Error(`Maximum dependency depth (5) exceeded while installing ${sourceId}. Possible circular dependency.`);
+        }
+        if (_visited.has(sourceId)) {
+            logger.warn(`[PluginService] Circular dependency detected for ${sourceId}. Skipping redundant installation.`);
+            const existing = pluginRepository.findBySourceId(sourceId, serverId);
+            if (existing) return existing;
+            throw new Error(`Circular dependency detected: ${sourceId} is required but could not be resolved.`);
+        }
+        _visited.add(sourceId);
+
         const server = serverRepository.findById(serverId);
         if (!server) throw new Error('Server not found');
 
@@ -146,7 +164,7 @@ export class PluginService {
                         logger.info(`[PluginService] Auto-installing required dependency: ${dep.id} from ${source}`);
                         try {
                             // Recursively install the dependency.
-                            await this.install(serverId, dep.id, source);
+                            await this.install(serverId, dep.id, source, _visited, _depth + 1);
                         } catch (depErr: any) {
                             logger.error(`[PluginService] Failed to auto-install dependency ${dep.id}: ${depErr.message}`);
                         }
@@ -156,6 +174,7 @@ export class PluginService {
                 }
             }
         }
+
 
         if (server.status === ServerStatus.ONLINE || server.status === ServerStatus.STARTING) {
             logger.info(`[PluginService] Plugin ${plugin.name} installed while server is ${server.status}. It will load on the next restart.`);

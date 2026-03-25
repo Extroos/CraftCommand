@@ -9,7 +9,7 @@ const CWD = path.join(__dirname, '../backend');
 
 console.log('Starting backend process for checking shutdown...');
 
-const child = spawn('npx', ['ts-node', '-r', 'tsconfig-paths/register', SERVER_PATH], {
+const child = spawn('node', ['-r', 'ts-node/register', '-r', 'tsconfig-paths/register', SERVER_PATH], {
     cwd: CWD,
     stdio: 'pipe',
     shell: true,

@@ -35,7 +35,7 @@ if !errorlevel! neq 0 (
 )
 
 :: --- VERSION SYNC ---
-set "CC_VERSION=1.12.0"
+set "CC_VERSION=1.12.5"
 if exist "version.json" (
     for /f "tokens=2 delims=:," %%a in ('findstr /R /C:"^[ ]*.version.:" version.json') do (
         set "VERSION_VAL=%%~a"
@@ -177,7 +177,7 @@ if exist "update_applied.flag" (
     echo.
     echo   %CY%[UPDATE] Updating dependencies...%R%
     cd backend
-    call npm install --omit=dev >nul 2>nul
+    call npm install >nul 2>nul
     cd ..
     cd frontend
     call npm install >nul 2>nul
@@ -218,8 +218,9 @@ echo  %CGY%[03]%R% %CC%NETWORK: REMOTE%R%        %CGY%Tunnels ^& Mesh VPNs%R%
 echo.
 echo  %CGY%[04]%R% %CY%SYSTEM DIAGNOSTICS%R%     %CGY%Connectivity ^& Integrity%R%
 echo  %CGY%[05]%R% %CY%SYSTEM MAINTENANCE%R%     %CGY%Environment Reconstruction%R%
+echo  %CGY%[06]%R% %CB%SYSTEM RECOVERY%R%        %CGY%Rollback from Snapshot%R%
 echo.
-echo  %CGY%[06]%R% %CM%NODE ORCHESTRATION%R%     %CGY%Distributed Node Agent%R%
+echo  %CGY%[07]%R% %CM%NODE ORCHESTRATION%R%     %CGY%Distributed Node Agent%R%
 echo  %CGY%[08]%R% %CR%EMERGENCY: ISOLATE%R%     %CGY%Immediate Panic Kill%R%
 echo  %CGY%------------------------------------------------------------------------%R%
 echo   %BOLD%%CW%[00]%R% %CGY%POWER OFF%R%
@@ -236,8 +237,10 @@ if "%choice%"=="4" goto STABILITY_CHECK
 if "%choice%"=="04" goto STABILITY_CHECK
 if "%choice%"=="5" goto REINSTALL
 if "%choice%"=="05" goto REINSTALL
-if "%choice%"=="6" goto AGENT_START
-if "%choice%"=="06" goto AGENT_START
+if "%choice%"=="6" goto ROLLBACK
+if "%choice%"=="06" goto ROLLBACK
+if "%choice%"=="7" goto AGENT_START
+if "%choice%"=="07" goto AGENT_START
 if "%choice%"=="8" goto REMOTE_DISABLE
 if "%choice%"=="08" goto REMOTE_DISABLE
 if "%choice%"=="0" exit
@@ -490,7 +493,23 @@ echo  %CGY%---------------------------------------------------------------------
 echo.
 echo   Running diagnostics...
 echo.
-npx ts-node scripts/user_verification_test.ts
+node -r ts-node/register -r tsconfig-paths/register scripts/user_verification_test.ts 2>nul || echo   %CR%ts-node not available. Run option [05] Maintenance first.%R%
+echo.
+pause
+goto MENU
+
+:: ============================================================================
+::  SYSTEM RECOVERY
+:: ============================================================================
+:ROLLBACK
+cls
+echo.
+echo  %CB%%BOLD% SYSTEM RECOVERY%R%
+echo  %CGY%-----------------------------------------------------------------------%R%
+echo.
+echo   Searching for pre-update snapshots...
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\rollback.ps1"
 echo.
 pause
 goto MENU

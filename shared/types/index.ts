@@ -110,6 +110,17 @@ export interface ServerPort {
     isImmutable?: boolean;
 }
 
+export interface DatabaseInstance {
+    id: string;
+    serverId: string;
+    name: string;
+    type: string;
+    host: string;
+    username: string;
+    password?: string;
+    createdAt?: number;
+}
+
 export interface ServerAdvancedFlags {
     aikarFlags?: boolean;
     installSpark?: boolean;
@@ -206,6 +217,7 @@ export interface ServerConfig {
     // Connectivity & Networking
     sftpPassword?: string;
     additionalPorts?: ServerPort[];
+    databases?: DatabaseInstance[];
     
     // Telemetry (Live)
     players?: number;
@@ -253,6 +265,7 @@ export interface GlobalSettings {
         storageProvider?: 'json' | 'sqlite';
         security?: {
             forceAdmin2FA: boolean;
+            ipSessionBinding?: boolean; // Phase 8: Strict session protection
         };
         https?: {
             enabled: boolean;
@@ -280,6 +293,7 @@ export interface GlobalSettings {
         updateWeb?: boolean;
         professionalMode?: boolean;
         network?: NetworkConfig;
+        backupLimitGB?: number;
     };
     discordBot?: DiscordBotConfig;
     webhooks?: WebhookConfig[];
@@ -307,6 +321,11 @@ export interface Player {
     ping?: number;
     lastSeen?: number;
     skinUrl?: string;
+    // Ban detail fields (from Minecraft banned-players.json / banned-ips.json)
+    isIp?: boolean;
+    banReason?: string;
+    banCreated?: string;
+    banExpires?: string; // 'forever' or ISO date
 }
 
 export interface CloudUploadResult {
@@ -679,6 +698,7 @@ export enum NodeStatus {
     ONLINE = 'ONLINE',
     OFFLINE = 'OFFLINE',
     DEGRADED = 'DEGRADED',
+    RECOVERING = 'RECOVERING',
     ENROLLING = 'ENROLLING',
     REMOVED = 'REMOVED'
 }

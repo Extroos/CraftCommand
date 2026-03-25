@@ -1,1 +1,11 @@
-{"version":"1.12.0","title":"Operational Excellence Update","notes":["Dashboard Modpack Intelligence: Real-time modpack/mod display in the server hero section.","Modrinth API Hardening: Strict server-side filtering for 100% accurate mod retrieval.","Infrastructure Topology v2: Grid-based cluster layout with real-time CPU telemetry indicators.","Triple-Layer Stabilization: Proactive, strict, and reactive mechanisms to prevent mod crashes.","Standardized API Request Layer: Enforced consistency and error handling across all cluster traffic.","High-Efficiency Batch Storage: Atomic, high-performance updates for audits, notifications, and settings.","Chained Automation Engine: Support for multi-action sequential scheduled tasks (e.g., Backup -> Restart).","High-Performance File Search: Integrated grep-based content scanning with contextual snippets."]}
+{
+    "version": "1.12.5",
+    "title": "Stability & Resilience Update",
+    "notes": [
+        "Hardened 2FA Recovery: Increased entropy to 128-bit for elite security.",
+        "Engine Optimization: Replaced busy-wait loops with Promise-based mutexes in NativeRunner.",
+        "Fail-Safe Migrations: Atomic SQLite state markers and automated JSON fallbacks.",
+        "Shared Logic Architecture: Centralized world detection and integrity hashing in @shared utilities.",
+        "Resilient Backups: Fixed Hub Agent dependencies and restoration exclusion logic."
+    ]
+}

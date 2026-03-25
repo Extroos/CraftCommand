@@ -17,7 +17,7 @@ interface ProxyNetworkManagerProps {
     serverId: string;
 }
 
-const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = ({ serverId }) => {
+const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ serverId }) => {
     const { servers, refreshServers } = useServers();
     const { user } = useUser();
     const { addToast } = useToast();
@@ -380,6 +380,6 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = ({ serverId }) =
             />
         </div>
     );
-};
+});
 
 export default ProxyNetworkManager;

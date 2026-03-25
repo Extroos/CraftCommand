@@ -42,17 +42,17 @@ export const AddNodeWizard: React.FC<Props> = ({ onClose, onComplete }) => {
                     {/* Header */}
                     <div className="flex items-center justify-between p-6 border-b border-border bg-secondary/20">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20">
-                                <Server size={20} className="text-cyan-400" />
+                            <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center border border-border">
+                                <Server size={20} className="text-foreground" />
                             </div>
                             <div>
                                 <h3 className="text-lg font-semibold">Add New Node</h3>
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <span className={step >= 1 ? 'text-cyan-400 font-medium' : ''}>1. Mode</span>
+                                    <span className={step >= 1 ? 'text-foreground font-black' : ''}>1. Mode</span>
                                     <span className="opacity-30">/</span>
-                                    <span className={step >= 2 ? 'text-cyan-400 font-medium' : ''}>2. Install</span>
+                                    <span className={step >= 2 ? 'text-foreground font-black' : ''}>2. Install</span>
                                     <span className="opacity-30">/</span>
-                                    <span className={step >= 3 ? 'text-cyan-400 font-medium' : ''}>3. Verify</span>
+                                    <span className={step >= 3 ? 'text-foreground font-black' : ''}>3. Verify</span>
                                 </div>
                             </div>
                         </div>

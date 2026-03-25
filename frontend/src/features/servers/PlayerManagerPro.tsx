@@ -53,8 +53,16 @@ const PlayerManagerPro: React.FC<PlayerManagerProProps> = ({ serverId }) => {
     const [showIps, setShowIps] = useState(false);
     const [addInput, setAddInput] = useState('');
     const [copied, setCopied] = useState<string | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, player: Player } | null>(null);
     
     const { addToast } = useToast();
+
+    // Close context menu on click outside
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, []);
 
     const { players: globalPlayers, refreshServerData, loading: contextLoading } = useServers();
     const onlinePlayers = globalPlayers[id] || [];
@@ -90,7 +98,10 @@ const PlayerManagerPro: React.FC<PlayerManagerProProps> = ({ serverId }) => {
                     ip: p.ip,
                     online: isOnline,
                     lastSeen: p.lastSeen,
-                    isIp: activeList === 'IP_BANNED'
+                    isIp: activeList === 'IP_BANNED',
+                    banReason: p.reason || p.banReason,
+                    banCreated: p.created || p.banCreated,
+                    banExpires: p.expires || p.banExpires,
                 };
             });
 
@@ -386,7 +397,11 @@ const PlayerManagerPro: React.FC<PlayerManagerProProps> = ({ serverId }) => {
                                                         animate={{ opacity: 1, scale: 1 }}
                                                         exit={{ opacity: 0, scale: 0.95 }}
                                                         transition={{ duration: 0.15 }}
-                                                        className={`grid ${getGridTemplate(activeList)} gap-4 p-2.5 items-center border-b border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors group`}
+                                                        onContextMenu={(e) => {
+                                                            e.preventDefault();
+                                                            setContextMenu({ x: e.clientX, y: e.clientY, player });
+                                                        }}
+                                                        className={`grid ${getGridTemplate(activeList)} gap-4 p-2.5 items-center border-b border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors group relative`}
                                                     >
                                                         {activeList !== 'IP_BANNED' && (
                                                             <div>
@@ -413,6 +428,11 @@ const PlayerManagerPro: React.FC<PlayerManagerProProps> = ({ serverId }) => {
                                                                             {player.online ? 'Online' : 'Offline'}
                                                                         </div>
                                                                     </div>
+                                                                    {activeList === 'BANNED' && player.banReason && (
+                                                                        <div className="text-[9px] text-muted-foreground/60 mt-0.5 italic truncate max-w-[200px]" title={player.banReason}>
+                                                                            Reason: {player.banReason}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         )}
@@ -540,6 +560,94 @@ const PlayerManagerPro: React.FC<PlayerManagerProProps> = ({ serverId }) => {
                     </div>
                 )}
             </div>
+
+            {/* Context Menu Overlay */}
+            <AnimatePresence>
+                {contextMenu && (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.1 }}
+                        style={{ top: contextMenu.y, left: contextMenu.x }}
+                        className="fixed z-50 w-48 bg-card border border-border shadow-2xl rounded-xl py-1 backdrop-blur-md overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-3 py-2 border-b border-border/40 bg-muted/10 mb-1">
+                            <span className="text-xs font-bold text-foreground/70 truncate block">{contextMenu.player.name}</span>
+                        </div>
+                        
+                        {(activeList === 'ONLINE' || activeList === 'ALL') && contextMenu.player.online && (
+                            <button 
+                                onClick={() => { handleAction(contextMenu.player, 'KICK'); setContextMenu(null); }}
+                                disabled={!canManage}
+                                className={`w-full text-left px-3 py-1.5 text-xs font-medium flex items-center justify-between transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed' : 'hover:bg-secondary text-foreground hover:text-foreground'}`}
+                            >
+                                Kick Player
+                            </button>
+                        )}
+                        
+                        {(activeList === 'ONLINE' || activeList === 'ALL') && (
+                            <button 
+                                onClick={() => { handleAction(contextMenu.player, 'BAN'); setContextMenu(null); }}
+                                disabled={!canManage}
+                                className={`w-full text-left px-3 py-1.5 text-xs font-medium flex items-center justify-between transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed' : 'text-rose-500 hover:bg-rose-500/10'}`}
+                            >
+                                Ban User <Gavel size={12} />
+                            </button>
+                        )}
+                        
+                        {(activeList === 'ONLINE' || activeList === 'ALL' || activeList === 'OPS') && (
+                            contextMenu.player.isOp ? (
+                                <button 
+                                    onClick={() => { handleAction(contextMenu.player, 'DEOP'); setContextMenu(null); }}
+                                    disabled={!canManage}
+                                    className={`w-full text-left px-3 py-1.5 text-xs font-medium flex items-center justify-between transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed' : 'text-amber-500 hover:bg-amber-500/10'}`}
+                                >
+                                    Revoke Operator <Crown size={12} />
+                                </button>
+                            ) : (
+                                <button 
+                                    onClick={() => { handleAction(contextMenu.player, 'OP'); setContextMenu(null); }}
+                                    disabled={!canManage}
+                                    className={`w-full text-left px-3 py-1.5 text-xs font-medium flex items-center justify-between transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed' : 'text-amber-500 hover:bg-amber-500/10'}`}
+                                >
+                                    Make Operator <Crown size={12} />
+                                </button>
+                            )
+                        )}
+                        
+                        {activeList === 'WHITELIST' && (
+                            <button 
+                                onClick={() => { handleAction(contextMenu.player, 'UNWHITELIST'); setContextMenu(null); }}
+                                disabled={!canManage}
+                                className={`w-full text-left px-3 py-1.5 text-xs font-medium flex items-center justify-between transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed' : 'text-rose-500 hover:bg-rose-500/10'}`}
+                            >
+                                Remove Whitelist <Trash2 size={12} />
+                            </button>
+                        )}
+                        
+                        {(activeList === 'BANNED' || activeList === 'IP_BANNED') && (
+                            <button 
+                                onClick={() => { handleAction(contextMenu.player, 'UNBAN'); setContextMenu(null); }}
+                                disabled={!canManage}
+                                className={`w-full text-left px-3 py-1.5 text-xs font-medium flex items-center justify-between transition-colors ${!canManage ? 'opacity-40 cursor-not-allowed' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
+                            >
+                                Pardon Ban <Shield size={12} />
+                            </button>
+                        )}
+                        
+                        <div className="h-px bg-border/40 my-1"></div>
+                        
+                        <button 
+                            onClick={() => { copyToClipboard(activeList === 'IP_BANNED' ? contextMenu.player.ip! : contextMenu.player.uuid); setContextMenu(null); }}
+                            className="w-full text-left px-3 py-1.5 text-xs font-medium flex items-center justify-between transition-colors hover:bg-secondary text-muted-foreground hover:text-foreground"
+                        >
+                            Copy UUID/IP <Copy size={12} />
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

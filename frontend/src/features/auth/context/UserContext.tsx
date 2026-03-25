@@ -16,7 +16,7 @@ type UserContextType = {
     isAuthenticated: boolean;
     isLoading: boolean;
     theme: ThemeClasses;
-    login: (email: string, password: string) => Promise<boolean>;
+    login: (email: string, password: string) => Promise<'success' | '2fa' | 'failed' | 'rate-limited'>;
     logout: () => void;
     updatePreferences: (prefs: Partial<UserProfile['preferences']>) => void;
     updateUser: (updates: Partial<UserProfile>) => Promise<void>;
@@ -53,7 +53,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Initial Load / Token Verification
     useEffect(() => {
         const initAuth = async () => {
-            if (token) {
+            if (token && !twoFactorRequired) {
                 try {
                     const u = await API.getCurrentUser();
                     setUser(u);
@@ -71,13 +71,13 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         logout(); // Clear genuinely invalid token
                     }
                 }
-            } else {
+            } else if (!token) {
                 setIsAuthenticated(false);
             }
             setIsLoading(false);
         };
         initAuth();
-    }, [token]);
+    }, [token, twoFactorRequired]);
 
     // Multi-tab Sync
     useEffect(() => {
@@ -101,13 +101,13 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return () => window.removeEventListener('storage', handleStorageChange);
     }, [token]);
 
-    const login = async (email: string, pass: string) => {
+    const login = async (email: string, pass: string): Promise<'success' | '2fa' | 'failed' | 'rate-limited'> => {
         try {
             const data = await API.login(email, pass);
             if (data.twoFactorRequired) {
                 setToken(data.token); // This is a partial token
                 setTwoFactorRequired(true);
-                return false; // Not fully authenticated yet
+                return '2fa'; // Not fully authenticated yet
             }
             if (data.token) {
                 localStorage.setItem('cc_token', data.token);
@@ -116,12 +116,13 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setIsAuthenticated(true);
                 setTwoFactorRequired(false);
                 socketService.connect();
-                return true;
+                return 'success';
             }
-            return false;
-        } catch (e) {
+            return 'failed';
+        } catch (e: any) {
             console.error("Login failed:", e);
-            return false;
+            if (e.status === 429) return 'rate-limited';
+            return 'failed';
         }
     };
 
@@ -184,7 +185,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const verify2FA = async (code: string, isRecovery: boolean = false) => {
         if (!token) return false;
         try {
-            const data = await API.verify2FA(code, isRecovery);
+            const data = await API.verify2FA(code, token, isRecovery);
             if (data.success && data.token) {
                 localStorage.setItem('cc_token', data.token);
                 setToken(data.token);

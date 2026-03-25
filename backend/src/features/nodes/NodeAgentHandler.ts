@@ -7,6 +7,7 @@ import { auditService } from '../system/AuditService';
 import {  NodeHealth, NodeStatus  } from '@shared/types';
 import { logger } from '../../utils/logger';
 import { jitterMiddleware } from '../../sockets/middleware/JitterMiddleware';
+import { ErrorCode, SystemError } from '../../utils/ErrorCodes';
 
 /**
  * NodeAgentHandler — Phase 1 (Stabilized)
@@ -28,8 +29,11 @@ const agentSockets: Map<string, Socket> = new Map();
  */
 export function isAgentConnected(nodeId: string): boolean {
     const socket = agentSockets.get(nodeId);
-    // Also verify the socket is actually connected, not just tracked
-    return !!socket && socket.connected;
+    if (!socket || !socket.connected) return false;
+
+    // Phase 3 Hardening: Also verify node isn't marked OFFLINE by the sweep
+    const node = nodeRegistryService.getNode(nodeId);
+    return !!node && node.status === NodeStatus.ONLINE;
 }
 
 /**
@@ -52,13 +56,13 @@ export async function sendToAgent(nodeId: string, event: string, data: any, time
 
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
-            reject(new Error(`Timeout: Node Agent "${nodeId}" did not respond within ${timeoutMs / 1000}s.`));
+            reject(new SystemError(ErrorCode.E_PROC_TIMEOUT, `Timeout: Node Agent "${nodeId}" did not respond within ${timeoutMs / 1000}s.`));
         }, timeoutMs);
 
         socket.emit(event, data, (response: any) => {
             clearTimeout(timer);
             if (response?.error) {
-                reject(new Error(response.error));
+                reject(new SystemError(ErrorCode.E_NODE_DEGRADED, response.error));
             } else {
                 resolve(response);
             }
@@ -199,6 +203,9 @@ export function setupAgentNamespace(io: Server): void {
         const remoteRunner = runnerFactory.getRemoteRunner();
         remoteRunner.registerNode(nodeId, socket);
 
+        // Phase 5 Hardening: Set node to RECOVERING until first sync is complete
+        nodeRegistryService.updateStatus(nodeId, NodeStatus.RECOVERING);
+
         // Mark node as ONLINE and store agent version
         try {
             nodeRegistryService.heartbeat(nodeId);
@@ -238,6 +245,10 @@ export function setupAgentNamespace(io: Server): void {
             if (validIds.length > 0) {
                 logger.info(`[AgentHandler] Node "${nodeName}" synced ${validIds.length} running server(s): ${validIds.join(', ')}`);
                 remoteRunner.syncServersFromAgent(nodeId, validIds);
+            }
+            // Transition out of RECOVERING once sync is received
+            if (nodeRegistryService.getNode(nodeId)?.status === NodeStatus.RECOVERING) {
+                nodeRegistryService.updateStatus(nodeId, NodeStatus.ONLINE);
             }
         });
 
@@ -285,8 +296,12 @@ export function setupAgentNamespace(io: Server): void {
             agentSockets.delete(nodeId);
             remoteRunner.unregisterNode(nodeId);
 
-            // Don't immediately mark OFFLINE — let the heartbeat sweep handle it
-            // This prevents false alarms from brief network hiccups
+            // Phase 3 Hardening: Mark node OFFLINE immediately instead of waiting for sweep
+            try {
+                nodeRegistryService.updateStatus(nodeId, NodeStatus.OFFLINE);
+            } catch (e: any) {
+                logger.error(`[AgentHandler] Failed to update status for disconnected node ${nodeId}: ${e.message}`);
+            }
 
             auditService.log('SYSTEM', 'SYSTEM_SETTINGS_UPDATE', nodeId, {
                 action: 'NODE_DISCONNECTED',

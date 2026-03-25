@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { EventEmitter } from 'events';
 import { NetworkConfig } from '@shared/types/network';
+import axios from 'axios';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
@@ -55,11 +56,15 @@ export interface SystemSettings {
 
 class SystemSettingsService extends EventEmitter {
     private settings: SystemSettings;
+    private clockOffset: number = 0;
 
     constructor() {
         super();
         this.settings = this.loadSettings();
         this.watchSettings();
+        this.syncClockOffset().catch(err => {
+            console.error('[SystemSettingsService] Initial clock sync failed:', err.message);
+        });
     }
 
     private watchSettings() {
@@ -119,7 +124,9 @@ class SystemSettingsService extends EventEmitter {
                         }
                     }
                 };
-                fs.writeJSONSync(SETTINGS_FILE, defaultSettings, { spaces: 4 });
+                const tempPath = `${SETTINGS_FILE}.tmp`;
+                fs.writeJSONSync(tempPath, defaultSettings, { spaces: 4 });
+                fs.moveSync(tempPath, SETTINGS_FILE, { overwrite: true });
                 return defaultSettings;
             }
             const loaded = fs.readJSONSync(SETTINGS_FILE);
@@ -192,6 +199,35 @@ class SystemSettingsService extends EventEmitter {
         return this.settings?.app?.hostMode !== false;
     }
 
+    getClockOffset(): number {
+        return this.clockOffset;
+    }
+
+    async syncClockOffset(): Promise<void> {
+        try {
+            // Check time against a reliable external source (Google's HTTP Date header)
+            const startTime = Date.now();
+            const response = await axios.head('https://www.google.com', { timeout: 5000 });
+            const serverDateStr = response.headers['date'];
+            
+            if (serverDateStr) {
+                const serverTime = new Date(serverDateStr).getTime();
+                const localTime = Date.now();
+                // Add half of the round-trip time to be more precise
+                const rtt = localTime - startTime;
+                const adjustedServerTime = serverTime + (rtt / 2);
+                
+                this.clockOffset = adjustedServerTime - localTime;
+                
+                if (Math.abs(this.clockOffset) > 5000) {
+                    console.log(`[SystemSettingsService] System clock drift detected: ${Math.round(this.clockOffset / 1000)}s offset applied.`);
+                }
+            }
+        } catch (e: any) {
+            console.warn('[SystemSettingsService] Failed to sync clock offset:', e.message);
+        }
+    }
+
     updateSettings(updates: any): SystemSettings {
         console.log('[SystemSettingsService] Updating settings with:', JSON.stringify(updates, null, 2));
         if (updates.discordBot) {
@@ -211,10 +247,13 @@ class SystemSettingsService extends EventEmitter {
         console.log('[SystemSettingsService] New settings state:', JSON.stringify(this.settings, null, 2));
 
         try {
-            fs.writeJSONSync(SETTINGS_FILE, this.settings, { spaces: 4 });
+            const tempPath = `${SETTINGS_FILE}.tmp`;
+            fs.writeJSONSync(tempPath, this.settings, { spaces: 4 });
+            fs.moveSync(tempPath, SETTINGS_FILE, { overwrite: true });
             this.emit('updated', this.settings);
         } catch (e) {
             console.error('Failed to save settings.json', e);
+            try { if (fs.existsSync(`${SETTINGS_FILE}.tmp`)) fs.unlinkSync(`${SETTINGS_FILE}.tmp`); } catch (err) {}
         }
         return this.settings;
     }

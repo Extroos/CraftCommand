@@ -9,22 +9,14 @@ import {
 import { useSystem } from '@features/system/context/SystemContext';
 import { useServers } from '@features/servers/context/ServerContext';
 import { useUser } from '@features/auth/context/UserContext';
-import { NodeInfo, ServerConfig, NodeStatus, AuditLog as AuditLogType, AppState } from '@shared/types';
+import { NodeInfo, ServerConfig, AuditLog as AuditLogType } from '@shared/types';
 import { API } from '@core/services/api';
+import { useNavigate } from 'react-router-dom';
 
-/**
- * GlobalOperations — Centralized monitoring for distributed clusters
- * 
- * Provides:
- * 1. Cluster-wide health metrics (Aggregate CPU/RAM/Network)
- * 2. Node Grid (Detailed view of each enrolled agent)
- * 3. Unified Instance List (Search across all local and remote servers)
- */
-interface GlobalOperationsProps {
-    onNavigate?: (state: AppState) => void;
-}
+interface GlobalOperationsProps {}
 
-const GlobalOperations: React.FC<GlobalOperationsProps> = ({ onNavigate }) => {
+const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
+    const navigate = useNavigate();
     const { nodes, refreshSettings } = useSystem();
     const { servers, stats, refreshServers } = useServers();
     const { user } = useUser();
@@ -392,7 +384,7 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = ({ onNavigate }) => {
                     <h2 className="text-sm font-black uppercase tracking-widest text-muted-foreground/60 flex items-center gap-2">
                         <Clock size={14} /> Global Audit Feed
                     </h2>
-                    <button onClick={() => onNavigate?.('AUDIT_LOG')} className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline">
+                    <button onClick={() => navigate('/audit')} className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline">
                         View Full Logs
                     </button>
                 </div>

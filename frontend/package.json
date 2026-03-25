@@ -1,7 +1,7 @@
 {
   "name": "craftcommand-frontend",
   "private": true,
-  "version": "1.12.0",
+  "version": "1.12.5",
   "license": "AGPL-3.0-only",
   "author": "Extroos",
   "type": "module",
@@ -14,7 +14,11 @@
     "start:all": "concurrently \"npm run dev\" \"npm run start:backend\" --names \"FRONT,BACK\" --prefix-colors \"cyan,magenta\" --kill-others"
   },
   "dependencies": {
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-yaml": "^6.1.2",
+    "@codemirror/legacy-modes": "^6.5.2",
     "@types/react-router-dom": "^5.3.3",
+    "@uiw/react-codemirror": "^4.25.8",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.0.0",
     "jwt-decode": "^4.0.0",

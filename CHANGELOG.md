@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.12.5] - 2026-03-25
+### Stability & Resilience Update
+- **Security**: Hardened 2FA recovery codes with 128-bit entropy (increased from 32-bit).
+- **Performance**: Fixed a critical busy-wait loop in `NativeRunner.ts` by implementing a Promise-based mutex for system snapshots, significantly reducing CPU idle overhead.
+- **Stability**: Enhanced SQLite migration logic with atomic state markers and automatic JSON-based data backups for fail-safe schema updates.
+- **Architecture**: Introduced `shared/utils/BackupUtils.ts` to centralize world detection and integrity hashing, deduplicating logic across Backend and Hub Agent.
+- **Reliability**: Resolved missing cloud backup dependencies in the Hub Agent and standardized backup restoration exclusion logic.
+- **Infrastructure**: Updated batch runner and environment configurations for synchronized v1.12.5 deployment.
+
 ## [1.12.0] - 2026-03-20 - Operational Excellence Update (Cont.)
 
 ### Added

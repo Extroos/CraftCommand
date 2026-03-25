@@ -10,6 +10,8 @@ interface SystemState {
     isSolo: boolean; // Helper: !hostMode
     isLoading: boolean;
     nodes: NodeInfo[];  // Lightweight cache for node name resolution
+    isRestarting: boolean;
+    triggerRestart: () => void;
     refreshSettings: () => Promise<void>;
 }
 
@@ -20,6 +22,15 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [settings, setSettings] = useState<GlobalSettings | null>(null);
     const [nodes, setNodes] = useState<NodeInfo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isRestarting, setIsRestarting] = useState(false);
+
+    const triggerRestart = useCallback(() => {
+        setIsRestarting(true);
+        // Page reload as fallback if backend takes too long
+        setTimeout(() => {
+            window.location.reload();
+        }, 15000);
+    }, []);
 
     const refreshSettings = useCallback(async () => {
         if (!isAuthenticated) {
@@ -61,7 +72,9 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             version: settings?.version || '0.0.0',
             isSolo: !hostMode,
             isLoading,
+            isRestarting,
             nodes,
+            triggerRestart,
             refreshSettings
         }}>
             {children}

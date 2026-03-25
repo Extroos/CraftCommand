@@ -25,13 +25,14 @@ import { NetworkingSettings } from './Settings/NetworkingSettings';
 import { DangerZone } from './Settings/DangerZone';
 import { ConnectivitySettings } from './Settings/ConnectivitySettings';
 import { ResourceSettings } from './Settings/ResourceSettings';
+import { ProfileManager } from './Settings/ProfileManager';
 
 interface SettingsManagerProps {
     serverId: string;
 }
 
 const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
-    const [activeTab, setActiveTab] = useState<'GENERAL' | 'SECURITY' | 'ADVANCED' | 'NETWORKING' | 'CONNECTIVITY' | 'RESOURCES'>('GENERAL');
+    const [activeTab, setActiveTab] = useState<'GENERAL' | 'SECURITY' | 'ADVANCED' | 'NETWORKING' | 'CONNECTIVITY' | 'RESOURCES' | 'PROFILES'>('GENERAL');
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -40,12 +41,6 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
     const { can } = usePermissions();
     const { addToast } = useToast();
     const isOffline = currentServer?.status === 'OFFLINE' || currentServer?.status === 'CRASHED';
-    const [showConfirm, setShowConfirm] = useState<{ 
-        open: boolean; 
-        type: 'DECOMMISSION' | 'RESET';
-        title: string;
-        description: string;
-    }>({ open: false, type: 'RESET', title: '', description: '' });
     const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
     const [wanConfirmed, setWanConfirmed] = useState(false);
     const [isUploadingIcon, setIsUploadingIcon] = useState(false);
@@ -73,6 +68,9 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
         ],
         'RESOURCES': [
             { keywords: ['database', 'db', 'mysql', 'mariadb', 'postgres', 'subuser', 'access', 'api', 'token', 'key', 'rotation', 'secret', 'invite', 'member', 'permission', 'rbac'] },
+        ],
+        'PROFILES': [
+            { keywords: ['export', 'import', 'profile', 'configuration', 'backup', 'restore', 'json'] },
         ],
     };
 
@@ -549,6 +547,16 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
         }
     };
 
+    const handleDecommissionRequest = async () => {
+        const isConfirmed = await requestConfirm({
+            title: 'Decommission Instance',
+            description: 'CRITICAL: This will permanently delete the server record and all associated files from the disk. This action is irreversible.',
+            confirmText: 'Decommission',
+            cancelText: 'Cancel'
+        });
+        if (isConfirmed) handleDecommission();
+    };
+
     const handleDecommission = async () => {
         if (!can('server.delete', serverId)) {
             addToast('error', 'Permissions', 'Insufficient permissions to delete this server');
@@ -571,6 +579,16 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
             addToast('error', 'Deletion Failed', 'Could not decommission server instance.');
             setIsSaving(false);
         }
+    };
+
+    const handleResetRequest = async () => {
+        const isConfirmed = await requestConfirm({
+            title: 'Factory Reset Instance',
+            description: 'This will revert all configuration settings to their default values. This action cannot be undone once committed.',
+            confirmText: 'Reset',
+            cancelText: 'Cancel'
+        });
+        if (isConfirmed) handleFactoryReset();
     };
 
     const handleFactoryReset = async () => {
@@ -648,11 +666,39 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
             addToast('error', 'Reset Failed', 'Could not restore default configuration.');
         } finally {
             setIsSaving(false);
-            setShowConfirm({ ...showConfirm, open: false });
         }
     };
 
-    type TabType = 'GENERAL' | 'SECURITY' | 'ADVANCED' | 'NETWORKING' | 'CONNECTIVITY' | 'RESOURCES';
+    const handleCloneRequest = async () => {
+        const isConfirmed = await requestConfirm({
+            title: 'Clone Server Instance',
+            description: 'This will create a complete copy of this server, including all files, plugins, and configurations. It may take several minutes depending on the server size.',
+            confirmText: 'Clone',
+            cancelText: 'Cancel'
+        });
+        
+        if (isConfirmed) {
+            if (!can('server.create', serverId)) {
+                addToast('error', 'Permissions', 'Insufficient permissions to clone server');
+                return;
+            }
+            
+            setIsSaving(true);
+            try {
+                const newName = `${currentServer?.name || 'Server'} (Clone)`;
+                addToast('info', 'Cloning Started', 'Creating a copy of the server. This may take a while...');
+                await API.cloneServer(serverId, newName);
+                addToast('success', 'Clone Complete', 'Server cloned successfully. It will appear on your dashboard.');
+                await refreshServers();
+            } catch (err: any) {
+                addToast('error', 'Clone Failed', err.message || 'Could not clone server instance.');
+            } finally {
+                setIsSaving(false);
+            }
+        }
+    };
+
+    type TabType = 'GENERAL' | 'SECURITY' | 'ADVANCED' | 'NETWORKING' | 'CONNECTIVITY' | 'RESOURCES' | 'PROFILES';
 
     if (!can('server.settings.manage', serverId)) {
         return (
@@ -681,7 +727,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
 
                 <div className="px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
                     <nav className="flex items-center gap-1 bg-muted/10 p-0.5 rounded-md border border-border/40 overflow-x-auto scrollbar-none">
-                        {(['GENERAL', 'SECURITY', 'ADVANCED', 'NETWORKING', 'CONNECTIVITY', 'RESOURCES'] as TabType[]).map((tab) => (
+                        {(['GENERAL', 'SECURITY', 'ADVANCED', 'NETWORKING', 'CONNECTIVITY', 'RESOURCES', 'PROFILES'] as TabType[]).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
@@ -694,6 +740,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                 {tab === 'NETWORKING' ? 'Networking' : 
                                  tab === 'CONNECTIVITY' ? 'Connectivity' :
                                  tab === 'RESOURCES' ? 'Resources' :
+                                 tab === 'PROFILES' ? 'Profiles' :
                                  tab.charAt(0) + tab.slice(1).toLowerCase()}
                             </button>
                         ))}
@@ -821,7 +868,9 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                         <div className="mt-8">
                             <DangerZone
                                 isOffline={isOffline}
-                                setShowConfirm={setShowConfirm}
+                                onReset={handleResetRequest}
+                                onDecommission={handleDecommissionRequest}
+                                onClone={handleCloneRequest}
                             />
                         </div>
                     </div>
@@ -856,13 +905,22 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                         serverId={serverId}
                     />
                 )}
+                {activeTab === 'PROFILES' && (
+                    <ProfileManager
+                        serverId={serverId}
+                    />
+                )}
             </div>
-
+            
             <ConfirmDialog 
                 isOpen={isConfirmOpen}
-                {...confirmConfig}
+                title={confirmConfig?.title || 'Confirm Action'}
+                description={confirmConfig?.description || 'Are you sure you want to proceed?'}
+                confirmText={confirmConfig?.confirmText}
+                cancelText={confirmConfig?.cancelText}
                 onConfirm={handleConfirm}
                 onCancel={handleCancel}
+                isDestructive={true}
             />
         </motion.div>
     );

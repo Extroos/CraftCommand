@@ -504,8 +504,7 @@ export class DiscordService {
                 await interaction.reply({ content: `💾 **Snapshot Protocol**: Initiating backup for **${server.name}**...` });
 
                 try {
-                    const serverDir = path.join(__dirname, '../../data/servers', id!); // Improved pathing
-                    await backupService.createBackup(serverDir, id!, `Discord Command: ${interaction.user.tag}`);
+                    await backupService.createBackup(server.workingDirectory, id!, `Discord Command: ${interaction.user.tag}`);
                     // Notification will be handle by the managed listener we setup in setupEventForwarding
                 } catch (e: any) {
                     await interaction.followUp({ content: `❌ **Backup Failure**: ${e.message}`, ephemeral: true });

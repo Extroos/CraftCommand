@@ -3,7 +3,7 @@
 # Automates the download of portable Node.js for CraftCommand
 
 param (
-    [string]$TargetVersion = "v20.11.0"
+    [string]$TargetVersion = "v20.18.0"
 )
 
 $ErrorActionPreference = "Stop"

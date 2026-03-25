@@ -27,7 +27,27 @@ const SOFTWARE_TO_LOADER: Record<string, string> = {
 
 class ModpackService {
     private readonly API_URL = 'https://api.modrinth.com/v2';
-    private readonly HEADERS = { 'User-Agent': 'CraftCommand/1.9.1 (contact@craftcommand.io)' };
+    private readonly HEADERS = { 'User-Agent': 'CraftCommand/1.12.0 (contact@craftcommand.io)' };
+
+    private async requestWithRetry(url: string, params: any = {}, attempts: number = 2): Promise<any> {
+        for (let i = 0; i < attempts; i++) {
+            try {
+                return await axios.get(url, {
+                    params,
+                    headers: this.HEADERS,
+                    timeout: 10000,
+                });
+            } catch (e: any) {
+                if (e.response?.status === 429 && i < attempts - 1) {
+                    const retryAfter = parseInt(e.response.headers['retry-after'] || '2', 10);
+                    console.warn(`[ModpackService] Rate limited (429). Retrying in ${retryAfter}s...`);
+                    await new Promise(r => setTimeout(r, retryAfter * 1000));
+                    continue;
+                }
+                throw e;
+            }
+        }
+    }
 
     /**
      * Search Modrinth for a specific project type.
@@ -53,15 +73,11 @@ class ModpackService {
                 facetList.push([`versions:${version}`]);
             }
 
-            const response = await axios.get(`${this.API_URL}/search`, {
-                params: {
-                    query,
-                    facets: JSON.stringify(facetList),
-                    limit,
-                    index: 'relevance',
-                },
-                headers: this.HEADERS,
-                timeout: 10000,
+            const response = await this.requestWithRetry(`${this.API_URL}/search`, {
+                query,
+                facets: JSON.stringify(facetList),
+                limit,
+                index: 'relevance',
             });
 
             return (response.data as any).hits.map((hit: any) => ({
@@ -141,10 +157,7 @@ class ModpackService {
                 ? `${this.API_URL}/version/${versionId}`
                 : `${this.API_URL}/project/${projectId}/version`;
             
-            const response = await axios.get(url, {
-                headers: this.HEADERS,
-                timeout: 10000,
-            });
+            const response = await this.requestWithRetry(url);
 
             // If we got an array (versions list), take the first one
             const versionData = Array.isArray(response.data) ? response.data[0] : response.data;

@@ -43,7 +43,6 @@ const TelemetryLine = ({ data, color, height = 40 }: { data: number[], color: st
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 points={points}
-                className="drop-shadow-[0_0_8px_rgba(var(--color-rgb),0.5)]"
             />
         </svg>
     );
@@ -59,22 +58,41 @@ export const SystemHealthMatrix: React.FC = () => {
     const [ioHistory, setIoHistory] = useState<number[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [settings, setSettings] = useState<any>(null);
 
     const fetchData = async () => {
         try {
-            const [logData, healthData, nodeData] = await Promise.all([
+            // First time or every now and then, refresh settings to check if Nodes are enabled
+            let currentSettings = settings;
+            if (!currentSettings) {
+                currentSettings = await API.getGlobalSettings();
+                setSettings(currentSettings);
+            }
+
+            const fetchTasks: Promise<any>[] = [
                 API.getAuditLogs({ action: 'AUTO_HEAL', limit: 30 }),
-                API.getSystemHealth(),
-                API.getNodes()
-            ]);
+                API.getSystemHealth()
+            ];
+
+            // Only fetch nodes if distributed nodes feature is enabled to avoid 403 errors
+            if (currentSettings?.app?.distributedNodes?.enabled) {
+                fetchTasks.push(API.getNodes());
+            }
+
+            const results = await Promise.all(fetchTasks);
             
-            setLogs(logData.logs);
-            setHealth(healthData);
-            setNodes(nodeData.nodes);
+            setLogs(results[0].logs);
+            setHealth(results[1]);
             
-            setCpuHistory(prev => [...prev.slice(-15), healthData.cpuLoad]);
-            setRamHistory(prev => [...prev.slice(-15), healthData.memoryPressure]);
-            setIoHistory(prev => [...prev.slice(-15), healthData.diskIO / 1024 / 1024]);
+            if (currentSettings?.app?.distributedNodes?.enabled && results[2]) {
+                setNodes(results[2].nodes || []);
+            } else {
+                setNodes([]);
+            }
+            
+            setCpuHistory(prev => [...prev.slice(-15), results[1].cpuLoad]);
+            setRamHistory(prev => [...prev.slice(-15), results[1].memoryPressure]);
+            setIoHistory(prev => [...prev.slice(-15), results[1].diskIO / 1024 / 1024]);
 
             setError(null);
         } catch (err: any) {
@@ -119,7 +137,7 @@ export const SystemHealthMatrix: React.FC = () => {
             {/* --- INFRASTRUCTURE TOPOLOGY --- */}
             <motion.div 
                 variants={STAGGER_ITEM}
-                className={`border border-border/80 transition-all duration-300 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+                className="border border-border bg-card rounded transition-all duration-300 overflow-hidden"
             >
                 <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
                     <div className="flex items-center gap-2">
@@ -143,20 +161,23 @@ export const SystemHealthMatrix: React.FC = () => {
                         {/* Master Hub Card */}
                         <motion.div 
                             variants={STAGGER_ITEM}
-                            className={`col-span-1 p-4 border transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'} border-primary/20 relative overflow-hidden group`}
+                            className="col-span-1 p-4 border border-border bg-zinc-900 rounded transition-all duration-300 relative overflow-hidden group"
                         >
+                            <div className="absolute top-0 left-0 w-full h-[2px] bg-border group-hover:bg-zinc-500/30 transition-all duration-700" />
                             <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                                 <Database size={40} />
                             </div>
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)]">
-                                    <Database size={20} className="text-primary" />
+                                <div className="w-10 h-10 rounded bg-secondary border border-border flex items-center justify-center">
+                                    <Database size={20} className="text-foreground" />
                                 </div>
                                 <div>
-                                    <h4 className="text-[11px] font-black uppercase tracking-wider text-primary">Master Hub</h4>
+                                    <h4 className="text-[11px] font-black uppercase tracking-wider text-foreground">Master Hub</h4>
                                     <div className="flex items-center gap-1.5 mt-0.5">
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                        <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-tight">ONLINE</span>
+                                        <span className="px-1.5 py-0.5 rounded-[4px] bg-secondary border border-border text-[9px] font-black text-muted-foreground uppercase tracking-widest">
+                                        Host System
+                                    </span>
                                     </div>
                                 </div>
                             </div>
@@ -168,11 +189,11 @@ export const SystemHealthMatrix: React.FC = () => {
                                 </div>
                                 {health && (
                                     <div className="grid grid-cols-2 gap-2">
-                                        <div className="p-2 bg-secondary/30 rounded-lg border border-border/50">
+                                        <div className="p-2 bg-secondary/30 rounded border border-border/50">
                                             <p className="text-[8px] font-bold text-muted-foreground mb-1 uppercase">Load</p>
                                             <p className="text-[11px] font-black">{Math.round(health.cpuLoad)}%</p>
                                         </div>
-                                        <div className="p-2 bg-secondary/30 rounded-lg border border-border/50">
+                                        <div className="p-2 bg-secondary/30 rounded border border-border/50">
                                             <p className="text-[8px] font-bold text-muted-foreground mb-1 uppercase">Memory</p>
                                             <p className="text-[11px] font-black">{Math.round(health.memoryPressure)}%</p>
                                         </div>
@@ -182,58 +203,62 @@ export const SystemHealthMatrix: React.FC = () => {
                         </motion.div>
 
                         {/* Worker Nodes */}
-                        {nodes.map((node, i) => (
-                            <motion.div
-                                key={node.id}
-                                variants={STAGGER_ITEM}
-                                className={`p-4 border transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'} ${
-                                    node.status === NodeStatus.ONLINE ? 'border-border/60' : 'border-zinc-500/10 opacity-60'
-                                } group relative`}
-                             >
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${
-                                        node.status === NodeStatus.ONLINE 
-                                        ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-500' 
-                                        : 'bg-zinc-500/5 border-zinc-500/20 text-zinc-500'
-                                    }`}>
-                                        <Layers size={16} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="text-[10px] font-black uppercase truncate tracking-tight">{node.name}</h4>
-                                        <div className="flex items-center gap-1.5 mt-0.5">
-                                            <div className={`w-1.5 h-1.5 rounded-full ${node.status === NodeStatus.ONLINE ? 'bg-emerald-500' : 'bg-zinc-500'}`} />
-                                            <span className={`text-[8px] font-bold uppercase ${node.status === NodeStatus.ONLINE ? 'text-emerald-600' : 'text-zinc-500'}`}>
-                                                {node.status}
-                                            </span>
+                        {nodes.map((node, i) => {
+                            const isOnline = node.status === NodeStatus.ONLINE;
+                            const isLocal = node.id === 'local'; // Assuming 'local' is a way to identify the master hub if it's also listed as a node
+                            return (
+                                <motion.div
+                                    key={node.id}
+                                    variants={STAGGER_ITEM}
+                                    className={`group relative overflow-hidden rounded border transition-all duration-500 ${
+                                        isLocal 
+                                        ? 'bg-zinc-900 border-zinc-700' 
+                                        : 'bg-card border-border hover:border-zinc-700'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 transition-colors ${
+                                            isOnline ? 'bg-secondary text-foreground border border-border' : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                                        }`}>
+                                            <Layers size={16} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="text-[10px] font-black uppercase truncate tracking-tight">{node.name}</h4>
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                <div className={`w-1.5 h-1.5 rounded-full ${node.status === NodeStatus.ONLINE ? 'bg-emerald-500' : 'bg-zinc-500'}`} />
+                                                <span className={`text-[8px] font-bold uppercase ${node.status === NodeStatus.ONLINE ? 'text-emerald-600' : 'text-zinc-500'}`}>
+                                                    {node.status}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                {node.health ? (
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between items-center text-[8px] font-bold text-muted-foreground uppercase">
-                                            <span>Telemetry</span>
-                                            <span className="text-foreground">{Math.round(node.health.cpu)}% CPU</span>
+                                    {node.health ? (
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center text-[8px] font-bold text-muted-foreground uppercase">
+                                                <span>Telemetry</span>
+                                                <span className="text-foreground">{Math.round(node.health.cpu)}% CPU</span>
+                                            </div>
+                                            <div className="h-1 bg-secondary rounded-full overflow-hidden">
+                                                <motion.div 
+                                                    initial={{ width: 0 }}
+                                                    animate={{ width: `${node.health.cpu}%` }}
+                                                    className={`h-full ${node.health.cpu > 80 ? 'bg-rose-500' : node.health.cpu > 50 ? 'bg-amber-500' : 'bg-primary'}`}
+                                                />
+                                            </div>
+                                            <div className="flex justify-between items-center text-[8px] text-muted-foreground font-medium">
+                                                <span>IP: {node.host}</span>
+                                                <span>{node.health.memoryUsed ? `${Math.round(node.health.memoryUsed / (1024 * 1024 * 1024))}GB` : 'N/A'}</span>
+                                            </div>
                                         </div>
-                                        <div className="h-1 bg-secondary rounded-full overflow-hidden">
-                                            <motion.div 
-                                                initial={{ width: 0 }}
-                                                animate={{ width: `${node.health.cpu}%` }}
-                                                className={`h-full ${node.health.cpu > 80 ? 'bg-rose-500' : node.health.cpu > 50 ? 'bg-amber-500' : 'bg-primary'}`}
-                                            />
+                                    ) : (
+                                        <div className="h-12 flex items-center justify-center bg-secondary/20 rounded-lg border border-dashed border-border/40">
+                                            <p className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-widest">Awaiting Sync</p>
                                         </div>
-                                        <div className="flex justify-between items-center text-[8px] text-muted-foreground font-medium">
-                                            <span>IP: {node.host}</span>
-                                            <span>{node.health.memoryUsed ? `${Math.round(node.health.memoryUsed / (1024 * 1024 * 1024))}GB` : 'N/A'}</span>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="h-12 flex items-center justify-center bg-secondary/20 rounded-lg border border-dashed border-border/40">
-                                        <p className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-widest">Awaiting Sync</p>
-                                    </div>
-                                )}
-                            </motion.div>
-                        ))}
+                                    )}
+                                </motion.div>
+                            );
+                        })}
 
                         {nodes.length === 0 && (
                             <div className="col-span-full py-12 flex flex-col items-center gap-3 opacity-20">
@@ -251,10 +276,10 @@ export const SystemHealthMatrix: React.FC = () => {
                     variants={STAGGER_ITEM}
                     className="xl:col-span-2 space-y-4"
                 >
-                    <div className={`border border-border/80 transition-all duration-300 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-2xl' : 'bg-card rounded-md shadow-sm'}`}>
+                    <div className="border border-border bg-card rounded transition-all duration-300 overflow-hidden">
                         <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
                             <div className="flex items-center gap-2">
-                                <Cpu size={14} className="text-primary/70" />
+                                <Cpu size={14} className="text-muted-foreground" />
                                 <span className="text-[11px] font-semibold tracking-tight uppercase text-muted-foreground">Host Performance Core</span>
                             </div>
                             <div className="flex items-center gap-1.5 text-emerald-500">
@@ -265,16 +290,16 @@ export const SystemHealthMatrix: React.FC = () => {
                         
                         <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
                             {[
-                                { label: 'PROCESSING', val: `${Math.round(health?.cpuLoad || 0)}%`, history: cpuHistory, color: '#10b981' },
-                                { label: 'MEMORY LOAD', val: `${Math.round(health?.memoryPressure || 0)}%`, history: ramHistory, color: '#8b5cf6' },
-                                { label: 'THROUGHPUT', val: `${Math.round((health?.diskIO || 0) / 1024 / 1024)} MB/s`, history: ioHistory, color: '#3b82f6' }
+                                { label: 'PROCESSING', val: `${Math.round(health?.cpuLoad || 0)}%`, history: cpuHistory, color: '#a1a1aa' },
+                                { label: 'MEMORY LOAD', val: `${Math.round(health?.memoryPressure || 0)}%`, history: ramHistory, color: '#71717a' },
+                                { label: 'THROUGHPUT', val: `${Math.round((health?.diskIO || 0) / 1024 / 1024)} MB/s`, history: ioHistory, color: '#525252' }
                             ].map((stat, i) => (
                                 <div key={i} className="space-y-3">
                                     <div className="flex justify-between items-end">
                                         <span className="text-[9px] font-black text-muted-foreground/50 tracking-[0.2em]">{stat.label}</span>
                                         <span className="text-sm font-mono font-bold tabular-nums text-foreground/90">{stat.val}</span>
                                     </div>
-                                    <div className="h-12 bg-black/10 rounded-lg p-1.5 border border-border/20 shadow-inner">
+                                    <div className="h-12 bg-black/10 rounded p-1.5 border border-border/20 shadow-inner">
                                         <TelemetryLine data={stat.history} color={stat.color} height={36} />
                                     </div>
                                 </div>
@@ -283,10 +308,10 @@ export const SystemHealthMatrix: React.FC = () => {
                     </div>
 
                     {/* Stability Indices */}
-                    <div className={`border border-border/80 transition-all duration-300 opacity-90 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-2xl' : 'bg-card rounded-md shadow-sm'}`}>
+                    <div className="border border-border bg-card rounded transition-all duration-300 opacity-90 overflow-hidden">
                          <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
                             <div className="flex items-center gap-2">
-                                <ShieldCheck size={14} className="text-primary/70" />
+                                <ShieldCheck size={14} className="text-muted-foreground" />
                                 <span className="text-[11px] font-semibold tracking-tight uppercase text-muted-foreground">Stability Matrix Indices</span>
                             </div>
                         </div>
@@ -304,13 +329,13 @@ export const SystemHealthMatrix: React.FC = () => {
                                     {health?.stabilityMarkers?.map((marker) => (
                                         <tr key={marker.serverId} className="hover:bg-muted/5 transition-colors group">
                                             <td className="px-4 py-2.5">
-                                                <span className="text-[10px] font-mono font-bold text-primary/60">{marker.serverId.slice(0, 8)}</span>
+                                                <span className="text-[10px] font-mono font-bold text-muted-foreground">{marker.serverId.slice(0, 8)}</span>
                                             </td>
                                             <td className="px-4 py-2.5">
                                                 <div className="flex items-center gap-2">
                                                     <div className="flex-1 h-1.5 bg-black/20 rounded-full overflow-hidden min-w-[60px] max-w-[100px] border border-border/30">
                                                         <div 
-                                                            className={`h-full transition-all duration-1000 ${marker.score > 80 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : marker.score > 50 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                                                            className={`h-full transition-all duration-1000 ${marker.score > 80 ? 'bg-emerald-500' : marker.score > 50 ? 'bg-amber-500' : 'bg-rose-500'}`}
                                                             style={{ width: `${marker.score}%` }}
                                                         />
                                                     </div>
@@ -357,15 +382,15 @@ export const SystemHealthMatrix: React.FC = () => {
                 {/* Right Column: Integrated Transcript */}
                 <motion.div 
                     variants={STAGGER_ITEM}
-                    className={`xl:col-span-1 border border-border/80 flex flex-col transition-all duration-300 overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-2xl' : 'bg-card rounded-md shadow-sm'}`}
+                    className="xl:col-span-1 border border-border bg-card flex flex-col transition-all duration-300 overflow-hidden rounded"
                 >
                     <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4 shrink-0">
                         <div className="flex items-center gap-2">
-                            <History size={14} className="text-primary/70" />
+                            <History size={14} className="text-muted-foreground" />
                             <span className="text-[11px] font-semibold tracking-tight uppercase text-muted-foreground">Security Audit Feed</span>
                         </div>
                         <div className="flex items-center gap-2">
-                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                              <span className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-widest">Live_Sink</span>
                         </div>
                     </div>

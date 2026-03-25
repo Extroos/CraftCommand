@@ -17,6 +17,8 @@ const AuditLog: React.FC = () => {
     const [filterAction, setFilterAction] = useState<string>('');
     const [filterUser, setFilterUser] = useState<string>('');
     const [search, setSearch] = useState<string>('');
+    const [startDate, setStartDate] = useState<string>('');
+    const [endDate, setEndDate] = useState<string>('');
     const [page, setPage] = useState(0);
     const limit = 20;
 
@@ -40,7 +42,9 @@ const AuditLog: React.FC = () => {
                 offset: page * limit,
                 action: filterAction || undefined,
                 userId: filterUser || undefined,
-                search: search || undefined
+                search: search || undefined,
+                startDate: startDate ? new Date(startDate).toISOString() : undefined,
+                endDate: endDate ? new Date(endDate).toISOString() : undefined
             });
             
             // Robust fallback for transition period or different data shapes
@@ -61,6 +65,48 @@ const AuditLog: React.FC = () => {
             month: 'short', day: 'numeric',
             hour: 'numeric', minute: 'numeric', second: 'numeric'
         }).format(new Date(ts));
+    };
+
+    const handleExport = (format: 'csv' | 'json') => {
+        if (!logs.length) {
+            addToast('warning', 'Export', 'No logs to export.');
+            return;
+        }
+        
+        if (format === 'json') {
+            const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } else {
+            const headers = ['ID', 'Timestamp', 'Date', 'User ID', 'User Email', 'Action', 'Resource', 'Metadata'];
+            const rows = logs.map(l => [
+                l.id,
+                l.timestamp,
+                new Date(l.timestamp).toISOString(),
+                l.userId,
+                l.userEmail || '',
+                l.action,
+                l.resourceId || '',
+                JSON.stringify(l.metadata || {}).replace(/"/g, '""')
+            ]);
+            
+            const csvContent = [
+                headers.join(','),
+                ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+            ].join('\n');
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
     };
 
     const formatAction = (action: string) => {
@@ -97,6 +143,11 @@ const AuditLog: React.FC = () => {
             if (action === 'FILE_DOWNLOAD') return `Downloaded: ${meta.path}`;
             
             if (action === 'EULA_ACCEPT') return 'Accepted Minecraft EULA';
+            
+            if (action === 'AUTO_HEAL' || action === 'SERVER_HEAL') {
+                const type = meta.actionType || 'Fix';
+                return `Auto-Heal: ${type.replace(/_/g, ' ')} ${meta.success ? '(Success)' : '(Failed)'}`;
+            }
             
             if (action === 'LOGIN_SUCCESS') return `IP: ${log.ip || 'Unknown'}`;
             if (action === 'LOGIN_FAIL') return `Failed attempt from ${log.ip || 'Unknown'}`;
@@ -189,11 +240,11 @@ const AuditLog: React.FC = () => {
     return (
         <div className="h-[calc(100vh-140px)] flex flex-col gap-6 font-sans">
             <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-lg border border-border min-w-[200px] flex-1">
+                <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-lg border border-border flex-1 min-w-[150px]">
                     <Search size={14} className="ml-2 text-muted-foreground" />
                     <input 
                         type="text"
-                        placeholder="Search logs (metadata, path, etc)..."
+                        placeholder="Search logs..."
                         className="bg-transparent border-none text-xs focus:ring-0 w-full"
                         value={search}
                         onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -205,9 +256,27 @@ const AuditLog: React.FC = () => {
                     <input 
                         type="text"
                         placeholder="User Email..."
-                        className="bg-transparent border-none text-xs focus:ring-0 w-32"
+                        className="bg-transparent border-none text-xs focus:ring-0 w-24"
                         value={filterUser}
                         onChange={(e) => { setFilterUser(e.target.value); setPage(0); }}
+                    />
+                </div>
+                
+                <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-lg border border-border">
+                    <input 
+                        type="date"
+                        className="bg-transparent border-none text-xs focus:ring-0 w-28 text-foreground"
+                        value={startDate}
+                        onChange={(e) => { setStartDate(e.target.value); setPage(0); }}
+                        title="Start Date"
+                    />
+                    <span className="text-muted-foreground text-xs">-</span>
+                    <input 
+                        type="date"
+                        className="bg-transparent border-none text-xs focus:ring-0 w-28 text-foreground"
+                        value={endDate}
+                        onChange={(e) => { setEndDate(e.target.value); setPage(0); }}
+                        title="End Date"
                     />
                 </div>
 
@@ -220,21 +289,54 @@ const AuditLog: React.FC = () => {
                         onChange={(e) => { setFilterAction(e.target.value); setPage(0); }}
                     >
                         <option value="" style={{ backgroundColor: '#1a1a1a', color: 'white' }}>All Actions</option>
-                        <option value="LOGIN_SUCCESS" style={{ backgroundColor: '#1a1a1a', color: 'white' }}>Login Success</option>
-                        <option value="LOGIN_FAIL" style={{ backgroundColor: '#1a1a1a', color: 'white' }}>Login Fail</option>
-                        <option value="SERVER_START" style={{ backgroundColor: '#1a1a1a', color: 'white' }}>Server Start</option>
-                        <option value="SERVER_STOP" style={{ backgroundColor: '#1a1a1a', color: 'white' }}>Server Stop</option>
-                        <option value="FILE_EDIT" style={{ backgroundColor: '#1a1a1a', color: 'white' }}>File Edits</option>
-                        <option value="USER_UPDATE" style={{ backgroundColor: '#1a1a1a', color: 'white' }}>User Management</option>
-                        <option value="SERVER_CREATE" style={{ backgroundColor: '#1a1a1a', color: 'white' }}>Server Creation</option>
+                        <optgroup label="Authentication">
+                            <option value="LOGIN_SUCCESS">Login Success</option>
+                            <option value="LOGIN_FAIL">Login Fail</option>
+                            <option value="LOGOUT">Logout</option>
+                        </optgroup>
+                        <optgroup label="User Management">
+                            <option value="USER_CREATE">User Create</option>
+                            <option value="USER_UPDATE">User Update</option>
+                            <option value="USER_DELETE">User Delete</option>
+                        </optgroup>
+                        <optgroup label="Server Core">
+                            <option value="SERVER_CREATE">Server Create</option>
+                            <option value="SERVER_DELETE">Server Delete</option>
+                            <option value="SERVER_START">Server Start</option>
+                            <option value="SERVER_STOP">Server Stop</option>
+                            <option value="SERVER_RESTART">Server Restart</option>
+                            <option value="SERVER_KILL">Server Kill</option>
+                        </optgroup>
+                        <optgroup label="Player Management">
+                            <option value="PLAYER_KICK">Kick Player</option>
+                            <option value="PLAYER_OP">Op Player</option>
+                            <option value="PLAYER_DEOP">De-op Player</option>
+                            <option value="PLAYER_BAN">Ban Player</option>
+                            <option value="PLAYER_WHITELIST_ADD">Add Whitelist</option>
+                        </optgroup>
+                        <optgroup label="File Management">
+                            <option value="FILE_EDIT">File Edited</option>
+                            <option value="FILE_UPLOAD">File Uploaded</option>
+                            <option value="FILE_DELETE_BULK">File Deleted</option>
+                            <option value="FILE_COMPRESS">File Compressed</option>
+                            <option value="FILE_EXTRACT">File Extracted</option>
+                        </optgroup>
+                        <optgroup label="System">
+                            <option value="SYSTEM_SETTINGS_UPDATE">Settings Update</option>
+                            <option value="BACKUP_CREATE">Backup Create</option>
+                            <option value="BACKUP_RESTORE">Backup Restore</option>
+                            <option value="PROXY_LINK">Proxy Linked</option>
+                            <option value="AUTO_HEAL">Auto-Healing Fix</option>
+                        </optgroup>
                     </select>
                 </div>
                 
                 <div className="ml-auto flex items-center gap-3">
-                    <div className="text-[10px] text-muted-foreground bg-muted px-2 py-1 rounded border border-border">
+                    <button onClick={() => handleExport('csv')} className="text-[10px] bg-secondary hover:bg-muted text-muted-foreground hover:text-foreground px-2 py-1 rounded border border-border uppercase tracking-widest font-bold transition-colors">CSV</button>
+                    <button onClick={() => handleExport('json')} className="text-[10px] bg-secondary hover:bg-muted text-muted-foreground hover:text-foreground px-2 py-1 rounded border border-border uppercase tracking-widest font-bold transition-colors">JSON</button>
+                    <div className="text-[10px] text-muted-foreground bg-muted px-2 py-1 rounded border border-border ml-1">
                         Total: <span className="text-foreground font-bold">{total}</span>
                     </div>
-                    <button onClick={loadLogs} className="text-[10px] text-muted-foreground hover:text-foreground uppercase tracking-widest font-bold">Refresh</button>
                 </div>
             </div>
 
@@ -276,7 +378,7 @@ const AuditLog: React.FC = () => {
                                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">
                                         {log.resourceId || '-'}
                                     </td>
-                                    <td className="px-4 py-3 text-muted-foreground text-xs font-mono truncate max-w-[200px]" title={JSON.stringify(log.metadata, null, 2)}>
+                                    <td className="px-4 py-3 text-muted-foreground text-xs font-mono truncate max-w-[200px]" title={`IP: ${log.ip || 'Unknown'}\n\n${JSON.stringify(log.metadata, null, 2)}`}>
                                         {getSmartDetails(log)}
                                     </td>
                                 </tr>

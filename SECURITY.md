@@ -6,9 +6,9 @@ The following versions of CraftCommand are currently supported with security upd
 
 | Version         | Supported                    |
 | --------------- | ---------------------------- |
-| 1.11.x (Stable) | :white_check_mark: (Current) |
-| 1.10.x          | :warning: (Maintenance)      |
-| < 1.10          | :x:                          |
+| 1.12.x (Stable) | :white_check_mark: (Current) |
+| 1.11.x          | :warning: (Maintenance)      |
+| < 1.11          | :x:                          |
 
 ## Reporting a Vulnerability
 
@@ -23,7 +23,7 @@ Please contact me directly through GitHub or via the [Discord](https://discord.g
 
 Once a patch is released, you will be credited for the discovery unless you prefer to remain anonymous.
 
-## Hardening Measures (v1.10.0+)
+## Hardening Measures (v1.12.5+)
 
 CraftCommand implements several layers of defense-in-depth:
 

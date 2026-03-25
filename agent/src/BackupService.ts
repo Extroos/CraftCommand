@@ -3,7 +3,7 @@ import path from 'path';
 import archiver from 'archiver';
 import extract from 'extract-zip';
 import { EventEmitter } from 'events';
-import crypto from 'crypto';
+import { detectWorldFolders, calculateHash } from '@shared/utils/BackupUtils';
 
 export interface Backup {
     id: string;
@@ -46,7 +46,7 @@ export class BackupService extends EventEmitter {
 
             let worldFolders: string[] = [];
             if (worldOnly) {
-                worldFolders = await this.detectWorldFolders(serverDir);
+                worldFolders = await detectWorldFolders(serverDir);
                 if (worldFolders.length === 0) {
                     throw new Error('No world folders detected. Cannot create world-only backup.');
                 }
@@ -76,7 +76,7 @@ export class BackupService extends EventEmitter {
             });
 
             const stats = await fs.stat(outputPath);
-            const sha256 = await this.calculateHash(outputPath);
+            const sha256 = await calculateHash(outputPath);
 
             const backup: Backup = {
                 id: backupId,
@@ -120,18 +120,21 @@ export class BackupService extends EventEmitter {
             
             let worldFolders: string[] = [];
             if (options.worldOnly) {
-                worldFolders = await this.detectWorldFolders(serverDir);
+                worldFolders = await detectWorldFolders(serverDir);
             }
 
             // Move current state to safety
             for (const item of items) {
-                if (item === 'backups') continue;
+                const fullItemPath = path.resolve(serverDir, item);
+                const relativeToBackups = path.relative(this.backupsDir, fullItemPath);
+                if (!relativeToBackups.startsWith('..') && !path.isAbsolute(relativeToBackups)) continue;
+
                 if (options.worldOnly) {
                     if (worldFolders.includes(item)) {
-                        await fs.move(path.join(serverDir, item), path.join(tempRestorePath, item));
+                        await fs.move(fullItemPath, path.join(tempRestorePath, item));
                     }
                 } else {
-                    await fs.move(path.join(serverDir, item), path.join(tempRestorePath, item));
+                    await fs.move(fullItemPath, path.join(tempRestorePath, item));
                 }
             }
 
@@ -140,7 +143,7 @@ export class BackupService extends EventEmitter {
                 await fs.ensureDir(extractTempPath);
                 try {
                     await extract(backupPath, { dir: extractTempPath });
-                    const extractedWorlds = await this.detectWorldFolders(extractTempPath);
+                    const extractedWorlds = await detectWorldFolders(extractTempPath);
                     for (const wf of extractedWorlds) {
                         const source = path.join(extractTempPath, wf);
                         const dest = path.join(serverDir, wf);
@@ -172,44 +175,6 @@ export class BackupService extends EventEmitter {
             }
             throw e;
         }
-    }
-
-    private async detectWorldFolders(serverDir: string): Promise<string[]> {
-        const worlds: string[] = [];
-        const bedrockWorldsDir = path.join(serverDir, 'worlds');
-        if (await fs.pathExists(bedrockWorldsDir)) {
-            const items = await fs.readdir(bedrockWorldsDir, { withFileTypes: true });
-            for (const item of items) {
-                if (item.isDirectory()) worlds.push(path.join('worlds', item.name));
-            }
-        }
-        const defaultWorlds = ['world', 'world_nether', 'world_the_end'];
-        for (const w of defaultWorlds) {
-            if (await fs.pathExists(path.join(serverDir, w))) worlds.push(w);
-        }
-        // Check server.properties
-        try {
-            const propsPath = path.join(serverDir, 'server.properties');
-            if (await fs.pathExists(propsPath)) {
-                const content = await fs.readFile(propsPath, 'utf-8');
-                const match = content.match(/level-name=(.+)/);
-                if (match && match[1].trim()) {
-                    const levelName = match[1].trim();
-                    if (await fs.pathExists(path.join(serverDir, levelName))) worlds.push(levelName);
-                }
-            }
-        } catch {}
-        return [...new Set(worlds)];
-    }
-
-    private async calculateHash(filePath: string): Promise<string> {
-        return new Promise((resolve, reject) => {
-            const hash = crypto.createHash('sha256');
-            const stream = fs.createReadStream(filePath);
-            stream.on('data', data => hash.update(data));
-            stream.on('end', () => resolve(hash.digest('hex')));
-            stream.on('error', err => reject(err));
-        });
     }
 
     private async saveBackupMetadata(serverId: string, backup: Backup) {

@@ -2,6 +2,7 @@ import { scheduleRepository } from '../../storage/ScheduleRepository';
 import { processManager } from '../processes/ProcessManager';
 import { backupService } from '../backups/BackupService';
 import { startServer } from '../servers/ServerService';
+import { auditService } from '../system/AuditService';
 
 import { EventEmitter } from 'events';
 import {  ScheduleTask  } from '@shared/types';
@@ -246,6 +247,16 @@ export class ScheduleService extends EventEmitter {
                     worldOnly
                 );
                 await this.logExecution(serverId, taskName, true, `Backup created (${worldOnly ? "world" : "full"})`);
+
+                // Phase 8: Hardening - Log to System Audit Trail
+                await auditService.log(
+                    'SYSTEM',
+                    'BACKUP_CREATE',
+                    serverId,
+                    { taskName, automated: true, scope: worldOnly ? 'world' : 'full' },
+                    '127.0.0.1',
+                    'system@craftcommand.internal'
+                );
             } else if (type === 'restart') {
                 processManager.stopServer(serverId);
                 await this.logExecution(serverId, taskName, true, "Restart: Stop initiated");
@@ -260,6 +271,16 @@ export class ScheduleService extends EventEmitter {
                 try {
                     await startServer(serverId);
                     await this.logExecution(serverId, taskName, true, "Restart: Server started");
+
+                    // Phase 8: Hardening - Log to System Audit Trail
+                    await auditService.log(
+                        'SYSTEM',
+                        'SERVER_RESTART',
+                        serverId,
+                        { taskName, automated: true },
+                        '127.0.0.1',
+                        'system@craftcommand.internal'
+                    );
                 } catch (e: any) {
                     throw new Error(`Restart start failed: ${e.message}`);
                 }
@@ -342,6 +363,18 @@ export class ScheduleService extends EventEmitter {
     // Utility for frontend: describe a cron expression in human-readable form
     describeCron(cron: string): string {
         return describeCron(cron);
+    }
+
+    // Manual trigger: execute a task immediately on demand
+    async runTaskNow(serverId: string, taskId: string): Promise<void> {
+        const tasks = await this.getSchedules(serverId);
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) throw new Error('Schedule task not found');
+
+        console.log(`[ScheduleService] Manual trigger: "${task.name}" for server ${serverId}`);
+        await this.executeTask(serverId, task);
+        task.lastRun = new Date().toISOString();
+        await this.saveSchedules(serverId, tasks);
     }
 
     private async saveSchedules(serverId: string, tasks: ScheduleTask[]) {

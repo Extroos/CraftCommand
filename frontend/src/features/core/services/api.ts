@@ -221,6 +221,10 @@ class ApiService {
         await this.delete(`/system/webhooks/${id}`);
     }
 
+    async updateGlobalWebhook(id: string, webhook: any): Promise<any> {
+        return this.put(`/system/webhooks/${id}`, webhook);
+    }
+
     async testGlobalWebhook(id: string): Promise<any> {
         return this.post(`/system/webhooks/${id}/test`, {});
     }
@@ -406,6 +410,10 @@ class ApiService {
         await this.post(`/servers/${id}/files/delete-bulk`, { paths });
     }
 
+    async moveFile(id: string, source: string, dest: string): Promise<void> {
+        await this.post(`/servers/${id}/files/move`, { source, dest });
+    }
+
     async archiveFiles(id: string, paths: string[], archiveName: string): Promise<void> {
         await this.post(`/servers/${id}/files/archive`, { paths, archiveName });
     }
@@ -505,6 +513,10 @@ class ApiService {
 
     async deleteSchedule(id: string, taskId: string): Promise<void> {
         await this.delete(`/servers/${id}/schedules/${taskId}`);
+    }
+
+    async runScheduleNow(id: string, taskId: string): Promise<void> {
+        await this.post(`/servers/${id}/schedules/${taskId}/run`, {});
     }
 
     async getLogs(id: string): Promise<string[]> {
@@ -626,7 +638,12 @@ class ApiService {
             body: JSON.stringify({ email, password })
         });
         
-        if (res.status === 401) return { success: false, user: null as any, token: '', twoFactorRequired: false };
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            const error = new Error(data.error || `Login failed: ${res.status}`);
+            (error as any).status = res.status;
+            throw error;
+        }
         
         const data = await res.json();
         return { 
@@ -637,8 +654,8 @@ class ApiService {
         };
     }
 
-    async verify2FA(code: string, isRecovery: boolean = false): Promise<{ success: boolean, token?: string, user?: UserProfile }> {
-        return this.post('/auth/2fa/verify', { code, isRecovery }).catch(() => ({ success: false }));
+    async verify2FA(code: string, loginToken: string, isRecovery: boolean = false): Promise<{ success: boolean, token?: string, user?: UserProfile }> {
+        return this.post('/auth/2fa/verify', { code, loginToken, isRecovery }).catch(() => ({ success: false }));
     }
 
     async start2FASetup(): Promise<{ qrCode: string, secret: string }> {
@@ -760,7 +777,9 @@ class ApiService {
         offset?: number, 
         action?: string, 
         userId?: string, 
-        search?: string 
+        search?: string,
+        startDate?: string,
+        endDate?: string
     } = {}): Promise<{ logs: any[], total: number }> {
         const params = new URLSearchParams();
         if (options.limit) params.append('limit', options.limit.toString());
@@ -768,6 +787,8 @@ class ApiService {
         if (options.action) params.append('action', options.action);
         if (options.userId) params.append('userId', options.userId);
         if (options.search) params.append('search', options.search);
+        if (options.startDate) params.append('startDate', options.startDate);
+        if (options.endDate) params.append('endDate', options.endDate);
 
         return this.get(`/system/audit?${params.toString()}`);
     }

@@ -74,9 +74,9 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
     if (!stats) return <div className="p-8 text-center text-muted-foreground"><Loader2 className="animate-spin mx-auto mb-2" /> Loading stats...</div>;
 
     return (
-        <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+        <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
             <div className="flex items-center gap-3 mb-6">
-                <div className={`p-2 bg-rose-500/10 text-rose-500 rounded-lg`}>
+                <div className={`p-2 bg-rose-500/10 text-rose-500 rounded-md`}>
                     <Database size={20} />
                 </div>
                 <div>
@@ -87,7 +87,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
 
             <div className="space-y-4">
                 {/* Java Cache */}
-                <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-secondary/10">
+                <div className="flex items-center justify-between p-4 border border-border rounded-md bg-secondary/10">
                     <div className="flex items-center gap-4">
                         <div className="p-2 bg-background rounded-md border border-border">
                             <Archive size={20} className="text-muted-foreground" />
@@ -105,7 +105,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
                          <button 
                             onClick={() => handleClear('java')}
                             disabled={loading}
-                            className="p-2 hover:bg-destructive/10 text-destructive rounded-lg transition-colors border border-transparent hover:border-destructive/20"
+                            className="p-2 hover:bg-destructive/10 text-destructive rounded-md transition-colors border border-transparent hover:border-destructive/20"
                             title="Clear Java Cache"
                         >
                             <Trash2 size={16} />
@@ -114,7 +114,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
                 </div>
 
                 {/* Temp Files */}
-                <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-secondary/10">
+                <div className="flex items-center justify-between p-4 border border-border rounded-md bg-secondary/10">
                     <div className="flex items-center gap-4">
                         <div className="p-2 bg-background rounded-md border border-border">
                             <HardDrive size={20} className="text-muted-foreground" />
@@ -132,7 +132,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
                         <button 
                             onClick={() => handleClear('temp')}
                             disabled={loading}
-                            className="p-2 hover:bg-destructive/10 text-destructive rounded-lg transition-colors border border-transparent hover:border-destructive/20"
+                            className="p-2 hover:bg-destructive/10 text-destructive rounded-md transition-colors border border-transparent hover:border-destructive/20"
                             title="Clear Temp Files"
                         >
                             <Trash2 size={16} />
@@ -153,9 +153,9 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
 
 const SystemUpdatePreferences = ({ theme, user, onUpdate }: any) => {
     return (
-        <div className={`border border-border p-6 transition-all duration-300 mt-6 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+        <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300 mt-6">
             <div className="flex items-center gap-3 mb-6">
-                 <div className={`p-2 bg-blue-500/10 text-blue-500 rounded-lg`}>
+                 <div className={`p-2 bg-blue-500/10 text-blue-500 rounded-md`}>
                     <RefreshCw size={20} />
                 </div>
                 <div>
@@ -163,7 +163,7 @@ const SystemUpdatePreferences = ({ theme, user, onUpdate }: any) => {
                     <p className="text-sm text-muted-foreground">Configure automatic update checks.</p>
                 </div>
             </div>
-             <div className="flex items-center justify-between p-4 border border-border rounded-lg">
+             <div className="flex items-center justify-between p-4 border border-border rounded-md">
                 <div>
                      <h4 className="text-sm font-medium">Check for Updates</h4>
                      <p className="text-xs text-muted-foreground">Automatically check for new versions on startup.</p>
@@ -461,7 +461,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                         <button 
                             onClick={() => fileInputRef.current?.click()}
                             disabled={isSaving}
-                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-all duration-300 text-white cursor-pointer backdrop-blur-[2px]"
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-all duration-300 text-white cursor-pointer "
                             title="Upload new profile picture"
                         >
                             {isSaving ? (
@@ -529,7 +529,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             
                             {/* Security Alert */}
                             {user.email === 'admin@craftcommand.io' && (
-                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex gap-3 items-start">
+                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-md p-4 flex gap-3 items-start">
                                     <AlertTriangle className="text-amber-500 shrink-0" size={20} />
                                     <div>
                                         <h3 className="font-bold text-amber-700 dark:text-amber-500 text-sm">Action Required</h3>
@@ -541,7 +541,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             )}
 
                             {/* Password Change */}
-                            <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                            <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <Lock size={18} className={theme.text} /> Change Password
                                 </h2>
@@ -553,7 +553,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                 type={showPassword ? 'text' : 'password'}
                                                 value={passwords.current}
                                                 onChange={(e) => setPasswords({...passwords, current: e.target.value})}
-                                                className="w-full bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-lg pl-3 pr-10 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                                className="w-full bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-md pl-3 pr-10 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                                             />
                                         </div>
                                     </div>
@@ -564,7 +564,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                 type={showPassword ? 'text' : 'password'}
                                                 value={passwords.new}
                                                 onChange={(e) => setPasswords({...passwords, new: e.target.value})}
-                                                className="w-full bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-lg px-3 py-2.5 text-sm mt-1 focus:outline-none focus:ring-1 focus:ring-primary"
+                                                className="w-full bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-md px-3 py-2.5 text-sm mt-1 focus:outline-none focus:ring-1 focus:ring-primary"
                                             />
                                         </div>
                                         <div>
@@ -573,7 +573,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                 type={showPassword ? 'text' : 'password'}
                                                 value={passwords.confirm}
                                                 onChange={(e) => setPasswords({...passwords, confirm: e.target.value})}
-                                                className="w-full bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-lg px-3 py-2.5 text-sm mt-1 focus:outline-none focus:ring-1 focus:ring-primary"
+                                                className="w-full bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-md px-3 py-2.5 text-sm mt-1 focus:outline-none focus:ring-1 focus:ring-primary"
                                             />
                                         </div>
                                     </div>
@@ -591,7 +591,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         <button 
                                             onClick={handlePasswordChange}
                                             disabled={isSaving}
-                                            className="bg-foreground text-background px-4 py-2 rounded-lg text-sm font-medium hover:bg-foreground/90 transition-colors flex items-center gap-2"
+                                            className="bg-foreground text-background px-4 py-2 rounded-md text-sm font-medium hover:bg-foreground/90 transition-colors flex items-center gap-2"
                                         >
                                             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                                             Update Password
@@ -601,13 +601,13 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             </div>
 
                             {/* Avatar Settings */}
-                            <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                            <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <Disc size={18} className={theme.text} /> Profile Picture
                                 </h2>
                                 <div className="space-y-4 max-w-md">
                                     <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-16 h-16 rounded-xl border border-border overflow-hidden bg-secondary flex items-center justify-center shrink-0">
+                                        <div className="w-16 h-16 rounded-md border border-border overflow-hidden bg-secondary flex items-center justify-center shrink-0">
                                             {user.avatarUrl ? (
                                                 <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                                             ) : (
@@ -628,12 +628,12 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                 placeholder="https://example.com/avatar.png"
                                                 value={avatarInput}
                                                 onChange={(e) => setAvatarInput(e.target.value)}
-                                                className="flex-1 bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                                className="flex-1 bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                                             />
                                             <button 
                                                 onClick={handleAvatarUpdate}
                                                 disabled={isSaving || !avatarInput}
-                                                className={`px-4 text-foreground rounded-lg transition-colors disabled:opacity-50 ${theme.bg} hover:opacity-90 flex items-center justify-center`}
+                                                className={`px-4 text-foreground rounded-md transition-colors disabled:opacity-50 ${theme.bg} hover:opacity-90 flex items-center justify-center`}
                                             >
                                                 {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                                             </button>
@@ -645,13 +645,13 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                 </div>
                             </div>
                             {/* 2FA Security */}
-                            <div ref={securitySectionRef} className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'} ${initialSection === '2FA' ? 'ring-2 ring-primary ring-offset-2' : ''}`}>
+                            <div ref={securitySectionRef} className={`bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300 ${initialSection === '2FA' ? 'ring-2 ring-primary ring-offset-2' : ''}`}>
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <ShieldCheck size={18} className={theme.text} /> Two-Factor Authentication
                                 </h2>
                                 
                                 <div className="flex items-start gap-6">
-                                    <div className={`p-4 rounded-2xl ${user.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'} shrink-0`}>
+                                    <div className={`p-4 rounded-md ${user.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'} shrink-0`}>
                                         {user.twoFactorEnabled ? <ShieldCheck size={32} /> : <AlertTriangle size={32} />}
                                     </div>
                                     
@@ -683,7 +683,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             ) : (
                                                 <button 
                                                     onClick={() => setShow2FAWizard(true)}
-                                                    className={`px-4 py-2 text-xs font-bold rounded-lg border border-border transition-all shadow-sm ${theme.bg} text-foreground hover:scale-105 active:scale-95 flex items-center gap-2`}
+                                                    className={`px-4 py-2 text-xs font-bold rounded-md border border-border transition-all shadow-sm ${theme.bg} text-foreground hover:scale-105 active:scale-95 flex items-center gap-2`}
                                                 >
                                                     <QrCode size={14} /> Enable 2FA
                                                 </button>
@@ -700,9 +700,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                             
                             {/* Theme Settings */}
-                            <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                            <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
                                 <div className="flex items-center gap-3 mb-6">
-                                    <div className={`p-2 bg-primary/10 rounded-lg ${theme.text}`}>
+                                    <div className={`p-2 bg-primary/10 rounded-md ${theme.text}`}>
                                         <Palette size={20} />
                                     </div>
                                     <div className="flex-1">
@@ -722,7 +722,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                 addToast('info', 'Quality Mode Required', 'Enable Quality Mode below to unlock background customization.');
                                             }
                                         }}
-                                        className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg border border-border transition-all shadow-sm ${
+                                        className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md border border-border transition-all shadow-sm ${
                                             user.preferences.visualQuality 
                                             ? `${theme.bg} text-foreground hover:scale-105 active:scale-95` 
                                             : 'bg-secondary text-muted-foreground'
@@ -754,9 +754,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         </div>
                                     </div>
 
-                                    <div className={`flex items-center justify-between p-4 bg-secondary/20 rounded-lg border border-border transition-opacity ${user.preferences.visualQuality ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                    <div className={`flex items-center justify-between p-4 bg-secondary/20 rounded-md border border-border transition-opacity ${user.preferences.visualQuality ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                         <div className="flex gap-3">
-                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-secondary/50 text-muted-foreground">
+                                            <div className="w-8 h-8 rounded-md flex items-center justify-center bg-secondary/50 text-muted-foreground">
                                                 <Monitor size={18} />
                                             </div>
                                             <div className="flex flex-col justify-center">
@@ -776,9 +776,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         </label>
                                     </div>
 
-                                    <div className={`flex items-center justify-between p-4 bg-secondary/20 rounded-lg border border-border transition-opacity ${user.preferences.reducedMotion ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                    <div className={`flex items-center justify-between p-4 bg-secondary/20 rounded-md border border-border transition-opacity ${user.preferences.reducedMotion ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                         <div className="flex gap-3">
-                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-secondary/50 text-muted-foreground">
+                                            <div className="w-8 h-8 rounded-md flex items-center justify-center bg-secondary/50 text-muted-foreground">
                                                 <Eye size={18} />
                                             </div>
                                             <div className="flex flex-col justify-center">
@@ -806,9 +806,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             </div>
 
                             {/* Terminal Customization */}
-                            <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                            <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
                                 <div className="flex items-center gap-3 mb-6">
-                                    <div className="p-2 bg-secondary text-foreground rounded-lg">
+                                    <div className="p-2 bg-secondary text-foreground rounded-md">
                                         <Terminal size={20} />
                                     </div>
                                     <div>
@@ -827,7 +827,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             min="10" max="18" step="1"
                                             value={user.preferences.terminal.fontSize}
                                             onChange={(e) => handlePreferenceUpdate('terminal', 'fontSize', parseInt(e.target.value))}
-                                            className={`w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer mb-2 accent-${user.preferences.accentColor}-500`}
+                                            className={`w-full h-2 bg-secondary rounded-md appearance-none cursor-pointer mb-2 accent-${user.preferences.accentColor}-500`}
                                         />
                                         <div className="flex justify-between text-xs text-muted-foreground font-mono">
                                             <span>10px</span>
@@ -836,7 +836,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         </div>
                                     </div>
                                     
-                                    <div className={`bg-black p-3 rounded-lg border border-[rgb(var(--color-border-default))] font-mono text-muted-foreground overflow-hidden h-24 flex flex-col justify-end`} style={{ fontSize: `${user.preferences.terminal.fontSize}px` }}>
+                                    <div className={`bg-black p-3 rounded-md border border-[rgb(var(--color-border-default))] font-mono text-muted-foreground overflow-hidden h-24 flex flex-col justify-end`} style={{ fontSize: `${user.preferences.terminal.fontSize}px` }}>
                                         <div className="opacity-50">[12:00:01] INFO: Loading libraries...</div>
                                         <div>[12:00:02] INFO: Done! For help, type "help"</div>
                                         <div className={`mt-1 ${theme.text}`}>{'>'} _</div>
@@ -849,9 +849,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                     {/* --- NOTIFICATIONS TAB --- */}
                     {activeTab === 'NOTIFICATIONS' && (
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                             <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                             <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
                                 <div className="flex items-center gap-3 mb-6">
-                                    <div className={`p-2 bg-blue-500/10 text-blue-500 rounded-lg`}>
+                                    <div className={`p-2 bg-blue-500/10 text-blue-500 rounded-md`}>
                                         <BellRing size={20} />
                                     </div>
                                     <div>
@@ -861,7 +861,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                 </div>
 
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between p-4 border border-border rounded-lg">
+                                    <div className="flex items-center justify-between p-4 border border-border rounded-md">
                                         <div>
                                             <h4 className="text-sm font-medium">Browser Push Notifications</h4>
                                             <p className="text-xs text-muted-foreground">Receive popups when the tab is in the background.</p>
@@ -877,7 +877,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         </label>
                                     </div>
 
-                                    <div className="flex items-center justify-between p-4 border border-border rounded-lg">
+                                    <div className="flex items-center justify-between p-4 border border-border rounded-md">
                                         <div className="flex items-center gap-3">
                                             <Volume2 className="text-muted-foreground" size={20} />
                                             <div>
@@ -903,10 +903,10 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                     {/* --- MINECRAFT TAB --- */}
                     {activeTab === 'MINECRAFT' && (
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                             <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                              <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
                                 <div className="flex gap-6 items-start">
                                     {/* 3D Skin Preview (Simulated via Image) */}
-                                    <div className="shrink-0 w-32 h-64 bg-secondary/50 rounded-lg border border-border flex items-center justify-center relative overflow-hidden">
+                                    <div className="shrink-0 w-32 h-64 bg-secondary/50 rounded-md border border-border flex items-center justify-center relative overflow-hidden">
                                         {user.minecraftIgn ? (
                                             <img 
                                                 src={`https://minotar.net/body/${user.minecraftIgn}/100.png`} 
@@ -935,12 +935,12 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                     placeholder="Steve"
                                                     value={ignInput}
                                                     onChange={(e) => setIgnInput(e.target.value)}
-                                                    className="flex-1 bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                                    className="flex-1 bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                                                 />
                                                 <button 
                                                     onClick={handleLinkMinecraft}
                                                     disabled={isSaving || !ignInput}
-                                                    className={`px-4 text-foreground rounded-lg transition-colors disabled:opacity-50 ${theme.bg} hover:opacity-90`}
+                                                    className={`px-4 text-foreground rounded-md transition-colors disabled:opacity-50 ${theme.bg} hover:opacity-90`}
                                                 >
                                                     {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Link size={16} />}
                                                 </button>
@@ -978,7 +978,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                     {/* --- API TAB --- */}
                     {activeTab === 'API' && (
                          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                            <div className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                             <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <Key size={18} className={theme.text} /> API Access
                                 </h2>
@@ -986,7 +986,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                     Use this key to authenticate with the CraftCommand REST API for CI/CD pipelines or external monitoring scripts.
                                 </p>
 
-                                <div className="bg-background border border-border rounded-lg p-4 flex items-center justify-between gap-4 mb-4">
+                                <div className="bg-background border border-border rounded-md p-4 flex items-center justify-between gap-4 mb-4">
                                     <code className={`font-mono text-sm break-all ${theme.text}`}>
                                         {user.apiKey || 'No API Key Generated'}
                                     </code>
@@ -1006,13 +1006,13 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
 
                                 <button 
                                     onClick={handleGenerateKey}
-                                    className="bg-secondary text-foreground border border-border px-4 py-2 rounded-lg text-sm font-medium hover:bg-secondary/80 transition-colors flex items-center gap-2"
+                                    className="bg-secondary text-foreground border border-border px-4 py-2 rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors flex items-center gap-2"
                                 >
                                     <RefreshCw size={14} /> {user.apiKey ? 'Rotate Secret Key' : 'Generate Key'}
                                 </button>
                             </div>
 
-                             <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-6">
+                             <div className="bg-blue-500/5 border border-blue-500/20 rounded-md p-6">
                                 <h3 className="font-semibold text-blue-500 text-sm mb-2">Developer Documentation</h3>
                                 <p className="text-xs text-blue-400/70 mb-4">
                                     Learn how to use the API to start servers, read logs, and manage files programmatically.
@@ -1035,7 +1035,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
 
                 {/* Right Sidebar (Summary) */}
                 <div className="md:col-span-1 space-y-6">
-                    <div className={`border border-border p-6 transition-all duration-300 sticky top-24 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card rounded-xl shadow-sm'}`}>
+                    <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300 sticky top-24">
                         <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Profile Strength</h3>
                         
                         <div className="space-y-4">

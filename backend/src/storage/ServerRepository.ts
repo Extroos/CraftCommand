@@ -99,6 +99,51 @@ export class ServerRepository implements StorageProvider<ServerConfig> {
     public findByPort(port: number): ServerConfig | undefined {
         return this.findOne({ port });
     }
+
+    // Member management (scoping logic moved from routes to repository)
+
+    public async getMembers(serverId: string) {
+        // Dynamic import to avoid potential circular dependency with UserRepository
+        const { userRepository } = await import('./UserRepository');
+        const users = userRepository.findAll();
+        
+        // Return users who have an explicit ACL entry for this server
+        return users
+            .filter(u => u.serverAcl && u.serverAcl[serverId])
+            .map(u => ({
+                id: u.id,
+                email: u.email,
+                role: u.role // Use global role for UI display
+            }));
+    }
+
+    public async addMember(serverId: string, email: string, role: string) {
+        const { userRepository } = await import('./UserRepository');
+        const user = userRepository.findByEmail(email);
+        if (!user) throw new Error('User not found');
+
+        const serverAcl = user.serverAcl || {};
+        
+        // Initialize or update ACL. Permissions are usually inherited from role,
+        // but we ensure the entry exists to mark membership.
+        serverAcl[serverId] = serverAcl[serverId] || { allow: [], deny: [] };
+        
+        // If the user's global role is lower than the desired role, we might need 
+        // to handle permission mapping here, but for now we just link the user.
+        
+        await userRepository.update(user.id, { serverAcl });
+    }
+
+    public async removeMember(serverId: string, userId: string) {
+        const { userRepository } = await import('./UserRepository');
+        const user = userRepository.findById(userId);
+        if (!user) return;
+
+        const serverAcl = user.serverAcl || {};
+        delete serverAcl[serverId];
+        
+        await userRepository.update(userId, { serverAcl });
+    }
 }
 
 export const serverRepository = new ServerRepository();

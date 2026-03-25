@@ -75,8 +75,8 @@ class LocalAgentManager {
             scriptArgs = [distPath];
         } else {
              // Fallback to ts-node if no build found (Dev mode)
-            cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-            scriptArgs = ['ts-node', srcPath];
+            cmd = 'node';
+            scriptArgs = ['-r', 'ts-node/register', srcPath];
         }
 
         // Add common args

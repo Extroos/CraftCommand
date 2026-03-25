@@ -291,7 +291,7 @@ const BackgroundManagerModal: React.FC<BackgroundManagerModalProps> = ({ onClose
                                                     <div 
                                                         className="absolute inset-0 bg-cover bg-center transition-all duration-300"
                                                         style={{ 
-                                                            backgroundImage: `url(${backgrounds[activeKey as keyof CustomBackgrounds]?.url.startsWith('/') ? `http://${window.location.hostname}:3001${backgrounds[activeKey as keyof CustomBackgrounds]?.url}` : backgrounds[activeKey as keyof CustomBackgrounds]?.url})`,
+                                                            backgroundImage: `url(${backgrounds[activeKey as keyof CustomBackgrounds]?.url})`,
                                                             filter: `blur(${backgrounds[activeKey as keyof CustomBackgrounds]?.blur}px)`,
                                                             opacity: backgrounds[activeKey as keyof CustomBackgrounds]?.opacity || 0.2
                                                         }}

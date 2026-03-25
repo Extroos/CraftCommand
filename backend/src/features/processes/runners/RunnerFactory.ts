@@ -24,7 +24,7 @@ class RunnerFactory {
 
     // Helpers to get all runners for clean up or broad actions
     getAllRunners(): IServerRunner[] {
-        return [this.nativeRunner, this.dockerRunner];
+        return [this.nativeRunner, this.dockerRunner, this.remoteRunner];
     }
 }
 

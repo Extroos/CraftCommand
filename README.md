@@ -4,7 +4,7 @@
 
 **The Professional Hybrid Cloud Platform for Java & Bedrock Infrastructure**
 
-![version](https://img.shields.io/badge/version-v1.12.0-emerald)
+![version](https://img.shields.io/badge/version-v1.12.5-emerald)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-AGPLv3-blue.svg)
 
@@ -28,7 +28,7 @@ Most hosting solutions are either **too fragile** (Basic `.bat` files) or **too 
 
 ### Honest Comparison Matrix
 
-| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.12.0)**       |
+| Feature              | Standard Launchers |     Enterprise Panels      |      **CraftCommand (v1.12.5)**       |
 | :------------------- | :----------------: | :------------------------: | :-----------------------------------: |
 | **Ideal For**        |      Testing       | Reselling & Large Networks |    **Home Hosting & Private Use**     |
 | **Setup Time**       |      Instant       |     Hours (Linux req.)     |       **Instant (Zero-Config)**       |
@@ -56,7 +56,7 @@ _Manage multiple servers with a professional, data-dense interface._
 
 While other platforms focus on being general-purpose containers, CraftCommand is built as a **specialized orchestrator** with vertical integration for game server lifecycles.
 
-### Modpack Intelligence Engine (v1.12.0)
+### Modpack Intelligence Engine (v1.12.5)
 
 Stop fighting mod crashes. Our **Triple-Layer Mod Stabilization** ensures your modpacks boot correctly the first time.
 
@@ -125,7 +125,7 @@ _High-performance network management_
 - **Safe Mode Protection**: Panic control system that isolates failing instances to prevent host exhaustion.
 - **Graceful Shutdown Protocol**: Countdown-based termination with automated in-game warnings and real-time cancellation support.
 
-### 5. Systems Integrity & Security (v1.12.0)
+### 5. Systems Integrity & Security (v1.12.5)
 
 _Production-grade safety for your cluster_
 
@@ -161,11 +161,11 @@ _Zero-config remote connectivity_
 
 ---
 
-## Operational Excellence (v1.12.0)
+## Operational Excellence (v1.12.5)
 
 **Built for stability. Optimized for performance.**
 
-The v1.12.0 update focuses on the "Invisible Features" that make self-hosting reliable at scale.
+The v1.12.5 update focuses on the "Invisible Features" that make self-hosting reliable at scale.
 
 - **Standardized API Request Layer**: Enforced consistency across all cluster communications for 100% reliable status reporting.
 - **High-Efficiency Batch Storage**: Atomic, high-performance updates for audits and notifications using our new SQLite/JSON batch provider.

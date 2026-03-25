@@ -9,6 +9,8 @@ import {
 import { API } from '@core/services/api';
 import { useServers } from '@features/servers/context/ServerContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
+import { useSystem } from '@features/system/context/SystemContext';
+import PluginManagerPro from './PluginManagerPro';
 import AccessDenied from '@features/auth/components/AccessDenied';
 import { useConfirm } from '@features/ui/hooks/useConfirm';
 import { ConfirmDialog } from '@features/ui/ConfirmDialog';
@@ -20,6 +22,13 @@ interface PluginManagerProps {
 type Tab = 'installed' | 'marketplace' | 'updates';
 
 const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
+    const { settings } = useSystem();
+    const isPro = settings?.app?.professionalMode;
+
+    if (isPro) {
+        return <PluginManagerPro serverId={serverId} />;
+    }
+
     const { currentServer, refreshServers } = useServers();
     const { can } = usePermissions();
     const [activeTab, setActiveTab] = useState<Tab>('marketplace');
@@ -37,6 +46,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
     // Installed state
     const [installedPlugins, setInstalledPlugins] = useState<InstalledPlugin[]>([]);
     const [isLoadingInstalled, setIsLoadingInstalled] = useState(false);
+    const [installedSearch, setInstalledSearch] = useState('');
     
     // Updates state
     const [updates, setUpdates] = useState<PluginUpdateInfo[]>([]);
@@ -400,6 +410,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                                 {searchResults.map(plugin => {
                                     const installed = isAlreadyInstalled(plugin.sourceId);
                                     const installing = pendingActions.has(plugin.sourceId);
+                                    const isCompatible = !currentServer?.version || (plugin.latestGameVersions && plugin.latestGameVersions.some(v => currentServer.version.startsWith(v)));
                                     return (
                                         <div 
                                             key={`${plugin.source}-${plugin.sourceId}`}
@@ -434,7 +445,14 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                                                             ? `${(plugin.downloads / 1000).toFixed(0)}K` 
                                                             : plugin.downloads}
                                                     </span>
-                                                    <span>v{plugin.latestVersion}</span>
+                                                    <span className="flex items-center gap-1">
+                                                        v{plugin.latestVersion}
+                                                        {!isCompatible && (
+                                                            <span title={`May be incompatible. Server runs ${currentServer?.version}, plugin supports: ${plugin.latestGameVersions?.join(', ') || 'Unknown'}`}>
+                                                                <AlertTriangle size={12} className="text-amber-500" />
+                                                            </span>
+                                                        )}
+                                                    </span>
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     {plugin.externalUrl && (
@@ -480,17 +498,35 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
             {/* ===== INSTALLED TAB ===== */}
             {activeTab === 'installed' && (
                 <div className="flex flex-col gap-4 flex-1 min-h-0">
-                    <div className="flex justify-between items-center">
-                        <p className="text-sm text-muted-foreground">
-                            {installedPlugins.length} plugin{installedPlugins.length !== 1 ? 's' : ''} installed
+                    <div className="flex justify-between items-center gap-3">
+                        <div className="flex items-center gap-2 bg-secondary/50 border border-border/50 rounded-lg px-2.5 py-1.5 flex-1 max-w-[280px]">
+                            <Search size={13} className="text-muted-foreground/50" />
+                            <input 
+                                type="text"
+                                placeholder="Filter installed plugins..."
+                                value={installedSearch}
+                                onChange={(e) => setInstalledSearch(e.target.value)}
+                                className="bg-transparent border-none text-xs focus:outline-none w-full placeholder:text-muted-foreground/30"
+                            />
+                            {installedSearch && (
+                                <button onClick={() => setInstalledSearch('')} className="text-muted-foreground/40 hover:text-foreground transition-colors">
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                            {installedSearch 
+                                ? `${installedPlugins.filter(p => p.name.toLowerCase().includes(installedSearch.toLowerCase()) || p.fileName.toLowerCase().includes(installedSearch.toLowerCase())).length} of ${installedPlugins.length}`
+                                : `${installedPlugins.length} plugin${installedPlugins.length !== 1 ? 's' : ''}`
+                            }
                         </p>
                         <button 
                             onClick={loadInstalled}
                             disabled={isLoadingInstalled}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-secondary text-muted-foreground hover:text-foreground transition-all"
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-secondary text-muted-foreground hover:text-foreground transition-all shrink-0"
                         >
                             <RefreshCw size={12} className={isLoadingInstalled ? 'animate-spin' : ''} />
-                            Scan Directory
+                            Scan
                         </button>
                     </div>
 
@@ -507,7 +543,9 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                             </div>
                         ) : (
                             <div className="flex flex-col gap-2">
-                                {installedPlugins.map(plugin => {
+                                {installedPlugins
+                                    .filter(p => !installedSearch || p.name.toLowerCase().includes(installedSearch.toLowerCase()) || p.fileName.toLowerCase().includes(installedSearch.toLowerCase()))
+                                    .map(plugin => {
                                     const busy = pendingActions.has(plugin.id);
                                     return (
                                         <div 

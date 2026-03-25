@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { LogEntry, ServerStatus } from '@shared/types';
-import { Play, Pause, Trash2, ArrowRight, Power, Ban, RotateCcw, ArrowDown, Terminal as TerminalIcon, Wifi, Download, Search, Filter, FileText } from 'lucide-react';
+import { Play, Pause, Trash2, ArrowRight, Power, Ban, RotateCcw, ArrowDown, Terminal as TerminalIcon, Wifi, Download, Search, Filter, FileText, Clock } from 'lucide-react';
 
 import { API } from '@core/services/api';
 import { socketService } from '@core/services/socket';
@@ -11,6 +11,21 @@ import { usePermissions } from '@features/auth/hooks/usePermissions';
 import { useCollaboration } from '@features/collaboration/context/CollaborationContext';
 import PresenceBar from '../collaboration/PresenceBar';
 import { UserRole } from '@shared/types';
+
+
+const COMMON_COMMANDS = [
+    'advancement', 'attribute', 'ban', 'ban-ip', 'banlist', 'bossbar', 'clear', 
+    'clone', 'data', 'datapack', 'debug', 'defaultgamemode', 'deop', 'difficulty', 
+    'effect', 'enchant', 'execute', 'experience', 'fill', 'forceload', 'function', 
+    'gamemode', 'gamerule', 'give', 'help', 'item', 'jfr', 'kick', 'kill', 'list',
+    'locate', 'loot', 'me', 'msg', 'op', 'pardon', 'pardon-ip', 'particle', 'perf', 
+    'place', 'playsound', 'recipe', 'reload', 'return', 'ride', 'save-all', 'save-off', 
+    'save-on', 'say', 'schedule', 'scoreboard', 'seed', 'setblock', 'setidletimeout', 
+    'setworldspawn', 'spawnpoint', 'spectate', 'spreadplayers', 'stop', 'stopsound', 
+    'summon', 'tag', 'team', 'teammsg', 'teleport', 'tell', 'tellraw', 'time', 
+    'title', 'tm', 'tp', 'trigger', 'w', 'weather', 'whitelist', 'worldborder', 'xp',
+    'tps', 'gc', 'spark', 'timings', 'paper', 'spigot', 'purpur'
+];
 
 interface ConsoleProps {
     serverId: string;
@@ -33,11 +48,13 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
     const [isPaused, setIsPaused] = useState(false);
     const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
     const [isGracefulStopping, setIsGracefulStopping] = useState(false);
-
-    // Command History State & Persistence
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [suggestionIndex, setSuggestionIndex] = useState(-1);
     const [commandHistory, setCommandHistory] = useState<string[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
-    const [savedCommand, setSavedCommand] = useState(''); // preserves what user was typing before arrowing up
+    const [savedCommand, setSavedCommand] = useState('');
+    const endRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const saved = localStorage.getItem(`console_history_${serverId}`);
@@ -56,13 +73,31 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
         }
     }, [commandHistory, serverId]);
 
+    // Fix #20: Sync command history across tabs using BroadcastChannel
+    useEffect(() => {
+        const channel = new BroadcastChannel(`console_history_${serverId}`);
+        channel.onmessage = (event) => {
+            if (event.data && Array.isArray(event.data)) {
+                setCommandHistory(event.data);
+            }
+        };
+        return () => channel.close();
+    }, [serverId]);
+
+    const updateCommandHistory = (newHistory: string[]) => {
+        setCommandHistory(newHistory);
+        const channel = new BroadcastChannel(`console_history_${serverId}`);
+        channel.postMessage(newHistory);
+        channel.close();
+    };
+
     // Log Filtering
     const [logFilter, setLogFilter] = useState<Set<string>>(new Set(['INFO', 'WARN', 'ERROR']));
     const [logSearch, setLogSearch] = useState('');
     const [showFilters, setShowFilters] = useState(false);
+    const [showTimestamps, setShowTimestamps] = useState(true);
     
     const scrollContainerRef = useRef<HTMLDivElement>(null);
-    const endRef = useRef<HTMLDivElement>(null);
     const { addToast } = useToast();
     const { user, theme } = useUser(); // Access global user prefs
     const { can } = usePermissions();
@@ -94,8 +129,10 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                 // 2. Historical Logs
                 const history = await API.getLogs(serverId);
                 if (history && Array.isArray(history)) {
-                    setLogs(history.map(line => ({
-                         id: Date.now().toString() + Math.random(),
+                    // Cap initial history at 1000 to prevent initial DOM bloat
+                    const cappedHistory = history.slice(-1000);
+                    setLogs(cappedHistory.map(line => ({
+                         id: crypto.randomUUID(),
                          timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
                          level: line.includes('ERROR') || line.includes('stderr') ? 'ERROR' : 'INFO',
                          message: line
@@ -107,15 +144,19 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
         };
         syncLogs();
 
-        // Listen for logs
+        // Listen for logs (capped at 1000 to prevent memory leak)
         const onLog = (data: any) => {
             if (data.id !== serverId) return;
-            setLogs(prev => [...prev, {
-                id: Date.now().toString() + Math.random(),
-                timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
-                level: data.type === 'stderr' ? 'ERROR' : 'INFO',
-                message: data.line
-            }]);
+            setLogs(prev => {
+                const next = [...prev, {
+                    id: crypto.randomUUID(),
+                    timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+                    level: data.type === 'stderr' ? 'ERROR' : 'INFO',
+                    message: data.line
+                }];
+                // Cap buffer at 1000 entries to prevent memory bloat
+                return next.length > 1000 ? next.slice(-1000) : next;
+            });
         };
         const unsub = socketService.onLog(onLog);
 
@@ -152,47 +193,99 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
         socketService.socket.emit('command', { serverId, command });
         
         // Push to history (dedup last entry)
-        setCommandHistory(prev => {
-            const trimmed = command.trim();
-            const filtered = prev.filter(c => c !== trimmed);
-            const next = [trimmed, ...filtered].slice(0, 50);
-            return next;
-        });
+        const trimmed = command.trim();
+        const filtered = commandHistory.filter(c => c !== trimmed);
+        const next = [trimmed, ...filtered].slice(0, 50);
+        updateCommandHistory(next);
+        
         setHistoryIndex(-1);
         setSavedCommand('');
 
         // Optimistic UI update
         setLogs(prev => [...prev, {
-            id: Date.now().toString(),
+            id: crypto.randomUUID(),
             timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
             level: 'INFO',
             message: `> ${command}`
         }]);
 
         setCommand('');
+        setSuggestions([]);
+        setSuggestionIndex(-1);
         setUserHasScrolledUp(false);
         const reducedMotion = user?.preferences?.reducedMotion ?? false;
         setTimeout(() => endRef.current?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth' }), 50);
     };
 
+    const handleCommandChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setCommand(val);
+        setHistoryIndex(-1);
+        
+        if (!val.trim()) {
+            setSuggestions([]);
+            return;
+        }
+
+        const args = val.trimStart().split(' ');
+        if (args.length === 1 && !val.endsWith(' ')) {
+            const isSlash = val.trimStart().startsWith('/');
+            const query = (isSlash ? args[0].substring(1) : args[0]).toLowerCase();
+            if (!query) {
+                setSuggestions([]);
+                return;
+            }
+            const matches = COMMON_COMMANDS.filter(c => c.startsWith(query));
+            setSuggestions(matches.slice(0, 8));
+        } else {
+            setSuggestions([]);
+        }
+        setSuggestionIndex(-1);
+    };
+
     // Command History Navigation (Up/Down arrows) and Ctrl+Enter Submission
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (suggestions.length > 0) {
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSuggestionIndex(prev => prev > 0 ? prev - 1 : suggestions.length - 1);
+                return;
+            }
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSuggestionIndex(prev => prev < suggestions.length - 1 ? prev + 1 : 0);
+                return;
+            }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                const selected = suggestions[suggestionIndex >= 0 ? suggestionIndex : 0];
+                const isSlash = command.trimStart().startsWith('/');
+                setCommand(isSlash ? `/${selected} ` : `${selected} `);
+                setSuggestions([]);
+                setSuggestionIndex(-1);
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                setSuggestions([]);
+                setSuggestionIndex(-1);
+                return;
+            }
+        }
+
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
             if (command.trim() && status === ServerStatus.ONLINE) {
-                // Manually construct an event to satisfy the signature if needed, or extract logic
-                // React's onSubmit pass a generic React.FormEvent. Since we don't have a true one here,
-                // we can just cast it or extract the inner logic. handleSend just calls stopPropagation/preventDefault.
                 handleSend(e as unknown as React.FormEvent);
             }
-        } else if (e.key === 'ArrowUp') {
+        } else if (e.key === 'ArrowUp' && suggestions.length === 0) {
             e.preventDefault();
             if (commandHistory.length === 0) return;
             if (historyIndex === -1) setSavedCommand(command);
             const newIndex = Math.min(historyIndex + 1, commandHistory.length - 1);
             setHistoryIndex(newIndex);
             setCommand(commandHistory[newIndex]);
-        } else if (e.key === 'ArrowDown') {
+        } else if (e.key === 'ArrowDown' && suggestions.length === 0) {
             e.preventDefault();
             if (historyIndex <= 0) {
                 setHistoryIndex(-1);
@@ -244,9 +337,11 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
 
         if (headerMatch) {
             const [fullHeader, timestamp, level] = headerMatch;
-            headerElements.push(
-                <span key="ts" className="text-zinc-500 font-mono tracking-tighter opacity-60 mr-2">{timestamp}</span>
-            );
+            if (showTimestamps) {
+                headerElements.push(
+                    <span key="ts" className="text-zinc-500 font-mono tracking-tighter opacity-60 mr-2">{timestamp}</span>
+                );
+            }
             if (level) {
                 const isError = level.includes('ERROR') || level.includes('stderr') || level.includes('FATAL');
                 const isWarn = level.includes('WARN');
@@ -378,8 +473,23 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 addToast('info', 'Console', 'Restarting process...');
                 await API.stopServer(serverId);
+                // Wait for OFFLINE status via socket event (closure-safe, not stale state)
+                const maxWait = 15000;
+                await new Promise<void>((resolve) => {
+                    const timeout = setTimeout(() => {
+                        unsub();
+                        resolve();
+                    }, maxWait);
+                    const unsub = socketService.onStatus((data) => {
+                        if (data.id === serverId && data.status === ServerStatus.OFFLINE) {
+                            clearTimeout(timeout);
+                            unsub();
+                            resolve();
+                        }
+                    });
+                });
                 updateServerStatus(serverId, ServerStatus.STARTING);
-                setTimeout(() => API.startServer(serverId), 2000);
+                await API.startServer(serverId);
             }
         } catch (e: any) {
             updateServerStatus(serverId, previousStatus as ServerStatus);
@@ -414,7 +524,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                                 {status}
                             </span>
                         </div>
-                        <span className="text-xs font-mono text-muted-foreground opacity-70">/home/container/server.jar</span>
+                        <span className="text-xs font-mono text-muted-foreground opacity-70">{server?.workingDirectory || server?.name || serverId}</span>
                     </div>
                     {/* Presence Bar - who else is watching */}
                     <PresenceBar serverId={serverId} />
@@ -479,6 +589,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                             onClick={() => setIsPaused(!isPaused)}
                             className={`p-2 rounded-md border border-transparent hover:border-border transition-colors ${isPaused ? 'bg-amber-500/10 text-amber-500' : 'text-muted-foreground hover:bg-secondary'}`}
                             title={isPaused ? "Resume Output" : "Pause Output"}
+                            aria-label={isPaused ? "Resume Output" : "Pause Output"}
                         >
                             {isPaused ? <Play size={14} /> : <Pause size={14} />}
                         </button>
@@ -486,14 +597,24 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                             onClick={() => setShowFilters(!showFilters)}
                             className={`p-2 rounded-md border border-transparent hover:border-border transition-colors ${showFilters ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
                             title="Toggle Filters"
+                            aria-label="Toggle Filters"
                         >
                             <Filter size={14} />
+                        </button>
+                        <button 
+                            onClick={() => setShowTimestamps(!showTimestamps)}
+                            className={`p-2 rounded-md border border-transparent hover:border-border transition-colors ${showTimestamps ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
+                            title="Toggle Timestamps"
+                            aria-label="Toggle Timestamps"
+                        >
+                            <Clock size={14} />
                         </button>
                         <button 
                             onClick={handleExportLogs}
                             disabled={logs.length === 0}
                             className="p-2 rounded-md border border-transparent hover:border-border text-muted-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             title="Export Current Buffer"
+                            aria-label="Export Current Buffer"
                         >
                             <Download size={14} />
                         </button>
@@ -501,6 +622,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                             onClick={handleDownloadServerLog}
                             className="p-2 rounded-md border border-transparent hover:border-border text-muted-foreground hover:bg-secondary hover:text-primary transition-colors"
                             title="Download Latest.log from Server"
+                            aria-label="Download Latest.log from Server"
                         >
                             <FileText size={14} />
                         </button>
@@ -508,6 +630,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                             onClick={() => setLogs([])}
                             className="p-2 rounded-md border border-transparent hover:border-border text-muted-foreground hover:bg-secondary hover:text-destructive transition-colors"
                             title="Clear Console"
+                            aria-label="Clear Console"
                         >
                             <Trash2 size={14} />
                         </button>
@@ -521,7 +644,9 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     <div className="flex items-center gap-3">
                         <Wifi size={14} className="text-emerald-500" />
                         <span className="text-zinc-300">
-                            Bedrock Server Active. Join via: <span className="text-white font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 ml-1">{server.ip || '127.0.0.1'}:{server.port}</span>
+                            Bedrock Server Active. Join via: <span className="text-white font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 ml-1">
+                                {server.ip || window.location.hostname || '127.0.0.1'}:{server.port}
+                            </span>
                         </span>
                         <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase text-[9px]">UDP</span>
                     </div>
@@ -599,7 +724,9 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                 )}
                                 {visibleLogs.map((log) => (
                     <div key={log.id} className="flex gap-3 leading-6 hover:bg-white/5 -mx-4 px-4 transition-colors">
-                        <span className="text-muted-foreground/30 select-none w-[70px] shrink-0 pt-0.5 font-mono" style={{ fontSize: '0.9em' }}>{log.timestamp}</span>
+                        {showTimestamps && (
+                            <span className="text-muted-foreground/30 select-none w-[70px] shrink-0 pt-0.5 font-mono" style={{ fontSize: '0.9em' }}>{log.timestamp}</span>
+                        )}
                         <span className={`shrink-0 font-bold w-10 pt-0.5 ${
                             log.level === 'WARN' ? 'text-amber-500' :
                             log.level === 'ERROR' ? 'text-rose-500' :
@@ -630,25 +757,71 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
             {/* Command Input */}
             <div className="bg-muted/30 p-3 border-t border-border z-10">
                 {canWrite ? (
-                <form onSubmit={handleSend} className="flex gap-2 items-center bg-[#09090b] border border-border rounded-lg px-3 py-2.5 focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50 transition-all shadow-inner">
+                <>
+                {status === ServerStatus.ONLINE && (
+                    <div className="flex items-center gap-1 mb-2 overflow-x-auto scrollbar-none">
+                        <span className="text-[8px] font-black text-muted-foreground/30 uppercase tracking-widest mr-1 shrink-0">Quick</span>
+                        {[
+                            { cmd: 'save-all', label: 'Save' },
+                            { cmd: 'list', label: 'Players' },
+                            { cmd: 'tps', label: 'TPS' },
+                            { cmd: 'gc', label: 'GC' },
+                            { cmd: 'seed', label: 'Seed' },
+                            { cmd: 'difficulty', label: 'Difficulty' },
+                            { cmd: 'whitelist list', label: 'Whitelist' },
+                        ].map(({ cmd, label }) => (
+                            <button
+                                key={cmd}
+                                onClick={() => { socketService.socket.emit('command', { serverId, command: cmd }); }}
+                                className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60 bg-muted/30 border border-border/40 rounded hover:text-foreground hover:bg-muted/60 hover:border-primary/30 transition-all shrink-0"
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <form onSubmit={handleSend} className="relative flex gap-2 items-center bg-[#09090b] border border-border rounded-lg px-3 py-2.5 focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50 transition-all shadow-inner">
+                    {suggestions.length > 0 && (
+                        <div className="absolute bottom-full left-0 mb-2 w-64 bg-secondary/95 backdrop-blur-md border border-border rounded-lg shadow-2xl overflow-hidden animate-fade-in z-50 p-1">
+                            {suggestions.map((s, idx) => (
+                                <div 
+                                    key={s} 
+                                    className={`px-3 py-1.5 text-xs font-mono rounded cursor-pointer transition-colors ${idx === (suggestionIndex === -1 ? 0 : suggestionIndex) ? 'bg-primary text-primary-foreground font-bold' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}`}
+                                    onMouseDown={(e) => {
+                                        // use onMouseDown to prevent blur before click registers
+                                        e.preventDefault(); 
+                                        const isSlash = command.trimStart().startsWith('/');
+                                        setCommand(isSlash ? `/${s} ` : `${s} `);
+                                        setSuggestions([]);
+                                        setSuggestionIndex(-1);
+                                        inputRef.current?.focus();
+                                    }}
+                                >
+                                    <span className="opacity-40 select-none mr-2">/</span>{s}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     <span className={`font-bold font-mono animate-pulse ${theme.text}`}>{'>'}</span>
                     <input
+                        ref={inputRef}
                         type="text"
                         value={command}
-                        onChange={(e) => { setCommand(e.target.value); setHistoryIndex(-1); }}
+                        onChange={handleCommandChange}
                         onKeyDown={handleKeyDown}
-                        placeholder={status === ServerStatus.ONLINE ? "Type a command... (↑↓ for history)" : "Server is offline."}
-                        disabled={status === ServerStatus.OFFLINE}
+                        placeholder={status === ServerStatus.ONLINE ? "Type a command... (Tab to complete, ↑↓ for history)" : status === ServerStatus.STARTING ? "Server is starting..." : status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING ? "Server is shutting down..." : "Server is offline."}
+                        disabled={status !== ServerStatus.ONLINE}
                         className="flex-1 bg-transparent border-none text-sm font-mono text-zinc-100 focus:outline-none placeholder:text-zinc-500 disabled:cursor-not-allowed"
                     />
                     <button 
                         type="submit"
-                        disabled={!command.trim() || status === ServerStatus.OFFLINE} 
+                        disabled={!command.trim() || status !== ServerStatus.ONLINE} 
                         className={`p-1.5 bg-primary/10 text-primary rounded hover:bg-primary/20 disabled:opacity-0 transition-all ${theme.text}`}
                     >
                         <ArrowRight size={14} />
                     </button>
                 </form>
+                </>
                 ) : (
                 <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground/50 bg-muted/10 rounded-lg border border-border/30">
                     <TerminalIcon size={12} />

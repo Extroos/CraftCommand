@@ -19,6 +19,68 @@ interface VelocityDashboardProps {
     serverId: string;
 }
 
+const TopologyCard = React.memo(({ server, servers, setViewMode }: { server: any, servers: any[], setViewMode: (mode: any) => void }) => {
+    return (
+        <div className={`p-8 border border-border rounded-2xl transition-all duration-300 bg-card shadow-sm`}>
+            <div className="flex items-center gap-5 mb-8">
+                <div className="text-muted-foreground/30">
+                    <Network size={18} strokeWidth={1.5} />
+                </div>
+                <div>
+                    <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">Network Topology</h3>
+                    <p className="text-[10px] text-muted-foreground/60 mt-0.5">Infrastructure layer connectivity and health.</p>
+                </div>
+            </div>
+
+            <div className="space-y-4">
+                  {server.network?.proxyConfig?.links.length === 0 ? (
+                     <div className="py-12 border border-dashed border-border rounded-xl text-center flex flex-col items-center">
+                         <div className="p-3 bg-muted rounded-full mb-4 text-muted-foreground/20">
+                             <Link2 size={24} strokeWidth={1} />
+                         </div>
+                         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">No Infrastructure Connected</p>
+                     </div>
+                 ) : (
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                         {server.network?.proxyConfig?.links.slice(0, 4).map((link: any) => {
+                              const backend = servers.find(s => s.id === link.serverId);
+                              return (
+                                 <div key={link.serverId} className="p-4 border border-border rounded-xl bg-muted/30 flex items-center justify-between group hover:bg-muted/50 transition-colors">
+                                     <div className="flex items-center gap-4">
+                                         <div className={`w-1.5 h-1.5 rounded-full ${backend?.status === 'ONLINE' ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
+                                         <div>
+                                             <div className="text-xs font-bold text-foreground">{link.alias}</div>
+                                             <div className="text-[9px] text-muted-foreground font-mono tracking-tighter mt-0.5">{backend?.ip === '127.0.0.1' ? 'Internal' : backend?.ip}</div>
+                                         </div>
+                                     </div>
+                                     <div className="flex items-center gap-3">
+                                         <div className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-widest">{backend?.software || 'Minecraft'}</div>
+                                         <div className="p-1.5 rounded-lg text-muted-foreground/20 group-hover:text-muted-foreground/40 transition-colors">
+                                             {(backend?.status === ServerStatus.STARTING || backend?.status === ServerStatus.STOPPING || backend?.status === ServerStatus.RESTARTING) ? 
+                                             <RotateCw size={12} className="animate-spin text-amber-500" /> : 
+                                             <Settings2 size={12} />}
+                                         </div>
+                                     </div>
+                                 </div>
+                              );
+                         })}
+                     </div>
+                 )}
+                 {server.network?.proxyConfig?.links.length > 4 && (
+                     <div className="text-center pt-6">
+                         <button 
+                            onClick={() => setViewMode('NETWORK')}
+                            className="text-[10px] font-bold text-foreground/40 hover:text-foreground transition-colors tracking-[0.2em] uppercase"
+                         >
+                             + {server.network.proxyConfig.links.length - 4} Additional Assets
+                         </button>
+                     </div>
+                 )}
+            </div>
+        </div>
+    );
+});
+
 const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
     const { servers, stats: allStats, refreshServers, updateServerStatus } = useServers();
     const { user } = useUser();
@@ -319,63 +381,7 @@ const VelocityDashboard: React.FC<VelocityDashboardProps> = ({ serverId }) => {
                         </div>
 
                         <div className="lg:col-span-3 space-y-4">
-                            <div className={`p-8 border border-border rounded-2xl transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow' : 'bg-card shadow-sm'}`}>
-                                <div className="flex items-center gap-5 mb-8">
-                                    <div className="text-muted-foreground/30">
-                                        <Network size={18} strokeWidth={1.5} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">Network Topology</h3>
-                                        <p className="text-[10px] text-muted-foreground/60 mt-0.5">Infrastructure layer connectivity and health.</p>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                      {server.network?.proxyConfig?.links.length === 0 ? (
-                                         <div className="py-12 border border-dashed border-border rounded-xl text-center flex flex-col items-center">
-                                             <div className="p-3 bg-muted rounded-full mb-4 text-muted-foreground/20">
-                                                 <Link2 size={24} strokeWidth={1} />
-                                             </div>
-                                             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">No Infrastructure Connected</p>
-                                         </div>
-                                     ) : (
-                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                             {server.network?.proxyConfig?.links.slice(0, 4).map(link => {
-                                                  const backend = servers.find(s => s.id === link.serverId);
-                                                  return (
-                                                     <div key={link.serverId} className="p-4 border border-border rounded-xl bg-muted/30 flex items-center justify-between group hover:bg-muted/50 transition-colors">
-                                                         <div className="flex items-center gap-4">
-                                                             <div className={`w-1.5 h-1.5 rounded-full ${backend?.status === 'ONLINE' ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
-                                                             <div>
-                                                                 <div className="text-xs font-bold text-foreground">{link.alias}</div>
-                                                                 <div className="text-[9px] text-muted-foreground font-mono tracking-tighter mt-0.5">{backend?.ip === '127.0.0.1' ? 'Internal' : backend?.ip}</div>
-                                                             </div>
-                                                         </div>
-                                                         <div className="flex items-center gap-3">
-                                                             <div className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-widest">{backend?.software || 'Minecraft'}</div>
-                                                             <div className="p-1.5 rounded-lg text-muted-foreground/20 group-hover:text-muted-foreground/40 transition-colors">
-                                                                 {(backend?.status === ServerStatus.STARTING || backend?.status === ServerStatus.STOPPING || backend?.status === ServerStatus.RESTARTING) ? 
-                                                                 <RotateCw size={12} className="animate-spin text-amber-500" /> : 
-                                                                 <Settings2 size={12} />}
-                                                             </div>
-                                                         </div>
-                                                     </div>
-                                                  );
-                                             })}
-                                         </div>
-                                     )}
-                                     {server.network?.proxyConfig?.links.length > 4 && (
-                                         <div className="text-center pt-6">
-                                             <button 
-                                                onClick={() => setViewMode('NETWORK')}
-                                                className="text-[10px] font-bold text-foreground/40 hover:text-foreground transition-colors tracking-[0.2em] uppercase"
-                                             >
-                                                 + {server.network.proxyConfig.links.length - 4} Additional Assets
-                                             </button>
-                                         </div>
-                                     )}
-                                </div>
-                            </div>
+                                <TopologyCard server={server} servers={servers} setViewMode={setViewMode} />
                         </div>
 
                         <div className="space-y-4">

@@ -2,7 +2,7 @@
 
 Welcome to the technical documentation library for CraftCommand. This library provides deep-dives into the architecture, security, and operation of the platform.
 
-## 🏁 Getting Started & Operations (v1.12.0)
+## 🏁 Getting Started & Operations (v1.12.5)
 
 | Guide                                                           | Description                                 |
 | :-------------------------------------------------------------- | :------------------------------------------ |

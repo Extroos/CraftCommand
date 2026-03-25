@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CraftCommand Node Agent — v1.11.8 (Stabilized)
+ * CraftCommand Node Agent — v1.12.5 (Stabilized)
  * 
  * Standalone process that runs on remote hosts.
  * Connects to the CraftCommand panel and manages Minecraft servers locally.
@@ -36,7 +36,7 @@ import { BackupService } from './BackupService';
 // Constants
 // ──────────────────────────────────────────────
 
-const AGENT_VERSION = '1.11.8';
+const AGENT_VERSION = '1.12.5';
 const PROTOCOL_VERSION = '1';
 const LOG_BATCH_INTERVAL_MS = 50;
 const LOG_BATCH_MAX_LINES = 20;
@@ -623,7 +623,10 @@ function connect(): void {
             const stats = fs.statSync(filePath);
             const stream = fs.createReadStream(filePath);
             
-            // Use native fetch (Node 18+) to push the file
+            // Enforce a strict 5-minute timeout to prevent silent connection deadlocks
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 300000); // 5 mins
+
             const response = await fetch(`${PANEL_URL}/api/nodes/${NODE_ID}/backups/intake`, {
                 method: 'POST',
                 headers: {
@@ -635,10 +638,11 @@ function connect(): void {
                     'Content-Length': stats.size.toString()
                 },
                 body: stream as any,
-                // @node-fetch/extend or similar? Native fetch works with ReadableStream
-                // For Node.js native fetch, we might need a workaround for ReadStream or use duplex
+                signal: controller.signal,
                 duplex: 'half' 
             } as any);
+
+            clearTimeout(timeout);
 
             if (!response.ok) {
                 const err = await response.text();

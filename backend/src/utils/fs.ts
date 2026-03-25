@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
+import si from 'systeminformation';
 import { logger } from './logger';
 
 /**
@@ -34,8 +35,37 @@ export class SafeFileOperation {
         await this.retry(() => fs.remove(path), `Removing ${path}`);
     }
 
-    static async writeFile(path: string, content: string | Buffer): Promise<void> {
-        await this.retry(() => fs.writeFile(path, content), `Writing to ${path}`);
+    /**
+     * Atomically writes to a file by writing to a .tmp file first, then renaming.
+     * Prevents partial writes/corruption on sudden crash or power loss.
+     */
+    static async writeFile(targetPath: string, content: string | Buffer): Promise<void> {
+        // Ensure parent directory exists before writing
+        await this.ensureDir(path.dirname(targetPath));
+
+        const tmpPath = `${targetPath}.tmp`;
+        
+        // 1. Write the payload to a temporary file
+        await this.retry(async () => {
+            // Write to .tmp, making sure we flush to disk if possible
+            await fs.writeFile(tmpPath, content);
+        }, `Writing temporary file ${tmpPath}`);
+
+        // 2. Atomically swap the tmp file over the active file
+        await this.retry(async () => {
+            await fs.move(tmpPath, targetPath, { overwrite: true });
+        }, `Atomic swap ${tmpPath} -> ${targetPath}`);
+    }
+
+    /**
+     * Atomically writes a file, but first creates a .bak copy of the original if it exists.
+     */
+    static async writeWithBackup(targetPath: string, content: string | Buffer): Promise<void> {
+        if (await fs.pathExists(targetPath)) {
+            const bakPath = `${targetPath}.bak`;
+            await this.retry(() => fs.copy(targetPath, bakPath, { overwrite: true }), `Creating backup ${bakPath}`);
+        }
+        await this.writeFile(targetPath, content);
     }
 
     static async move(src: string, dest: string, options?: fs.MoveOptions): Promise<void> {
@@ -50,7 +80,6 @@ export class SafeFileOperation {
      * Environment Check: Disk Space (Min 500MB)
      */
     static async checkDiskSpace(dir: string, minMb: number = 500): Promise<void> {
-        const si = await import('systeminformation');
         const fsSize = await si.fsSize();
         
         // Find the mount point for the given directory

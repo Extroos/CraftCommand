@@ -18,14 +18,14 @@ export const StepModeSelection: React.FC<Props> = ({ onSelect }) => {
                 {/* LAN Option */}
                 <button
                     onClick={() => onSelect('lan')}
-                    className="group relative flex flex-col items-start p-6 rounded-xl border border-border bg-secondary/10 hover:bg-secondary/30 hover:border-cyan-500/50 transition-all text-left"
+                    className="group relative flex flex-col items-start p-6 rounded-xl border border-border bg-secondary/10 hover:bg-secondary/30 hover:border-zinc-500 transition-all text-left"
                 >
-                    <div className="absolute top-4 right-4 px-2 py-1 bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-wider rounded border border-emerald-500/20">
+                    <div className="absolute top-4 right-4 px-2 py-1 bg-secondary text-foreground text-[10px] font-bold uppercase tracking-wider rounded border border-border">
                         Recommended
                     </div>
                     
-                    <div className="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                        <Wifi size={24} className="text-emerald-400" />
+                    <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <Wifi size={24} className="text-foreground" />
                     </div>
                     
                     <h3 className="text-lg font-semibold mb-2">Local Network (LAN)</h3>
@@ -35,11 +35,11 @@ export const StepModeSelection: React.FC<Props> = ({ onSelect }) => {
 
                     <ul className="space-y-2 text-xs text-muted-foreground">
                         <li className="flex items-center gap-2">
-                            <Zap size={12} className="text-emerald-400" />
+                            <Zap size={12} className="text-foreground" />
                             Fastest file transfers (1Gbps+)
                         </li>
                         <li className="flex items-center gap-2">
-                            <ShieldCheck size={12} className="text-emerald-400" />
+                            <ShieldCheck size={12} className="text-foreground" />
                             No firewall changes needed
                         </li>
                     </ul>
@@ -48,10 +48,10 @@ export const StepModeSelection: React.FC<Props> = ({ onSelect }) => {
                 {/* Internet Option */}
                 <button
                     onClick={() => onSelect('internet')}
-                    className="group relative flex flex-col items-start p-6 rounded-xl border border-border bg-secondary/10 hover:bg-secondary/30 hover:border-amber-500/50 transition-all text-left"
+                    className="group relative flex flex-col items-start p-6 rounded-xl border border-border bg-secondary/10 hover:bg-secondary/30 hover:border-zinc-500 transition-all text-left"
                 >
-                    <div className="w-12 h-12 rounded-lg bg-amber-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                        <Globe size={24} className="text-amber-400" />
+                    <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <Globe size={24} className="text-foreground" />
                     </div>
                     
                     <h3 className="text-lg font-semibold mb-2">Internet / VPS</h3>
@@ -61,20 +61,20 @@ export const StepModeSelection: React.FC<Props> = ({ onSelect }) => {
 
                     <ul className="space-y-2 text-xs text-muted-foreground">
                         <li className="flex items-center gap-2">
-                            <ShieldCheck size={12} className="text-amber-400" />
+                            <ShieldCheck size={12} className="text-foreground" />
                             End-to-end encrypted (TLS)
                         </li>
                         <li className="flex items-center gap-2">
-                            <AlertTriangle size={12} className="text-amber-400" />
+                            <AlertTriangle size={12} className="text-foreground" />
                             Requires Port Forwarding or VPN
                         </li>
                     </ul>
                 </button>
             </div>
 
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4 text-xs flex items-start gap-3">
+            <div className="bg-secondary border border-border rounded-lg p-4 text-xs flex items-start gap-3">
                 <div className="mt-0.5">
-                    <ShieldCheck size={16} className="text-emerald-400" />
+                    <ShieldCheck size={16} className="text-foreground" />
                 </div>
                 <div>
                     <p className="text-emerald-400 font-bold mb-1">Local Host Auto-Connected</p>
@@ -85,9 +85,9 @@ export const StepModeSelection: React.FC<Props> = ({ onSelect }) => {
                 </div>
             </div>
 
-            <div className="bg-blue-500/5 border border-blue-500/10 rounded-lg p-4 text-xs text-muted-foreground flex items-start gap-3">
+            <div className="bg-secondary border border-border rounded-lg p-4 text-xs text-muted-foreground flex items-start gap-3">
                 <div className="mt-0.5 min-w-[16px]">
-                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 font-bold">i</span>
+                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-secondary border border-border text-foreground font-black text-[10px]">i</span>
                 </div>
                 <p>
                     Note: Adding nodes requires running a small "Agent" program on the target machine. 

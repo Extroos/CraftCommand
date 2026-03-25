@@ -1,13 +1,15 @@
 import React from 'react';
-import { AlertTriangle, ShieldAlert, RotateCcw, ArrowRightLeft, Zap } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, RotateCcw, ArrowRightLeft, Zap, Copy } from 'lucide-react';
 
 interface DangerZoneProps {
     isOffline: boolean;
-    setShowConfirm: (val: any) => void;
+    onReset: () => void;
+    onDecommission: () => void;
+    onClone: () => void;
 }
 
 export const DangerZone: React.FC<DangerZoneProps> = ({
-    isOffline, setShowConfirm
+    isOffline, onReset, onDecommission, onClone
 }) => {
     return (
         <div className="bg-rose-500/[0.03] border border-rose-500/30 rounded-md p-4 relative overflow-hidden group shadow-sm transition-all hover:border-rose-500/50">
@@ -30,14 +32,26 @@ export const DangerZone: React.FC<DangerZoneProps> = ({
                         </div>
                     )}
 
+                    {/* Clone Server */}
                     <button 
                         disabled={!isOffline}
-                        onClick={() => setShowConfirm({
-                            open: true,
-                            type: 'RESET',
-                            title: 'Factory Reset Instance',
-                            description: 'This will revert all configuration settings to their default values. This action cannot be undone once committed.'
-                        })}
+                        onClick={onClone}
+                        className={`w-full flex items-center justify-between p-3 rounded-md border transition-all group/btn ${
+                            !isOffline 
+                            ? 'opacity-40 grayscale cursor-not-allowed border-muted bg-muted/5' 
+                            : 'border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10'
+                        }`}
+                    >
+                        <div className="flex items-center gap-2.5">
+                            <Copy size={14} className="text-blue-500/80" />
+                            <span className="text-[9px] font-black uppercase tracking-widest text-blue-500/90">Clone Instance</span>
+                        </div>
+                        <ArrowRightLeft size={12} className="text-blue-500/30" />
+                    </button>
+
+                    <button 
+                        disabled={!isOffline}
+                        onClick={onReset}
                         className={`w-full flex items-center justify-between p-3 rounded-md border transition-all group/btn ${
                             !isOffline 
                             ? 'opacity-40 grayscale cursor-not-allowed border-muted bg-muted/5' 
@@ -54,12 +68,7 @@ export const DangerZone: React.FC<DangerZoneProps> = ({
                     {/* Decommission */}
                     <button 
                         disabled={!isOffline}
-                        onClick={() => setShowConfirm({
-                            open: true,
-                            type: 'DECOMMISSION',
-                            title: 'Decommission Instance',
-                            description: 'CRITICAL: This will permanently delete the server record and all associated files from the disk. This action is irreversible.'
-                        })}
+                        onClick={onDecommission}
                         className={`w-full flex items-center justify-between p-3 rounded-md border transition-all group/btn ${
                             !isOffline 
                             ? 'opacity-40 grayscale cursor-not-allowed border-muted bg-muted/5' 

@@ -12,10 +12,26 @@ import { generateSecret, generateURI, verify } from 'otplib';
 import QRCode from 'qrcode';
 
 class AuthService {
-    private readonly JWT_SECRET = process.env.JWT_SECRET || 'super-secret-dev-key';
+    private readonly JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
     private readonly ROLE_HIERARCHY = ROLE_HIERARCHY;
 
     constructor() {
+        // --- PRODUCTION SECURITY GUARD: Phase 17 ---
+        if (process.env.NODE_ENV === 'production') {
+            const devSecret = 'dev-secret-do-not-use-in-prod';
+            const devKey = 'craftcommand-default-key-32-chars-!!';
+
+            if (!process.env.JWT_SECRET || process.env.JWT_SECRET === devSecret) {
+                console.error('\u001b[31m[CRITICAL SECURITY ERROR] JWT_SECRET is not set or using the development default in production!\u001b[0m');
+                process.exit(1);
+            }
+
+            if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY === devKey) {
+                console.error('\u001b[31m[CRITICAL SECURITY ERROR] ENCRYPTION_KEY is not set or using the development default in production!\u001b[0m');
+                process.exit(1);
+            }
+        }
+
         this.ensureAdminExists();
         
         // Trigger Migration (Phase 5)
@@ -93,7 +109,7 @@ class AuthService {
         }
 
         const { passwordHash, ...safeUser } = user;
-        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+        const secret = this.JWT_SECRET;
 
         if (user.twoFactorEnabled) {
             // Return partial token for 2FA verification
@@ -341,12 +357,17 @@ class AuthService {
         }
 
         const secret = this.decrypt(user.twoFactorPendingSecretEncrypted);
-        const { valid } = await verify({ token: code, secret });
+        const { valid } = await (verify as any)({ 
+            token: code, 
+            secret, 
+            epochTolerance: 2,
+            epoch: Math.floor((Date.now() + systemSettingsService.getClockOffset()) / 1000)
+        });
 
         if (!valid) throw new UnauthorizedError('Invalid verification code');
 
         // Generate backup codes
-        const plainBackupCodes = Array.from({ length: 10 }, () => crypto.randomBytes(4).toString('hex'));
+        const plainBackupCodes = Array.from({ length: 10 }, () => crypto.randomBytes(16).toString('hex'));
         const hashedBackupCodes = plainBackupCodes.map(c => bcrypt.hashSync(c, 10));
 
         userRepository.update(userId, {
@@ -368,7 +389,12 @@ class AuthService {
         if (!user || !user.twoFactorEnabled || !user.twoFactorSecretEncrypted) return false;
 
         const secret = this.decrypt(user.twoFactorSecretEncrypted);
-        const { valid } = await verify({ token: code, secret });
+        const { valid } = await (verify as any)({ 
+            token: code, 
+            secret, 
+            epochTolerance: 2,
+            epoch: Math.floor((Date.now() + systemSettingsService.getClockOffset()) / 1000)
+        });
 
         if (!valid) {
             // Check recovery codes
@@ -412,7 +438,12 @@ class AuthService {
         if (!passValid) throw new UnauthorizedError('Invalid password');
 
         const secret = this.decrypt(user.twoFactorSecretEncrypted!);
-        const { valid: codeValid } = await verify({ token: code, secret });
+        const { valid: codeValid } = await (verify as any)({ 
+            token: code, 
+            secret, 
+            epochTolerance: 2,
+            epoch: Math.floor((Date.now() + systemSettingsService.getClockOffset()) / 1000)
+        });
         
         // Also allow recovery code to disable? Typically yes.
         let recoveryValid = false;
@@ -477,11 +508,16 @@ class AuthService {
 
         // Verify TOTP code
         const secret = this.decrypt(user.twoFactorSecretEncrypted);
-        const { valid: codeValid } = await verify({ token: code, secret });
+        const { valid: codeValid } = await (verify as any)({ 
+            token: code, 
+            secret, 
+            epochTolerance: 2,
+            epoch: Math.floor((Date.now() + systemSettingsService.getClockOffset()) / 1000)
+        });
         if (!codeValid) throw new UnauthorizedError('Invalid 2FA code');
 
         // Generate new backup codes
-        const plainBackupCodes = Array.from({ length: 10 }, () => crypto.randomBytes(4).toString('hex'));
+        const plainBackupCodes = Array.from({ length: 10 }, () => crypto.randomBytes(16).toString('hex'));
         const hashedBackupCodes = plainBackupCodes.map(c => bcrypt.hashSync(c, 10));
 
         userRepository.update(userId, { twoFactorBackupCodesHashed: hashedBackupCodes });
@@ -543,6 +579,17 @@ class AuthService {
         if (session.revokedAt) return false;
         if (session.expiresAt < Date.now()) return false;
         return true;
+    }
+
+    async rotateApiKey(userId: string): Promise<string> {
+        const user = userRepository.findById(userId);
+        if (!user) throw new NotFoundError('User not found');
+
+        const newApiKey = crypto.randomBytes(32).toString('hex');
+        userRepository.update(userId, { apiKey: newApiKey });
+
+        auditService.log(userId, 'USER_UPDATE', userId, { action: 'API_KEY_ROTATED' });
+        return newApiKey;
     }
 }
 

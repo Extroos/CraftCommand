@@ -4,13 +4,15 @@ import { Backup } from '@shared/types';
 import { 
     ArchiveRestore, Plus, Clock, HardDrive, Lock, Unlock, 
     Trash2, RotateCcw, Download, ShieldCheck, Loader2, 
-    Cloud, FileBox, AlertTriangle, Check, X, Filter, Save 
+    Cloud, FileBox, AlertTriangle, Check, X, Filter, Save,
+    ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import { API } from '@core/services/api';
 import { socketService } from '@core/services/socket';
 import { useServers } from '@features/servers/context/ServerContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
+import { GlobalSettings } from '@shared/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import AccessDenied from '@features/auth/components/AccessDenied';
 import { CloudDestinationsWidget } from './components/CloudDestinationsWidget';
@@ -38,12 +40,16 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
     const [autoBackupWorldOnly, setAutoBackupWorldOnly] = useState(false); // NEW: automated backup mode preference
     const [deletedBackupIds, setDeletedBackupIds] = useState<Set<string>>(new Set());
     const [pendingLockIds, setPendingLockIds] = useState<Set<string>>(new Set());
+    const [maxStorage, setMaxStorage] = useState(10); // GB Default
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 10;
 
     const { backups: globalBackups, refreshServerData, loading, servers } = useServers();
     const backups = globalBackups[serverId] || [];
+    const backupCount = backups.length; // Stable primitive for dependency tracking
     const currentServer = servers?.[serverId];
 
-    // Fetch backups on mount if not present (although context handles this, extra safety)
+    // One-time mount: initial data fetch + socket listeners
     useEffect(() => {
         if (!globalBackups[serverId]) {
             refreshServerData(serverId);
@@ -53,6 +59,13 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
         API.getSchedules(serverId).then(schedules => {
             const exists = schedules.some((s: any) => s.id === 'auto-backup-2h' && s.isActive);
             setIsAutoBackupEnabled(exists);
+        });
+
+        // Load Global Storage Limit
+        API.getGlobalSettings().then(settings => {
+            if (settings?.app?.backupLimitGB) {
+                setMaxStorage(settings.app.backupLimitGB);
+            }
         });
 
         // Load server's automated backup preference
@@ -75,7 +88,12 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
             unsubscribe();
             unsubscribeStatus();
         };
-    }, [serverId, globalBackups[serverId], refreshServerData]);
+    }, [serverId]);
+
+    // Reset pagination on server or filter change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [serverId, filter]);
 
     const fetchBackups = async () => {
         await refreshServerData(serverId);
@@ -87,7 +105,6 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
         return (totalBytes / (1024 * 1024 * 1024)).toFixed(2); // Convert to GB
     }, [backups]);
 
-    const maxStorage = 10; // GB (Could be dynamic later)
     const usagePercent = (Number(totalUsage) / maxStorage) * 100;
 
     const filteredBackups = useMemo(() => {
@@ -101,10 +118,37 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
             });
     }, [backups, filter, deletedBackupIds]);
 
+    const totalPages = Math.ceil(filteredBackups.length / pageSize);
+    const paginatedBackups = useMemo(() => {
+        return filteredBackups.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+    }, [filteredBackups, currentPage]);
+
     // Actions
     const startCreation = () => {
         setNewBackupName(`Backup-${new Date().toLocaleDateString().replace(/\//g, '-')}`);
         setCreationState('CONFIG');
+    };
+
+    const handleQuickBackup = async () => {
+        if (!can('server.backups.manage', serverId)) {
+            addToast('error', 'Permissions', 'Insufficient permissions to create backups');
+            return;
+        }
+        setCreationState('CREATING');
+        setProgress(0);
+        
+        try {
+            addToast('info', 'Preparing Backup', 'Flushing server data to disk...');
+            const quickName = `Quick-${new Date().toLocaleDateString().replace(/\//g, '-')}-${new Date().toLocaleTimeString('en-US', { hour12: false }).replace(/:/g, '')}`;
+            await API.createBackup(serverId, quickName, false);
+            addToast('success', 'Snapshot Created', 'Quick backup created successfully');
+            await fetchBackups();
+        } catch (e: any) {
+            addToast('error', 'Backup Failed', e.message || 'Failed to create backup');
+        } finally {
+            setCreationState('IDLE');
+            setProgress(0);
+        }
     };
 
     const confirmCreation = async () => {
@@ -292,21 +336,38 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
 
                     <AnimatePresence mode="wait">
                         {creationState === 'IDLE' && (
-                            <motion.button 
-                                key="btn"
+                            <motion.div 
+                                key="btn-group"
                                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                onClick={startCreation}
-                                disabled={!can('server.backups.manage', serverId)}
-                                title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : ''}
-                                className={`w-full py-4 border-2 border-dashed border-border rounded-xl transition-all flex flex-col items-center justify-center gap-2 group ${
-                                    can('server.backups.manage', serverId)
-                                    ? 'text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-secondary/20'
-                                    : 'opacity-50 cursor-not-allowed text-zinc-600'
-                                }`}
+                                className="flex gap-3"
                             >
-                                <Plus size={24} className={can('server.backups.manage', serverId) ? "group-hover:scale-110 transition-transform" : ""} />
-                                <span className="font-medium text-sm">Create New Snapshot</span>
-                            </motion.button>
+                                <button 
+                                    onClick={handleQuickBackup}
+                                    disabled={!can('server.backups.manage', serverId)}
+                                    title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : 'Create an immediate backup with default settings'}
+                                    className={`flex-1 py-4 border-2 border-dashed border-emerald-500/30 rounded-xl transition-all flex flex-col items-center justify-center gap-2 group ${
+                                        can('server.backups.manage', serverId)
+                                        ? 'text-emerald-500 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10'
+                                        : 'opacity-50 cursor-not-allowed text-zinc-600 border-border'
+                                    }`}
+                                >
+                                    <Save size={24} className={can('server.backups.manage', serverId) ? "group-hover:scale-110 transition-transform" : ""} />
+                                    <span className="font-medium text-sm">Quick Backup</span>
+                                </button>
+                                <button 
+                                    onClick={startCreation}
+                                    disabled={!can('server.backups.manage', serverId)}
+                                    title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : 'Configure and create a backup'}
+                                    className={`flex-1 py-4 border-2 border-dashed border-border rounded-xl transition-all flex flex-col items-center justify-center gap-2 group ${
+                                        can('server.backups.manage', serverId)
+                                        ? 'text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-secondary/20'
+                                        : 'opacity-50 cursor-not-allowed text-zinc-600'
+                                    }`}
+                                >
+                                    <Plus size={24} className={can('server.backups.manage', serverId) ? "group-hover:scale-110 transition-transform" : ""} />
+                                    <span className="font-medium text-sm">Advanced</span>
+                                </button>
+                            </motion.div>
                         )}
 
                         {creationState === 'CONFIG' && (
@@ -540,7 +601,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                                 <Loader2 size={32} className="animate-spin mb-2" />
                                 <p>Loading backups...</p>
                             </div>
-                        ) : filteredBackups.map((backup) => (
+                        ) : paginatedBackups.map((backup) => (
                             <motion.div 
                                 key={backup.id}
                                 layout
@@ -577,6 +638,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                                     <button 
                                         className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
                                         title={!can('server.files.read', serverId) ? 'Insufficient Permissions' : 'Download Archive'}
+                                        aria-label="Download Archive"
                                         disabled={!can('server.files.read', serverId)}
                                         onClick={() => API.downloadBackup(serverId, backup.id)}
                                     >
@@ -588,6 +650,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                                         disabled={pendingLockIds.has(backup.id) || !can('server.backups.manage', serverId)}
                                         className={`p-2 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${backup.locked ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`} 
                                         title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : (backup.locked ? "Unlock Snapshot" : "Lock Snapshot")}
+                                        aria-label={backup.locked ? "Unlock Snapshot" : "Lock Snapshot"}
                                     >
                                         {pendingLockIds.has(backup.id) ? (
                                             <Loader2 size={16} className="animate-spin" />
@@ -603,6 +666,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                                         disabled={!can('server.backups.manage', serverId)}
                                         className="p-2 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
                                         title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : 'Restore Server'}
+                                        aria-label="Restore Server"
                                     >
                                         <RotateCcw size={16} />
                                     </button>
@@ -612,6 +676,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                                         disabled={!can('server.backups.manage', serverId)}
                                         className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
                                         title={!can('server.backups.manage', serverId) ? 'Insufficient Permissions' : 'Delete Backup'}
+                                        aria-label="Delete Backup"
                                     >
                                         <Trash2 size={16} />
                                     </button>
@@ -638,6 +703,31 @@ const BackupManager: React.FC<BackupManagerProps> = ({ serverId }) => {
                         </div>
                     )}
                 </div>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                    <div className="p-4 border-t border-border bg-muted/5 flex items-center justify-between">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                            Page {currentPage} of {totalPages}
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="p-2 border border-border rounded-lg hover:bg-muted disabled:opacity-20 transition-all font-bold text-xs flex items-center gap-2"
+                            >
+                                <ChevronLeft size={16} /> Previous
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="p-2 border border-border rounded-lg hover:bg-muted disabled:opacity-20 transition-all font-bold text-xs flex items-center gap-2"
+                            >
+                                Next <ChevronRight size={16} />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
