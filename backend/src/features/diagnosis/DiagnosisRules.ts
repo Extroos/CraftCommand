@@ -126,7 +126,7 @@ export const InsufficientRamRule: DiagnosisRule = {
                 };
             }
 
-            if (allocatedGb > totalGb * 0.85 || freeGb < 1.0) {
+            if (allocatedGb > totalGb * 0.90 || freeGb < 0.8) {
                 return {
                     id: `low-ram-warn-${server.id}-${Date.now()}`,
                     ruleId: 'insufficient_ram',

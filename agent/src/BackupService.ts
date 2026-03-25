@@ -3,18 +3,9 @@ import path from 'path';
 import archiver from 'archiver';
 import extract from 'extract-zip';
 import { EventEmitter } from 'events';
-import { detectWorldFolders, calculateHash } from '@shared/utils/BackupUtils';
+import { detectWorldFolders, calculateHash, SharedBackup, BACKUP_EXCLUDES } from '@shared/utils/BackupUtils';
 
-export interface Backup {
-    id: string;
-    serverId: string;
-    filename: string;
-    size: number;
-    createdAt: string;
-    description?: string;
-    scope?: 'full' | 'world';
-    sha256?: string;
-}
+export interface Backup extends SharedBackup {}
 
 export class BackupService extends EventEmitter {
     private backupsDir: string;
@@ -68,7 +59,7 @@ export class BackupService extends EventEmitter {
                 } else {
                     archive.glob('**/*', {
                         cwd: serverDir,
-                        ignore: ['backups/**', '*.zip', 'logs/latest.log', '*.lck', 'session.lock']
+                        ignore: BACKUP_EXCLUDES
                     });
                 }
 

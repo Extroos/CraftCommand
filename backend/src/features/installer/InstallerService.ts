@@ -6,6 +6,8 @@ import extract from 'extract-zip';
 import { EventEmitter } from 'events';
 import { SafeFileOperation } from '../../utils/fs';
 import { logger } from '../../utils/logger';
+import { auditService } from '../system/AuditService';
+import { userRepository } from '../../storage/UserRepository';
 
 const CACHE_DIR = path.join(process.cwd(), 'cache');
 const BEDROCK_CACHE_DIR = path.join(CACHE_DIR, 'bedrock');
@@ -467,7 +469,7 @@ export class InstallerService extends EventEmitter {
 
             // ANALYZE PACK TYPE
             const packType = await this.scanModpackType(tempExtractDir);
-            console.log(`[Installer] Detected Modpack Type: ${packType.type} (${packType.loader || 'None'})`);
+            logger.info(`[Installer] Detected Modpack Type: ${packType.type} (${packType.loader || 'None'})`);
 
             // Normalize content (Handle overrides folder for simple client packs)
             let rootContentDir = tempExtractDir;
@@ -526,8 +528,8 @@ export class InstallerService extends EventEmitter {
             onProgress?.(cMsg);
             setTimeout(() => this.clearProgress(serverId), 2000);
             
-        } catch (e) {
-             console.error('Modpack install failed', e);
+        } catch (e: any) {
+             logger.error(`[Installer] Modpack install failed: ${e.message}`);
              this.clearProgress(serverId);
              await fs.remove(path.join(serverDir, 'temp_extract')).catch(() => {});
              throw e;
@@ -607,8 +609,26 @@ export class InstallerService extends EventEmitter {
                     logger.warn(`[Installer] Modrinth batch query failed for chunk: ${apiErr.message}`);
                 }
             }
-        } catch (e: any) {
-            logger.error(`[Installer] Modrinth verification failed: ${e.message}`);
+
+            // Phase 2.5: Local Fallback (modrinth_env.json)
+            const envPath = path.join(process.cwd(), 'modrinth_env.json');
+            if (await fs.pathExists(envPath)) {
+                try {
+                    const fallbackData = await fs.readJson(envPath);
+                    if (Array.isArray(fallbackData)) {
+                        for (const mod of fallbackData) {
+                            if (mod.ss === 'unsupported' || (mod.ss === 'optional' && mod.cs === 'required')) {
+                                if (mod.slug) {
+                                    const modIdMatches = [...modMeta.keys()].filter(id => id.toLowerCase() === mod.slug.toLowerCase());
+                                    for (const id of modIdMatches) clientOnlyIds.add(id);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {}
+            }
+        } catch (err: any) {
+            logger.error(`[Installer] Modrinth verification process failed: ${err.message}`);
         }
 
         // Phase 3: Complement with local metadata Pass 1 (Direct client-only mods)
@@ -667,6 +687,18 @@ export class InstallerService extends EventEmitter {
             onProgress?.(msg, 100);
             onLog?.(`[SmartMod] ${msg}`);
             logger.success(`[Installer] Server ${serverId}: ${msg}`);
+            
+            // Phase 3: Audit Logging for Mod Quarantine
+            try {
+                const { userRepository } = require('../../storage/UserRepository');
+                const admin = userRepository.findAll().find((u: any) => u.role === 'ADMIN');
+                if (admin) {
+                    await auditService.log(admin.id, 'MOD_QUARANTINE' as any, serverId, { mods: filtered, count: filtered.length });
+                }
+            } catch (auditErr) {
+                logger.warn(`[Installer] Failed to log mod quarantine audit: ${auditErr}`);
+            }
+
             setTimeout(() => this.clearProgress(serverId), 3000);
         } else {
             const msg = `✅ All ${jarFiles.length} mods are server-compatible.`;
@@ -981,8 +1013,8 @@ export class InstallerService extends EventEmitter {
             this.updateProgress(serverId, 'Installation Complete', 100);
             setTimeout(() => this.clearProgress(serverId), 2000);
 
-        } catch (e) {
-            console.error('Fabric install failed', e);
+        } catch (e: any) {
+            logger.error(`Fabric install failed: ${e.message}`);
             this.clearProgress(serverId);
             throw e;
         }
@@ -997,7 +1029,7 @@ export class InstallerService extends EventEmitter {
             if (build && !validateBuildId(build)) {
                 throw new Error('Invalid Build ID format.');
             }
-            console.log(`[Installer:Forge] Starting install for ${version}. LocalModpack: ${localModpack || 'None'}`);
+            logger.info(`[Installer:Forge] Starting install for ${version}. LocalModpack: ${localModpack || 'None'}`);
 
             // Determine Java version for installer (Modern Forge needs modern java)
             const mcMajor = parseInt(version.split('.')[1]);
@@ -1007,14 +1039,14 @@ export class InstallerService extends EventEmitter {
             else if (mcMajor <= 16 && mcMajor >= 12) requiredJava = 'Java 11'; // Forge 1.12-1.16 usually prefer 8 but some work with 11
             else requiredJava = 'Java 8';
 
-            console.log(`[Installer:Forge] Ensuring ${requiredJava} exists...`);
+            logger.info(`[Installer:Forge] Ensuring ${requiredJava} exists...`);
             const javaPath = await javaManager.ensureJava(requiredJava);
-            console.log(`[Installer:Forge] Java ready at: ${javaPath}`);
+            logger.info(`[Installer:Forge] Java ready at: ${javaPath}`);
 
             // Extract Local Modpack if provided
             if (localModpack) {
                 const msg = `Extracting custom modpack: ${localModpack}...`;
-                console.log(`[Installer:Forge] ${msg}`);
+                logger.info(`[Installer:Forge] ${msg}`);
                 this.updateProgress(serverId, msg, 5);
                 onProgress?.(msg);
                 const zipPath = path.join(serverDir, localModpack);
@@ -1033,7 +1065,7 @@ export class InstallerService extends EventEmitter {
                     }
                     });
                     const msg = `Modpack extracted successfully (${entryCount} files installed).`;
-                    console.log(`[Installer:Forge] ${msg}`);
+                    logger.info(`[Installer:Forge] ${msg}`);
                     this.updateProgress(serverId, msg);
                     onProgress?.(msg);
                 }
@@ -1047,7 +1079,7 @@ export class InstallerService extends EventEmitter {
                     const stats = await fs.stat(singleDir);
                     if (stats.isDirectory()) {
                         const msg = `Detected nested modpack structure. Flattening...`;
-                        console.log(`[Installer:Forge] ${msg}`);
+                        logger.info(`[Installer:Forge] ${msg}`);
                         this.updateProgress(serverId, msg);
                         onProgress?.(msg);
                         
@@ -1056,7 +1088,7 @@ export class InstallerService extends EventEmitter {
                             await fs.move(path.join(singleDir, sub), path.join(serverDir, sub), { overwrite: true });
                         }
                         await fs.remove(singleDir);
-                        console.log(`[Installer:Forge] Modpack flattened successfully.`);
+                        logger.info(`[Installer:Forge] Modpack flattened successfully.`);
                         onProgress?.('Modpack flattened.');
                     }
                 }
@@ -1082,7 +1114,7 @@ export class InstallerService extends EventEmitter {
             await fs.ensureDir(serverDir);
 
             this.updateProgress(serverId, `Downloading Forge ${forgeVersion}...`, 70);
-            console.log(`[Installer:Forge] Downloading Installer...`);
+            logger.info(`[Installer:Forge] Downloading Installer...`);
             onProgress?.(`Downloading Forge Installer...`, 80); // Extraction was at 80%
             await this.downloadFile(installerUrl, installerPath, (msg, pct) => {
                 // Map download percentage (0-100) to sub-range 80-95
@@ -1092,7 +1124,7 @@ export class InstallerService extends EventEmitter {
             }, serverId);
 
             this.updateProgress(serverId, 'Running Forge Installer (This may take a minute)...', 95);
-            console.log(`[Installer:Forge] Running Forge Installer...`);
+            logger.info(`[Installer:Forge] Running Forge Installer...`);
             
             // Run the installer with the resolved java path
             const { spawn } = await import('child_process');
@@ -1103,8 +1135,8 @@ export class InstallerService extends EventEmitter {
                     stdio: 'pipe'
                 });
 
-                child.stdout.on('data', (data) => console.log(`[Forge] ${data}`));
-                child.stderr.on('data', (data) => console.error(`[Forge Error] ${data}`));
+                child.stdout.on('data', (data) => logger.debug(`[Forge] ${data}`));
+                child.stderr.on('data', (data) => logger.error(`[Forge Error] ${data}`));
 
                 child.on('close', (code) => {
                     if (code === 0) resolve(null);
@@ -1139,8 +1171,8 @@ export class InstallerService extends EventEmitter {
             setTimeout(() => this.clearProgress(serverId), 2000);
             return 'run.bat'; // Default fallback
 
-        } catch (e) {
-            console.error('Forge install failed', e);
+        } catch (e: any) {
+            logger.error(`Forge install failed: ${e.message}`);
             this.clearProgress(serverId);
             throw e;
         }
@@ -1250,8 +1282,8 @@ export class InstallerService extends EventEmitter {
             setTimeout(() => this.clearProgress(serverId), 2000);
             return 'run.bat';
 
-        } catch (e) {
-            console.error('NeoForge install failed', e);
+        } catch (e: any) {
+            logger.error(`NeoForge install failed: ${e.message}`);
             this.clearProgress(serverId);
             throw e;
         }
@@ -1286,15 +1318,15 @@ export class InstallerService extends EventEmitter {
             this.updateProgress(serverId, 'Installation Complete', 100);
             setTimeout(() => this.clearProgress(serverId), 2000);
 
-        } catch (e) {
-            console.error('Spigot install failed', e);
+        } catch (e: any) {
+            logger.error(`Spigot install failed: ${e.message}`);
             this.clearProgress(serverId);
             throw e;
         }
     }
     // Install Spark Profiler
     async installSpark(serverDir: string) {
-        console.log('[Installer] Installing Spark Profiler...');
+        logger.info('[Installer] Installing Spark Profiler...');
         const pluginsDir = path.join(serverDir, 'plugins');
         await fs.ensureDir(pluginsDir);
         
@@ -1309,7 +1341,7 @@ export class InstallerService extends EventEmitter {
         // Direct download from Lucko's CI (stable link pattern)
         const url = 'https://ci.lucko.me/job/spark/lastSuccessfulBuild/artifact/spark-bukkit/build/libs/spark-bukkit.jar';
         await this.downloadFile(url, dest);
-        console.log('[Installer] Spark installed.');
+        logger.info('[Installer] Spark installed.');
     }
 
     // --- Bedrock Specific (P2) ---
@@ -1374,8 +1406,8 @@ export class InstallerService extends EventEmitter {
                     };
                     return this.bedrockVersionCache;
                 }
-            } catch (e) {
-                console.warn(`[Installer] Bedrock version scrape failed for ${locale}:`, e.message);
+            } catch (e: any) {
+                logger.warn(`[Installer] Bedrock version scrape failed for ${locale}: ${e.message}`);
             }
         }
         */
@@ -1393,7 +1425,7 @@ export class InstallerService extends EventEmitter {
     
     try {
             await SafeFileOperation.checkDiskSpace(serverDir);
-            console.log(`[Installer] Starting Bedrock install for v${version}. Platform: ${process.platform}`);
+            logger.info(`[Installer] Starting Bedrock install for v${version}. Platform: ${process.platform}`);
             const pMsg = `Preparing Bedrock ${version} installation...`;
             this.updateProgress(serverId, pMsg, 0);
             onProgress?.(pMsg);
@@ -1401,7 +1433,7 @@ export class InstallerService extends EventEmitter {
             const platform = process.platform === 'win32' ? 'win' : 'linux';
             const downloadUrl = `https://www.minecraft.net/bedrockdedicatedserver/bin-${platform}/bedrock-server-${version}.zip`;
             
-            console.log(`[Installer] Bedrock Download Link: ${downloadUrl}`);
+            logger.info(`[Installer] Bedrock Download Link: ${downloadUrl}`);
             const zipPath = path.join(serverDir, 'bedrock.zip');
             const cacheZipPath = path.join(BEDROCK_CACHE_DIR, `bedrock-server-${version}-${platform}.zip`);
             
@@ -1410,18 +1442,18 @@ export class InstallerService extends EventEmitter {
 
             // --- Cache Handling ---
             if (!await fs.pathExists(cacheZipPath)) {
-                console.log(`[Installer] Bedrock Cache MISS: Downloading to ${cacheZipPath}`);
+                logger.info(`[Installer] Bedrock Cache MISS: Downloading to ${cacheZipPath}`);
                 this.updateProgress(serverId, `Downloading Bedrock ${version} (${platform})...`, 0);
                 onProgress?.(`Downloading Bedrock ${version} (${platform})...`, 0);
                 try {
                     await this.downloadFile(downloadUrl, cacheZipPath, onProgress, serverId);
                 } catch (err: any) {
-                    console.error(`[Installer] Bedrock download failed: ${err.message}`);
+                    logger.error(`[Installer] Bedrock download failed: ${err.message}`);
                     if (err.message.includes('DNS Resolution failed')) throw err;
                     throw new Error(`Failed to download Bedrock server from ${downloadUrl}. Error: ${err.message}. Please check your internet connection or try a manual binary upload via the "Files" tab.`);
                 }
             } else {
-                console.log(`[Installer] Bedrock Cache HIT: ${cacheZipPath}`);
+                logger.info(`[Installer] Bedrock Cache HIT: ${cacheZipPath}`);
                 this.updateProgress(serverId, `Using cached Bedrock ${version} binaries...`, 20);
             }
             
@@ -1485,12 +1517,12 @@ export class InstallerService extends EventEmitter {
                 const execPath = path.join(serverDir, 'bedrock_server');
                 if (await fs.pathExists(execPath)) {
                     await fs.chmod(execPath, '755');
-                    console.log(`[Installer] Set executable permissions on bedrock_server (755)`);
+                    logger.info(`[Installer] Set executable permissions on bedrock_server (755)`);
                 }
             } else {
                  const winExePath = path.join(serverDir, 'bedrock_server.exe');
                  if (await fs.pathExists(winExePath)) {
-                      console.log(`[Installer] Bedrock Executable verified at: ${winExePath}`);
+                      logger.info(`[Installer] Bedrock Executable verified at: ${winExePath}`);
                  } else {
                       console.warn(`[Installer] CRITICAL: Bedrock Executable (bedrock_server.exe) NOT FOUND after extraction/flattening!`);
                  }
@@ -1538,7 +1570,7 @@ export class InstallerService extends EventEmitter {
                         } catch (err: any) {
                             // If version 404s and doesn't have -SNAPSHOT, try with -SNAPSHOT
                             if (err.response?.status === 404 && !version.includes('-SNAPSHOT')) {
-                                console.log(`[Installer] Velocity ${version} 404'd. Retrying with ${version}-SNAPSHOT...`);
+                                logger.warn(`[Installer] Velocity ${version} 404'd. Retrying with ${version}-SNAPSHOT...`);
                                 buildsUrl = `https://api.papermc.io/v2/projects/velocity/versions/${version}-SNAPSHOT/builds`;
                                 buildsRes = await axios.get(buildsUrl, { timeout: 10000 });
                                 // Update version for the jarName construction below
@@ -1598,7 +1630,7 @@ player-info-forwarding-mode = "modern"
                         if (server) {
                             server.executable = 'velocity.jar';
                             saveServer(server);
-                            console.log(`[Installer:${serverId}] Updated executable to velocity.jar`);
+                            logger.info(`[Installer:${serverId}] Updated executable to velocity.jar`);
                         }
                     } catch (err) {
                         console.error(`[Installer:${serverId}] Failed to update executable:`, err);

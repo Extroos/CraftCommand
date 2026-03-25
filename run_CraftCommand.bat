@@ -151,6 +151,7 @@ if !errorlevel! equ 1 (
 ::  MAIN MENU
 :: ============================================================================
 :MENU
+set "choice="
 cls
 
 :: --- UPDATE EXECUTION (ATOMIC SWAP) ---
@@ -245,8 +246,6 @@ if "%choice%"=="8" goto REMOTE_DISABLE
 if "%choice%"=="08" goto REMOTE_DISABLE
 if "%choice%"=="0" exit
 if "%choice%"=="00" exit
-if "%choice%"=="7" exit
-if "%choice%"=="07" exit
 goto MENU
 
 :: ============================================================================

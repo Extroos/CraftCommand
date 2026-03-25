@@ -3,8 +3,31 @@ import path from 'path';
 import crypto from 'crypto';
 
 /**
+ * Common backup file exclusion patterns to keep archives lean.
+ */
+export const BACKUP_EXCLUDES = [
+    'session.lock',
+    '*.lck',
+    'logs/latest.log',
+    'backups/**',
+    '*.zip',
+    'temp/**',
+    '.temp/**'
+];
+
+export interface SharedBackup {
+    id: string;
+    serverId: string;
+    filename: string;
+    size: number;
+    createdAt: string;
+    description?: string;
+    sha256?: string;
+    scope?: 'full' | 'world' | 'configs' | 'plugins';
+}
+
+/**
  * Detect world folders in a Minecraft server directory.
- * Supports Java (standard and custom level-name) and Bedrock (worlds/ folder).
  */
 export async function detectWorldFolders(serverDir: string): Promise<string[]> {
     const worlds: string[] = [];
@@ -19,56 +42,38 @@ export async function detectWorldFolders(serverDir: string): Promise<string[]> {
                     worlds.push(path.join('worlds', item.name));
                 }
             }
-        } catch (e) {
-            // Log or ignore
-        }
+        } catch (e) {}
     }
 
-    // 2. Server Properties Level Name (Java & Bedrock)
+    // 2. Server Properties Level Name
     try {
         const propsPath = path.join(serverDir, 'server.properties');
         if (await fs.pathExists(propsPath)) {
             const content = await fs.readFile(propsPath, 'utf-8');
-            // Improved regex to handle various line endings and potential spaces
             const match = content.match(/^[ \t]*level-name[ \t]*=[ \t]*(.+)$/m);
             if (match && match[1].trim()) {
                 const levelName = match[1].trim();
-                
-                // Check various potential locations for this level name
-                const candidates = [
-                    levelName,
-                    path.join('worlds', levelName),
-                    'world', // Standard Fallback
-                ];
-
+                const candidates = [levelName, path.join('worlds', levelName), 'world'];
                 for (const cand of candidates) {
                     const fullPath = path.join(serverDir, cand);
-                    if (await fs.pathExists(fullPath)) {
-                        const stat = await fs.stat(fullPath);
-                        if (stat.isDirectory()) {
-                            worlds.push(cand);
-                        }
+                    if (await fs.pathExists(fullPath) && (await fs.stat(fullPath)).isDirectory()) {
+                        worlds.push(cand);
                     }
                 }
             }
         }
-    } catch (e) {
-        // Properties parsing failed
-    }
+    } catch (e) {}
 
-    // 3. Fallback: Standard Java names if still empty or as supplementary
+    // 3. Fallback: Standard Java names
     const standardJava = ['world', 'world_nether', 'world_the_end', 'DIM1', 'DIM-1'];
     for (const w of standardJava) {
         const fullPath = path.join(serverDir, w);
-        if (await fs.pathExists(fullPath)) {
-            const stat = await fs.stat(fullPath);
-            if (stat.isDirectory()) {
-                worlds.push(w);
-            }
+        if (await fs.pathExists(fullPath) && (await fs.stat(fullPath)).isDirectory()) {
+            worlds.push(w);
         }
     }
     
-    return [...new Set(worlds)]; // Deduplicate
+    return [...new Set(worlds)];
 }
 
 /**

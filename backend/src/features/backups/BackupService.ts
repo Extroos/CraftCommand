@@ -6,19 +6,11 @@ import { EventEmitter } from 'events';
 import crypto from 'crypto';
 import { logger } from '../../utils/logger';
 import { CloudBackupDestination, CloudUploadResult, createCloudProvider } from './CloudBackupProvider';
-import { detectWorldFolders, calculateHash } from '@shared/utils/BackupUtils';
+import { detectWorldFolders, calculateHash, SharedBackup, BACKUP_EXCLUDES } from '@shared/utils/BackupUtils';
 
-export interface Backup {
-    id: string;
-    serverId: string;
-    filename: string;
-    size: number;
-    createdAt: string;
-    description?: string;
+export interface Backup extends SharedBackup {
     locked?: boolean;
     type?: 'Manual' | 'Scheduled' | 'Auto-Save';
-    scope?: 'full' | 'world';
-    sha256?: string;
     cloudUploads?: CloudUploadResult[];
 }
 
@@ -182,13 +174,7 @@ export class BackupService extends EventEmitter {
                         } else {
                             archive.glob('**/*', {
                                 cwd: serverDir,
-                                ignore: [
-                                    'session.lock',
-                                    '*.lck',
-                                    'logs/latest.log',
-                                    'backups/**',
-                                    '*.zip'
-                                ]
+                                ignore: BACKUP_EXCLUDES
                             });
                         }
 
@@ -412,7 +398,7 @@ export class BackupService extends EventEmitter {
 
             this.emit('status', 'Restore complete');
         } catch (e: any) {
-            logger.error(`[BackupService] RESTORE FAILED for ${serverId}:`, e);
+            logger.error(`[BackupService] RESTORE FAILED for ${serverId}: ${e.message}`);
             this.emit('status', `CRITICAL: Restore failed. Rolling back...`);
             
             try {

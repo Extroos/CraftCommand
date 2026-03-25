@@ -1,4 +1,5 @@
 import {  AuditLog, AuditAction, ActivityEvent  } from '@shared/types';
+import { logger } from '../../utils/logger';
 import { auditRepository } from '../../storage/AuditRepository';
 import { userRepository } from '../../storage/UserRepository';
 import { io } from '../../sockets/index';
@@ -44,7 +45,7 @@ export class AuditService {
                 }
             }
         } catch (err) {
-            console.error('[AuditService] Failed to broadcast activity:', err);
+            logger.error(`[AuditService] Failed to broadcast activity: ${err.message}`);
         }
     }
 

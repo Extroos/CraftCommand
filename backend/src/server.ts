@@ -1,12 +1,14 @@
 import path from 'path';
 import dotenv from 'dotenv';
 
+import { logger } from './utils/logger';
+
 function validateEnvironment() {
     const required = ['JWT_SECRET', 'BACKEND_PORT'];
     const missing = required.filter(key => !process.env[key]);
     if (missing.length > 0) {
-        console.error(`\n[CRITICAL] Missing required environment variables: ${missing.join(', ')}`);
-        console.error(`Please check your .env file in the root directory.\n`);
+        logger.error(`[CRITICAL] Missing required environment variables: ${missing.join(', ')}`);
+        logger.error(`Please check your .env file in the root directory.`);
         process.exit(1);
     }
 }
@@ -26,7 +28,7 @@ import { setupSocket } from './sockets';
 // Actually server.ts calls setupRoutes later.
 // But we need to inject IO first.
 
-import { logger } from './utils/logger';
+// import { logger } from './utils/logger'; // Moved to top
 import { getServers, startServer, cleanupInstallState } from './features/servers/ServerService';
 import { javaManager } from './features/processes/JavaManager';
 import { processManager } from './features/processes/ProcessManager';

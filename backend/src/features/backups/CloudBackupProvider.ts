@@ -140,14 +140,13 @@ export class S3Provider implements ICloudBackupProvider {
         const remotePath = `${this.prefix}${remoteFileName}`;
 
         try {
-            // S3 PUT via signed request using AWS Signature V4
-            // For a real implementation, you'd use @aws-sdk/client-s3 or similar.
-            // This is a stub that logs the intent — users should install the SDK.
+            // S3 PUT via AWS SDK
+            // This implementation uses @aws-sdk/client-s3 for reliable cloud storage.
             const fileSize = (await fs.stat(localFilePath)).size;
             
             logger.info(`[S3Provider] Upload queued: ${remotePath} (${(fileSize / 1024 / 1024).toFixed(1)}MB) → ${this.endpoint}/${this.bucket}`);
 
-            // Attempt to use @aws-sdk/client-s3 if available
+            // Use @aws-sdk/client-s3
             try {
                 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
                 const client = new S3Client({
@@ -175,12 +174,13 @@ export class S3Provider implements ICloudBackupProvider {
                 };
             } catch (sdkError: any) {
                 if (sdkError.code === 'MODULE_NOT_FOUND') {
-                    logger.warn(`[S3Provider] @aws-sdk/client-s3 not installed. Install it with: npm install @aws-sdk/client-s3`);
+                    // Fallback for edge cases if somehow unlinked
+                    logger.warn(`[S3Provider] AWS SDK not found in runtime. Ensure @aws-sdk/client-s3 is installed.`);
                     return {
                         destination: this.name,
                         type: this.type,
                         success: false,
-                        error: 'S3 SDK not installed. Run: npm install @aws-sdk/client-s3',
+                        error: 'S3 SDK required but not found in runtime.',
                         durationMs: Date.now() - start
                     };
                 }
