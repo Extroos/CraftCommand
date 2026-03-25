@@ -311,14 +311,14 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                             setFormData(prev => synthesizeDefaultState(sw.id, prev, bedrockVersions));
                         }}
                         className={`group relative p-3 rounded-lg border text-left transition-all ${
-                            formData.software === sw.id 
+                            (formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur'))
                             ? 'border-primary bg-primary/5 ring-1 ring-primary/20 shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)]' 
                             : 'border-border bg-card/40'
                         }`}
                     >
                         <div className="flex items-center gap-3">
                             <div className={`p-2 rounded-lg transition-colors ${
-                                formData.software === sw.id ? 'text-primary' : 'text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-secondary))]'
+                                (formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) ? 'text-primary' : 'text-[rgb(var(--color-fg-muted))] group-hover:text-[rgb(var(--color-fg-secondary))]'
                             }`}>
                                 {sw.icon}
                             </div>
@@ -331,7 +331,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 </div>
                             </div>
                         </div>
-                        {formData.software === sw.id && (
+                        {(formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && (
                             <div className="absolute top-3 right-3 text-primary">
                                 <Check size={12} strokeWidth={4} />
                             </div>
@@ -341,7 +341,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
             </div>
 
             {/* Manual Paper Fork Selection */}
-            {capabilities.softwareCategory === 'JAVA' && formData.software === 'Paper' && !formData.templateId && (
+            {capabilities.softwareCategory === 'JAVA' && (formData.software === 'Paper' || formData.software === 'Purpur') && !formData.templateId && (
                     <motion.div 
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -362,7 +362,11 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 type="checkbox" 
                                 className="sr-only peer" 
                                 checked={formData.usePurpur} 
-                                onChange={(e) => setFormData(prev => ({...prev, usePurpur: e.target.checked}))} 
+                                onChange={(e) => setFormData(prev => ({
+                                    ...prev, 
+                                    usePurpur: e.target.checked,
+                                    software: e.target.checked ? 'Purpur' : 'Paper'
+                                }))} 
                                 />
                                 <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-pink-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-500"></div>
                             </label>

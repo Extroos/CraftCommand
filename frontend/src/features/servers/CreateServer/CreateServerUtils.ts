@@ -40,7 +40,7 @@ export const synthesizeDefaultState = (
         newData.templateId = undefined;
     } else {
         // Game Server (Java)
-        if (software !== 'Paper') {
+        if (software !== 'Paper' && software !== 'Purpur') {
             newData.usePurpur = false;
         }
 

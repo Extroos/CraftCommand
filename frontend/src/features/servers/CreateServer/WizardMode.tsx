@@ -122,33 +122,33 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                             setFormData(prev => synthesizeDefaultState(sw.id, prev, bedrockVersions));
                                         }}
                                         className={`group relative flex flex-col items-center p-4 gap-3 rounded-xl border transition-all duration-200 ${
-                                            formData.software === sw.id && !formData.templateId
+                                            (formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId
                                             ? 'bg-primary/5 border-primary ring-1 ring-primary/20'
                                             : 'bg-zinc-900/50 border-white/5 hover:border-white/10 hover:bg-zinc-900'
                                         }`}
                                     >
                                         <div className="w-10 h-10 relative">
                                             {typeof sw.icon === 'string' || React.isValidElement(sw.icon) ? (
-                                                <div className={`w-full h-full flex items-center justify-center ${formData.software === sw.id && !formData.templateId ? 'text-primary' : 'text-zinc-500 opacity-60 group-hover:opacity-100'}`}>
+                                                <div className={`w-full h-full flex items-center justify-center ${(formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId ? 'text-primary' : 'text-zinc-500 opacity-60 group-hover:opacity-100'}`}>
                                                     {sw.icon}
                                                 </div>
                                             ) : (
                                                 <img 
                                                     src={getIconPath(sw.id)} 
                                                     alt={sw.id}
-                                                    className={`w-full h-full object-contain relative z-10 transition-transform duration-300 ${formData.software === sw.id && !formData.templateId ? 'scale-110' : 'group-hover:scale-105 opacity-60 group-hover:opacity-100'}`}
+                                                    className={`w-full h-full object-contain relative z-10 transition-transform duration-300 ${(formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId ? 'scale-110' : 'group-hover:scale-105 opacity-60 group-hover:opacity-100'}`}
                                                 />
                                             )}
                                         </div>
                                         <div className="text-center">
-                                            <div className={`font-bold text-xs leading-none transition-colors ${formData.software === sw.id && !formData.templateId ? 'text-white' : 'text-zinc-500'}`}>
-                                                {sw.id === 'Paper' && formData.usePurpur ? 'Purpur' : sw.id}
+                                            <div className={`font-bold text-xs leading-none transition-colors ${(formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId ? 'text-white' : 'text-zinc-500'}`}>
+                                                {sw.id === 'Paper' && (formData.software === 'Paper' || formData.software === 'Purpur') && formData.usePurpur ? 'Purpur' : sw.id}
                                             </div>
                                             <div className="text-[9px] text-zinc-600 mt-1.5 font-mono">
                                                 {sw.id === 'Paper' && formData.usePurpur ? 'Optimize' : 'Platform'}
                                             </div>
                                         </div>
-                                        {formData.software === sw.id && !formData.templateId && (
+                                        {((formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId) && (
                                             <div className="absolute top-2 right-2 text-primary">
                                                 <Check size={10} strokeWidth={4} />
                                             </div>
@@ -219,7 +219,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
                         )}
 
                         {/* Manual Purpur Toggle in Wizard - Stabilized Design */}
-                        {formData.software === 'Paper' && (
+                        {(formData.software === 'Paper' || formData.software === 'Purpur') && (
                             <motion.div 
                                 initial={{ opacity: 0, scale: 0.98 }}
                                 animate={{ opacity: 1, scale: 1 }}
@@ -240,7 +240,11 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                             type="checkbox" 
                                             className="sr-only peer" 
                                             checked={formData.usePurpur} 
-                                            onChange={(e) => setFormData(prev => ({ ...prev, usePurpur: e.target.checked }))} 
+                                            onChange={(e) => setFormData(prev => ({ 
+                                                ...prev, 
+                                                usePurpur: e.target.checked,
+                                                software: e.target.checked ? 'Purpur' : 'Paper'
+                                            }))} 
                                         />
                                         <div className="w-10 h-5 bg-zinc-800 border border-white/5 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                                     </label>
