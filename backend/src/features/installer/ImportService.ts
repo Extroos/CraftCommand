@@ -221,7 +221,7 @@ class ImportService {
         let isModded = false;
         let pterodactylDetected = lowerFiles.includes('egg-server.json') || lowerFiles.includes('.pterodactyl');
 
-        // 1. Detect Software & Executable
+        // 1. Detect Software & Executable (Specific Forks First)
         if (lowerFiles.includes('bedrock_server.exe') || lowerFiles.includes('bedrock_server')) {
             software = 'Bedrock';
             executable = files.find(f => f.toLowerCase() === 'bedrock_server.exe' || f.toLowerCase() === 'bedrock_server') || 'bedrock_server';
@@ -230,15 +230,15 @@ class ImportService {
             software = 'Velocity';
             executable = files.find(f => f.toLowerCase().includes('velocity') && f.endsWith('.jar')) || 'velocity.jar';
             port = 25577;
+        } else if (lowerFiles.includes('purpur.jar') || lowerFiles.some(f => f.includes('purpur-'))) {
+            software = 'Purpur';
+            executable = files.find(f => f.toLowerCase().includes('purpur') && f.endsWith('.jar')) || 'purpur.jar';
         } else if (lowerFiles.includes('paper.jar') || lowerFiles.some(f => f.includes('paper-'))) {
             software = 'Paper';
             executable = files.find(f => f.toLowerCase().includes('paper') && f.endsWith('.jar')) || 'paper.jar';
         } else if (lowerFiles.includes('spigot.jar') || lowerFiles.some(f => f.includes('spigot-'))) {
             software = 'Spigot';
             executable = files.find(f => f.toLowerCase().includes('spigot') && f.endsWith('.jar')) || 'spigot.jar';
-        } else if (lowerFiles.includes('purpur.jar') || lowerFiles.some(f => f.includes('purpur-'))) {
-            software = 'Purpur';
-            executable = files.find(f => f.toLowerCase().includes('purpur') && f.endsWith('.jar')) || 'purpur.jar';
         } else if (lowerFiles.some(f => f.includes('forge-')) || lowerFiles.includes('mods')) {
             software = 'Forge';
             isModded = true;
