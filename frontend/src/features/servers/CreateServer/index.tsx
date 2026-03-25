@@ -323,8 +323,12 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 {sw.icon}
                             </div>
                             <div>
-                                <div className="font-bold text-[11px] text-foreground">{sw.id}</div>
-                                <div className="text-[9px] text-muted-foreground leading-none mt-0.5 opacity-60 uppercase tracking-widest">Instance</div>
+                                <div className="font-bold text-[11px] text-foreground">
+                                    {sw.id === 'Paper' && formData.usePurpur ? 'Purpur' : sw.id}
+                                </div>
+                                <div className="text-[9px] text-muted-foreground leading-none mt-0.5 opacity-60 uppercase tracking-widest">
+                                    {sw.id === 'Paper' && formData.usePurpur ? 'Optimize Fork' : 'Instance'}
+                                </div>
                             </div>
                         </div>
                         {formData.software === sw.id && (
@@ -358,7 +362,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 type="checkbox" 
                                 className="sr-only peer" 
                                 checked={formData.usePurpur} 
-                                onChange={(e) => setFormData({...formData, usePurpur: e.target.checked})} 
+                                onChange={(e) => setFormData(prev => ({...prev, usePurpur: e.target.checked}))} 
                                 />
                                 <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-pink-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-500"></div>
                             </label>

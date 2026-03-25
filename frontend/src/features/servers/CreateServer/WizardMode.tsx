@@ -141,9 +141,11 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                             )}
                                         </div>
                                         <div className="text-center">
-                                            <div className={`font-bold text-xs leading-none transition-colors ${formData.software === sw.id && !formData.templateId ? 'text-white' : 'text-zinc-500'}`}>{sw.id}</div>
+                                            <div className={`font-bold text-xs leading-none transition-colors ${formData.software === sw.id && !formData.templateId ? 'text-white' : 'text-zinc-500'}`}>
+                                                {sw.id === 'Paper' && formData.usePurpur ? 'Purpur' : sw.id}
+                                            </div>
                                             <div className="text-[9px] text-zinc-600 mt-1.5 font-mono">
-                                                Platform
+                                                {sw.id === 'Paper' && formData.usePurpur ? 'Optimize' : 'Platform'}
                                             </div>
                                         </div>
                                         {formData.software === sw.id && !formData.templateId && (

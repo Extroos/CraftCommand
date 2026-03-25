@@ -40,6 +40,10 @@ export const synthesizeDefaultState = (
         newData.templateId = undefined;
     } else {
         // Game Server (Java)
+        if (software !== 'Paper') {
+            newData.usePurpur = false;
+        }
+
         if (newData.version.includes('SNAPSHOT') || newData.version.match(/^\d+\.\d+\.\d+\.\d+$/)) {
             newData.version = '1.21.11';
         }
