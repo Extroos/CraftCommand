@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import pkg from '../package.json';
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
+import { Loader2 } from 'lucide-react';
 
 import Header from './features/ui/Header';
 import Dashboard from './features/dashboard/Dashboard';
@@ -122,13 +123,18 @@ const ServerRouteWrapper: React.FC<{ tab: TabView }> = ({ tab }) => {
         }
     }, [serverId, currentServer, setCurrentServerById]);
 
-    if (serversLoading || systemLoading || (serverId && !currentServer)) {
-        return <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500 font-mono">ATTACHING TO INSTANCE...</div>;
-    }
-
-    if (!currentServer) return <Navigate to="/servers" />;
-
     const renderTab = () => {
+        if (serversLoading || systemLoading || (serverId && !currentServer)) {
+            return (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                    <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                    <span className="text-[10px] font-bold text-primary tracking-[0.3em] uppercase animate-pulse">Attaching to Instance...</span>
+                </div>
+            );
+        }
+
+        if (!currentServer) return <Navigate to="/servers" />;
+
         switch (tab) {
             case 'DASHBOARD':
                 return currentServer.software === 'Velocity' 
@@ -148,13 +154,13 @@ const ServerRouteWrapper: React.FC<{ tab: TabView }> = ({ tab }) => {
             case 'SUBUSERS': return <SubuserManager serverId={currentServer.id} />;
             case 'MAP': return <MapManager serverId={currentServer.id} />;
             case 'ARCHITECT': return <Architect />;
-            default: return <Dashboard serverId={currentServer.id} />;
+            default: return <Dashboard serverId={currentServer?.id || ''} />;
         }
     };
 
     return (
-        <PageShell activeTab={tab} currentServer={currentServer}>
-            <ErrorBoundary key={`${currentServer.id}-${tab}`}>
+        <PageShell activeTab={tab} currentServer={currentServer || null}>
+            <ErrorBoundary key={`${serverId}-${tab}`}>
                 {renderTab()}
             </ErrorBoundary>
         </PageShell>
@@ -227,7 +233,7 @@ const AppContent: React.FC = () => {
         return undefined;
     }, [location.pathname, user, guestPrefs]);
 
-    if (authLoading || (isAuthenticated && serversLoading && servers.length === 0)) {
+    if (authLoading) {
         return <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500 font-mono">INITIALIZING...</div>;
     }
 

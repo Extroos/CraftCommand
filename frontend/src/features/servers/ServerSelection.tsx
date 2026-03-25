@@ -29,7 +29,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
     onSelectServer, onCreateNew, onLogout
 }) => {
     const navigate = useNavigate();
-    const { servers, refreshServers, installProgress, stats } = useServers();
+    const { servers, refreshServers, installProgress, stats, isLoading } = useServers();
     const { user } = useUser();
     const { nodes, settings } = useSystem();
     const [userDropdown, setUserDropdown] = useState(false);
@@ -173,6 +173,14 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
 
     return (
         <div className={`min-h-screen flex items-center justify-center p-6 relative overflow-y-auto ${bgClass} ${user?.preferences.visualQuality ? 'quality-animate-in' : ''}`}>
+            {isLoading && servers.length === 0 && (
+                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-background/20 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-4">
+                        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                        <span className="text-[10px] font-bold text-primary tracking-[0.3em] uppercase animate-pulse">Synchronizing Data...</span>
+                    </div>
+                </div>
+            )}
             {/* Minimal Background Decoration */}
             <div className="hidden dark:block absolute top-0 left-0 w-full h-full bg-zinc-950/20 pointer-events-none"></div>
             
