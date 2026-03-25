@@ -501,18 +501,9 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                         {/* ── Server Instances with Controls ── */}
                         <div className="space-y-2">
                             {/* Toolbar: Search + Sort + View Toggle */}
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
-                                {/* Search */}
-                                <div className="relative flex-1 min-w-0 max-w-sm">
-                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-                                    <input
-                                        type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                                        placeholder="Search instances..."
-                                        className="w-full bg-secondary/30 border border-border/50 rounded-lg pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary/30 outline-none transition-all"
-                                    />
-                                </div>
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-5">
                                 {/* Sort Pills */}
-                                <div className="flex items-center gap-1 flex-wrap">
+                                <div className="flex items-center gap-1 flex-wrap order-2 sm:order-1">
                                     {[
                                         { key: 'name', label: 'Name' },
                                         { key: 'status', label: 'Status' },
@@ -522,21 +513,48 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                         { key: 'players', label: 'Players' },
                                     ].map(s => (
                                         <button key={s.key} onClick={() => handleSort(s.key)}
-                                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
                                                 sortKey === s.key
-                                                    ? 'bg-foreground/10 border-border text-foreground'
-                                                    : 'bg-transparent border-transparent text-muted-foreground/60 hover:text-foreground hover:border-border/50'
+                                                    ? 'bg-primary/10 border-primary/20 text-primary'
+                                                    : 'bg-secondary/20 border-border/30 text-muted-foreground/60 hover:text-foreground hover:border-border/50'
                                             }`}
                                         >
                                             {s.label}
-                                            {sortKey === s.key && (sortDir === 'asc' ? <ChevronUp size={10} className="inline ml-0.5 -mt-0.5" /> : <ChevronDown size={10} className="inline ml-0.5 -mt-0.5" />)}
+                                            {sortKey === s.key && (sortDir === 'asc' ? <ChevronUp size={10} className="inline ml-1 -mt-0.5" /> : <ChevronDown size={10} className="inline ml-1 -mt-0.5" />)}
                                         </button>
                                     ))}
                                 </div>
-                                {/* View Toggle */}
-                                <div className="flex items-center gap-0.5 bg-secondary/30 rounded-md border border-border/50 p-0.5">
-                                    <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground/60 hover:text-foreground'}`}><LayoutList size={14} /></button>
-                                    <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground/60 hover:text-foreground'}`}><LayoutGrid size={14} /></button>
+
+                                <div className="flex items-center gap-3 w-full sm:w-auto order-1 sm:order-2">
+                                    {/* Expanding Search Bar (Pro) */}
+                                    <motion.div 
+                                        initial={false}
+                                        animate={{ 
+                                            width: searchQuery || (document.activeElement?.id === 'pro-search') ? 300 : 200,
+                                            boxShadow: (document.activeElement?.id === 'pro-search') ? '0 0 0 2px hsl(var(--primary) / 0.1)' : '0 0 0 0px transparent'
+                                        }}
+                                        className={`relative flex-1 sm:flex-none rounded-xl border transition-all duration-300 ${
+                                            (document.activeElement?.id === 'pro-search') ? 'border-primary/40 bg-secondary/40' : 'border-border/40 bg-secondary/20'
+                                        }`}
+                                    >
+                                        <Search size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${
+                                            (document.activeElement?.id === 'pro-search') ? 'text-primary' : 'text-muted-foreground/40'
+                                        }`} />
+                                        <input
+                                            id="pro-search"
+                                            type="text" 
+                                            value={searchQuery} 
+                                            onChange={e => setSearchQuery(e.target.value)}
+                                            placeholder="Quick search..."
+                                            className="w-full bg-transparent border-none pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/30 focus:ring-0 outline-none"
+                                        />
+                                    </motion.div>
+
+                                    {/* View Toggle */}
+                                    <div className="flex items-center gap-0.5 bg-secondary/20 rounded-xl border border-border/40 p-1">
+                                        <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-background shadow-sm text-foreground border border-border/50' : 'text-muted-foreground/60 hover:text-foreground'}`}><LayoutList size={14} /></button>
+                                        <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-background shadow-sm text-foreground border border-border/50' : 'text-muted-foreground/60 hover:text-foreground'}`}><LayoutGrid size={14} /></button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -706,14 +724,30 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                     className="space-y-4"
                 >
                     {/* Search Bar for Standard View */}
-                    {Array.isArray(servers) && servers.length > 3 && (
-                        <div className="relative max-w-sm">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-                            <input
-                                type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                                placeholder="Search servers..."
-                                className="w-full bg-secondary/30 border border-border/50 rounded-lg pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary/30 outline-none transition-all"
-                            />
+                    {Array.isArray(servers) && servers.length > 2 && (
+                        <div className="flex justify-end mb-2">
+                            <motion.div 
+                                initial={false}
+                                animate={{ 
+                                    width: searchQuery || (document.activeElement?.id === 'std-search') ? 340 : 220,
+                                    boxShadow: (document.activeElement?.id === 'std-search') ? '0 0 0 2px hsl(var(--primary) / 0.1)' : '0 0 0 0px transparent'
+                                }}
+                                className={`relative rounded-xl border transition-all duration-300 ${
+                                    (document.activeElement?.id === 'std-search') ? 'border-primary/40 bg-secondary/40' : 'border-border/40 bg-secondary/20'
+                                }`}
+                            >
+                                <Search size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${
+                                    (document.activeElement?.id === 'std-search') ? 'text-primary' : 'text-muted-foreground/40'
+                                }`} />
+                                <input
+                                    id="std-search"
+                                    type="text" 
+                                    value={searchQuery} 
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    placeholder="Search servers..."
+                                    className="w-full bg-transparent border-none pl-9 pr-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground/30 focus:ring-0 outline-none"
+                                />
+                            </motion.div>
                         </div>
                     )}
 
