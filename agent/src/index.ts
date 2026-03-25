@@ -695,7 +695,7 @@ function connect(): void {
 
         log(`  Running servers: ${managedServers.size}`);
 
-        // Phase 3: Send Capabilities
+        // Send Capabilities
         await reportCapabilities();
 
         // #4 — Reconnect state sync: tell the panel which servers we're running

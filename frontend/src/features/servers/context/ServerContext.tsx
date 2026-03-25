@@ -14,6 +14,7 @@ interface ServerStats {
     isRealOnline: boolean;
     tps: string;
     pid: number;
+    diagnosis?: any[]; // Array of DiagnosisResult
     lastUpdate: number;
 }
 
@@ -240,6 +241,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             isRealOnline: isOnline, 
                             latency: queryStats.latency || 0, 
                             players: queryStats.players || 0,
+                            diagnosis: procStats?.diagnosis || queryStats?.diagnosis || [], // Support diagnosis from both endpoints
                             lastUpdate: Date.now() // Polling update
                         };
                         

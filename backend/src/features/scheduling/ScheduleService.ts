@@ -248,7 +248,7 @@ export class ScheduleService extends EventEmitter {
                 );
                 await this.logExecution(serverId, taskName, true, `Backup created (${worldOnly ? "world" : "full"})`);
 
-                // Phase 8: Hardening - Log to System Audit Trail
+                // Hardening - Log to System Audit Trail
                 await auditService.log(
                     'SYSTEM',
                     'BACKUP_CREATE',

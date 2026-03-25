@@ -8,6 +8,7 @@ import { useConfirm } from '../ui/hooks/useConfirm';
 import { API } from '@core/services/api';
 import InviteMemberModal from './components/InviteMemberModal';
 import { usePermissions } from '../auth/hooks/usePermissions';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface SubuserManagerProps {
     serverId: string;
@@ -15,7 +16,7 @@ interface SubuserManagerProps {
 
 export const SubuserManager: React.FC<SubuserManagerProps> = ({ serverId }) => {
     const { addToast } = useToast();
-    const { confirm } = useConfirm();
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm, handleConfirm, handleCancel } = useConfirm();
     const { can } = usePermissions();
     const [members, setMembers] = React.useState<any[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
@@ -160,6 +161,13 @@ export const SubuserManager: React.FC<SubuserManagerProps> = ({ serverId }) => {
                     onInvite={handleInvite}
                 />
             )}
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+                {...confirmConfig}
+            />
         </motion.div>
     );
 };

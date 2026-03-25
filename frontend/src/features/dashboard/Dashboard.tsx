@@ -23,8 +23,10 @@ const Sparkline: React.FC<{ data: number[], color: string, height?: number, max?
     const width = 200;
     const points = data.map((val, i) => {
         const x = (i / (data.length - 1)) * width;
-        const y = height - (Math.min(val, max) / max) * height;
-        return `${x},${y}`;
+        const safeMax = max > 0 ? max : 1;
+        const safeVal = isNaN(val) ? 0 : val;
+        const y = height - (Math.min(safeVal, safeMax) / safeMax) * height;
+        return `${x},${isNaN(y) ? height : y}`;
     });
 
     const pathData = `M ${points.join(' L ')}`;
@@ -99,11 +101,11 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     const [memHistory, setMemHistory] = useState<number[]>([]);
     const [tpsHistory, setTpsHistory] = useState<number[]>([]);
 
-    // Stability: Force metrics to zero if not ONLINE
-    const displayCpu = status === ServerStatus.ONLINE ? stats.cpu : 0;
-    const displayMemory = status === ServerStatus.ONLINE ? stats.memory : 0;
+    // Stability: Force metrics to zero if not ONLINE, and ensure no NaN values
+    const displayCpu = status === ServerStatus.ONLINE ? (stats.cpu || 0) : 0;
+    const displayMemory = status === ServerStatus.ONLINE ? (stats.memory || 0) : 0;
     const displayTps = status === ServerStatus.ONLINE ? (typeof stats.tps === 'number' ? stats.tps : parseFloat(stats.tps as string) || 0) : 0;
-    const displayLatency = status === ServerStatus.ONLINE ? stats.latency : 0;
+    const displayLatency = status === ServerStatus.ONLINE ? (stats.latency || 0) : 0;
 
     // Use a ref for the latest values to avoid stale closures in the interval
     const latestMetrics = useRef({ cpu: displayCpu, mem: displayMemory, tps: displayTps });
@@ -154,18 +156,25 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
         }
     };
 
-    // Auto-Diagnosis Trigger
+    // Auto-Diagnosis Trigger (Unified)
+    // Now reacts to diagnosis data flowing in from the regular stats poll
     useEffect(() => {
-        if (
-            status === ServerStatus.CRASHED || 
-            status === ServerStatus.SAFE_MODE || 
-            (status === ServerStatus.OFFLINE && server?.startTime && server.startTime > 0 && !diagnosisResult)
-        ) {
-            runDiagnosis();
-        } else if (status === ServerStatus.ONLINE || status === ServerStatus.STARTING) {
-            setDiagnosisResult(null); // Clear on start
+        const polledDiagnosis = (stats as any).diagnosis as DiagnosisResult[] | undefined;
+        if (polledDiagnosis && polledDiagnosis.length > 0) {
+            // Find the root cause or the first critical issue
+            const mainIssue = polledDiagnosis.find(d => d.isRootCause || d.severity === 'CRITICAL');
+            
+            if (mainIssue && !ignoredInSession.includes(mainIssue.ruleId)) {
+                setDiagnosisResult(mainIssue);
+                return;
+            }
         }
-    }, [status, server?.startTime]);
+
+        // Fallback: Clear ONLY if status is online and no issues reported in last poll
+        if (status === ServerStatus.ONLINE) {
+            setDiagnosisResult(null);
+        }
+    }, [status, (stats as any).diagnosis, ignoredInSession]);
 
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {
         setPendingAction(action);
@@ -181,6 +190,9 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                         return;
                     }
                     updateServerStatus(serverId, ServerStatus.OFFLINE);
+                    // Proactive Search: Always run diagnosis scan if a power action fails
+                    // This ensures the DiagnosisCard pops up immediately for EULA/File errors.
+                    runDiagnosis();
                     if (e.safetyError) {
                         setSafetyError({ message: e.message, code: e.code, details: e.details });
                     } else {

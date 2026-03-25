@@ -31,7 +31,7 @@ export function isAgentConnected(nodeId: string): boolean {
     const socket = agentSockets.get(nodeId);
     if (!socket || !socket.connected) return false;
 
-    // Phase 3 Hardening: Also verify node isn't marked OFFLINE by the sweep
+    // Verify node isn't marked OFFLINE by the sweep
     const node = nodeRegistryService.getNode(nodeId);
     return !!node && node.status === NodeStatus.ONLINE;
 }
@@ -144,7 +144,7 @@ export function setupAgentNamespace(io: Server): void {
                 return next(new Error(`Node "${nodeId}" is not enrolled on this panel. Enroll it first via Settings.`));
             }
 
-            // Phase 2 Upgrade: Enforce Secret Validation
+            // Enforce Secret Validation
             if (!nodeRegistryService.verifySecret(nodeId, secret)) {
                 logger.warn(`[AgentHandler] Authentication failed for node "${node.name}" (${nodeId}): Invalid secret.`);
                 return next(new Error('Authentication failed: Invalid node secret.'));
@@ -156,7 +156,7 @@ export function setupAgentNamespace(io: Server): void {
             const agentVersion = socket.handshake.auth?.agentVersion;
             const protocolVersion = socket.handshake.auth?.protocolVersion;
 
-            // Phase 3 Upgrade: Version Handshake Enforcement
+            // Version Handshake Enforcement
             // We require protocol version 1 or higher (introduced in v1.10.0)
             const MIN_PROTOCOL_VERSION = 1;
             const currentProto = protocolVersion ? parseInt(protocolVersion) : 0;
@@ -203,7 +203,7 @@ export function setupAgentNamespace(io: Server): void {
         const remoteRunner = runnerFactory.getRemoteRunner();
         remoteRunner.registerNode(nodeId, socket);
 
-        // Phase 5 Hardening: Set node to RECOVERING until first sync is complete
+        // Set node to RECOVERING until first sync is complete
         nodeRegistryService.updateStatus(nodeId, NodeStatus.RECOVERING);
 
         // Mark node as ONLINE and store agent version
@@ -252,7 +252,7 @@ export function setupAgentNamespace(io: Server): void {
             }
         });
 
-        // ── Phase 3: Capabilities ──
+        // Send Capabilities
         socket.on('agent:capabilities', (caps: any) => {
             if (caps && typeof caps === 'object') {
                 nodeRegistryService.updateCapabilities(nodeId, caps);
@@ -296,7 +296,7 @@ export function setupAgentNamespace(io: Server): void {
             agentSockets.delete(nodeId);
             remoteRunner.unregisterNode(nodeId);
 
-            // Phase 3 Hardening: Mark node OFFLINE immediately instead of waiting for sweep
+            // Mark node OFFLINE immediately instead of waiting for sweep
             try {
                 nodeRegistryService.updateStatus(nodeId, NodeStatus.OFFLINE);
             } catch (e: any) {

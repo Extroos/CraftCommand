@@ -91,7 +91,7 @@ export const deleteServer = async (id: string) => {
         if (await fs.pathExists(server.workingDirectory)) {
             logger.info(`[ServerService] Removing directory: ${server.workingDirectory}`);
             
-            // Phase 56.1: Use SafeFileOperation to handle Windows EBUSY/EPERM
+            // Use SafeFileOperation to handle Windows EBUSY/EPERM
             await SafeFileOperation.remove(server.workingDirectory);
         }
     }
@@ -285,7 +285,7 @@ export const updateServer = async (id: string, updates: any) => {
         // 2. properties Sync (Online Mode, Port, Gameplay, etc.)
         if (newServer.workingDirectory) {
             try {
-                // Phase 14: Use the comprehensive ConfigService to sync all properties to disk
+                // Use the comprehensive ConfigService to sync all properties to disk
                 const { serverConfigService } = require('./ServerConfigService');
                 await serverConfigService.enforceConfig(newServer);
                 logger.info(`[ServerService] Synchronized server.properties for ${id}`);

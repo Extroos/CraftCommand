@@ -40,7 +40,7 @@ class ProcessManager extends EventEmitter {
             await dockerRunner.syncActiveContainers();
         }
 
-        // --- REMOTE RUNNER DESYNC FIX (Phase 3) ---
+        // --- REMOTE RUNNER DESYNC FIX ---
         const remoteRunner = runnerFactory.getRunner('remote') as any;
         if (remoteRunner) {
             remoteRunner.on('sync-recover', (data: { id: string }) => {

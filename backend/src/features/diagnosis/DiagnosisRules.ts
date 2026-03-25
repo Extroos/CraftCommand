@@ -1,4 +1,5 @@
 import { DiagnosisRule, SystemStats, ServerConfig, DiagnosisResult } from './types';
+import { logger } from '../../utils/logger';
 import { ServerStatus } from '@shared/types';
 import { CrashReport } from './CrashReportReader';
 import { ConfigReader } from '../../utils/ConfigReader';
@@ -289,6 +290,12 @@ export const JavaVersionRule: DiagnosisRule = {
         }
 
         const isProactiveMatch = currentJavaNum < minVersion;
+        
+        // FALSE POSITIVE GUARD: If the current config is valid, ignore old logs!
+        if (hasError && !isProactiveMatch) {
+             logger.info(`[Diagnosis:${server.id}] Suppressing stale JavaVersion error (Config is now valid).`);
+             return null;
+        }
 
         if (!hasError && !isProactiveMatch) return null;
 
@@ -361,13 +368,16 @@ export const MemoryRule: DiagnosisRule = {
          if (env.memoryUsed && env.memoryTotal) {
              const memPercent = (env.memoryUsed / env.memoryTotal) * 100;
              if (memPercent > 95) {
+                 const isDocker = server.executionEngine === 'docker';
                  return {
                     id: `mem-pressure-${server.id}-${Date.now()}`,
                     ruleId: 'memory_oom',
                     severity: 'CRITICAL',
                     title: 'Critical Memory Pressure',
                     explanation: `System RAM usage is at ${Math.round(memPercent)}%. The server is likely swapping or experiencing GC thrashing.`,
-                    recommendation: 'Allocate more RAM if possible, or close other background applications.',
+                    recommendation: isDocker 
+                        ? 'System is low on RAM. Check your Docker container quotas OR increase system physical RAM.'
+                        : 'Allocate more RAM if possible, or close other background applications.',
                     timestamp: Date.now()
                  };
              }
@@ -398,17 +408,38 @@ export const MissingJarRule: DiagnosisRule = {
         const jarPath = path.isAbsolute(execFile) ? execFile : path.join(server.workingDirectory, execFile);
         const exists = await fs.pathExists(jarPath);
  
+        // 1. LIVE VERIFICATION: If the file exists NOW, ignore old "Unable to access" logs
+        if (logMatch && exists) {
+             logger.info(`[Diagnosis:${server.id}] Suppressing stale MissingJar error (File found now).`);
+             return null;
+        }
+
         if (logMatch || !exists) {
+            // 2. SMART DISCOVERY: Look for a renamed JAR
+            let suggestion: string | null = null;
+            try {
+                const files = await fs.readdir(server.workingDirectory);
+                const otherJars = files.filter(f => f.endsWith('.jar') && f !== execFile && !f.startsWith('.'));
+                if (otherJars.length > 0) {
+                    suggestion = otherJars[0]; // Suggest the first candidate
+                }
+            } catch (e) {}
+
             return {
                 id: `missing-jar-${server.id}-${Date.now()}`,
                 ruleId: 'missing_jar',
                 severity: 'CRITICAL',
                 title: 'Server Executable Missing',
-                explanation: `The server file '${execFile}' could not be found. Expected path: "${jarPath}"`,
-                recommendation: `Ensure the file "${execFile}" exists in your server folder, or update the "Executable" setting in the dashboard to match your actual filename.`,
+                explanation: suggestion 
+                    ? `The server file '${execFile}' is missing, but we found '${suggestion}' in your folder. Did you rename it?`
+                    : `The server file '${execFile}' could not be found. Expected path: "${jarPath}"`,
+                recommendation: suggestion
+                    ? `Update your "Executable" setting to "${suggestion}" or rename the file back to "${execFile}".`
+                    : `Ensure the file "${execFile}" exists in your server folder, or update the "Executable" setting in the dashboard to match your actual filename.`,
                 action: {
                     type: 'UPDATE_CONFIG',
-                    payload: { serverId: server.id } 
+                    payload: suggestion ? { executable: suggestion } : { serverId: server.id },
+                    autoHeal: !!suggestion // Auto-heal if we found a high-confidence candidate!
                 },
                 timestamp: Date.now()
             };
@@ -509,21 +540,31 @@ export const InvalidIpRule: DiagnosisRule = {
     description: 'Checks if server-ip is set to an address this machine usually does not own',
     triggers: [
         /Cannot assign requested address/i,
+        /EADDRNOTAVAIL/i,
         /start on .* failed/i
     ],
     tier: 1,
     defaultConfidence: 100,
+    isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
-        if (logs.some(l => /Cannot assign requested address/i.test(l))) {
+        const hasError = logs.some(l => /Cannot assign requested address|EADDRNOTAVAIL/i.test(l));
+        
+        if (hasError) {
+             const serverIp = server.ip || '0.0.0.0';
              return {
                 id: `inv-ip-${server.id}-${Date.now()}`,
                 ruleId: 'invalid_ip',
                 severity: 'CRITICAL',
                 title: 'Invalid IP Binding',
-                explanation: 'The "server-ip" setting in server.properties is set to an IP address that does not belong to this machine.',
-                recommendation: 'Open server.properties and set "server-ip" to empty (blank) to allow binding to all addresses.',
+                explanation: `The server tried to bind to '${serverIp}', but this IP is not available on this machine. This often happens if you move a server from another hosting provider.`,
+                recommendation: `Clear the 'Server IP' field in Settings (or set it to 0.0.0.0) to allow the OS to auto-bind.`,
+                action: {
+                    type: 'UPDATE_CONFIG',
+                    payload: { ip: '' }, // Empty = Bind All
+                    autoHeal: true
+                },
                 timestamp: Date.now()
-            };
+             };
         }
         return null;
     }

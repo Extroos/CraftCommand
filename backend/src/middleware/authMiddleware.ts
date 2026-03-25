@@ -80,7 +80,7 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
                  return res.status(401).json({ error: 'Session has been revoked or expired. Please login again.' });
             }
 
-            // Phase 8: Strict IP Binding
+            // Strict IP Binding
             const enforceIp = settings?.app?.security?.ipSessionBinding ?? false;
             if (enforceIp && session.ipAddress && session.ipAddress !== req.ip) {
                  console.error(`[Security] Session IP Mismatch! Session: ${session.ipAddress}, Request: ${req.ip} (User: ${user.email})`);
@@ -90,7 +90,7 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
             }
         }
 
-        // Phase 6: Enforce 2FA Policy for Administrators
+        // Enforce 2FA Policy for Administrators
         // ... (policy enforcement omitted for brevity, but stays below)
         const isAppAdmin = user.role === 'ADMIN' || user.role === 'OWNER';
         const force2FA = settings?.app?.security?.forceAdmin2FA ?? false;

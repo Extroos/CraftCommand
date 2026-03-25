@@ -13,35 +13,46 @@ export class CrashReportReader {
     
     /**
      * Finds and reads the most recent crash report for a server.
-     * Only considers reports generated in the last 10 minutes to ensure relevance.
+     * @param serverStatus The current status of the server to determine relevance window.
      */
-    static async getRecentCrashReport(serverCwd: string): Promise<CrashReport | null> {
+    static async getRecentCrashReport(serverCwd: string, serverStatus?: string): Promise<CrashReport | null> {
         try {
             const crashDir = path.join(serverCwd, 'crash-reports');
             if (!await fs.pathExists(crashDir)) return null;
 
-            const files = await fs.readdir(crashDir);
+            const files = await fs.readdir(crashDir).catch(() => []);
             const crashFiles = files.filter(f => 
                 (f.endsWith('.txt') && f.startsWith('crash-')) || 
                 (f.startsWith('hs_err_pid') && f.endsWith('.log'))
-            );
+            ).map(f => path.join(crashDir, f));
 
-            if (crashFiles.length === 0) return null;
+            // ALSO: Scan root for hs_err_pid files (JVM native crashes)
+            const rootFiles = await fs.readdir(serverCwd).catch(() => []);
+            const rootCrashFiles = rootFiles
+                .filter(f => f.startsWith('hs_err_pid') && f.endsWith('.log'))
+                .map(f => path.join(serverCwd, f));
+            
+            const allCrashFiles = [...crashFiles, ...rootCrashFiles];
+
+            if (allCrashFiles.length === 0) return null;
 
             // Sort by time (filename usually has date, but we check fs stats for accuracy)
-            const fileStats = await Promise.all(crashFiles.map(async file => {
-                const filePath = path.join(crashDir, file);
+            const fileStats = await Promise.all(allCrashFiles.map(async filePath => {
                 const stat = await fs.stat(filePath);
-                return { file, mtime: stat.mtimeMs, path: filePath };
+                return { file: path.basename(filePath), mtime: stat.mtimeMs, path: filePath };
             }));
 
             // Get newest
             const newest = fileStats.sort((a, b) => b.mtime - a.mtime)[0];
 
-            // Filter out old crashes (older than 10 mins)
-            // This prevents diagnosing a crash from last week as a current issue
-            const TEN_MINUTES = 10 * 60 * 1000;
-            if (Date.now() - newest.mtime > TEN_MINUTES) {
+            // Filter out old crashes
+            // 1. If server is online: strict 10-minute window (prevents reporting historic junk)
+            // 2. If server is OFFLINE/CRASHED: wider 24-hour window (explains WHY it's down)
+            const window = (serverStatus === 'OFFLINE' || serverStatus === 'CRASHED') 
+                ? 24 * 60 * 60 * 1000 // 24 Hours
+                : 10 * 60 * 1000;      // 10 Minutes
+            
+            if (Date.now() - newest.mtime > window) {
                 return null;
             }
 

@@ -65,8 +65,8 @@ export class DiagnosisBrain {
                 const hasLogMatch = rule.triggers.some(t => t.test(logContent));
                 const hasCrashMatch = crashReport && rule.triggers.some(t => t.test(crashContent));
                 
-                // Tier 1 logic: Always allow proactive check if logs are empty (pre-flight or log-less crash)
-                const isProactiveNeeded = rule.tier === 1 && (logs.length === 0 || server.status === ServerStatus.CRASHED);
+                // Tier 1 & 2 logic: Allow proactive check if server is NOT online (pre-flight, configuration check, or filesystem monitor)
+                const isProactiveNeeded = (rule.tier <= 2) && (server.status !== ServerStatus.ONLINE);
                 const isExplicitlyProactive = rule.triggers.length === 0;
 
                 if (hasLogMatch || hasCrashMatch || isExplicitlyProactive || isProactiveNeeded) {
@@ -75,10 +75,14 @@ export class DiagnosisBrain {
                         // Attach tier metadata for brain processing
                         const internal: InternalDiagnosisResult = { ...result, _tier: rule.tier };
                         
-                        // Apply default confidence if not specified by rule logic
-                        if (internal.confidence === undefined) {
+                        // BRAIN BOOST: If we have BOTH a log match and a crash report match, confidence is absolute
+                        if ((hasLogMatch || isExplicitlyProactive) && hasCrashMatch) {
+                            internal.confidence = 100;
+                            internal.severity = 'CRITICAL';
+                        } else if (internal.confidence === undefined) {
                             internal.confidence = rule.defaultConfidence;
                         }
+
                         results.push(internal);
                     }
                 }
@@ -106,10 +110,10 @@ export class DiagnosisBrain {
             'disk_space_full': ['data_integrity', 'world_corruption', 'telemetry_cleanup', 'bad_config', 'permission_denied', 'dynmap_storage_full'],
             'java_version_unsupported': ['mod_dependency', 'plugin_incompatible', 'mixin_conflict', 'plugin_access_denied', 'java_binary_missing'],
             'java_binary_missing': ['startup_failure', 'process_exit_immediate'],
-            'node_resource_starvation': ['tps_lag', 'network_latency', 'heartbeat_missed'],
-            'node_version_mismatch': ['sync_failure', 'cluster_instability'],
-            'duckdns_auth_failure': ['public_ip_mismatch', 'network_offline'],
-            'dynmap_port_conflict': ['port_binding_failed']
+            'missing_jar': ['java_version', 'bad_config', 'startup_failure'],
+            'invalid_ip': ['network_offline', 'port_binding_failed'],
+            'eula_not_accepted': ['startup_failure', 'process_exit_immediate'],
+            'node_resource_starvation': ['tps_lag', 'network_latency', 'heartbeat_missed']
         };
 
         // Suppress known effects

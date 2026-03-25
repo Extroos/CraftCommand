@@ -20,9 +20,15 @@ interface HealthStats {
 
 const TelemetryLine = ({ data, color, height = 40 }: { data: number[], color: string, height?: number }) => {
     if (data.length < 2) return <div className="h-[40px]" />;
-    const max = Math.max(...data, 10);
+    const cleanData = data.filter(d => !isNaN(d));
+    const max = Math.max(...cleanData, 10);
     const width = 200;
-    const points = data.map((d, i) => `${(i / (data.length - 1)) * width},${height - (d / max) * height}`).join(' ');
+    const points = data.map((d, i) => {
+        const x = (i / (data.length - 1)) * width;
+        const safeVal = isNaN(d) ? 0 : d;
+        const y = height - (Math.min(safeVal, max) / max) * height;
+        return `${x},${isNaN(y) ? height : y}`;
+    }).join(' ');
 
     return (
         <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="overflow-visible">
@@ -90,9 +96,9 @@ export const SystemHealthMatrix: React.FC = () => {
                 setNodes([]);
             }
             
-            setCpuHistory(prev => [...prev.slice(-15), results[1].cpuLoad]);
-            setRamHistory(prev => [...prev.slice(-15), results[1].memoryPressure]);
-            setIoHistory(prev => [...prev.slice(-15), results[1].diskIO / 1024 / 1024]);
+            setCpuHistory(prev => [...prev.slice(-15), results[1]?.cpuLoad || 0]);
+            setRamHistory(prev => [...prev.slice(-15), results[1]?.memoryPressure || 0]);
+            setIoHistory(prev => [...prev.slice(-15), (results[1]?.diskIO || 0) / 1024 / 1024]);
 
             setError(null);
         } catch (err: any) {

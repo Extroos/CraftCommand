@@ -66,7 +66,7 @@ class UpdateService {
     private checkIntervalId: NodeJS.Timeout | null = null;
     private currentVersion: string = '0.0.0';
 
-    // Phase 2: Update Lifecycle State
+    // Update Lifecycle State
     private updateStatus: UpdateStateInfo = { status: 'IDLE', progress: 0 };
     private TEMP_DIR = path.join(process.cwd(), '../temp_update');
     private EXTRACT_DIR = path.join(process.cwd(), '../temp_update', 'extracted');

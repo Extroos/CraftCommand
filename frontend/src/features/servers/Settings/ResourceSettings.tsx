@@ -6,6 +6,7 @@ import { STAGGER_ITEM } from '../../../styles/motion';
 import { useToast } from '../../ui/Toast';
 import { useConfirm } from '../../ui/hooks/useConfirm';
 import { API } from '@core/services/api';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
 
 interface ResourceSettingsProps {
     serverId: string;
@@ -40,7 +41,7 @@ const ResourceCard: React.FC<{
 
 export const ResourceSettings: React.FC<ResourceSettingsProps> = ({ serverId }) => {
     const { addToast } = useToast();
-    const { confirm } = useConfirm();
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm, handleConfirm, handleCancel } = useConfirm();
     const [isRotatingKey, setIsRotatingKey] = React.useState(false);
 
     const handleRotateKey = async () => {
@@ -128,6 +129,13 @@ export const ResourceSettings: React.FC<ResourceSettingsProps> = ({ serverId }) 
                     </button>
                 </div>
             </motion.div>
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+                {...confirmConfig}
+            />
         </div>
     );
 };

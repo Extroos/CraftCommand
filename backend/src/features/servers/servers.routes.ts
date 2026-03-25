@@ -164,8 +164,16 @@ router.get('/:id/query', async (req, res) => {
         maxPlayers: server.maxPlayers || 20
     };
 
+    // Background Diagnosis
+    const diagnosis = await diagnoseServer(id);
+    const analysis = {
+        status: diagnosis.some(r => r.severity === 'CRITICAL') ? 'CRITICAL' : (diagnosis.length > 0 ? 'WARNING' : 'HEALTHY'),
+        issues: diagnosis.map(r => `⚠️ ${r.title}`),
+        environment: {}
+    };
+
     // 2. Respond instantly with cached data
-    res.json(response);
+    res.json({ ...response, analysis, diagnosis });
 
     // 3. Background Refresh (Proactive)
     // We probe regardless of processManager.isRunning() to detect orphaned processes
@@ -928,8 +936,8 @@ router.get('/:id/files/search', verifyToken, requirePermission('server.files.rea
     }
 });
 
-// Delete Files (Accepts array of paths in body)
-router.delete('/:id/files', requirePermission('server.files.write'), async (req, res) => {
+// Delete Files (Bulk Action)
+router.post('/:id/files/delete-bulk', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
     const { paths } = req.body;
     const server = getServer(id);
@@ -983,18 +991,18 @@ router.post('/:id/files/copy', requirePermission('server.files.write'), async (r
     }
 });
 
-// Compress Files
-router.post('/:id/files/compress', requirePermission('server.files.write'), async (req, res) => {
+// Archive Files (Rename from compress to match frontend)
+router.post('/:id/files/archive', requirePermission('server.files.write'), async (req, res) => {
     const { id } = req.params;
-    const { paths, name } = req.body; // paths: string[], name: archive filename
+    const { paths, archiveName } = req.body; 
     const server = getServer(id);
     if (!server) return res.status(404).json({ error: 'Server not found' });
 
     const fsManager = new FileSystemManager(server.workingDirectory);
     try {
-        await fsManager.compress(paths, name);
+        await fsManager.compress(paths, archiveName);
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'FILE_COMPRESS', id, { paths, count: paths.length, archive: name });
+        auditService.log((req as any).user.id, 'FILE_COMPRESS', id, { paths, count: paths.length, archive: archiveName });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

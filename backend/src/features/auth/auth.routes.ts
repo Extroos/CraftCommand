@@ -69,7 +69,7 @@ router.post('/2fa/verify', verify2FALimiter, async (req, res) => {
 
         const user = authService.getUser(decoded.id);
         
-        // Phase 12: Create session on 2FA success
+        // Create session on 2FA success
         const sessionId = crypto.randomUUID();
         const expiresAt = Date.now() + 1 * 24 * 60 * 60 * 1000; // 24 hours
         

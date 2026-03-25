@@ -20,7 +20,7 @@ export interface ServerTemplate {
     javaVersion: number;
     startupFlags?: string[]; // Recommended Aikar flags etc.
     downloadUrl?: string; // If static
-    executable?: string; // Phase 10: Specific fallback filename (e.g. velocity.jar)
+    executable?: string; // Specific fallback filename (e.g. velocity.jar)
 }
 
 export interface BackgroundSettings {
@@ -60,11 +60,11 @@ export interface UserProfile {
     username: string;
     passwordHash?: string; // Hashed with bcrypt
     role: UserRole;
-    schemaVersion?: number; // Added for Phase 5 Migration Check
+    schemaVersion?: number; // Migration Check
     permissions?: Partial<Record<string, Permission[]>>; // Deprecated: Migration target
-    serverAcl?: Record<string, { allow: Permission[], deny: Permission[] }>; // Phase 5 ACL
+    serverAcl?: Record<string, { allow: Permission[], deny: Permission[] }>; // Server ACL
     avatarUrl?: string;
-    customRoleName?: string; // Phase 6: Flexible Role Labels
+    customRoleName?: string; // Flexible Role Labels
     preferences: {
         accentColor: string;
         reducedMotion: boolean;
@@ -93,7 +93,7 @@ export interface UserProfile {
     apiKey?: string;
     password?: string; // For updates only
     
-    // Phase 64: 2FA Completion
+    // 2FA Completion
     twoFactorEnabled?: boolean;
     twoFactorSecretEncrypted?: string;
     twoFactorVerifiedAt?: number;
@@ -265,7 +265,7 @@ export interface GlobalSettings {
         storageProvider?: 'json' | 'sqlite';
         security?: {
             forceAdmin2FA: boolean;
-            ipSessionBinding?: boolean; // Phase 8: Strict session protection
+            ipSessionBinding?: boolean; // Strict session protection
         };
         https?: {
             enabled: boolean;
@@ -738,7 +738,7 @@ export interface NodeInfo {
     enrollmentToken?: string;  // Short-lived token for download authentication
 }
 
-// --- Ecosystem Types (Phase 17) ---
+// --- Ecosystem Types ---
 
 export interface ServerProfile {
     name: string;

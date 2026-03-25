@@ -5,6 +5,7 @@ import { STAGGER_ITEM } from '../../../styles/motion';
 import { useToast } from '../../ui/Toast';
 import { useConfirm } from '../../ui/hooks/useConfirm';
 import { API } from '@core/services/api';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
 
 interface ConnectivitySettingsProps {
     currentServer: any;
@@ -46,7 +47,7 @@ const CopyableField: React.FC<{ label: string; value: string; icon: React.ReactN
 
 export const ConnectivitySettings: React.FC<ConnectivitySettingsProps> = ({ currentServer, serverId }) => {
     const { addToast } = useToast();
-    const { confirm } = useConfirm();
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm, handleConfirm, handleCancel } = useConfirm();
     const [isResetting, setIsResetting] = React.useState(false);
     const [ports, setPorts] = React.useState<any[]>([]);
     const [isLoadingPorts, setIsLoadingPorts] = React.useState(true);
@@ -329,6 +330,13 @@ export const ConnectivitySettings: React.FC<ConnectivitySettingsProps> = ({ curr
                     </div>
                 </motion.div>
             </div>
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+                {...confirmConfig}
+            />
         </div>
     );
 };

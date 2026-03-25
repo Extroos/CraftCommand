@@ -28,7 +28,21 @@ type UserContextType = {
 
 import { socketService } from '../../core/services/socket';
 
-const UserContext = createContext<UserContextType | undefined>(undefined);
+const UserContext = createContext<UserContextType | undefined>({
+    user: null,
+    token: null,
+    isAuthenticated: false,
+    isLoading: true,
+    theme: { text: '', bg: '', border: '', ring: '', softBg: '' },
+    login: async () => 'failed',
+    logout: () => {},
+    updatePreferences: () => {},
+    updateUser: async () => {},
+    refreshUser: async () => {},
+    verify2FA: async () => false,
+    twoFactorRequired: false,
+    guestPrefs: { reducedMotion: false, visualQuality: true }
+});
 
 export const useUser = () => {
     const context = useContext(UserContext);

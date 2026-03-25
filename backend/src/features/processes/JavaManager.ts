@@ -15,7 +15,7 @@ const execAsync = util.promisify(exec);
 
 export class JavaManager extends EventEmitter {
     
-    // Phase 56.3: Track current status for session recovery
+    // Track current status for session recovery
     public currentStatus: { message: string, percent?: number, phase?: string } | null = null;
 
     // Download portable Java if missing

@@ -323,7 +323,7 @@ class AutoHealingService extends EventEmitter {
                 { serverId, actionType, timestamp: Date.now(), code: ErrorCode.E_FS_ATOMIC_FAIL } // Future: Use specific codes
             );
 
-            // Phase 8: Hardening - Log to System Audit Trail
+            // Hardening - Log to System Audit Trail
             await auditService.log(
                 'SYSTEM',
                 'AUTO_HEAL',

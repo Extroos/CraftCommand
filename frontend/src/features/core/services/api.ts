@@ -433,7 +433,7 @@ class ApiService {
     }
 
     async rotateDatabasePassword(serverId: string, dbId: string): Promise<{ password: string }> {
-        return this.post(`/servers/${serverId}/databases/${dbId}/rotate-password`, {});
+        return this.post(`/servers/${serverId}/databases/${dbId}/rotate`, {});
     }
 
     // --- Server Members ---

@@ -124,10 +124,13 @@ const AreaSparkline: React.FC<{
     const peakVal = Math.max(...data);
     const peakIdx = data.lastIndexOf(peakVal);
 
-    const points = data.map((val, i) => ({
-        x: (i / (data.length - 1)) * width,
-        y: padY + usableH - (Math.min(val, actualMax) / actualMax) * usableH,
-    }));
+    const points = data.map((val, i) => {
+        const x = (i / (data.length - 1)) * width;
+        const safeMax = actualMax > 0 ? actualMax : 1;
+        const safeVal = isNaN(val) ? 0 : val;
+        const y = padY + usableH - (Math.min(safeVal, safeMax) / safeMax) * usableH;
+        return { x, y: isNaN(y) ? height : y };
+    });
 
     // Smooth curve using monotone cubic interpolation
     const lineD = useMemo(() => {
@@ -247,10 +250,10 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
     const [tpsHistory, setTpsHistory] = useState<number[]>([]);
 
 
-    const displayCpu = status === ServerStatus.ONLINE ? stats.cpu : 0;
-    const displayMemory = status === ServerStatus.ONLINE ? stats.memory : 0;
+    const displayCpu = status === ServerStatus.ONLINE ? (stats.cpu || 0) : 0;
+    const displayMemory = status === ServerStatus.ONLINE ? (stats.memory || 0) : 0;
     const displayTps = status === ServerStatus.ONLINE ? parseFloat(stats.tps as string) || 0 : 0;
-    const displayLatency = status === ServerStatus.ONLINE ? stats.latency : 0;
+    const displayLatency = status === ServerStatus.ONLINE ? (stats.latency || 0) : 0;
 
     const latestMetrics = useRef({ cpu: displayCpu, mem: displayMemory, tps: displayTps, lat: displayLatency });
     useEffect(() => { latestMetrics.current = { cpu: displayCpu, mem: displayMemory, tps: displayTps, lat: displayLatency }; }, [displayCpu, displayMemory, displayTps, displayLatency]);
@@ -288,10 +291,21 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
         } catch (e) { /* silent fail for background diagnosis */ }
     };
 
+    // Auto-Diagnosis Trigger (Unified)
+    // Now reacts to diagnosis data flowing in from the regular stats poll
     useEffect(() => {
-        if (status === ServerStatus.CRASHED || status === ServerStatus.SAFE_MODE || (status === ServerStatus.OFFLINE && server?.startTime && server.startTime > 0 && !diagnosisResult)) runDiagnosis();
-        else if (status === ServerStatus.ONLINE || status === ServerStatus.STARTING) setDiagnosisResult(null);
-    }, [status, server?.startTime]);
+        const polledDiagnosis = (stats as any).diagnosis as DiagnosisResult[] | undefined;
+        if (polledDiagnosis && polledDiagnosis.length > 0) {
+            const mainIssue = polledDiagnosis.find(d => d.isRootCause || d.severity === 'CRITICAL');
+            if (mainIssue && !ignoredInSession.includes(mainIssue.ruleId)) {
+                setDiagnosisResult(mainIssue);
+                return;
+            }
+        }
+        if (status === ServerStatus.ONLINE) {
+            setDiagnosisResult(null);
+        }
+    }, [status, (stats as any).diagnosis, ignoredInSession]);
 
     // Power controls (identical to Dashboard.tsx)
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {
@@ -304,6 +318,9 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                 } catch (e: any) {
                     if (e.message?.includes('already running')) return;
                     updateServerStatus(serverId, ServerStatus.OFFLINE);
+                    // Proactive Search: Always run diagnosis scan if a power action fails
+                    // This ensures the DiagnosisCard pops up immediately for EULA/File errors.
+                    runDiagnosis();
                     if (e.safetyError) setSafetyError({ message: e.message, code: e.code, details: e.details });
                     else addToast('error', 'Start Failed', e.message);
                 }

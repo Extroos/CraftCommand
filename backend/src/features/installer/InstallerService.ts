@@ -14,7 +14,7 @@ const BEDROCK_CACHE_DIR = path.join(CACHE_DIR, 'bedrock');
 
 export class InstallerService extends EventEmitter {
     
-    // Phase 56.3: Track active progress for session recovery
+    // Track active progress for session recovery
     private activeProgress: Map<string, { percent: number, message: string, phase: string }> = new Map();
 
     public getActiveProgress() {
@@ -555,7 +555,7 @@ export class InstallerService extends EventEmitter {
         onProgress?.(`🔍 Verifying ${jarFiles.length} mods against Modrinth API...`);
         onLog?.(`[SmartMod] Verifying ${jarFiles.length} mods against Modrinth API...`);
 
-        // Phase 1: Scan local metadata to get IDs
+        // Scan local metadata to get IDs
         const modMeta: Map<string, { file: string; name: string; env: string; deps: string[] }> = new Map();
         const modIdToFile = new Map<string, string>();
         
@@ -580,7 +580,7 @@ export class InstallerService extends EventEmitter {
         const idsToCheck = [...modMeta.keys()];
         const clientOnlyIds = new Set<string>();
 
-        // Phase 2: Batch Query Modrinth API
+        // Query Modrinth API for server-side compatibility
         try {
             // Modrinth allows querying by IDs/slugs in batches
             const chunkSize = 50;
@@ -610,7 +610,7 @@ export class InstallerService extends EventEmitter {
                 }
             }
 
-            // Phase 2.5: Local Fallback (modrinth_env.json)
+            // Local Fallback (modrinth_env.json)
             const envPath = path.join(process.cwd(), 'modrinth_env.json');
             if (await fs.pathExists(envPath)) {
                 try {
@@ -631,14 +631,14 @@ export class InstallerService extends EventEmitter {
             logger.error(`[Installer] Modrinth verification process failed: ${err.message}`);
         }
 
-        // Phase 3: Complement with local metadata Pass 1 (Direct client-only mods)
+        // Check local metadata for direct client-only environment flags
         for (const [modId, meta] of modMeta) {
             if (meta.env === 'client') {
                 clientOnlyIds.add(modId);
             }
         }
 
-        // Phase 4: Pass 2 (Dependencies of client-only mods)
+        // Resolve dependencies of client-only mods
         for (const [modId, meta] of modMeta) {
             if (clientOnlyIds.has(modId)) continue;
             for (const dep of meta.deps) {
@@ -650,7 +650,7 @@ export class InstallerService extends EventEmitter {
             }
         }
 
-        // Phase 5: Known server-incompatible mods (Final safety net for those not on Modrinth)
+        // Block known server-incompatible mods (Final safety net)
         const KNOWN_CLIENT_ONLY_IDS = new Set([
             'slyde', 'slydemore', 'libjf', 'fancymenu', 'konkrete', 'melody', 
             'iris', 'replaymod', 'optifine', 'command-block-ide', 'sodiumcoreshadersupport',
@@ -688,7 +688,7 @@ export class InstallerService extends EventEmitter {
             onLog?.(`[SmartMod] ${msg}`);
             logger.success(`[Installer] Server ${serverId}: ${msg}`);
             
-            // Phase 3: Audit Logging for Mod Quarantine
+            // Log quarantined mods to audit trail
             try {
                 const { userRepository } = require('../../storage/UserRepository');
                 const admin = userRepository.findAll().find((u: any) => u.role === 'ADMIN');
@@ -1420,7 +1420,7 @@ export class InstallerService extends EventEmitter {
     }
 
     async installBedrock(serverId: string, serverDir: string, version: string, onProgress?: (msg: string, percent?: number) => void) {
-    // Phase 11.8: Resolve 'latest' to verified working link version
+    // Resolve 'latest' to verified working binary version
     if (version === 'latest') version = '1.26.1.1';
     
     try {

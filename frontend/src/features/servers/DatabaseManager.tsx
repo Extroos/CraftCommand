@@ -10,6 +10,7 @@ import CreateDatabaseModal from './components/CreateDatabaseModal';
 import DatabaseCredentialsModal from './components/DatabaseCredentialsModal';
 import { usePermissions } from '../auth/hooks/usePermissions';
 import { AnimatePresence } from 'framer-motion';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface DatabaseManagerProps {
     serverId: string;
@@ -17,7 +18,7 @@ interface DatabaseManagerProps {
 
 export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) => {
     const { addToast } = useToast();
-    const { confirm } = useConfirm();
+    const { isOpen: isConfirmOpen, config: confirmConfig, confirm, handleConfirm, handleCancel } = useConfirm();
     const { can } = usePermissions();
     const [databases, setDatabases] = React.useState<any[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
@@ -183,6 +184,13 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                     />
                 )}
             </AnimatePresence>
+
+            <ConfirmDialog 
+                isOpen={isConfirmOpen}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+                {...confirmConfig}
+            />
         </motion.div>
     );
 };

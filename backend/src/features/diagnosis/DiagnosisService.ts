@@ -23,8 +23,8 @@ export class DiagnosisService {
         // 1. Log Spam Protection: Truncate and collapse repetitive lines
         const filteredLogs = this.filterSpam(recentLogs);
         
-        // 2. Fetch deep crash report if available
-        const crashReport = await CrashReportReader.getRecentCrashReport(server.workingDirectory);
+        // 2. Fetch deep crash report if available (State-aware relevance)
+        const crashReport = await CrashReportReader.getRecentCrashReport(server.workingDirectory, server.status);
         
         console.log(`[DiagnosisService] Analyzing server ${server.id} with ${this.rules.size} rules and ${filteredLogs.length} filtered log lines...`);
 
@@ -50,7 +50,8 @@ export class DiagnosisService {
         let lastLine = '';
         let repeatCount = 0;
 
-        // Take last N lines for analysis
+        // Take last N lines for analysis, but prioritize lines containing "Exception" or "Error" 
+        // if the buffer is larger than MAX_LINES.
         const recentSubset = logs.length > MAX_LINES ? logs.slice(-MAX_LINES) : logs;
 
         for (const rawLine of recentSubset) {
