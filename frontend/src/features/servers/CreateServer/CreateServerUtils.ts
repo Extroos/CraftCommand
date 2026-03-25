@@ -23,7 +23,11 @@ export const synthesizeDefaultState = (
     currentData: FormData, 
     bedrockVersions?: { latest: string }
 ): FormData => {
-    const newData = { ...currentData, software };
+    let finalSoftware = software;
+    if (software === 'Paper' && currentData.usePurpur) {
+        finalSoftware = 'Purpur';
+    }
+    const newData = { ...currentData, software: finalSoftware };
     
     // 1. Reset Versions & Critical Identifiers
     if (software === 'Velocity') {
