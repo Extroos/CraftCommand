@@ -230,10 +230,10 @@ class ImportService {
             software = 'Velocity';
             executable = files.find(f => f.toLowerCase().includes('velocity') && f.endsWith('.jar')) || 'velocity.jar';
             port = 25577;
-        } else if (lowerFiles.includes('purpur.jar') || lowerFiles.some(f => f.includes('purpur-'))) {
+        } else if (lowerFiles.includes('purpur.jar') || lowerFiles.some(f => f.includes('purpur-')) || lowerFiles.includes('purpur.yml') || lowerFiles.includes('config/purpur-global.yml')) {
             software = 'Purpur';
-            executable = files.find(f => f.toLowerCase().includes('purpur') && f.endsWith('.jar')) || 'purpur.jar';
-        } else if (lowerFiles.includes('paper.jar') || lowerFiles.some(f => f.includes('paper-'))) {
+            executable = files.find(f => f.toLowerCase().includes('purpur') && f.endsWith('.jar')) || 'server.jar';
+        } else if (lowerFiles.includes('paper.jar') || lowerFiles.some(f => f.includes('paper-')) || lowerFiles.includes('paper.yml') || lowerFiles.includes('config/paper-global.yml')) {
             software = 'Paper';
             executable = files.find(f => f.toLowerCase().includes('paper') && f.endsWith('.jar')) || 'paper.jar';
         } else if (lowerFiles.includes('spigot.jar') || lowerFiles.some(f => f.includes('spigot-'))) {

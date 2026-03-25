@@ -1164,13 +1164,17 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
         }
 
         if (type === 'paper') {
-            await installerService.installPaper(id, server.workingDirectory, version || '1.21.1', build, onProgress);
+            await installerService.installPaper(id, server.workingDirectory, version || '1.21.11', build, onProgress);
+            server.executable = 'server.jar';
+            saveServer(server);
         } else if (type === 'purpur') {
-            await installerService.installPurpur(id, server.workingDirectory, version || '1.21.1', build, onProgress);
+            await installerService.installPurpur(id, server.workingDirectory, version || '1.21.11', build, onProgress);
+            server.executable = 'server.jar';
+            saveServer(server);
         } else if (type === 'vanilla') {
-            await installerService.installVanilla(id, server.workingDirectory, version || '1.21.1', onProgress);
+            await installerService.installVanilla(id, server.workingDirectory, version || '1.21.11', onProgress);
         } else if (type === 'fabric') {
-            await installerService.installFabric(id, server.workingDirectory, version || '1.21.1', onProgress);
+            await installerService.installFabric(id, server.workingDirectory, version || '1.21.11', onProgress);
         } else if (type === 'modpack' && url) {
             await installerService.installModpackFromZip(id, server.workingDirectory, url, version, onProgress, server.software);
         } else if (type === 'forge') {

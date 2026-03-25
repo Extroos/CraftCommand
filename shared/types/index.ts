@@ -11,7 +11,7 @@ export interface ResourceConfig {
 export interface ServerTemplate {
     id: string;
     name: string;
-    type: 'Paper' | 'Fabric' | 'Forge' | 'NeoForge' | 'Modpack' | 'Vanilla' | 'Spigot' | 'Bedrock' | 'Velocity' | 'Folia';
+    type: 'Paper' | 'Fabric' | 'Forge' | 'NeoForge' | 'Modpack' | 'Vanilla' | 'Spigot' | 'Bedrock' | 'Velocity' | 'Folia' | 'Purpur';
     version: string; // Minecraft version
     build?: string; // Specific build/loader version
     icon?: string;

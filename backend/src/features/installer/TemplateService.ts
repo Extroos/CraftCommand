@@ -134,6 +134,9 @@ export class TemplateService {
             case 'Paper':
                 await installerService.installPaper(serverId, server.workingDirectory, template.version, template.build || 'latest');
                 break;
+            case 'Purpur':
+                await installerService.installPurpur(serverId, server.workingDirectory, template.version, template.build || 'latest');
+                break;
             case 'Fabric':
                 await installerService.installFabric(serverId, server.workingDirectory, template.version);
                 break;

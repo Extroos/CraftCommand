@@ -65,6 +65,8 @@ export class ServerRepository implements StorageProvider<ServerConfig> {
                 sanitized.executable = process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server';
             } else if (sanitized.software === 'Velocity') {
                 sanitized.executable = 'velocity.jar';
+            } else if (sanitized.software === 'Purpur' || sanitized.software === 'Paper') {
+                sanitized.executable = 'server.jar';
             } else {
                 sanitized.executable = 'server.jar';
             }
