@@ -184,6 +184,9 @@ export const setupSocket = (socketIo: Server) => {
             const latestUser = userRepository.findById(user.id);
             const finalUser = latestUser || user;
             
+            // Check if user is already present in this room from a different socket
+            const isNewJoin = !presenceTracker.getPresence(serverId).some(up => up.userId === user.id);
+
             presenceTracker.join(serverId, { 
                 id: finalUser.id, 
                 username: finalUser.username, 
@@ -209,17 +212,19 @@ export const setupSocket = (socketIo: Server) => {
                 });
             }
 
-            // Emit activity event: user joined
-            emitActivity({
-                id: makeActivityId(),
-                serverId,
-                userId: user.id,
-                username: user.username,
-                action: 'USER_JOINED_PANEL',
-                detail: `${user.username} joined the panel`,
-                visibility: 'VIEWER',
-                timestamp: Date.now()
-            });
+            // Emit activity event: user joined (Only if it's a new unique entrance)
+            if (isNewJoin) {
+                emitActivity({
+                    id: makeActivityId(),
+                    serverId,
+                    userId: user.id,
+                    username: user.username,
+                    action: 'USER_JOINED_PANEL',
+                    detail: `${user.username} joined the panel`,
+                    visibility: 'VIEWER',
+                    timestamp: Date.now()
+                });
+            }
         });
 
         socket.on('server:leave', ({ serverId }) => {
@@ -229,8 +234,8 @@ export const setupSocket = (socketIo: Server) => {
             
             if (!systemSettingsService.isHostMode()) return;
 
-            presenceTracker.leave(serverId, user.id);
-            logger.info(`[Collab] ${user.username} left server:${serverId}`);
+            const actuallyLeft = presenceTracker.leave(serverId, user.id, socket.id);
+            logger.info(`[Collab] ${user.username} left server:${serverId} (Socket: ${socket.id}, Actually Left: ${actuallyLeft})`);
 
             const collab = getCollabSettings(serverId);
 
@@ -241,16 +246,18 @@ export const setupSocket = (socketIo: Server) => {
                 });
             }
 
-            emitActivity({
-                id: makeActivityId(),
-                serverId,
-                userId: user.id,
-                username: user.username,
-                action: 'USER_LEFT_PANEL',
-                detail: `${user.username} left the panel`,
-                visibility: 'VIEWER',
-                timestamp: Date.now()
-            });
+            if (actuallyLeft) {
+                emitActivity({
+                    id: makeActivityId(),
+                    serverId,
+                    userId: user.id,
+                    username: user.username,
+                    action: 'USER_LEFT_PANEL',
+                    detail: `${user.username} left the panel`,
+                    visibility: 'VIEWER',
+                    timestamp: Date.now()
+                });
+            }
         });
 
         // Update active view (e.g., user switched from Console to Files)

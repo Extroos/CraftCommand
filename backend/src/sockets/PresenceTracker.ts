@@ -5,9 +5,9 @@ import {  PresenceEntry, UserRole  } from '@shared/types';
  * Supports role-aware filtering so the OWNER can control who sees presence.
  */
 class PresenceTracker {
-    // Map<serverId, Map<userId, PresenceEntry>>
-    private presence: Map<string, Map<string, PresenceEntry>> = new Map();
-    // Map<socketId, { serverId, userId }> — for cleanup on disconnect
+    // Map<serverId, Map<userId, { entry: PresenceEntry, sockets: Set<string> }>>
+    private presence: Map<string, Map<string, { entry: PresenceEntry; sockets: Set<string> }>> = new Map();
+    // Map<socketId, { serverId: string; userId: string }[]>
     private socketMap: Map<string, { serverId: string; userId: string }[]> = new Map();
 
     /**
@@ -18,72 +18,91 @@ class PresenceTracker {
             this.presence.set(serverId, new Map());
         }
 
-        const entry: PresenceEntry = {
-            userId: user.id,
-            username: user.username,
-            role: user.role,
-            avatar: user.avatar,
-            joinedAt: Date.now(),
-            activeView
-        };
+        const serverPresence = this.presence.get(serverId)!;
+        let userPresence = serverPresence.get(user.id);
 
-        this.presence.get(serverId)!.set(user.id, entry);
+        if (!userPresence) {
+            userPresence = {
+                entry: {
+                    userId: user.id,
+                    username: user.username,
+                    role: user.role,
+                    avatar: user.avatar,
+                    joinedAt: Date.now(),
+                    activeView
+                },
+                sockets: new Set()
+            };
+            serverPresence.set(user.id, userPresence);
+        }
+
+        userPresence.sockets.add(socketId);
+        // Always update active view to latest socket's view
+        userPresence.entry.activeView = activeView;
 
         // Track socket -> server mapping for disconnect cleanup
         if (!this.socketMap.has(socketId)) {
             this.socketMap.set(socketId, []);
         }
-        this.socketMap.get(socketId)!.push({ serverId, userId: user.id });
+        const mappings = this.socketMap.get(socketId)!;
+        if (!mappings.some(m => m.serverId === serverId)) {
+            mappings.push({ serverId, userId: user.id });
+        }
     }
 
     /**
-     * User leaves a server room.
+     * User leaves a server room (explicitly or via socket disconnect).
      */
-    leave(serverId: string, userId: string) {
+    leave(serverId: string, userId: string, socketId?: string) {
         const serverPresence = this.presence.get(serverId);
-        if (serverPresence) {
+        if (!serverPresence) return false;
+
+        const userPresence = serverPresence.get(userId);
+        if (!userPresence) return false;
+
+        if (socketId) {
+            userPresence.sockets.delete(socketId);
+        }
+
+        // Only remove from presence list if no more sockets are watching this server
+        if (userPresence.sockets.size === 0 || !socketId) {
             serverPresence.delete(userId);
             if (serverPresence.size === 0) {
                 this.presence.delete(serverId);
             }
+            return true; // Actually left
         }
+
+        return false; // Still present via other sockets
     }
 
     /**
-     * Update user's active view (e.g., switching from Console to Files).
+     * Update user's active view.
      */
     updateView(serverId: string, userId: string, activeView: string) {
-        const entry = this.presence.get(serverId)?.get(userId);
-        if (entry) {
-            entry.activeView = activeView;
+        const userPresence = this.presence.get(serverId)?.get(userId);
+        if (userPresence) {
+            userPresence.entry.activeView = activeView;
         }
     }
 
     /**
-     * Get all present users for a server, filtered by minimum role if needed.
+     * Get all present users for a server.
      */
     getPresence(serverId: string, minRole?: UserRole): PresenceEntry[] {
         const serverPresence = this.presence.get(serverId);
         if (!serverPresence) return [];
 
-        const entries = Array.from(serverPresence.values());
+        const entries = Array.from(serverPresence.values()).map(p => p.entry);
         if (!minRole) return entries;
 
-        // Role hierarchy for filtering
-        const roleRank: Record<UserRole, number> = {
-            'VIEWER': 0,
-            'MANAGER': 1,
-            'ADMIN': 2,
-            'OWNER': 3
-        };
-
+        const roleRank: Record<UserRole, number> = { 'VIEWER': 0, 'MANAGER': 1, 'ADMIN': 2, 'OWNER': 3 };
         const minRank = roleRank[minRole] ?? 0;
         return entries.filter(e => roleRank[e.role] >= minRank);
     }
 
     /**
      * Clean up all presence entries for a disconnected socket.
-     * Returns the list of serverIds affected so we can push updates.
      */
     disconnectSocket(socketId: string): string[] {
         const mappings = this.socketMap.get(socketId);
@@ -91,8 +110,8 @@ class PresenceTracker {
 
         const affectedServers: string[] = [];
         for (const { serverId, userId } of mappings) {
-            this.leave(serverId, userId);
-            if (!affectedServers.includes(serverId)) {
+            const actuallyLeft = this.leave(serverId, userId, socketId);
+            if (actuallyLeft && !affectedServers.includes(serverId)) {
                 affectedServers.push(serverId);
             }
         }
