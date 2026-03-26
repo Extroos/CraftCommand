@@ -252,7 +252,8 @@ export const JavaVersionRule: DiagnosisRule = {
         /UnsupportedClassVersionError/i,
         /unsupported.*java/i,
         /compiled by a more recent version/i,
-        /java \d+ is required/i
+        /java \d+ is required/i,
+        /class file version/i
     ],
     tier: 1,
     defaultConfidence: 95,
@@ -301,10 +302,10 @@ export const JavaVersionRule: DiagnosisRule = {
 
         // Reactive: Refine requirements from logs if present
         const javaLogContent = logs.join('\n').toLowerCase();
-        if (javaLogContent.includes('class file version 61.0')) requiredJava = 'Java 17';
-        if (javaLogContent.includes('class file version 65.0')) requiredJava = 'Java 21';
-        if (javaLogContent.includes('class file version 66.0')) requiredJava = 'Java 22';
-        if (javaLogContent.includes('class file version 60.0')) requiredJava = 'Java 16';
+        if (javaLogContent.includes('class file version 66.0')) { requiredJava = 'Java 22'; minVersion = 22; }
+        else if (javaLogContent.includes('class file version 65.0')) { requiredJava = 'Java 21'; minVersion = 21; }
+        else if (javaLogContent.includes('class file version 61.0')) { requiredJava = 'Java 17'; minVersion = 17; }
+        else if (javaLogContent.includes('class file version 60.0')) { requiredJava = 'Java 16'; minVersion = 16; }
         
         const isWarningOnly = javaLogContent.includes('unsupported java version') && !javaLogContent.includes('unsupportedclassversionerror');
 

@@ -108,7 +108,7 @@ export class DiagnosisBrain {
             'insufficient_ram': ['memory_oom', 'tps_lag', 'cpu_exhaustion', 'watchdog_stunt', 'node_resource_starvation'],
             'memory_oom': ['tps_lag', 'watchdog_stunt'],
             'disk_space_full': ['data_integrity', 'world_corruption', 'telemetry_cleanup', 'bad_config', 'permission_denied', 'dynmap_storage_full'],
-            'java_version_unsupported': ['mod_dependency', 'plugin_incompatible', 'mixin_conflict', 'plugin_access_denied', 'java_binary_missing'],
+            'java_version': ['mod_dependency', 'plugin_incompatible', 'mixin_conflict', 'plugin_access_denied', 'java_binary_missing'],
             'java_binary_missing': ['startup_failure', 'process_exit_immediate'],
             'missing_jar': ['java_version', 'bad_config', 'startup_failure'],
             'invalid_ip': ['network_offline', 'port_binding_failed'],
