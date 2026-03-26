@@ -1,62 +1,96 @@
 import chokidar from 'chokidar';
 import { EventEmitter } from 'events';
 import path from 'path';
+import fs from 'fs-extra';
+import { SERVERS_ROOT } from '../../constants';
 
+/**
+ * FileWatcherService (Professional Scale)
+ * Uses a single root watcher for the entire SERVERS_ROOT to prevent 
+ * file handle exhaustion. Dispatches events to subscribers based on path.
+ */
 export class FileWatcherService extends EventEmitter {
-    private watchers: Map<string, chokidar.FSWatcher> = new Map();
+    private rootWatcher: chokidar.FSWatcher | null = null;
+    private watchedServers: Set<string> = new Set();
 
-    watchServer(serverId: string, directory: string) {
-        if (this.watchers.has(serverId)) {
-            this.watchers.get(serverId)?.close();
-        }
+    constructor() {
+        super();
+        this.initRootWatcher();
+    }
 
-        console.log(`[FileWatcher] Starting watch for server ${serverId}: ${directory}`);
+    private initRootWatcher() {
+        if (this.rootWatcher) return;
+
+        console.log(`[FileWatcher] Initializing Single-Root Watcher for: ${SERVERS_ROOT}`);
         
-        const watcher = chokidar.watch(directory, {
+        fs.ensureDirSync(SERVERS_ROOT);
+
+        this.rootWatcher = chokidar.watch(SERVERS_ROOT, {
             ignored: [
-                /(^|[\/\\])\../, // ignore dotfiles
-                '**/world/**',   // ignore world folder for performance
-                '**/logs/**',    // ignore logs if you have a separate logger
-                'node_modules',
-                'temp_uploads',
-                'backups'
+                /(^|[\/\\])\../,     // ignore dotfiles
+                '**/world/**',        // ignore world folder (heavy)
+                '**/logs/**',         // ignore logs (handled by streamer)
+                '**/node_modules/**',
+                '**/backups/**',
+                '**/temp_uploads/**'
             ],
             persistent: true,
             ignoreInitial: true,
-            depth: 3
+            depth: 3 // Enough for core config files
         });
 
-        watcher
-            .on('add', path => this.emitChange(serverId, 'add', path))
-            .on('change', path => this.emitChange(serverId, 'change', path))
-            .on('unlink', path => this.emitChange(serverId, 'unlink', path))
-            .on('addDir', path => this.emitChange(serverId, 'addDir', path))
-            .on('unlinkDir', path => this.emitChange(serverId, 'unlinkDir', path));
-
-        this.watchers.set(serverId, watcher);
-    }
-
-    private emitChange(serverId: string, event: string, filePath: string) {
-        const relativePath = path.basename(filePath);
-        this.emit('fileChange', {
-            serverId,
-            event,
-            path: filePath,
-            name: relativePath
+        this.rootWatcher
+            .on('add', p => this.handleEvent('add', p))
+            .on('change', p => this.handleEvent('change', p))
+            .on('unlink', p => this.handleEvent('unlink', p))
+            .on('addDir', p => this.handleEvent('addDir', p))
+            .on('unlinkDir', p => this.handleEvent('unlinkDir', p));
+        
+        this.rootWatcher.on('error', (err) => {
+            console.error(`[FileWatcher] Root watcher error:`, err);
         });
     }
 
-    unwatchServer(serverId: string) {
-        if (this.watchers.has(serverId)) {
-            this.watchers.get(serverId)?.close();
-            this.watchers.delete(serverId);
+    private handleEvent(event: string, filePath: string) {
+        // Path structure: SERVERS_ROOT/serverId/filename.ext
+        const relative = path.relative(SERVERS_ROOT, filePath);
+        const parts = relative.split(path.sep);
+        
+        if (parts.length >= 2) {
+            const serverId = parts[0];
+            const fileName = parts.slice(1).join('/');
+
+            // Only emit if this server is actually supposed to be "watched" 
+            // (e.g. if we want to support on-demand watching in the future)
+            if (this.watchedServers.has(serverId)) {
+                this.emit('fileChange', {
+                    serverId,
+                    event,
+                    path: filePath,
+                    name: fileName
+                });
+            }
         }
     }
 
+    /**
+     * Mark a server as "active" for watching. 
+     * In Single-Root mode, this just enables event dispatching for this ID.
+     */
+    watchServer(serverId: string, directory?: string) {
+        this.watchedServers.add(serverId);
+        // console.log(`[FileWatcher] Dispatching enabled for ${serverId}`);
+    }
+
+    unwatchServer(serverId: string) {
+        this.watchedServers.delete(serverId);
+    }
+
     shutdown() {
-        console.log('[FileWatcher] Closing all file watchers...');
-        this.watchers.forEach(watcher => watcher.close());
-        this.watchers.clear();
+        console.log('[FileWatcher] Shutting down root watcher...');
+        this.rootWatcher?.close();
+        this.rootWatcher = null;
+        this.watchedServers.clear();
     }
 }
 

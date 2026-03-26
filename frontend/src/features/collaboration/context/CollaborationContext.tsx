@@ -37,16 +37,20 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
     const lastServerId = useRef<string | null>(null);
     const typingTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
 
-    // 1. Auto join global room for global team chat/activity
-    useEffect(() => {
-        if (user) {
-            socketService.joinServer('global', 'dashboard');
-        } else {
-            socketService.leaveServer('global');
+    // 2. Room re-joiner on reconnection
+    const handleReconnect = useCallback(() => {
+        if (!user) return;
+        
+        // Always rejoin global for Team Panel
+        socketService.joinServer('global', 'dashboard');
+        
+        // Rejoin specific server if applicable
+        if (lastServerId.current) {
+            socketService.joinServer(lastServerId.current, 'dashboard');
         }
     }, [user]);
 
-    // 2. Dynamically join specific server room for logs/status/stats
+    // 3. Dynamically join specific server room for logs/status/stats
     useEffect(() => {
         if (!user) return;
         
@@ -80,11 +84,24 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
         // --- Activity: single new event ---
         const unsubActivity = socketService.onActivityNew((event: ActivityEvent) => {
             setActivities(prev => {
-                const existing = prev[event.serverId] || [];
-                // Deduplicate by id
-                if (existing.some(e => e.id === event.id)) return prev;
-                const updated = [event, ...existing].slice(0, 100);
-                return { ...prev, [event.serverId]: updated };
+                const targetServerId = event.serverId || 'global';
+                const updated = { ...prev };
+
+                // 1. Update the specific server list
+                const existing = updated[targetServerId] || [];
+                if (!existing.some(e => e.id === event.id)) {
+                    updated[targetServerId] = [event, ...existing].slice(0, 100);
+                }
+
+                // 2. Aggregate into 'global' bucket if not already there
+                if (targetServerId !== 'global') {
+                    const globalExisting = updated['global'] || [];
+                    if (!globalExisting.some(e => e.id === event.id)) {
+                        updated['global'] = [event, ...globalExisting].slice(0, 200);
+                    }
+                }
+
+                return updated;
             });
         });
 
@@ -162,13 +179,13 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
         });
 
         // --- Reconnection Resilience ---
-        const handleReconnect = () => {
-            if (lastServerId.current) {
-                socketService.joinServer(lastServerId.current, 'dashboard');
-            }
-        };
         socketService.socket.on('reconnect', handleReconnect);
-        socketService.socket.on('connect', handleReconnect); // Also handle initial connect/manual reconnection
+        socketService.socket.on('connect', handleReconnect); 
+
+        // 4. Initial Join (Explicitly after listeners recorded)
+        if (user) {
+            handleReconnect();
+        }
 
         return () => {
             unsubPresence();
@@ -182,10 +199,10 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
             socketService.socket.off('chat:history');
             socketService.socket.off('activity:history');
         };
-    }, []); // Register ONCE — no dependency on currentServer
+    }, [user, handleReconnect]); // Register ONCE — but depends on user for initial join
 
     const sendChat = useCallback((serverId: string, content: string) => {
-        socketService.sendChatMessage('global', content);
+        socketService.sendChatMessage('global', content); // Prioritize global core
     }, []);
 
     const sendTyping = useCallback((serverId: string) => {
@@ -193,7 +210,9 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
     }, []);
 
     const updateActiveView = useCallback((serverId: string, view: string) => {
-        socketService.updateView('global', view);
+        // Enforce global scope for presence but include serverId if available
+        const finalView = serverId && serverId !== 'global' ? `${serverId}::${view}` : view;
+        socketService.updateView('global', finalView);
     }, []);
 
     return (

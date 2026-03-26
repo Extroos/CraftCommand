@@ -103,6 +103,7 @@ const COMMANDS = [
     { cmd: 'clear', desc: 'Clear local chat', hasArg: false },
     { cmd: 'w', desc: 'Private whisper', hasArg: true },
     { cmd: 'status', desc: 'Host system metrics', hasArg: false },
+    { cmd: 'nuke-chat', desc: 'Clear global chat history (Admin)', hasArg: false },
 ];
 
 const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
@@ -125,7 +126,7 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
     const inputRef = useRef<HTMLInputElement>(null);
     const lastTypingEmit = useRef(0);
 
-    const id = 'global';
+    const id = 'global'; // Core is global as per user feedback
     const messages = chatMessages[id] || [];
 
     // Helper: jump to a user's current server
@@ -160,7 +161,7 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
         }
     }, [messages.length, isOpen, activeTab]);
 
-    // Track unread messages
+    // Track unread messages & Mentions
     useEffect(() => {
         const lastMsg = messages[messages.length - 1];
         if (!lastMsg) return;
@@ -168,9 +169,18 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
         // Skip if it's our own message
         if (lastMsg.userId === user?.id) return;
         
-        // Skip if it's a system message
-        if (lastMsg.type === 'system') return;
+        // --- Mention Notification ---
+        const isMentioned = user?.username && new RegExp(`@${user.username}\\b`, 'i').test(lastMsg.content);
+        if (isMentioned) {
+            addToast('info', 'Team Mention', `${lastMsg.username} mentioned you in chat.`);
+            // Mention Sound Integration (v1.12.5)
+            try {
+                const audio = new Audio('/assets/sounds/mention.mp3');
+                audio.play().catch(() => {}); // Browser may block auto-play
+            } catch (e) {}
+        }
 
+        // --- Unread Logic ---
         // If panel is closed OR user is on another tab, increment unread
         const isViewingChat = isOpen && activeTab === 'chat';
         if (!isViewingChat) {
@@ -334,8 +344,16 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                 case 'w':
                     sendChat(id, cmdString);
                     break;
+                case 'nuke-chat': {
+                    if (user?.role !== 'OWNER' && user?.role !== 'ADMIN') {
+                        addToast('error', 'Permission Denied', 'Only Owners or Admins can nuke the chat.');
+                        return;
+                    }
+                    sendChat(id, '/nuke-chat');
+                    break;
+                }
                 case 'status': {
-                    addToast('info', 'System Stats', 'Fetching host metrics...');
+                    addToast('info', 'System Stats', 'Broadcasting host metrics to the team...');
                     try {
                         const stats = await API.getSystemStats();
                         const cpu = stats.cpu + '%';
@@ -343,18 +361,8 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                         const memTotal = stats.memory.total;
                         const mem = (memBytes / 1024 / 1024 / 1024).toFixed(1) + 'GB / ' + (memTotal / 1024 / 1024 / 1024).toFixed(1) + 'GB';
                         
-                        const sysMsg: ChatMessage = {
-                            id: `local-${Date.now()}`,
-                            serverId: id,
-                            userId: 'system',
-                            username: 'Host System',
-                            role: 'OWNER',
-                            content: `📊 **System Status**\n**CPU:** ${cpu}\n**RAM:** ${mem}`,
-                            timestamp: Date.now(),
-                            type: 'system'
-                        };
-                        setLocalMessages(prev => [...prev, sysMsg]);
-                        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+                        // Send as a real chat message so the whole team sees it
+                        sendChat(id, `📊 **System Status**\n**CPU:** ${cpu}\n**RAM:** ${mem}`);
                     } catch (e: any) {
                         addToast('error', 'Status Failed', e.message);
                     }
@@ -635,6 +643,11 @@ const OperatorChat: React.FC<{ serverId?: string }> = ({ serverId }) => {
                                                         <span className="text-[10px] font-bold text-foreground">{event.username}</span>
                                                         <span className="text-[10px] text-muted-foreground truncate">{event.detail}</span>
                                                     </div>
+                                                    {id === 'global' && event.serverId && event.serverId !== 'global' && (
+                                                        <div className="text-[8px] text-primary/60 font-medium uppercase tracking-tighter">
+                                                            {servers.find(s => s.id === event.serverId)?.name || event.serverId}
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <span className="text-[8px] text-muted-foreground/30 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     {timeAgo(event.timestamp)}

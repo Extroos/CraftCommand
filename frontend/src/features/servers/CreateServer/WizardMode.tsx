@@ -43,6 +43,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
             templateId: t.id,
             software: t.type,
             version: t.version,
+            usePurpur: false,
             ram: Math.max(prev.ram, Math.ceil((t.recommendedRam || 4096) / 1024)),
         }));
         // setStep('details'); // REMOVED: No more instant jump

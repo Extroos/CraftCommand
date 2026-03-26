@@ -2,14 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.12.5] - 2026-03-25
-### Stability & Resilience Update
-- **Security**: Hardened 2FA recovery codes with 128-bit entropy (increased from 32-bit).
-- **Performance**: Fixed a critical busy-wait loop in `NativeRunner.ts` by implementing a Promise-based mutex for system snapshots, significantly reducing CPU idle overhead.
-- **Stability**: Enhanced SQLite migration logic with atomic state markers and automatic JSON-based data backups for fail-safe schema updates.
-- **Architecture**: Introduced `shared/utils/BackupUtils.ts` to centralize world detection and integrity hashing, deduplicating logic across Backend and Hub Agent.
-- **Reliability**: Resolved missing cloud backup dependencies in the Hub Agent and standardized backup restoration exclusion logic.
-- **Infrastructure**: Updated batch runner and environment configurations for synchronized v1.12.5 deployment.
+## [1.12.5] - 2026-03-26
+
+### The "Perfect" Stability & Modernization Release (Minecraft 2026 & Core Architecture)
+
+This landmark update stabilizes the entire Craft-Commands ecosystem, from the core process engine to the frontend creation wizard, ensuring the platform is ready for the 2026 versioning standard and enterprise-scale deployments.
+
+#### 1. Core Engine & Architectural Stabilization
+
+- **Enterprise-Scale Process Tracking**: Overhauled the process monitor to use **Linear Post-Order Traversal** ($O(N)$). Process metrics for 1,000+ servers are now calculated in a single pass, eliminating the $O(N^2)$ CPU spikes seen in previous versions.
+- **Reverse-Buffer Log Tailing**: Implemented a 64KB reverse-reading log buffer. This makes log analysis $O(1)$ relative to file size, preventing memory exhaustion even with 100MB+ log files.
+- **Single-Root File Watching**: Optimized the File Manager to use a single-root watcher for the entire `SERVERS_ROOT`, drastically reducing OS file handle consumption.
+
+* **Persistent Deployment Tracking**: Introduced `DeploymentProgressOverlay` for real-time, multi-route installation monitoring.
+* **Team Panel & Collaboration Fabric**:
+  - **Persistent High-Fidelity History**: Implemented `ChatRepository` and `ActivityRepository` (SQLite/JSON) to ensure global team communication and system activity survive panel restarts.
+  - **Unified Activity Engine**: Refactored the core event fabric to aggregate cross-node activities into a single "Team Panel" feed with server-aware context.
+  - **Rich Presence 2.0**: Enhanced the `PresenceTracker` to broadcast granular user actions (e.g., "Editing server.properties in Local-Node-1").
+  - **Administrative Command Center**: Integrated `/nuke-chat` for history management and upgraded `/status` for global metric broadcasting.
+  - **Team synchronization**: Integrated audio notifications for `@mentions` and "Jump to User" capabilities for real-time coordination.
+
+- **High-Performance Log Batching**: Introduced a 50ms windowed batching protocol for log streams, reducing Socket.io overhead and ensuring smooth UI performance during high-traffic events.
+
+#### 2. Heuristic Diagnosis & Intelligence Engine
+
+- **4-Tier Intelligence Pipeline**: Organizes analysis into Infrastructure (T1), Configuration (T2), and Runtime (T3) layers for surgical accuracy.
+- **Causality Suppression**: Integrated root-cause logic that suppresses misleading secondary errors (e.g., "Java Mismatch") when a foundational issue (e.g., "Missing JAR") is the true culprit.
+- **Lifecycle-Aware Monitoring**: Introduced `hasStarted` guards and proactive filesystem checks that prevent false positives on brand-new or uninitialized servers.
+- **Self-Healing "Zombie Adoption"**: The Node Agent now automatically re-acquires and adopts orphaned server processes (Native & Docker) after a reboot or panel restart.
+
+#### 3. Network Fabric & Infrastructure
+
+- **Velocity "Modern" Forwarding**: Fully automated secret synchronization and `velocity.toml` regeneration for high-performance proxy networks.
+- **Docker Runtime Abstraction**: Unified the `IServerRunner` interface to manage Native processes and Docker containers with 100% feature parity.
+- **Secure Agent Handshake**: Hardened node enrollment with SHA-256 tokens and **Jitter Middleware** to thwart timing-based cryptographic attacks.
+- **NAT Traversal Integration**: Native support for **Playit.gg**, enabling zero-config remote access for nodes behind restrictive firewalls or home routers.
+
+#### 4. Minecraft 2026 & UI Excellence
+
+- **Dynamic Versioning Engine**: Replaced hardcoded lists with real-time fetching from official Mojang (Java) and community-maintained (Bedrock) manifests, with full support for the **26.x** standard.
+- **Pre-flight Installation Validation**: Proactive availability checks now catch "404 Not Found" errors on Paper/Purpur APIs _before_ download, offering intelligent fallbacks to Vanilla.
+- **Persistent Deployment Overlay**: Added a professional, non-intrusive tracking card in the bottom-left corner that follows the user across the entire application.
+- **UI Polishing**: Excised all "AI-generated" hints and bouncy animations in favor of a "Classic Professional" aesthetic across the Wizard and Pro config modes.
 
 ## [1.12.0] - 2026-03-20 - Operational Excellence Update (Cont.)
 
@@ -60,9 +94,9 @@ All notable changes to this project will be documented in this file.
 ### Improved
 
 - **Professional Dialog System Replaces Native Alerts**: Exterminated all 27 instances of native browser dialogs in favor of custom, sleek, and theme-aware React components:
-    - **Confirmations**: Replaced 19 `window.confirm()` calls across all core panels (Dashboard, Settings, Modpacks, Backups, File Manager) with `useConfirm()` and the animated `<ConfirmDialog>`.
-    - **Prompts**: Replaced `window.prompt()` in the 2FA security flow with `usePrompt()` and the secure `<PromptDialog>`.
-    - **Alerts**: Replaced brutalist `window.alert()` interrupts in the Server Creation wizard with non-blocking `addToast()` notifications.
+  - **Confirmations**: Replaced 19 `window.confirm()` calls across all core panels (Dashboard, Settings, Modpacks, Backups, File Manager) with `useConfirm()` and the animated `<ConfirmDialog>`.
+  - **Prompts**: Replaced `window.prompt()` in the 2FA security flow with `usePrompt()` and the secure `<PromptDialog>`.
+  - **Alerts**: Replaced brutalist `window.alert()` interrupts in the Server Creation wizard with non-blocking `addToast()` notifications.
 - **Proactive Pre-flight Diagnosis**: Integrated the diagnosis engine into `SafetyService` to block server startups if a known-bad configuration is detected, preventing predictable crash loops.
 - **Client-Side Mod Auto-Healing**: Enhanced `ClientOnlyModRule` to detect Fabric-specific environment mismatches and enable automated removal of culprit mods.
 - **Strict Modrinth Filtering**: The installer now strictly requests mod versions matching the server's exact Minecraft and Loader environment, eliminating "wrong version" installs.

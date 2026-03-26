@@ -10,7 +10,7 @@ export const BedrockExecutableRule: DiagnosisRule = {
     tier: 1,
     defaultConfidence: 100,
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
-        if (server.software !== 'Bedrock') return null;
+        if (server.software !== 'Bedrock' || !server.hasStarted) return null;
 
         const isWin = process.platform === 'win32';
         const exeName = isWin ? 'bedrock_server.exe' : 'bedrock_server';
@@ -87,7 +87,7 @@ export const BedrockJSONCorruptionRule: DiagnosisRule = {
     tier: 2,
     defaultConfidence: 100,
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
-        if (server.software !== 'Bedrock') return null;
+        if (server.software !== 'Bedrock' || !server.hasStarted) return null;
 
         const files = ['permissions.json', 'whitelist.json'];
 

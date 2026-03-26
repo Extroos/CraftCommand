@@ -29,8 +29,7 @@ async function testDiagnosisFlow() {
     logger.info('[Test] Created test server with rejected EULA.');
 
     // 2. Trigger Diagnosis
-    const env = { totalMemory: 16000, freeMemory: 8000, javaVersion: 'Java 17', cpu: 10 };
-    const results = await diagnosisService.diagnose(serverRepository.findById(serverId)!, [], env);
+    const results = await diagnosisService.diagnose(serverRepository.findById(serverId)!, []);
 
     logger.info(`[Test] Diagnosis complete. Found ${results.length} results.`);
 

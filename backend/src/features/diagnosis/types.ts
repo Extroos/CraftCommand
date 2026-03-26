@@ -3,15 +3,19 @@ export { ServerConfig, DiagnosisResult };
 import { CrashReport } from './CrashReportReader';
 
 export interface SystemStats {
-    totalMemory: number;
-    freeMemory: number;
-    javaVersion: string;
+    totalMemory?: number;
+    freeMemory?: number;
+    javaVersion?: string;
     // Runtime performance metrics
     cpu?: number;
+    cpuUsage?: number;
     memoryUsed?: number;
     memoryTotal?: number;
+    diskFree?: number;
+    diskTotal?: number;
     tps?: number;
     nodeStatus?: NodeStatus;
+    timestamp?: number;
 }
 
 export interface DiagnosisRule {

@@ -34,11 +34,14 @@ export const EulaRule: DiagnosisRule = {
     defaultConfidence: 100,
     isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
+        const hasLog = logs.some(l => l.includes('agree to the EULA'));
+        
         // EULA only applies to Java Edition servers — Bedrock and Velocity don't have eula.txt
         if (server.software === 'Bedrock' || server.software === 'Velocity') return null;
         if (server.status === ServerStatus.ONLINE) return null;
-
-        const hasLog = logs.some(l => l.includes('agree to the EULA'));
+        
+        // Suppression Logic: Skip if never started AND no explicit log trigger found
+        if (!server.hasStarted && !hasLog) return null;
         
         // Universal Check: Logs OR Direct Filesystem check
         const eulaPath = path.join(server.workingDirectory, 'eula.txt');
@@ -50,7 +53,8 @@ export const EulaRule: DiagnosisRule = {
             isAgreed = content.includes('eula=true');
         }
         
-        if (hasLog || !isAgreed) {
+        // Live-State Priority: If the file says true, ignore old error logs (v1.12.8)
+        if (!isAgreed) {
             return {
                 id: `eula-${server.id}-${Date.now()}`,
                 ruleId: 'eula_check',
@@ -78,8 +82,9 @@ export const MissingDirectoryRule: DiagnosisRule = {
     defaultConfidence: 100,
     triggers: [], // Run periodically/pre-flight
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
-        // Skip if still installing
-        if (server.status === 'INSTALLING') return null;
+        // Skip if online or never started
+        if (server.status === ServerStatus.ONLINE) return null;
+        if (server.status === 'INSTALLING' || !server.hasStarted) return null;
 
         if (!await fs.pathExists(server.workingDirectory)) {
             return {
@@ -104,6 +109,9 @@ export const InsufficientRamRule: DiagnosisRule = {
     defaultConfidence: 100,
     triggers: [], // Run periodically/pre-flight
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
+        // Suppression Logic: Skip if never started AND not currently starting
+        if (!server.hasStarted && server.status !== 'STARTING') return null;
+
         const si = require('systeminformation');
         try {
             const mem = await si.mem();
@@ -158,9 +166,13 @@ export const PortConflictRule: DiagnosisRule = {
     defaultConfidence: 95,
     isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
-        // Universal Check: Logs OR Direct Network check
-        const hasError = logs.some(l => /FAILED TO BIND|Address already in use|BindException/i.test(l));
+        if (server.status === ServerStatus.ONLINE) return null;
         
+        const hasError = logs.some(l => /FAILED TO BIND|Address already in use|BindException/i.test(l));
+        // Suppression Logic: Skip if never started AND no explicit log trigger
+        if (!server.hasStarted && !hasError) return null;
+
+        // Universal Check: Logs OR Direct Network check
         let isPortBusy = false;
         let blockingProcessName: string | null = null;
 
@@ -172,71 +184,63 @@ export const PortConflictRule: DiagnosisRule = {
             }
         }
 
-        if (hasError || isPortBusy) {
-            // Context Awareness: Is another MANAGED server using this port?
+        // Live-State Priority: If the port is free NOW, ignore old bind logs (v1.12.8)
+        if (isPortBusy) {
             const { getServers } = require('../servers/ServerService');
-            const otherOnline = getServers().find((s: ServerConfig) => s.id !== server.id && s.port === server.port && (s.status === ServerStatus.ONLINE || s.status === ServerStatus.STARTING));
-
-            // Smart Identification
-            const isManagedConflict = !!otherOnline;
-            const isKillableGhost = !isManagedConflict && blockingProcessName && 
-                ['java', 'javaw', 'bedrock_server', 'server'].some(safe => blockingProcessName!.toLowerCase().includes(safe));
+            const allServers = getServers();
             
-            const isExternalApp = !isManagedConflict && !isKillableGhost;
+            // 1. Check for Managed Conflicts (Other servers in this panel)
+            const otherUsingPort = allServers.find((s: ServerConfig) => s.id !== server.id && s.port === server.port);
 
-            if (isExternalApp) {
-                 let nextPort = server.port + 1;
-                 try {
-                     const { NetUtils } = require('../../utils/NetUtils');
-                     while (await NetUtils.checkPort(nextPort) && nextPort < server.port + 10) {
-                         nextPort++;
-                     }
-                 } catch (e) {}
+            if (otherUsingPort) {
+                const isOtherOnline = otherUsingPort.status === ServerStatus.ONLINE || otherUsingPort.status === ServerStatus.STARTING;
+                return {
+                    id: `port-conflict-${server.id}-${Date.now()}`,
+                    ruleId: 'port_binding',
+                    severity: isOtherOnline ? 'CRITICAL' : 'WARNING',
+                    title: isOtherOnline ? 'Port Conflict (Online)' : 'Port Conflict (Offline)',
+                    explanation: isOtherOnline 
+                        ? `The port ${server.port} is already being used by an active server: ${otherUsingPort.name}.`
+                        : `The port ${server.port} is reserved for ${otherUsingPort.name}, which is currently offline. Starting this server may cause a conflict if both are online.`,
+                    recommendation: `Change the port of this server to an available value.`,
+                    action: {
+                        type: 'RESOLVE_PORT_CONFLICT',
+                        payload: { serverId: server.id, currentPort: server.port },
+                        autoHeal: false
+                    },
+                    timestamp: Date.now()
+                };
+            }
 
-                 return {
-                    id: `port-ext-${server.id}-${Date.now()}`,
+            // 2. Check for Ghost Processes (Managed software leaked into background)
+            const isKillableGhost = blockingProcessName && 
+                ['java', 'javaw', 'bedrock_server', 'server'].some(safe => blockingProcessName!.toLowerCase().includes(safe));
+
+            if (isKillableGhost) {
+                return {
+                    id: `port-ghost-${server.id}-${Date.now()}`,
                     ruleId: 'port_binding',
                     severity: 'CRITICAL',
-                    title: 'Port Conflict (External App)',
-                    explanation: `Port ${server.port} is blocked by an external application (${blockingProcessName || 'Unknown'}). We will not kill it to avoid data loss.`,
-                    recommendation: `Change the server port in Settings to an available port (e.g., ${nextPort}).`,
+                    title: 'Ghost Process Detected',
+                    explanation: `Port ${server.port} is blocked by a stray background Java process, likely from a previous crash.`,
+                    recommendation: 'We can safely purge this ghost process to start your server.',
                     action: {
-                        type: 'UPDATE_CONFIG',
-                        payload: { port: nextPort },
+                        type: 'PURGE_GHOST',
+                        payload: { serverId: server.id },
                         autoHeal: true
                     },
                     timestamp: Date.now()
                 };
             }
 
-            let nextPort = server.port + 1;
-            try {
-                const { NetUtils } = require('../../utils/NetUtils');
-                while (await NetUtils.checkPort(nextPort) && nextPort < server.port + 10) {
-                    nextPort++;
-                }
-            } catch (e) {}
-
+            // 3. External Application (e.g. Web server, other software)
             return {
-                id: `port-${server.id}-${Date.now()}`,
+                id: `port-ext-${server.id}-${Date.now()}`,
                 ruleId: 'port_binding',
                 severity: 'CRITICAL',
-                title: isManagedConflict ? 'Port Conflict Detected' : 'Ghost Process Detected',
-                explanation: isManagedConflict 
-                    ? `Port ${server.port} is already being used by ${otherOnline?.name || 'another process'}.`
-                    : `Port ${server.port} is blocked by a stray background Java process.`,
-                recommendation: isManagedConflict
-                    ? `Change the server port in Settings to resolve the conflict (we recommend port ${nextPort}).`
-                    : 'We can safely purge this ghost process to start your server.',
-                action: isManagedConflict ? {
-                    type: 'UPDATE_CONFIG',
-                    payload: { port: nextPort },
-                    autoHeal: true
-                } : {
-                    type: 'PURGE_GHOST', // Only offer purge if it's safe!
-                    payload: { serverId: server.id },
-                    autoHeal: true
-                },
+                title: 'Port Blocked (External App)',
+                explanation: `Port ${server.port} is being used by an external application (${blockingProcessName || 'Unknown'}).`,
+                recommendation: 'Stop the other application or use a different port for this server.',
                 timestamp: Date.now()
             };
         }
@@ -260,7 +264,7 @@ export const JavaVersionRule: DiagnosisRule = {
     isHealable: true,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
         if (server.software === 'Bedrock') return null;
-        if (server.status === ServerStatus.ONLINE) return null;
+        if (server.status === ServerStatus.ONLINE || !server.hasStarted) return null;
         const logContent = logs.join('\n').toLowerCase();
         const hasError = /unsupportedclassversionerror|compiled by a more recent version|unsupported java version|java \d+ is required/i.test(logContent);
         
@@ -399,8 +403,13 @@ export const MissingJarRule: DiagnosisRule = {
     defaultConfidence: 100,
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
         if (server.software === 'Bedrock') return null;
-        // Skip if still installing
+        
+        const hasLog = logs.some(l => l.includes('Error: Could not find or load main class') || l.includes('Error: Unable to access jarfile'));
+        if (server.status === ServerStatus.ONLINE) return null;
         if (server.status === 'INSTALLING') return null;
+        
+        // Suppression Logic: Skip if never started AND no explicit log trigger
+        if (!server.hasStarted && !hasLog) return null;
 
         // Universal Check: Logs OR Direct Filesystem check
         const logMatch = logs.some(l => /Unable to access jarfile/i.test(l));
@@ -466,6 +475,8 @@ export const BadConfigRule: DiagnosisRule = {
         
         // 1. Check for the trigger
         const hasBadConfigLog = logs.some(l => /Failed to load properties/i.test(l));
+        
+        if (hasBadConfigLog || (!server.hasStarted && !await fs.pathExists(configPath))) return null;
         
         if (hasBadConfigLog) {
             // 2. FALSE POSITIVE GUARD: Check if the server successfully started anyway
@@ -796,7 +807,7 @@ export const ForgeLibraryMissingRule: DiagnosisRule = {
     defaultConfidence: 95,
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
         const isModded = ['Forge', 'Fabric', 'NeoForge', 'Quilt'].includes(server.software);
-        if (!isModded || !server.workingDirectory) return null;
+        if (!isModded || !server.workingDirectory || !server.hasStarted) return null;
 
         const libsDir = path.join(server.workingDirectory, 'libraries');
         if (!(await fs.pathExists(libsDir))) {

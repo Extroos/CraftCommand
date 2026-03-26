@@ -27,6 +27,10 @@ export const JavaBinaryMissingRule: DiagnosisRule = {
         const hasLogMatch = logs.some(l => /java.io.IOException: Cannot run program/i.test(l) || /executable file not found/i.test(l) || /is not recognized as an internal or external command/i.test(l));
 
         if (hasLogMatch) {
+            // Live-State Priority: Check if the binary was downloaded/fixed since the last crash (v1.12.8)
+            const binaryExists = await fs.pathExists(absolutePath);
+            if (binaryExists) return null;
+
             return {
                 id: `java-miss-${server.id}-${Date.now()}`,
                 ruleId: 'java_binary_missing',
@@ -78,16 +82,21 @@ export const JavaVersionMismatchRule: DiagnosisRule = {
         }
 
         // 2. Proactive Version Logic
-        const mcMajor = parseInt(server.version.split('.')[1]);
+        const parts = server.version.split('.');
+        const mcMajor = parseInt(parts[0]);
+        const mcMinor = parseInt(parts[1] || '0');
+        const mcPatch = parseInt(parts[2] || '0');
         const javaNum = parseInt(server.javaVersion.replace(/\D/g, ''));
 
-        if (mcMajor >= 21 && javaNum < 21) {
+        const needsJava21 = mcMajor >= 26 || (mcMajor === 1 && (mcMinor > 20 || (mcMinor === 20 && mcPatch >= 5)));
+
+        if (needsJava21 && javaNum < 21) {
              return {
                 id: `java-proactive-${server.id}-${Date.now()}`,
                 ruleId: 'java_version_unsupported',
                 severity: 'WARNING',
-                title: 'Modern Minecraft (1.21+) requires Java 21',
-                explanation: `You are trying to run Minecraft ${server.version} with Java ${javaNum}. This will likely fail to start.`,
+                title: 'Modern Minecraft (1.20.6+/26.x) requires Java 21',
+                explanation: `You are trying to run Minecraft ${server.version} with Java ${javaNum}. This version requires Java 21+ and will likely fail to start.`,
                 recommendation: 'Switch to Java 21.',
                 action: {
                     type: 'SWITCH_JAVA',

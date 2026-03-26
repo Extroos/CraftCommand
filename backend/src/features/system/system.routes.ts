@@ -65,15 +65,31 @@ router.get('/java', verifyToken, async (req, res) => {
     res.json(versions);
 });
 
-// Bedrock Versions (Authenticated)
-router.get('/bedrock/versions', verifyToken, async (req, res) => {
+import { minecraftVersionService } from './MinecraftVersionService';
+
+// Minecraft Versions (Authenticated)
+router.get('/minecraft/versions', verifyToken, async (req, res) => {
     try {
-        const result = await installerService.fetchBedrockVersions();
+        const result = await minecraftVersionService.getGroupedVersions();
         res.json(result);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
+
+import { bedrockVersionService } from './BedrockVersionService';
+
+// Bedrock Versions (Authenticated)
+router.get('/bedrock/versions', verifyToken, async (req, res) => {
+    try {
+        const result = await bedrockVersionService.getVersions();
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Bedrock Versions (Authenticated)
 
 // ... Login / Audit ...
 

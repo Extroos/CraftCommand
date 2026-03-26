@@ -11,6 +11,8 @@ import { userRepository } from '../storage/UserRepository';
 import { systemSettingsService } from '../features/system/SystemSettingsService';
 import { javaManager } from '../features/processes/JavaManager';
 import { installerService } from '../features/installer/InstallerService';
+import { chatRepository } from '../storage/ChatRepository';
+import { activityRepository } from '../storage/ActivityRepository';
 import { lockingService } from './LockingService';
 
 export let io: Server;
@@ -42,34 +44,21 @@ const getCollabSettings = (serverId: string): CollabSettings => {
     };
 };
 
-// ===== In-Memory Chat History Buffer (per server, last 50 messages) =====
-const chatHistory: Map<string, ChatMessage[]> = new Map();
-const CHAT_HISTORY_LIMIT = 50;
-
-const pushChatHistory = (serverId: string, message: ChatMessage) => {
-    if (!chatHistory.has(serverId)) chatHistory.set(serverId, []);
-    const history = chatHistory.get(serverId)!;
-    history.push(message);
-    if (history.length > CHAT_HISTORY_LIMIT) history.shift();
-};
-
+// ===== Chat & Activity Persistence =====
+// Chat history is now managed by chatRepository
 const getChatHistory = (serverId: string): ChatMessage[] => {
-    return chatHistory.get(serverId) || [];
+    return chatRepository.getHistory(serverId);
 };
 
-// ===== In-Memory Activity Buffer (per server, last 30 events) =====
-const activityHistory: Map<string, ActivityEvent[]> = new Map();
-const ACTIVITY_HISTORY_LIMIT = 30;
-
+// Activity history is now managed by activityRepository
 const pushActivityHistory = (serverId: string, event: ActivityEvent) => {
-    if (!activityHistory.has(serverId)) activityHistory.set(serverId, []);
-    const history = activityHistory.get(serverId)!;
-    history.push(event);
-    if (history.length > ACTIVITY_HISTORY_LIMIT) history.shift();
+    activityRepository.create(event);
 };
 
 const getActivityHistory = (serverId: string): ActivityEvent[] => {
-    return activityHistory.get(serverId) || [];
+    // If global, show aggregated feed
+    if (serverId === 'global') return activityRepository.getGlobalHistory(50);
+    return activityRepository.getHistory(serverId, 30);
 };
 
 // ===== Rate Limiter (per user, max 5 messages per 3 seconds) =====
@@ -98,9 +87,15 @@ const sanitize = (content: string): string => {
 };
 
 // ===== Emit an activity event (persisted & broadcast) =====
-const emitActivity = (serverId: string, event: ActivityEvent) => {
+export const emitActivity = (event: ActivityEvent) => {
+    const serverId = event.serverId || 'global';
     pushActivityHistory(serverId, event);
     io.to(`server:${serverId}`).emit('activity:new', event);
+    
+    // Also broadcast to global room if it's a specific server event
+    if (serverId !== 'global') {
+        io.to('server:global').emit('activity:new', event);
+    }
 };
 
 const makeActivityId = () => `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -199,15 +194,11 @@ export const setupSocket = (socketIo: Server) => {
             
             // Send chat history to this client (catch-up for late joiners)
             const history = getChatHistory(serverId);
-            if (history.length > 0) {
-                socket.emit('chat:history', { serverId, messages: history });
-            }
+            socket.emit('chat:history', { serverId, messages: history });
 
             // Send activity history to this client
             const actHistory = getActivityHistory(serverId);
-            if (actHistory.length > 0) {
-                socket.emit('activity:history', { serverId, events: actHistory });
-            }
+            socket.emit('activity:history', { serverId, events: actHistory });
 
             // Broadcast updated presence to the ENTIRE room
             if (collab.presence.enabled) {
@@ -218,7 +209,7 @@ export const setupSocket = (socketIo: Server) => {
             }
 
             // Emit activity event: user joined
-            emitActivity(serverId, {
+            emitActivity({
                 id: makeActivityId(),
                 serverId,
                 userId: user.id,
@@ -249,7 +240,7 @@ export const setupSocket = (socketIo: Server) => {
                 });
             }
 
-            emitActivity(serverId, {
+            emitActivity({
                 id: makeActivityId(),
                 serverId,
                 userId: user.id,
@@ -342,8 +333,28 @@ export const setupSocket = (socketIo: Server) => {
                 type: isWhisper ? 'whisper' : 'message'
             };
 
+            if (content.trim().startsWith('/nuke-chat')) {
+                if (user.role !== 'OWNER' && user.role !== 'ADMIN') {
+                    socket.emit('collab:error', { message: 'Only Owners or Admins can nuke the chat.' });
+                    return;
+                }
+                chatRepository.saveAll([]);
+                io.emit('chat:history', { serverId: 'global', messages: [] });
+                io.emit('chat:message', {
+                    id: `system-${Date.now()}`,
+                    serverId: 'global',
+                    userId: 'system',
+                    username: 'System',
+                    role: 'OWNER',
+                    content: `🧨 Chat history has been cleared by ${user.username}.`,
+                    timestamp: Date.now(),
+                    type: 'system'
+                });
+                return;
+            }
+
             if (!isWhisper) {
-                pushChatHistory(serverId, message);
+                chatRepository.create(message);
                 io.to(`server:${serverId}`).emit('chat:message', message);
                 console.log(`[Chat] ${finalUser.username} → server:${serverId}: "${actualContent.trim().substring(0, 60)}"`);
             } else {
@@ -417,7 +428,7 @@ export const setupSocket = (socketIo: Server) => {
                     users: presenceTracker.getPresence(serverId)
                 });
 
-                emitActivity(serverId, {
+                emitActivity({
                     id: makeActivityId(),
                     serverId,
                     userId: user.id,

@@ -7,8 +7,14 @@ import { StorageProvider } from './StorageProvider';
 export class SqliteProvider<T extends { id: string }> implements StorageProvider<T> {
     private db: Database.Database;
     private tableName: string;
+    private syncTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
-    constructor(fileName: string, tableName: string = 'store', private migrationJsonPath?: string) {
+    constructor(
+        fileName: string, 
+        tableName: string = 'store', 
+        private migrationJsonPath?: string,
+        private isFragmented: boolean = false
+    ) {
         const dbPath = path.join(process.cwd(), 'data', fileName);
         fs.ensureDirSync(path.dirname(dbPath));
         this.db = new Database(dbPath);
@@ -25,46 +31,45 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
             )
         `);
 
-        // Migration logic: Atomicity and Safety (v1.12.0)
-        // Check if migration is needed (Table is empty AND migration JSON exists)
+        // Migration logic: Atomicity and Safety (v1.13.0: Fragmented aware)
         const count = this.db.prepare(`SELECT COUNT(*) as count FROM ${this.tableName}`).get() as { count: number };
         const jsonPath = this.migrationJsonPath ? path.join(process.cwd(), 'data', this.migrationJsonPath) : null;
+        const fragmentDir = jsonPath ? jsonPath.replace('.json', '') : null;
         
-        if (count.count === 0 && jsonPath && fs.existsSync(jsonPath)) {
-            const migrationMarker = `${jsonPath}.migrated`;
-            
-            // If the marker exists, we already migrated (or tried and failed in a way that needs manual intervention)
-            if (fs.existsSync(migrationMarker)) {
-                console.warn(`[SqliteProvider] Migration marker found for ${this.tableName}. Skipping auto-migration to prevent data cycles.`);
-                return;
-            }
+        // Migration triggers if DB is empty AND (monolithic JSON exists OR fragmented directory exists)
+        const hasMonolithic = jsonPath && fs.existsSync(jsonPath);
+        const hasFragments = this.isFragmented && fragmentDir && fs.existsSync(fragmentDir);
+
+        if (count.count === 0 && (hasMonolithic || hasFragments)) {
+            const migrationMarker = jsonPath ? `${jsonPath}.migrated` : null;
+            if (migrationMarker && fs.existsSync(migrationMarker)) return;
 
             try {
-                console.log(`[SqliteProvider] DATA SAFETY: Backing up ${this.migrationJsonPath} before migration...`);
-                fs.copySync(jsonPath, `${jsonPath}.bak`);
+                let items: any[] = [];
 
-                console.log(`[SqliteProvider] Migrating data from ${this.migrationJsonPath} to SQLite...`);
-                const jsonData = fs.readJSONSync(jsonPath);
-                
-                if (Array.isArray(jsonData) && jsonData.length > 0) {
+                if (hasMonolithic) {
+                    console.log(`[SqliteProvider] Migrating from monolithic ${this.migrationJsonPath}...`);
+                    const raw = fs.readJSONSync(jsonPath!);
+                    items = Array.isArray(raw) ? raw : [];
+                } else if (hasFragments) {
+                    console.log(`[SqliteProvider] Migrating from fragmented directory ${fragmentDir}...`);
+                    const files = fs.readdirSync(fragmentDir!).filter(f => f.endsWith('.json'));
+                    items = files.map(f => fs.readJSONSync(path.join(fragmentDir!, f)));
+                }
+
+                if (items.length > 0) {
                     const insert = this.db.prepare(`INSERT INTO ${this.tableName} (id, data) VALUES (?, ?)`);
-                    const tx = this.db.transaction((items: any[]) => {
-                        for (const item of items) insert.run(item.id, JSON.stringify(item));
+                    const tx = this.db.transaction((toMigrate: any[]) => {
+                        for (const item of toMigrate) insert.run(item.id, JSON.stringify(item));
                     });
-                    tx(jsonData);
-                    console.log(`[SqliteProvider] Migrated ${jsonData.length} items to SQLite.`);
-                    
-                    // Create marker to prevent repeat migrations
-                    fs.writeFileSync(migrationMarker, new Date().toISOString());
-                } else {
-                    console.log(`[SqliteProvider] No data in ${this.migrationJsonPath} to migrate.`);
+                    tx(items);
+                    console.log(`[SqliteProvider] Successfully migrated ${items.length} items to SQLite.`);
+                    if (migrationMarker) fs.writeFileSync(migrationMarker, new Date().toISOString());
                 }
             } catch (e: any) {
-                console.error(`[SqliteProvider] CRITICAL MIGRATION FAILURE for ${this.tableName}:`, e);
-                // We keep the backup (.bak) but DO NOT proceed to create a marker.
-                // Re-throw to prevent system from starting in a broken state if possible,
-                // or at least signal that the provider is unsafe.
-                throw new Error(`Migration to SQLite failed for ${this.tableName}: ${e.message}`);
+                console.error(`[SqliteProvider] CRITICAL MIGRATION FAILURE:`, e);
+                // Throwing ensures the system doesn't start with partial/corrupted data
+                throw new Error(`Migration to SQLite failed: ${e.message}`);
             }
         }
     }
@@ -107,7 +112,7 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
     create(item: T): T {
         const stmt = this.db.prepare(`INSERT INTO ${this.tableName} (id, data) VALUES (?, ?)`);
         stmt.run(item.id, JSON.stringify(item));
-        this.syncToJson(); // Maintain JSON sync for safe downgrade
+        this.syncToJson(item.id); // Maintain JSON sync for safe downgrade (optimized)
         return item;
     }
 
@@ -123,7 +128,7 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
         });
 
         const result = updateTx();
-        if (result) this.syncToJson(); // Maintain JSON sync
+        if (result) this.syncToJson(id); // Maintain JSON sync (optimized)
         return result;
     }
 
@@ -131,7 +136,7 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
         const stmt = this.db.prepare(`DELETE FROM ${this.tableName} WHERE id = ?`);
         const info = stmt.run(id);
         const success = info.changes > 0;
-        if (success) this.syncToJson();
+        if (success) this.syncToJson(id); // Optimized fragment removal
         return success;
     }
 
@@ -147,18 +152,39 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
     }
 
     /**
-     * Safe Downgrade Helper: Syncs the current SQL state back to JSON.
-     * This ensures that if the user toggles back to JSON mode, their data is intact.
+     * Safe Downgrade Helper: Syncs a single item or all items back to JSON.
+     * v1.13.0: Refactored to be asynchronous and fragmented-aware.
      */
-    private syncToJson() {
+    private async syncToJson(id?: string) {
         if (!this.migrationJsonPath) return;
-        
-        try {
-            const data = this.findAll();
-            const fullPath = path.join(process.cwd(), 'data', this.migrationJsonPath);
-            fs.writeJSONSync(fullPath, data, { spaces: 2 });
-        } catch (e) {
-            console.error(`[SqliteProvider] Background JSON sync failed for ${this.tableName}:`, e);
-        }
+
+        // Debounce per-item or global
+        const key = id || 'GLOBAL_SYNC';
+        if (this.syncTimeouts.has(key)) return;
+
+        const timeout = setTimeout(async () => {
+            this.syncTimeouts.delete(key);
+            try {
+                const jsonPath = path.join(process.cwd(), 'data', this.migrationJsonPath!);
+                
+                if (this.isFragmented && id) {
+                    // Optimized path: Sync only one fragment
+                    const item = this.findById(id);
+                    if (item) {
+                        const fragmentPath = path.join(jsonPath.replace('.json', ''), `${id}.json`);
+                        await fs.ensureDir(path.dirname(fragmentPath));
+                        await fs.writeJSON(fragmentPath, item, { spaces: 2 });
+                    }
+                } else {
+                    // Full sync (Used for saveAll() or non-fragmented mode)
+                    const data = this.findAll();
+                    await fs.writeJSON(jsonPath, data, { spaces: 2 });
+                }
+            } catch (e) {
+                console.error(`[SqliteProvider] Async sync failed for ${key}:`, e);
+            }
+        }, 100); // 100ms debounce for high-frequency updates
+
+        this.syncTimeouts.set(key, timeout);
     }
 }

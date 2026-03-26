@@ -266,19 +266,25 @@ export class JavaManager extends EventEmitter {
      * Smart Heuristic: Get recommended Java Major Version for a specific Minecraft Version
      */
     getRecommendedJavaVersion(minecraftVersion: string): 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21' {
-        if (!minecraftVersion) return 'Java 21'; // Default modern
+        if (!minecraftVersion) return 'Java 21'; 
 
-        if (minecraftVersion.startsWith('1.20') || minecraftVersion.startsWith('1.21')) {
-            return 'Java 21';
-        } else if (minecraftVersion.startsWith('1.18') || minecraftVersion.startsWith('1.19') || minecraftVersion.startsWith('1.17')) {
-            return 'Java 17';
-        } else if (minecraftVersion.startsWith('1.16')) {
-            return 'Java 11';
-        } else if (minecraftVersion.startsWith('1.8') || minecraftVersion.startsWith('1.12')) {
-            return 'Java 8';
+        const parts = minecraftVersion.split('.');
+        const major = parseInt(parts[0]);
+        const minor = parseInt(parts[1] || '0');
+        const patch = parseInt(parts[2] || '0');
+
+        // Mojang switched to 26.x in 2026
+        if (major >= 26) return 'Java 21';
+
+        // Legacy 1.x logic
+        if (major === 1) {
+            if (minor > 20 || (minor === 20 && patch >= 5)) return 'Java 21';
+            if (minor >= 17) return 'Java 17';
+            if (minor >= 16) return 'Java 11';
+            if (minor >= 8) return 'Java 8';
         }
 
-        return 'Java 21'; // Fallback
+        return 'Java 21'; // Fallback for modern or unknown
     }
 
     /**

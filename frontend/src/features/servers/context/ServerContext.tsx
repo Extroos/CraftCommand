@@ -199,15 +199,19 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             
             pollIdRef.current++;
             const currentPollId = pollIdRef.current;
-            const pollStartTime = Date.now(); // Capture start time to prevent staleness overwrites
+            const pollStartTime = Date.now();
 
-            // Poll ALL servers in parallel
-            const results = await Promise.allSettled(currentServers.map(async (server) => {
+            // Optimization: Poll the CURRENT server every cycle, others every 5 cycles (10s)
+            const isFullPoll = currentPollId % 5 === 0;
+            const targetServers = currentServers.filter(s => 
+                isFullPoll || s.id === currentServerRef.current?.id || s.status !== ServerStatus.OFFLINE
+            );
+
+            const results = await Promise.allSettled(targetServers.map(async (server) => {
                 try {
                     const queryStats = await API.getServerStatus(server.id);
                     const isOnline = queryStats.online || false;
 
-                    // Step 2: Poll intensive stats ONLY for servers that are actually Online
                     let procStats = null;
                     if (isOnline) {
                         procStats = await API.getServerStats(server.id);
@@ -215,25 +219,20 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                     return { serverId: server.id, queryStats, procStats, isOnline };
                 } catch (err) {
-                    return { serverId: server.id, error: true, status: server.status };
+                    return { serverId: server.id, error: true };
                 }
             }));
 
-            // If a newer poll already started, discard these results to prevent "time travel" bugs
             if (currentPollId !== pollIdRef.current) return;
 
             results.forEach((res, index) => {
-                const server = currentServers[index];
+                const server = targetServers[index];
                 if (res.status === 'fulfilled') {
                     const { queryStats, procStats, isOnline, error } = res.value;
-
                     if (error || !queryStats) return;
 
                     setStats(prev => {
                         const current = prev[server.id] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0, lastUpdate: 0 };
-                        
-                        // STALENESS GUARD: If we received a fresher WebSocket update AFTER this poll was initiated, 
-                        // ignore the poll result for this specific server to avoid flickering.
                         if (current.lastUpdate > pollStartTime) return prev;
 
                         const newStats = { 
@@ -241,8 +240,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             isRealOnline: isOnline, 
                             latency: queryStats.latency || 0, 
                             players: queryStats.players || 0,
-                            diagnosis: procStats?.diagnosis || queryStats?.diagnosis || [], // Support diagnosis from both endpoints
-                            lastUpdate: Date.now() // Polling update
+                            diagnosis: procStats?.diagnosis || queryStats?.diagnosis || [],
+                            lastUpdate: Date.now()
                         };
                         
                         if (procStats) {
@@ -251,27 +250,17 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             newStats.uptime = procStats.uptime || 0;
                             newStats.tps = queryStats.tps || '20.0';
                             newStats.pid = procStats.pid || 0;
-                        } else if (!isOnline && server.status === ServerStatus.OFFLINE) {
-                             newStats.isRealOnline = false;
                         }
 
                         if (JSON.stringify(current) === JSON.stringify(newStats)) return prev;
                         return { ...prev, [server.id]: newStats };
                     });
 
-                    // HEARTBEAT RECOVERY: If we see it's online but status is stuck in a transition state, fix it!
                     if (isOnline && (server.status === ServerStatus.STARTING || server.status === ServerStatus.RESTARTING)) {
                         updateServerStatus(server.id, ServerStatus.ONLINE);
                     }
-                    
-                    // STUCK STATUS RECOVERY: If we see it's offline but status is stuck in STOPPING, fix it!
                     if (!isOnline && server.status === ServerStatus.STOPPING) {
                         updateServerStatus(server.id, ServerStatus.OFFLINE);
-                    }
-                } else {
-                    // On error, if the server is offline in DB, ensure UI reflects not-real-online
-                    if (server.status === ServerStatus.OFFLINE) {
-                        setStats(prev => prev[server.id]?.isRealOnline ? { ...prev, [server.id]: { ...prev[server.id], isRealOnline: false } } : prev);
                     }
                 }
             });

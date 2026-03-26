@@ -198,6 +198,17 @@ class ApiService {
     async getBedrockVersions(): Promise<{ latest: string, versions: string[] }> {
         return this.get('/system/bedrock/versions');
     }
+
+    async getMinecraftVersions(): Promise<{ 
+        latest: string, 
+        latestSnapshot: string, 
+        releases: string[], 
+        snapshots: string[],
+        beta: string[],
+        alpha: string[]
+    }> {
+        return this.get(`/system/minecraft/versions`);
+    }
     
     async getSystemStats(): Promise<any> {
         return this.get('/system/stats');

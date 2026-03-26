@@ -335,7 +335,9 @@ async function searchHangar(query: PluginSearchQuery): Promise<PluginSearchResul
         category: project.category || 'General',
         platforms: ['paper', 'purpur'],
         latestVersion: project.lastUpdated || 'Unknown',
-        latestGameVersions: [],
+        latestGameVersions: (project.promotedVersions || []).flatMap((pv: any) => 
+            (pv.tags || []).filter((t: any) => t.name).map((t: any) => t.name)
+        ),
         externalUrl: `https://hangar.papermc.io/${project.namespace?.owner}/${project.namespace?.slug}`,
         updatedAt: new Date(project.lastUpdated).getTime() || 0,
     }));

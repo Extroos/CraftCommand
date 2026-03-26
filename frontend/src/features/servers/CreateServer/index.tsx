@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Check, Box, Layers, Loader2, Zap, Package, Sparkles, MonitorPlay, Info, Settings2, Activity, Terminal, AlertTriangle, Plus, Minus, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Check, Box, Layers, Loader2, Zap, Package, Sparkles, MonitorPlay, Info, Settings2, Activity, Terminal, AlertTriangle, Search, Plus, Minus, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API } from '@core/services/api';
 import { useServers } from '@features/servers/context/ServerContext';
@@ -69,19 +69,91 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
         latest: '1.26.1.1',
         versions: ['1.26.1.1']
     });
+    const [javaVersions, setJavaVersions] = useState<{ 
+        latest: string, 
+        releases: string[], 
+        snapshots: string[],
+        beta: string[],
+        alpha: string[]
+    }>({
+        latest: '1.21.11',
+        releases: [],
+        snapshots: [],
+        beta: [],
+        alpha: []
+    });
+    const [versionSearch, setVersionSearch] = useState('');
+    const [showSnapshots, setShowSnapshots] = useState(false);
+    const [showClassic, setShowClassic] = useState(false);
 
-    // Load Bedrock Versions
     useEffect(() => {
-        const loadBedrock = async () => {
+        const loadVersions = async () => {
             try {
-                const res = await API.getBedrockVersions();
-                setBedrockVersions(res);
+                const [bedrock, java] = await Promise.all([
+                    API.getBedrockVersions(),
+                    API.getMinecraftVersions() 
+                ]);
+                
+                if (bedrock && bedrock.versions && bedrock.versions.length > 0) {
+                    setBedrockVersions(bedrock);
+                    if (formData.software === 'Bedrock' && !formData.version) {
+                        setFormData(prev => ({ ...prev, version: bedrock.latest }));
+                    }
+                }
+                
+                if (java && java.releases && java.releases.length > 0) {
+                    setJavaVersions(java);
+                    if (formData.software !== 'Bedrock' && !formData.version) {
+                        setFormData(prev => ({ ...prev, version: java.latest }));
+                    }
+                } else {
+                    // Fallback to minimal hardcoded versions if API fails or returns empty
+                    setJavaVersions({
+                        latest: '1.21.11',
+                        releases: ['1.21.11', '1.20.1', '1.19.4', '1.18.2', '1.17.1', '1.16.5', '1.12.2', '1.8.9'],
+                        snapshots: [],
+                        beta: [],
+                        alpha: []
+                    });
+                }
             } catch (e) {
-                console.error('Failed to load Bedrock versions', e);
+                console.error('Failed to load versions', e);
+                // Fallback on error
+                setJavaVersions(prev => ({
+                    ...prev,
+                    releases: ['1.21.11', '1.20.1', '1.19.4', '1.16.5', '1.8.9']
+                }));
             }
         };
-        loadBedrock();
+        loadVersions();
     }, []);
+
+    const filterVersions = (list: string[]) => {
+        if (!versionSearch) return list;
+        return list.filter(v => v.toLowerCase().includes(versionSearch.toLowerCase()));
+    };
+
+    const modernReleases = filterVersions(javaVersions.releases.filter(v => {
+        if (!v || !v.includes('.')) return false;
+        const parts = v.split('.');
+        const major = parseInt(parts[0]);
+        const minor = parseInt(parts[1]);
+        
+        // If it's 1.20+, OR if it's 2.x, 26.x, etc. it's modern
+        return major > 1 || (major === 1 && minor >= 20);
+    }));
+    const legacyReleases = filterVersions(javaVersions.releases.filter(v => {
+        if (!v || !v.includes('.')) return false;
+        const parts = v.split('.');
+        const major = parseInt(parts[0]);
+        const minor = parseInt(parts[1]);
+        
+        // Anything below 1.20 is legacy
+        return major === 1 && minor < 20;
+    }));
+    const snapshotsList = filterVersions(javaVersions.snapshots);
+    const betaList = filterVersions(javaVersions.beta);
+    const alphaList = filterVersions(javaVersions.alpha);
 
 
     // Load Templates
@@ -131,8 +203,41 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
         }));
     };
 
+    // Auto-Port Effect
+    useEffect(() => {
+        const fetchNextPort = async () => {
+            try {
+                const basePort = formData.software === 'Bedrock' ? 19132 : 25565;
+                const { port } = await API.get(`/servers/next-port?base=${basePort}`);
+                setFormData(prev => ({ ...prev, port }));
+            } catch (e) {
+                console.error('Failed to fetch next available port', e);
+            }
+        };
+        
+        // Only fetch on initial load or if software category drastically changes
+        if (formData.name === '') { // Simple heuristic for "fresh" form
+             fetchNextPort();
+        }
+    }, [formData.software === 'Bedrock']);
+
+    // Conflict Detection Logic
+    const { servers } = useServers();
+    const portConflictServer = useMemo(() => {
+        return servers.find(s => Number(s.port) === Number(formData.port));
+    }, [formData.port, servers]);
+
     const recommendedJava = getRecommendedJavaForVersion(formData.version, formData.software);
     const showJavaWarning = formData.javaVersion !== recommendedJava;
+
+    // Detect if the version is "Very New" (Mojang listed it, but Paper/Purpur might not have builds yet)
+    const isVeryNewVersion = useMemo(() => {
+        if (capabilities.softwareCategory === 'BEDROCK') return false;
+        if (formData.software === 'Vanilla') return false;
+        
+        // If it's the absolute latest version from Mojang, it's considered "Very New"
+        return formData.version === javaVersions.latest;
+    }, [formData.version, formData.software, javaVersions.latest, capabilities.softwareCategory]);
 
     const handleDeploy = async () => {
         // Validation: EULA is only required for Game Servers (Mojang EULA)
@@ -412,52 +517,123 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                             </div>
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Software Version</label>
-                             <select 
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Software Version</label>
+                            
+                            {capabilities.softwareCategory !== 'BEDROCK' && (
+                                <div className="flex flex-col gap-2 px-1 mb-2">
+                                    <div className="relative">
+                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" size={12} />
+                                        <input 
+                                            type="text"
+                                            placeholder="Search versions (e.g. 1.8.9)"
+                                            value={versionSearch}
+                                            onChange={e => setVersionSearch(e.target.value)}
+                                            className="w-full bg-zinc-900/50 border border-border/50 rounded-md py-1.5 pl-7 pr-2 text-[10px] outline-none focus:border-primary/50 text-foreground"
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-1.5">
+                                            <label className="relative inline-flex items-center cursor-pointer scale-75 origin-left">
+                                                <input type="checkbox" className="sr-only peer" checked={showSnapshots} onChange={e => setShowSnapshots(e.target.checked)} />
+                                                <div className="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
+                                            </label>
+                                            <span className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-widest">Snapshots</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <label className="relative inline-flex items-center cursor-pointer scale-75 origin-left">
+                                                <input type="checkbox" className="sr-only peer" checked={showClassic} onChange={e => setShowClassic(e.target.checked)} />
+                                                <div className="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                                            </label>
+                                            <span className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-widest">Classic</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <select 
                                 value={formData.version}
                                 onChange={e => handleVersionChange(e.target.value)}
                                 className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 outline-none text-xs text-foreground font-medium cursor-pointer appearance-none hover:bg-muted/60 transition-colors"
                             >
-                                {capabilities.softwareCategory === 'BEDROCK' ? (
-                                    <optgroup label="Bedrock Stable">
-                                        {bedrockVersions.versions.map(v => (
-                                            <option key={v} value={v}>{v} {v === bedrockVersions.latest ? '(Latest)' : ''}</option>
-                                        ))}
-                                    </optgroup>
+                                {javaVersions.releases.length === 0 && capabilities.softwareCategory !== 'BEDROCK' ? (
+                                    <option>Loading Minecraft versions...</option>
                                 ) : (
                                     <>
-                                    <optgroup label="Modern">
-                                        <option value="1.21.11">1.21.11 (Latest)</option>
-                                        <option value="1.21.10">1.21.10</option>
-                                        <option value="1.21.9">1.21.9</option>
-                                        <option value="1.21.8">1.21.8</option>
-                                        <option value="1.21.7">1.21.7</option>
-                                        <option value="1.21.6">1.21.6</option>
-                                        <option value="1.21.5">1.21.5</option>
-                                        <option value="1.21.4">1.21.4</option>
-                                        <option value="1.21.3">1.21.3</option>
-                                        <option value="1.21.2">1.21.2</option>
-                                        <option value="1.21.1">1.21.1</option>
-                                        <option value="1.21">1.21</option>
-                                        <option value="1.20.6">1.20.6</option>
-                                        <option value="1.20.4">1.20.4</option>
-                                        <option value="1.20.1">1.20.1</option>
-                                    </optgroup>
-                                    <optgroup label="Legacy">
-                                        <option value="1.19.4">1.19.4</option>
-                                        <option value="1.19.2">1.19.2</option>
-                                        <option value="1.18.2">1.18.2</option>
-                                        <option value="1.17.1">1.17.1</option>
-                                        <option value="1.16.5">1.16.5</option>
-                                        <option value="1.12.2">1.12.2</option>
-                                        <option value="1.8.9">1.8.9</option>
-                                        <option value="1.8.8">1.8.8</option>
-                                        <option value="1.7.10">1.7.10</option>
-                                    </optgroup>
+                                        {capabilities.softwareCategory === 'BEDROCK' ? (
+                                            <optgroup label="Bedrock Stable">
+                                                {bedrockVersions.versions.map(v => (
+                                                    <option key={v} value={v}>{v} {v === bedrockVersions.latest ? '(Latest)' : ''}</option>
+                                                ))}
+                                            </optgroup>
+                                        ) : (
+                                            <>
+                                                {/* Primary Filtered Groups */}
+                                                {modernReleases.length > 0 && (
+                                                    <optgroup label="Modern (1.20+)">
+                                                        {modernReleases.map(v => (
+                                                            <option key={v} value={v}>{v} {v === javaVersions.latest ? '(Latest)' : ''}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                                
+                                                {legacyReleases.length > 0 && (
+                                                    <optgroup label="Legacy (<1.20)">
+                                                        {legacyReleases.map(v => (
+                                                            <option key={v} value={v}>{v}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+
+                                                {/* Fallback if filtering logic (X.Y.Z) failed but we have data */}
+                                                {modernReleases.length === 0 && legacyReleases.length === 0 && javaVersions.releases.length > 0 && (
+                                                    <optgroup label="All Releases">
+                                                        {filterVersions(javaVersions.releases).map(v => (
+                                                            <option key={v} value={v}>{v}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+
+                                                {/* Snapshots & Classic Expansion */}
+                                                {(showSnapshots || versionSearch) && snapshotsList.length > 0 && (
+                                                    <optgroup label="Snapshots">
+                                                        {snapshotsList.map(v => (
+                                                            <option key={v} value={v}>{v}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+
+                                                {(showClassic || versionSearch) && (
+                                                    <>
+                                                        {betaList.length > 0 && (
+                                                            <optgroup label="Beta (Classic)">
+                                                                {betaList.map(v => (
+                                                                    <option key={v} value={v}>{v}</option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
+                                                        {alphaList.length > 0 && (
+                                                            <optgroup label="Alpha (Classic)">
+                                                                {alphaList.map(v => (
+                                                                    <option key={v} value={v}>{v}</option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </>
+                                        )}
                                     </>
                                 )}
                             </select>
-                            {formData.templateId && <p className="text-[10px] text-emerald-400 flex items-center gap-1"><Sparkles size={10} /> Template Selected (Change version to customize)</p>}
+                            {isVeryNewVersion && (
+                                <div className="mt-2 flex items-start gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[10px] text-blue-300 leading-relaxed font-medium">
+                                    <Info size={14} className="shrink-0 text-blue-400 mt-0.5" />
+                                    <div>
+                                        <span className="font-bold text-blue-200 uppercase tracking-tight">Version Status: Very Recent</span>
+                                        <p className="opacity-80">Minecraft {formData.version} was just released. {formData.software} builds might not be available yet. If installation fails, try <strong>Vanilla</strong> or a slightly older version.</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                          {/* Java Version Selector with smart warning */}
@@ -513,6 +689,12 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                         </button>
                                     </div>
                                 </div>
+                                {portConflictServer && (
+                                    <div className="mt-1 flex items-start gap-1.5 p-2 rounded-md bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400 font-bold uppercase tracking-tight">
+                                        <AlertTriangle size={12} className="shrink-0 pt-0.5" />
+                                        <span>Warning: Port {formData.port} is already reserved for "{portConflictServer.name}" ({portConflictServer.status}).</span>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-1.5">

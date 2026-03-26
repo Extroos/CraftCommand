@@ -16,6 +16,7 @@ import { DATA_DIR, SERVERS_ROOT } from '../../constants';
 import { randomUUID } from 'crypto';
 
 const operationLocks = new Set<string>();
+const lastDiagnosisResults = new Map<string, { results: any[], time: number, status: ServerStatus }>();
 
 const acquireLock = (serverId: string, operation: string) => {
     if (operationLocks.has(serverId)) {
@@ -28,6 +29,15 @@ const acquireLock = (serverId: string, operation: string) => {
 const releaseLock = (serverId: string) => {
     operationLocks.delete(serverId);
     logger.info(`[Lock] Released for ${serverId}`);
+};
+
+/**
+ * Forcefully clears the diagnosis cache for a specific server (v1.12.7)
+ * Use this after applying a fix or before a critical state change.
+ */
+export const invalidateDiagnosisCache = (serverId: string) => {
+    lastDiagnosisResults.delete(serverId);
+    logger.debug(`[ServerService:${serverId}] Diagnosis cache invalidated.`);
 };
 
 // Ensure initialization
@@ -357,6 +367,10 @@ export const startServer = async (id: string, force: boolean = false) => {
         return { success: true, alreadyRunning: true };
     }
 
+    // Clear stale diagnosis before boot to ensure fresh pre-flight checks
+    invalidateDiagnosisCache(id);
+    diagnosisService.clearResolved(id);
+
     acquireLock(id, 'START');
 
     try {
@@ -371,6 +385,12 @@ export const startServer = async (id: string, force: boolean = false) => {
 
         logger.info(`[ServerService] Orchestrating startup for ${server.name} via StartupManager...`);
         
+        // Mark as started immediately to enable diagnosis for this boot attempt
+        if (!server.hasStarted) {
+            server.hasStarted = true;
+            serverRepository.update(id, server);
+        }
+
         await startupManager.startServer(server, (updatedServer) => {
             serverRepository.update(updatedServer.id, updatedServer);
         }, force);
@@ -385,6 +405,7 @@ export const startServer = async (id: string, force: boolean = false) => {
 };
 
 export const stopServer = async (id: string, force: boolean = false) => {
+    diagnosisService.clearResolved(id);
     if (!processManager.isRunning(id)) {
         logger.info(`[ServerService] Stop requested for server ${id} but it is not running.`);
         
@@ -412,15 +433,30 @@ export const stopServer = async (id: string, force: boolean = false) => {
 
 
 
-export const diagnoseServer = async (id: string) => {
+export const diagnoseServer = async (id: string, force = false) => {
     const server = getServer(id);
     if (!server) throw new Error('Server not found');
 
+    const now = Date.now();
+    const last = lastDiagnosisResults.get(id);
+    const statusChanged = !last || last.status !== server.status;
+    const isErrorState = last?.results.some(r => r.severity === 'CRITICAL');
+    
+    // Throttling Logic (v1.12.5)
+    // 1. Always scan if status changed (e.g. OFFLINE -> STARTING)
+    // 2. Always scan if forced
+    // 3. Scan every 1 minute if previously in error state (proactive recovery check)
+    // 4. Scan every 10 minutes if stable and healthy
+    const throttleTime = isErrorState ? 60000 : 600000;
+    const shouldSkip = !force && !statusChanged && last && (now - last.time < throttleTime);
+
+    if (shouldSkip) {
+        return last.results;
+    }
+
     // 1. Get Logs
-    // Using in-memory LogBuffer from ProcessManager (Cyclic buffer of last 1000 lines)
     let recentLogs = processManager.getLogs(id) || []; 
     
-    // Fallback exactly like the logs endpoint:
     if (recentLogs.length === 0) {
         const logPath = server.logLocation 
             ? path.resolve(server.workingDirectory, server.logLocation)
@@ -429,22 +465,27 @@ export const diagnoseServer = async (id: string) => {
         if (await fs.pathExists(logPath)) {
             try {
                 const { LogUtils } = require('../../utils/LogUtils');
-                recentLogs = await LogUtils.readLastLines(logPath, 500);
+                // Check if file is likely binary (first few bytes) before reading to avoid TS1490 error spam
+                const buffer = Buffer.alloc(4);
+                const fd = await fs.open(logPath, 'r');
+                await fs.read(fd, buffer, 0, 4, 0);
+                await fs.close(fd);
+                
+                const isBinary = buffer.some(b => b === 0);
+                if (!isBinary) {
+                    recentLogs = await LogUtils.readLastLines(logPath, 500);
+                }
             } catch (e) {
-                console.warn(`[Diagnosis] Failed to read fallback logs for ${id}:`, e);
+                // Silent fail for binary/missing logs to prevent console spam
             }
         }
     }
 
-    // 2. Get System Stats
     const stats = await systemService.getSystemStats();
+    const results = await diagnosisService.diagnose(server, recentLogs);
 
-    // 3. Run Diagnosis
-    return diagnosisService.diagnose(server, recentLogs, {
-        totalMemory: stats.mem.total,
-        freeMemory: stats.mem.free,
-        javaVersion: server.javaVersion || 'unknown'
-    });
+    lastDiagnosisResults.set(id, { results, time: now, status: server.status as ServerStatus });
+    return results;
 };
 
 // --- Connectivity & Networking Extensions (Phase 108) ---
@@ -459,22 +500,39 @@ const generateRandomPassword = (length: number = 16) => {
     return pass;
 };
 
-/** Finds a random available port between 10000 and 30000 */
-const findAvailablePort = async (min = 10000, max = 30000): Promise<number> => {
+/** Finds the next available port starting from a base value */
+export const getNextAvailablePort = (startPort: number): number => {
     const servers = getServers();
     const usedPorts = new Set<number>();
     
     // Collect all primary and additional ports
     servers.forEach(s => {
-        if (s.port) usedPorts.add(s.port);
-        s.additionalPorts?.forEach(ap => usedPorts.add(ap.port));
+        if (s.port) usedPorts.add(Number(s.port));
+        s.additionalPorts?.forEach(ap => usedPorts.add(Number(ap.port)));
     });
 
-    for (let i = 0; i < 50; i++) { // 50 attempts
+    let port = startPort;
+    while (usedPorts.has(port)) {
+        port++;
+    }
+    return port;
+};
+
+/** Finds a random available port between 10000 and 30000 */
+const findAvailablePort = async (min = 10000, max = 30000): Promise<number> => {
+    const servers = getServers();
+    const usedPorts = new Set<number>();
+    
+    servers.forEach(s => {
+        if (s.port) usedPorts.add(Number(s.port));
+        s.additionalPorts?.forEach(ap => usedPorts.add(Number(ap.port)));
+    });
+
+    for (let i = 0; i < 50; i++) {
         const p = Math.floor(Math.random() * (max - min + 1)) + min;
         if (!usedPorts.has(p)) return p;
     }
-    throw new Error('Could not find an available port after 50 attempts.');
+    return getNextAvailablePort(min);
 };
 
 export const resetSftpPassword = async (id: string) => {

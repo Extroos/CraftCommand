@@ -31,6 +31,7 @@ import { MapManager } from './features/servers/MapManager';
 import { DatabaseManager } from './features/servers/DatabaseManager';
 import { SubuserManager } from './features/servers/SubuserManager';
 import StatusPage from './features/servers/StatusPage';
+import DeploymentProgressOverlay from './features/servers/CreateServer/DeploymentProgressOverlay';
 
 import { TabView, ServerConfig } from '@shared/types';
 import { ToastProvider } from './features/ui/Toast';
@@ -323,6 +324,7 @@ const AppContent: React.FC = () => {
                         <Route path="/" element={<Navigate to={isAuthenticated ? "/servers" : "/login"} />} />
                         <Route path="*" element={<Navigate to="/" />} />
                     </Routes>
+                    <DeploymentProgressOverlay />
                 </div>
             </div>
         </MotionConfig>

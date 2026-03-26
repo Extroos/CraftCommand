@@ -38,8 +38,6 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState<MarketplacePlugin[]>([]);
     const [isSearching, setIsSearching] = useState(false);
-    const [activeCategory, setActiveCategory] = useState('All');
-    const [activeSource, setActiveSource] = useState<PluginSource | ''>('');
     const [totalResults, setTotalResults] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     
@@ -56,6 +54,12 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
     const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    
+    // Advanced filtering & sorting
+    const [filterCompatible, setFilterCompatible] = useState(true);
+    const [activeCategory, setActiveCategory] = useState('All');
+    const [activeSource, setActiveSource] = useState<PluginSource | ''>('');
+    const [sortMode, setSortMode] = useState<'downloads' | 'updated' | 'name' | 'rating'>('downloads');
     
     const searchTimeoutRef = useRef<number | null>(null);
 
@@ -101,9 +105,10 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
                 query: searchTerm,
                 category: activeCategory !== 'All' ? activeCategory : undefined,
                 source: activeSource || undefined,
+                gameVersion: filterCompatible ? currentServer?.version : undefined,
                 page,
                 limit: 20,
-                sort: 'downloads',
+                sort: sortMode,
             };
             const result = await API.searchPlugins(query, serverId);
             setSearchResults(result.plugins);
@@ -115,7 +120,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
         } finally {
             setIsSearching(false);
         }
-    }, [searchTerm, activeCategory, activeSource, serverId]);
+    }, [searchTerm, activeCategory, activeSource, filterCompatible, sortMode, currentServer?.version, serverId]);
 
     // Debounced search when filters change
     useEffect(() => {
@@ -123,7 +128,7 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
         if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
         searchTimeoutRef.current = window.setTimeout(() => { doSearch(1); }, 400);
         return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
-    }, [searchTerm, activeCategory, activeSource, activeTab, doSearch]);
+    }, [searchTerm, activeCategory, activeSource, filterCompatible, sortMode, activeTab, doSearch]);
 
     // --- Check updates ---
     const checkUpdates = useCallback(async () => {
@@ -343,153 +348,226 @@ const PluginManager: React.FC<PluginManagerProps> = ({ serverId }) => {
             {/* ===== MARKETPLACE TAB ===== */}
             {activeTab === 'marketplace' && (
                 <div className="flex flex-col gap-4 flex-1 min-h-0">
-                    {/* Search + Filter bar */}
-                    <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-                        <div className="flex flex-col md:flex-row gap-3">
-                            <div className="relative flex-1">
-                                <Search className="absolute left-3 top-2.5 text-muted-foreground h-4 w-4" />
+                    {/* Search + Filter bar (Premium Glass Re-design) */}
+                    <div className="bg-card/40 backdrop-blur-xl border border-border/50 rounded-2xl p-5 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-700">
+                        <div className="flex flex-col xl:flex-row gap-4">
+                            <div className="relative flex-1 group">
+                                <Search className="absolute left-3.5 top-3 text-muted-foreground group-focus-within:text-primary transition-colors h-4.5 w-4.5" />
                                 <input 
                                     type="text" 
-                                    placeholder="Search plugins and mods..." 
+                                    placeholder="Discover plugins, mods, and add-ons..." 
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full bg-secondary/50 border border-border rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 transition-all"
+                                    className="w-full bg-secondary/30 border border-border/50 rounded-xl pl-10 pr-10 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 transition-all shadow-inner"
                                 />
                                 {searchTerm && (
-                                    <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors">
-                                        <X size={14} />
+                                    <button onClick={() => setSearchTerm('')} className="absolute right-3.5 top-3 text-muted-foreground hover:text-foreground transition-colors mr-1">
+                                        <X size={16} />
                                     </button>
                                 )}
                             </div>
-                            <div className="relative">
-                                <select 
-                                    value={activeSource}
-                                    onChange={(e) => setActiveSource(e.target.value as PluginSource | '')}
-                                    className="appearance-none bg-secondary/50 border border-border rounded-lg px-4 py-2 pr-8 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40"
-                                >
-                                    {sources.map(s => (
-                                        <option key={s.value} value={s.value}>{s.label}</option>
-                                    ))}
-                                </select>
-                                <ChevronDown className="absolute right-2.5 top-2.5 text-muted-foreground h-4 w-4 pointer-events-none" />
+                            
+                            <div className="flex flex-wrap items-center gap-3">
+                                {/* Source Selector */}
+                                <div className="relative group">
+                                    <select 
+                                        value={activeSource}
+                                        onChange={(e) => setActiveSource(e.target.value as PluginSource | '')}
+                                        className="appearance-none bg-secondary/30 border border-border/50 rounded-xl px-4 py-2.5 pr-10 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 hover:bg-secondary/50 transition-all font-medium"
+                                    >
+                                        {sources.map(s => (
+                                            <option key={s.value} value={s.value}>{s.label}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-3 text-muted-foreground h-4 w-4 pointer-events-none group-hover:text-primary transition-colors" />
+                                </div>
+
+                                {/* Sort Selector */}
+                                <div className="relative group">
+                                    <select 
+                                        value={sortMode}
+                                        onChange={(e) => setSortMode(e.target.value as any)}
+                                        className="appearance-none bg-secondary/30 border border-border/50 rounded-xl px-4 py-2.5 pr-10 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 hover:bg-secondary/50 transition-all font-medium"
+                                    >
+                                        <option value="downloads">Most Downloaded</option>
+                                        <option value="rating">Top Rated</option>
+                                        <option value="updated">Recently Updated</option>
+                                        <option value="name">A-Z Name</option>
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-3 text-muted-foreground h-4 w-4 pointer-events-none group-hover:text-primary transition-colors" />
+                                </div>
+
+                                {/* Compatibility Toggle */}
+                                <label className="flex items-center gap-2 px-4 py-2 bg-secondary/30 border border-border/50 rounded-xl cursor-pointer hover:bg-secondary/50 transition-all group active:scale-95">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 rounded border-border/50 bg-transparent text-primary focus:ring-0 focus:ring-offset-0"
+                                        checked={filterCompatible}
+                                        onChange={(e) => setFilterCompatible(e.target.checked)}
+                                    />
+                                    <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+                                        Only {currentServer?.version || 'Compatible'}
+                                    </span>
+                                </label>
                             </div>
                         </div>
 
-                        {/* Category chips */}
-                        <div className="flex gap-2 mt-3 flex-wrap">
-                            {categories.map(cat => (
-                                <button
-                                    key={cat}
-                                    onClick={() => setActiveCategory(cat)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                                        activeCategory === cat 
-                                            ? 'bg-primary text-primary-foreground shadow-sm' 
-                                            : 'bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground'
-                                    }`}
-                                >
-                                    {cat}
-                                </button>
-                            ))}
+                        {/* Category chips (Enhanced) */}
+                        <div className="flex gap-2 mt-4 flex-wrap">
+                            {categories.map(cat => {
+                                const isActive = activeCategory === cat;
+                                return (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setActiveCategory(cat)}
+                                        className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                                            isActive 
+                                                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105' 
+                                                : 'bg-secondary/40 text-muted-foreground hover:bg-secondary hover:text-foreground border border-transparent hover:border-border/30'
+                                        }`}
+                                    >
+                                        {cat}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 
-                    {/* Results */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    {/* Results (Premium Grid) */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar px-1">
                         {isSearching ? (
-                            <div className="flex items-center justify-center py-20">
-                                <Loader2 className="animate-spin text-primary" size={32} />
+                            <div className="flex flex-col items-center justify-center py-24 gap-4 animate-pulse">
+                                <Loader2 className="animate-spin text-primary/60" size={48} />
+                                <p className="text-sm font-medium text-muted-foreground tracking-widest uppercase">Indexing Marketplace...</p>
                             </div>
                         ) : searchResults.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                                <ShoppingBag size={48} className="mb-4 opacity-30" />
-                                <p className="text-lg font-medium">No plugins found</p>
-                                <p className="text-sm">Try a different search term or filter</p>
+                            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground animate-in fade-in zoom-in duration-500">
+                                <ShoppingBag size={64} className="mb-4 opacity-10" />
+                                <p className="text-xl font-bold text-foreground/80">End of the line</p>
+                                <p className="text-sm opacity-60">No plugins match your current filters</p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                {searchResults.map(plugin => {
-                                    const installed = isAlreadyInstalled(plugin.sourceId);
-                                    const installing = pendingActions.has(plugin.sourceId);
-                                    const isCompatible = !currentServer?.version || (plugin.latestGameVersions && plugin.latestGameVersions.some(v => currentServer.version.startsWith(v)));
-                                    return (
-                                        <div 
-                                            key={`${plugin.source}-${plugin.sourceId}`}
-                                            className="bg-card border border-border rounded-xl p-4 flex flex-col hover:border-primary/30 transition-all group"
-                                        >
-                                            <div className="flex items-start gap-3 mb-3">
-                                                {plugin.iconUrl ? (
-                                                    <img src={plugin.iconUrl} alt="" className="w-10 h-10 rounded-lg object-cover bg-secondary flex-shrink-0" />
-                                                ) : (
-                                                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
-                                                        {plugin.name.charAt(0)}
-                                                    </div>
-                                                )}
-                                                <div className="flex-1 min-w-0">
-                                                    <h3 className="font-semibold text-sm text-foreground truncate">{plugin.name}</h3>
-                                                    <p className="text-[11px] text-muted-foreground">by {plugin.author}</p>
-                                                </div>
-                                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-secondary text-muted-foreground uppercase flex-shrink-0">
-                                                    {plugin.source}
-                                                </span>
-                                            </div>
-                                            
-                                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3 flex-1">{plugin.description}</p>
-                                            
-                                            <div className="flex items-center justify-between pt-3 border-t border-border/50">
-                                                <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                                                    <span className="flex items-center gap-1">
-                                                        <Download size={11} />
-                                                        {plugin.downloads >= 1000000 
-                                                            ? `${(plugin.downloads / 1000000).toFixed(1)}M` 
-                                                            : plugin.downloads >= 1000 
-                                                            ? `${(plugin.downloads / 1000).toFixed(0)}K` 
-                                                            : plugin.downloads}
-                                                    </span>
-                                                    <span className="flex items-center gap-1">
-                                                        v{plugin.latestVersion}
-                                                        {!isCompatible && (
-                                                            <span title={`May be incompatible. Server runs ${currentServer?.version}, plugin supports: ${plugin.latestGameVersions?.join(', ') || 'Unknown'}`}>
-                                                                <AlertTriangle size={12} className="text-amber-500" />
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    {plugin.externalUrl && (
-                                                        <a 
-                                                            href={plugin.externalUrl} 
-                                                            target="_blank" 
-                                                            rel="noopener noreferrer" 
-                                                            className="text-muted-foreground hover:text-foreground transition-colors"
+                            <>
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 pb-8">
+                                    {searchResults.map((plugin, idx) => {
+                                        const installed = installedPlugins.some(p => p.sourceId === plugin.sourceId);
+                                        const installing = pendingActions.has(plugin.sourceId);
+                                        const isCompatible = !currentServer?.version || (plugin.latestGameVersions && plugin.latestGameVersions.some(v => currentServer.version.startsWith(v)));
+                                        
+                                        return (
+                                            <div 
+                                                key={`${plugin.source}-${plugin.sourceId}`}
+                                                style={{ animationDelay: `${idx * 40}ms` }}
+                                                className="group relative bg-card/40 backdrop-blur-md border border-border/40 rounded-2xl p-5 flex flex-col hover:border-primary/40 hover:shadow-2xl hover:shadow-primary/5 transition-all duration-300 animate-in fade-in slide-in-from-bottom-4 min-h-[190px]"
+                                            >
+                                                {/* Status Badge (Top Right Stabilization) */}
+                                                <div className="absolute top-4 right-4 z-10">
+                                                    {!isCompatible ? (
+                                                        <span 
+                                                            className="flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 uppercase tracking-widest cursor-help transition-all hover:bg-amber-500/20"
+                                                            title={`Mismatch! Supported versions: ${plugin.latestGameVersions?.join(', ') || 'Unknown'}`}
                                                         >
-                                                            <ExternalLink size={13} />
-                                                        </a>
+                                                            <AlertTriangle size={10} /> Legacy
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 uppercase tracking-widest transition-all hover:bg-emerald-500/20">
+                                                            Compatible
+                                                        </span>
                                                     )}
-                                                    <button
-                                                        onClick={() => handleInstall(plugin)}
-                                                        disabled={installed || installing || !can('server.plugins.manage', serverId)}
-                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                                                            installed 
-                                                                ? 'bg-emerald-500/10 text-emerald-400 cursor-default' 
-                                                                : installing 
-                                                                ? 'bg-primary/20 text-primary cursor-wait' 
-                                                                : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow-md'
-                                                        }`}
-                                                    >
-                                                        {installed ? (
-                                                            <><Check size={12} /> Installed</>
-                                                        ) : installing ? (
-                                                            <><Loader2 size={12} className="animate-spin" /> Installing...</>
-                                                        ) : (
-                                                            <><Download size={12} /> Install</>
+                                                </div>
+
+                                                <div className="flex items-start gap-4 mb-4">
+                                                    {plugin.iconUrl ? (
+                                                        <div className="relative flex-shrink-0">
+                                                            <img src={plugin.iconUrl} alt="" className="w-12 h-12 rounded-xl object-cover bg-secondary p-1 shadow-sm ring-1 ring-border/50" />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 via-primary/10 to-transparent flex items-center justify-center text-primary font-black text-lg flex-shrink-0 border border-primary/10 shadow-inner">
+                                                            {plugin.name.charAt(0)}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex-1 min-w-0 pr-16">
+                                                        <div className="flex items-center gap-2 mb-0.5">
+                                                            <h3 className="font-bold text-sm text-foreground truncate group-hover:text-primary transition-colors">{plugin.name}</h3>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <p className="text-[11px] font-medium text-muted-foreground/70 italic truncate">by {plugin.author}</p>
+                                                            <span className="text-[8px] font-black px-1 py-0.5 rounded bg-secondary/80 text-muted-foreground uppercase tracking-tighter border border-border/50">
+                                                                {plugin.source}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <p className="text-[12px] text-muted-foreground/80 leading-relaxed line-clamp-2 mb-5 flex-1 h-9 overflow-hidden">{plugin.description}</p>
+                                                
+                                                <div className="flex items-center justify-between pt-4 border-t border-border/30">
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground/60 tracking-wider">
+                                                            <span className="flex items-center gap-1 bg-secondary/30 px-2 py-0.5 rounded-full ring-1 ring-border/30">
+                                                                <Download size={10} className="text-primary" />
+                                                                {plugin.downloads >= 1000000 
+                                                                    ? `${(plugin.downloads / 1000000).toFixed(1)}M` 
+                                                                    : plugin.downloads >= 1000 
+                                                                    ? `${(plugin.downloads / 1000).toFixed(0)}K` 
+                                                                    : plugin.downloads}
+                                                            </span>
+                                                            <span className="opacity-40">|</span>
+                                                            <span className="font-mono opacity-80">v{plugin.latestVersion}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2">
+                                                        {plugin.externalUrl && (
+                                                            <a 
+                                                                href={plugin.externalUrl} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer" 
+                                                                className="p-2 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200"
+                                                            >
+                                                                <ExternalLink size={16} />
+                                                            </a>
                                                         )}
-                                                    </button>
+                                                        <button
+                                                            onClick={() => handleInstall(plugin)}
+                                                            disabled={installed || installing || !can('server.plugins.manage', serverId)}
+                                                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${installed ? 'bg-emerald-500/10 text-emerald-500 cursor-default border border-emerald-500/20' : installing ? 'bg-primary/20 text-primary cursor-wait' : 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0'}`}
+                                                        >
+                                                            {installed ? <><Check size={14} /> Installed</> : installing ? <><Loader2 size={14} className="animate-spin" /> Provisioning</> : <><Download size={14} /> Install</>}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Discovery Pagination Bar */}
+                                <div className="flex items-center justify-between py-6 mt-4 border-t border-border/30">
+                                    <div className="flex items-center gap-4">
+                                        <button 
+                                            onClick={() => doSearch(currentPage - 1)}
+                                            disabled={currentPage <= 1 || isSearching}
+                                            className="px-4 py-2 rounded-xl text-xs font-bold bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-border/50"
+                                        >
+                                            Previous Discovery
+                                        </button>
+                                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/5 border border-primary/10">
+                                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">Page {currentPage}</span>
                                         </div>
-                                    );
-                                })}
-                            </div>
+                                        <button 
+                                            onClick={() => doSearch(currentPage + 1)}
+                                            disabled={searchResults.length < 20 || isSearching}
+                                            className="px-4 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:shadow-lg hover:shadow-primary/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                        >
+                                            Next Results
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-[0.2em] hidden sm:block">
+                                        Explore 50,000+ Verified Addons
+                                    </p>
+                                </div>
+                            </>
                         )}
                     </div>
                 </div>

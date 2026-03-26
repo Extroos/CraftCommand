@@ -8,13 +8,21 @@ export const getRecommendedJavaForVersion = (ver: string, software?: string): st
         const parts = ver.split('.');
         if (parts.length < 2) return 'Java 21';
         
-        const major = parseInt(parts[1]);
-        const minor = parseInt(parts[2] || '0');
+        const major = parseInt(parts[0]);
+        const minor = parseInt(parts[1] || '0');
+        const patch = parseInt(parts[2] || '0');
         
-        if (major >= 21) return 'Java 21'; // 1.21+
-        if (major === 20) return minor >= 5 ? 'Java 21' : 'Java 17'; // 1.20.5+ -> 21
-        if (major >= 17) return 'Java 17'; // 1.17+ -> 17
-        return 'Java 8'; // 1.16.5 and below
+        // 26+ or any future year-based major version
+        if (major >= 26) return 'Java 21';
+        
+        // Legacy 1.x logic
+        if (major === 1) {
+            if (minor > 20 || (minor === 20 && patch >= 5)) return 'Java 21';
+            if (minor >= 17) return 'Java 17';
+        }
+        
+        // default for older or unknown
+        return 'Java 8';
     } catch { return 'Java 21'; }
 };
 
@@ -68,6 +76,7 @@ export const synthesizeDefaultState = (
     if (software !== currentData.software) {
         newData.templateId = undefined;
         newData.modpackUrl = undefined;
+        newData.usePurpur = false; // Reset toggle when explicitly switching software buttons
     }
 
     return newData;
@@ -91,21 +100,11 @@ export const syncFormDataForModpack = (
     const targetSoftware = loaderMap[loader] || currentData.software;
 
     // 2. Smart version selection (Find best match between mod and panel)
-    const panelVersions = [
-        "1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", 
-        "1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.21", "1.20.6", "1.20.4", "1.20.1",
-        "1.19.4", "1.19.2", "1.18.2", "1.17.1", "1.16.5", "1.12.2", "1.8.9", "1.8.8", "1.7.10"
-    ];
-
     let bestVersion = currentData.version;
     if (pack.game_versions && pack.game_versions.length > 0) {
-        const common = pack.game_versions.filter(v => panelVersions.includes(v));
-        if (common.length > 0) {
-            common.sort((a, b) => panelVersions.indexOf(a) - panelVersions.indexOf(b));
-            bestVersion = common[0];
-        } else {
-            bestVersion = pack.game_versions[pack.game_versions.length - 1];
-        }
+        // Try to find exact match if possible, otherwise use the first one from Modrinth
+        const modrinthVersions = pack.game_versions;
+        bestVersion = modrinthVersions[0]; 
     }
 
     const base = synthesizeDefaultState(targetSoftware, currentData, bedrockVersions);

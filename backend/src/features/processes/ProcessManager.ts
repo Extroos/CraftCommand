@@ -8,6 +8,8 @@ import { NetUtils } from '../../utils/NetUtils';
 import { logger } from '../../utils/logger';
 import { statsRingBuffer } from '../diagnosis/StatsRingBuffer';
 import { ErrorCode, SystemError } from '../../utils/ErrorCodes';
+import { logStreamer } from '../../utils/LogStreamer';
+
 
 class ProcessManager extends EventEmitter {
     private activeRunners: Map<string, IServerRunner> = new Map();
@@ -21,9 +23,10 @@ class ProcessManager extends EventEmitter {
     private startupLocks: Set<string> = new Set();
     private startupTimeouts: Map<string, NodeJS.Timeout> = new Map();
     private players: Map<string, Set<string>> = new Map();
-    private readonly MAX_LOGS = 1000;
+    private readonly MAX_LOGS = 100; 
     private lastEmittedStatus: Map<string, string> = new Map();
     private activityHistory: Map<string, any[]> = new Map();
+    private focusedServerId: string | null = null; // v1.14.0: Focus mode for UI
     private readonly MAX_ACTIVITY_HISTORY = 100;
     private runnerListeners: Map<string, { log: any, close: any }> = new Map();
 
@@ -121,45 +124,66 @@ class ProcessManager extends EventEmitter {
              } catch (err) {
                  // Prevent interval crash
              }
-        }, 10000); // Increased frequency to 10s for faster recovery
+        }, 30000); // Increased interval to 30s for better scalability
     }
 
 
 
+
+    private lastActivityTime: Map<string, number> = new Map();
+
     private startStatsLoop() {
         setInterval(async () => {
+            const now = Date.now();
             const tasks = Array.from(this.activeRunners.entries()).map(async ([id, runner]) => {
                 try {
+                    // --- ADAPTIVE STATS (v1.14.0: UI-Aware Throttling) ---
+                    const lastActivity = this.lastActivityTime.get(id) || 0;
+                    const isInactive = (now - lastActivity > 60000); // 1 minute inactivity
+                    const isFocused = (this.focusedServerId === id);
+                    
+                    // Throttling Rules:
+                    // 1. Focused Server -> 1Hz (Always)
+                    // 2. Active Server -> 1Hz
+                    // 3. Inactive Server -> 0.2Hz (Every 5s)
+                    if (isInactive && !isFocused && (Math.floor(now / 1000) % 5 !== 0)) {
+                        return;
+                    }
+
                     const stats = await runner.getStats(id);
-                    const tps = await this.getTPS(id);
+                    
+                    // TPS Throttling: Regex parsing is expensive. Only do it every 5s for non-focused.
+                    let tps = this.statusCache.get(id)?.tps || "20.00";
+                    if (isFocused || (Math.floor(now / 1000) % 5 === 0)) {
+                        tps = await this.getTPS(id);
+                    }
+
                     const uptime = this.getUptime(id);
                     
-                    // --- Bedrock-Specific Query ---
+                    // Bedrock Query Throttling (Every 10s for inactive)
                     const { getServer } = await import('../servers/ServerService');
                     const server = getServer(id);
                     if (server?.software === 'Bedrock') {
-                        const query = await NetUtils.queryBedrock(server.port);
-                        if (query) {
-                            this.updateCachedStatus(id, {
-                                online: true,
-                                players: query.players,
-                                maxPlayers: query.maxPlayers,
-                                latency: query.ping,
-                                softwareVersion: query.version
-                            });
+                        const bedrockThrottle = isInactive ? 10 : 2;
+                        if (Math.floor(now / 1000) % bedrockThrottle === 0) {
+                            const query = await NetUtils.queryBedrock(server.port);
+                            if (query) {
+                                this.updateCachedStatus(id, {
+                                    online: true,
+                                    players: query.players,
+                                    maxPlayers: query.maxPlayers,
+                                    latency: query.ping,
+                                    softwareVersion: query.version
+                                });
+                            }
                         }
                     }
 
                     const latency = this.statusCache.get(id)?.latency || 0;
                     const players = this.statusCache.get(id)?.players || 0;
 
-                    if (stats.cpu > 0 || stats.memory > 0) {
-                        logger.debug(`[ProcessManager:${id}] Stats: CPU ${stats.cpu}% | RAM ${stats.memory}MB | Players ${players} | Latency ${latency}ms`);
-                    }
-
                     this.emit('stats', { id, ...stats, tps, uptime, latency, players });
 
-                    // Feed predictive diagnosis engine
                     statsRingBuffer.push(id, {
                         cpu: stats.cpu,
                         memory: stats.memory,
@@ -167,6 +191,7 @@ class ProcessManager extends EventEmitter {
                         players,
                         timestamp: Date.now()
                     });
+
                     this.updateCachedStatus(id, { 
                         cpu: stats.cpu,
                         memory: stats.memory,
@@ -181,7 +206,12 @@ class ProcessManager extends EventEmitter {
             });
 
             await Promise.all(tasks);
-        }, 1000); // Live high-frequency updates (1s)
+        }, 1000); 
+    }
+
+    public setFocus(id: string | null) {
+        this.focusedServerId = id;
+        logger.debug(`[ProcessManager] UI Focus set to: ${id || 'NONE'}`);
     }
 
     async startServer(id: string, runCommand: string, cwd: string, env: any = {}) {
@@ -294,7 +324,9 @@ class ProcessManager extends EventEmitter {
     }
 
     private handleServerLog(id: string, line: string, type: 'stdout' | 'stderr') {
+        this.lastActivityTime.set(id, Date.now()); // Mark activity for Adaptive Stats
         const history = this.logHistory.get(id) || [];
+
         history.push(line);
         if (history.length > this.MAX_LOGS) history.shift();
         this.logHistory.set(id, history);
@@ -307,6 +339,14 @@ class ProcessManager extends EventEmitter {
                 this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE });
             }
         }
+
+        // --- DISK STREAMING (Enterprise Scale) ---
+        const { getServer } = require('../servers/ServerService');
+        const server = getServer(id);
+        if (server) {
+            logStreamer.append(id, server.workingDirectory, line);
+        }
+
 
         // Player Tracking (Unified & Software-Aware)
         let joinName: string | null = null;
@@ -384,7 +424,9 @@ class ProcessManager extends EventEmitter {
     }
 
     private addActivity(id: string, activity: any) {
+        this.lastActivityTime.set(id, Date.now()); // Mark activity for Adaptive Stats
         const history = this.activityHistory.get(id) || [];
+
         const entry = {
             ...activity,
             timestamp: new Date().toISOString(),
@@ -734,7 +776,9 @@ class ProcessManager extends EventEmitter {
         this.onlineTimes.delete(id);
         this.statusCache.delete(id);
         statsRingBuffer.clear(id); // Clear predictive history on stop
+        logStreamer.close(id); // Release file handle
         // We keep logHistory/activityHistory as they are needed for UI after close
+
     }
     async shutdown() {
         logger.info('[ProcessManager] Shutting down all active servers...');

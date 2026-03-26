@@ -26,6 +26,7 @@
     "chalk": "4.1.2",
     "chokidar": "^3.6.0",
     "client-only": "^0.0.1",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "cross-spawn": "^7.0.3",
     "discord.js": "^14.25.1",
@@ -49,6 +50,7 @@
   },
   "devDependencies": {
     "@types/archiver": "^7.0.0",
+    "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.17",
     "@types/cross-spawn": "^6.0.6",
     "@types/express": "^4.17.21",

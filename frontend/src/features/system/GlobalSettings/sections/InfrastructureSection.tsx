@@ -173,7 +173,7 @@ export const InfrastructureSection: React.FC<InfrastructureSectionProps> = ({
                         <div className="flex gap-2 p-2 bg-secondary rounded-md border border-border text-muted-foreground text-[10px] items-center">
                         <Monitor size={16} className="shrink-0 mt-0.5" />
                         <p>
-                            <strong>Note:</strong> Switching providers requires a restart. Data is auto-migrated from JSON to SQL, but NOT vice-versa.
+                            <strong>Note:</strong> Switching providers requires a system restart. Data is automatically synchronized between JSON and SQLite to prevent data loss.
                         </p>
                     </div>
                 </div>

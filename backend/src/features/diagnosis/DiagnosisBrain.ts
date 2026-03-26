@@ -1,5 +1,7 @@
 import { DiagnosisRule, SystemStats, ServerConfig, DiagnosisResult } from './types';
 import { CrashReport } from './CrashReportReader';
+import { CoreRules } from './DiagnosisRules';
+import { logger } from '../../utils/logger';
 import { ServerStatus } from '@shared/types';
 
 /** Internal type that extends DiagnosisResult with tier metadata for brain processing */
@@ -16,7 +18,8 @@ export class DiagnosisBrain {
         rules: DiagnosisRule[],
         logs: string[],
         env: SystemStats,
-        crashReport?: CrashReport
+        crashReport?: CrashReport,
+        resolvedRules?: Set<string>
     ): Promise<DiagnosisResult[]> {
         const rawResults: DiagnosisResult[] = [];
         
@@ -25,23 +28,21 @@ export class DiagnosisBrain {
         const tier2 = rules.filter(r => r.tier === 2);
         const tier3 = rules.filter(r => r.tier === 3);
 
-        console.log(`[DiagnosisBrain] Starting pipeline: T1(${tier1.length}), T2(${tier2.length}), T3(${tier3.length})`);
+        // v1.12.8: Filter out rules that have been marked as resolved by a previous fix (Stop Spam)
+        const activeTier1 = tier1.filter(r => !resolvedRules?.has(r.id));
+        const activeTier2 = tier2.filter(r => !resolvedRules?.has(r.id));
+        const activeTier3 = tier3.filter(r => !resolvedRules?.has(r.id));
 
         // 2. Execute Tiers Sequentially
-        // Logic: If Tier 1 (Infrastructure) find a critical issue, 
-        // it likely causes Tier 2/3 issues.
-        
-        const t1Results = await this.runTier(server, tier1, logs, env, crashReport);
+        const t1Results = await this.runTier(server, activeTier1, logs, env, crashReport);
         rawResults.push(...t1Results);
 
-        // If we have a very high confidence Tier 1 issue (e.g. Java missing or No Disk Space),
-        // we might skip or de-prioritize later tiers because they are symptoms.
         const hasCriticalT1 = t1Results.some(r => r.severity === 'CRITICAL' && r.confidence > 90);
 
-        const t2Results = await this.runTier(server, tier2, logs, env, crashReport);
+        const t2Results = await this.runTier(server, activeTier2, logs, env, crashReport);
         rawResults.push(...t2Results);
 
-        const t3Results = await this.runTier(server, tier3, logs, env, crashReport);
+        const t3Results = await this.runTier(server, activeTier3, logs, env, crashReport);
         rawResults.push(...t3Results);
 
         // 3. Post-Process: Root Cause Analysis (RCA)
@@ -70,6 +71,7 @@ export class DiagnosisBrain {
                 const isExplicitlyProactive = rule.triggers.length === 0;
 
                 if (hasLogMatch || hasCrashMatch || isExplicitlyProactive || isProactiveNeeded) {
+                    // console.log(`[DiagnosisBrain] Analyzing rule ${rule.id} for ${server.id} (status: ${server.status}, hasStarted: ${server.hasStarted})`);
                     const result = await rule.analyze(server, logs, env, crashReport);
                     if (result) {
                         // Attach tier metadata for brain processing
@@ -108,9 +110,9 @@ export class DiagnosisBrain {
             'insufficient_ram': ['memory_oom', 'tps_lag', 'cpu_exhaustion', 'watchdog_stunt', 'node_resource_starvation'],
             'memory_oom': ['tps_lag', 'watchdog_stunt'],
             'disk_space_full': ['data_integrity', 'world_corruption', 'telemetry_cleanup', 'bad_config', 'permission_denied', 'dynmap_storage_full'],
-            'java_version': ['mod_dependency', 'plugin_incompatible', 'mixin_conflict', 'plugin_access_denied', 'java_binary_missing'],
+            'java_version': ['mod_dependency', 'plugin_incompatible', 'mixin_conflict', 'plugin_access_denied', 'java_binary_missing', 'startup_failure', 'process_exit_immediate'],
             'java_binary_missing': ['startup_failure', 'process_exit_immediate'],
-            'missing_jar': ['java_version', 'bad_config', 'startup_failure'],
+            'missing_jar': ['java_version', 'bad_config', 'startup_failure', 'process_exit_immediate'],
             'invalid_ip': ['network_offline', 'port_binding_failed'],
             'eula_not_accepted': ['startup_failure', 'process_exit_immediate'],
             'node_resource_starvation': ['tps_lag', 'network_latency', 'heartbeat_missed']

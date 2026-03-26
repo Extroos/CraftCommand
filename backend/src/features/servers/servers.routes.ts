@@ -10,7 +10,7 @@ import { javaManager } from '../processes/JavaManager';
 import { FileSystemManager } from '../files/FileSystemManager';
 import { installerService } from '../installer/InstallerService';
 import { importService } from '../installer/ImportService';
-import { getServers, saveServer, getServer, removeServer, updateServer, diagnoseServer, startServer, stopServer, cloneServer, resetSftpPassword, getServerPorts, assignServerPort, rotateServerPort } from './ServerService';
+import { getServers, saveServer, getServer, removeServer, updateServer, diagnoseServer, invalidateDiagnosisCache, getNextAvailablePort, startServer, stopServer, cloneServer, resetSftpPassword, getServerPorts, assignServerPort, rotateServerPort } from './ServerService';
 import { serverConfigService } from './ServerConfigService';
 import { AppError } from '../../utils/AppError';
 import { auditService } from '../system/AuditService';
@@ -21,6 +21,7 @@ import sharp from 'sharp';
 import { databaseService } from './DatabaseService';
 import { ValidationUtils } from '../../utils/ValidationUtils';
 import { serverRepository } from '../../storage/ServerRepository';
+import { emitActivity } from '../../sockets/index';
 
 
 const util = require('minecraft-server-util');
@@ -68,6 +69,16 @@ const getIconUrl = (server: any) => {
     }
     return null;
 };
+
+router.get('/next-port', verifyToken, async (req, res) => {
+    try {
+        const base = parseInt(req.query.base as string) || 25565;
+        const port = getNextAvailablePort(base);
+        res.json({ port });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
 // Import Routes
 router.post('/import/local', requirePermission('server.create'), async (req, res) => {
@@ -150,7 +161,7 @@ router.get('/:id/query', async (req, res) => {
     if (!server) return res.status(404).json({ error: 'Server not found' });
 
     // 1. Get current cached stats
-    console.log(`[Query] ${id} - Status: ${server.status} | Running: ${processManager.isRunning(id)}`);
+    // logger.debug(`[Query] ${id} - Status: ${server.status} | Running: ${processManager.isRunning(id)}`);
     const cached = processManager.getCachedStatus(id);
     
     // ProcessManager now strictly manages 'STARTING' vs 'ONLINE'
@@ -424,6 +435,10 @@ router.post('/:id/heal', verifyToken, requirePermission('server.settings'), asyn
 
     try {
         await autoHealingService.executeFix(id, type, payload || {});
+        
+        // Invalidate cache immediately so the frontend sees the fix (v1.12.7)
+        invalidateDiagnosisCache(id);
+        
         res.json({ success: true, message: `Successfully applied fix: ${type}` });
         
         auditService.log((req as any).user.id, 'SERVER_HEAL', id, { type, payload }, req.ip);
@@ -553,7 +568,8 @@ router.post('/', requirePermission('server.create'), async (req, res) => {
         workingDirectory: serverDir,
         executable: config.executable || defaultExecutable,
         executionCommand: config.executionCommand || defaultCommand,
-        status: ServerStatus.OFFLINE
+        status: ServerStatus.OFFLINE,
+        hasStarted: false
     };
     
     saveServer(newServer);
@@ -872,7 +888,20 @@ router.post('/:id/files/content', requirePermission('server.files.write'), async
     try {
         await fsManager.writeFile(relativePath, content);
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'FILE_EDIT', id, { path: relativePath });
+        
+        const user = (req as any).user;
+        auditService.log(user.id, 'FILE_EDIT', id, { path: relativePath });
+        
+        emitActivity({
+            id: `act-${Date.now()}`,
+            serverId: id,
+            userId: user.id,
+            username: user.username,
+            action: 'FILE_EDITED',
+            detail: `Edited ${relativePath}`,
+            visibility: 'VIEWER',
+            timestamp: Date.now()
+        });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -891,7 +920,20 @@ router.post('/:id/files/folder', requirePermission('server.files.write'), async 
     try {
         await fsManager.createDirectory(relativePath);
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'FOLDER_CREATE', id, { path: relativePath });
+        
+        const user = (req as any).user;
+        auditService.log(user.id, 'FOLDER_CREATE', id, { path: relativePath });
+        
+        emitActivity({
+            id: `act-${Date.now()}`,
+            serverId: id,
+            userId: user.id,
+            username: user.username,
+            action: 'CONFIG_CHANGED',
+            detail: `Created folder ${relativePath}`,
+            visibility: 'VIEWER',
+            timestamp: Date.now()
+        });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1170,6 +1212,7 @@ router.post('/:id/install', requirePermission('server.settings'), async (req, re
         } else if (type === 'purpur') {
             await installerService.installPurpur(id, server.workingDirectory, version || '1.21.11', build, onProgress);
             server.executable = 'server.jar';
+            server.status = ServerStatus.OFFLINE;
             saveServer(server);
         } else if (type === 'vanilla') {
             await installerService.installVanilla(id, server.workingDirectory, version || '1.21.11', onProgress);

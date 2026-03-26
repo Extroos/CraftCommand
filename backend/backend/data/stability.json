@@ -201,5 +201,12 @@
     "lastCrash": 0,
     "consecutiveCrashes": 0,
     "isSafeMode": false
+  },
+  "local-1774529172502": {
+    "serverId": "local-1774529172502",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
   }
 }

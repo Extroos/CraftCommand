@@ -21,18 +21,26 @@ export class FileSystemManager {
 
     async listFiles(dirPath: string) {
         const fullPath = this.resolvePath(dirPath);
-        const files = await fs.readdir(fullPath, { withFileTypes: true });
+        const entries = await fs.readdir(fullPath, { withFileTypes: true });
         
-        return files.map(file => {
-            const stats = fs.statSync(path.join(fullPath, file.name));
-            return {
-                name: file.name,
-                isDirectory: file.isDirectory(),
-                size: file.isDirectory() ? 0 : stats.size,
-                modified: stats.mtime.toLocaleString(),
-                path: path.relative(this.basePath, path.join(fullPath, file.name)).replace(/\\/g, '/')
-            };
-        });
+        const results = await Promise.all(entries.map(async (entry) => {
+            try {
+                const entryPath = path.join(fullPath, entry.name);
+                const stats = await fs.stat(entryPath);
+                return {
+                    name: entry.name,
+                    isDirectory: entry.isDirectory(),
+                    size: entry.isDirectory() ? 0 : stats.size,
+                    modified: stats.mtime.toLocaleString(),
+                    path: path.relative(this.basePath, entryPath).replace(/\\/g, '/')
+                };
+            } catch (e) {
+                // Handle files that might have been deleted during readdir
+                return null;
+            }
+        }));
+
+        return results.filter(r => r !== null);
     }
 
     async readFile(filePath: string): Promise<string> {

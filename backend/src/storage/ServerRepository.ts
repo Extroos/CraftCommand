@@ -7,7 +7,7 @@ export class ServerRepository implements StorageProvider<ServerConfig> {
     private provider: StorageProvider<ServerConfig>;
 
     constructor() {
-        this.provider = StorageFactory.get<ServerConfig>('servers');
+        this.provider = StorageFactory.get<ServerConfig>('servers', undefined, true);
         this.init(); // Auto-initialize for SQLite migration/tables
     }
 
@@ -112,26 +112,32 @@ export class ServerRepository implements StorageProvider<ServerConfig> {
         // Return users who have an explicit ACL entry for this server
         return users
             .filter(u => u.serverAcl && u.serverAcl[serverId])
-            .map(u => ({
-                id: u.id,
-                email: u.email,
-                role: u.role // Use global role for UI display
-            }));
+            .map(u => {
+                const acl = u.serverAcl![serverId] as any;
+                return {
+                    id: u.id,
+                    username: u.username,
+                    email: u.email,
+                    role: acl.role || u.role, // Preference to server-specific role
+                    joinedAt: acl.joinedAt || u.lastLogin || Date.now() // Fallback for legacy
+                };
+            });
     }
 
     public async addMember(serverId: string, email: string, role: string) {
         const { userRepository } = await import('./UserRepository');
         const user = userRepository.findByEmail(email);
-        if (!user) throw new Error('User not found');
+        if (!user) throw new Error(`User synchronization failed: ${email} not found in the Access Registry.`);
 
         const serverAcl = user.serverAcl || {};
         
-        // Initialize or update ACL. Permissions are usually inherited from role,
-        // but we ensure the entry exists to mark membership.
-        serverAcl[serverId] = serverAcl[serverId] || { allow: [], deny: [] };
-        
-        // If the user's global role is lower than the desired role, we might need 
-        // to handle permission mapping here, but for now we just link the user.
+        // Initialize or update ACL with dedicated metadata (Phase 1.12.5 Stability Fix)
+        serverAcl[serverId] = { 
+            allow: [], 
+            deny: [],
+            role: role.toUpperCase(),
+            joinedAt: Date.now()
+        } as any;
         
         await userRepository.update(user.id, { serverAcl });
     }

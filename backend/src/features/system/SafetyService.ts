@@ -117,7 +117,7 @@ export class SafetyService {
                 const logContent = await fs.readFile(logPath, 'utf8');
                 const logs = logContent.split('\n').slice(-300); // Last 300 lines are enough for structural issues
                 
-                const diagnosis = await diagnosisService.diagnose(server, logs, { cpu: 0, ram: 0, disk: 0 });
+                const diagnosis = await diagnosisService.diagnose(server, logs);
                 const criticalMismatches = diagnosis.filter(d => d.ruleId === 'incompatible_mods' && d.severity === 'CRITICAL');
                 
                 if (criticalMismatches.length > 0) {

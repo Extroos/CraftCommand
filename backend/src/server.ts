@@ -14,6 +14,7 @@ function validateEnvironment() {
 }
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import { createServer } from 'http';
 import https from 'https';
@@ -185,6 +186,7 @@ const startMain = async () => {
     });
 
     app.use(cors());
+    app.use(compression());
     app.use(express.json());
 
     // Inject IO for routes

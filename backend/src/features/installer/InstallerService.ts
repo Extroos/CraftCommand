@@ -6,6 +6,7 @@ import extract from 'extract-zip';
 import { EventEmitter } from 'events';
 import { SafeFileOperation } from '../../utils/fs';
 import { logger } from '../../utils/logger';
+import { bedrockVersionService } from '../system/BedrockVersionService';
 import { auditService } from '../system/AuditService';
 import { userRepository } from '../../storage/UserRepository';
 
@@ -115,9 +116,17 @@ export class InstallerService extends EventEmitter {
             onProgress?.(msg);
             if (build === 'latest') {
                 const buildsUrl = `https://api.papermc.io/v2/projects/paper/versions/${version}/builds`;
-                const buildsRes = await axios.get(buildsUrl);
-                const builds = (buildsRes.data as any).builds;
-                build = builds[builds.length - 1].build;
+                try {
+                    const buildsRes = await axios.get(buildsUrl);
+                    const builds = (buildsRes.data as any).builds;
+                    if (!builds || builds.length === 0) throw new Error('NO_BUILDS');
+                    build = builds[builds.length - 1].build;
+                } catch (err: any) {
+                    if (err.response?.status === 404 || err.message === 'NO_BUILDS') {
+                        throw new Error(`PaperMC has not released builds for version ${version} yet. This is common for very new Minecraft releases (like ${version}). Please try Vanilla if you need it immediately.`);
+                    }
+                    throw err;
+                }
             }
 
             const jarName = `paper-${version}-${build}.jar`;
@@ -171,7 +180,15 @@ export class InstallerService extends EventEmitter {
             const dMsg = `Downloading Purpur ${version}...`;
             this.updateProgress(serverId, dMsg, 0);
             onProgress?.(dMsg, 0);
-            await this.downloadFile(downloadUrl, dest, onProgress, serverId);
+            
+            try {
+                await this.downloadFile(downloadUrl, dest, onProgress, serverId);
+            } catch (err: any) {
+                if (err.response?.status === 404) {
+                     throw new Error(`Purpur has not released builds for version ${version} yet. This is common for very new Minecraft releases (like ${version}). Please try Vanilla if you need it immediately.`);
+                }
+                throw err;
+            }
             
             await fs.writeFile(path.join(serverDir, 'eula.txt'), 'eula=true');
             
@@ -965,10 +982,14 @@ export class InstallerService extends EventEmitter {
             const manifestRes = await axios.get(manifestUrl);
             
             const versionData = (manifestRes.data as any).versions.find((v: any) => v.id === version);
-            if (!versionData) throw new Error(`Version ${version} not found in Mojang manifest`);
+            if (!versionData) throw new Error(`Version ${version} not found in Mojang manifest. Please check if it's a valid release or snapshot.`);
 
             const versionMetaRes = await axios.get(versionData.url);
-            const downloadUrl = (versionMetaRes.data as any).downloads.server.url;
+            const downloads = (versionMetaRes.data as any).downloads;
+            if (!downloads?.server?.url) {
+                throw new Error(`Vanilla Server binary NOT found for version ${version}. Some very old versions or experimental snapshots may not have a standalone server jar.`);
+            }
+            const downloadUrl = downloads.server.url;
             
             const dest = path.join(serverDir, 'server.jar');
             await fs.ensureDir(serverDir);
@@ -1350,80 +1371,20 @@ export class InstallerService extends EventEmitter {
     private readonly BEDROCK_CACHE_TTL = 1000 * 60 * 60; // 1 hour
 
     /**
-     * Scrapes the official Minecraft download page for the latest BDS versions.
+     * Resolves dynamic Bedrock versions from the version service.
      */
     async fetchBedrockVersions(): Promise<{ latest: string, versions: string[] }> {
-        if (this.bedrockVersionCache && (Date.now() - this.bedrockVersionCache.timestamp < this.BEDROCK_CACHE_TTL)) {
-            return this.bedrockVersionCache;
-        }
-
-        /* 
-        // Scraping disabled due to inconsistent Minecraft.net manifest updates causing 404s.
-        // Transitioning to hardcoded verified versions (v1.11.8).
-        // Primary source: Scrape from multiple locales to ensure we hit the latest manifest
-        const locales = ['en-us', 'fr-fr'];
-        
-        for (const locale of locales) {
-            try {
-                this.updateProgress(serverId, `Consulting official Bedrock manifest (${locale})...`);
-                const response = await axios.get(`https://www.minecraft.net/${locale}/download/server/bedrock`, {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    },
-                    timeout: 5000
-                });
-
-                const html = response.data as string;
-                const matches = html.match(/bedrock-server-([0-9\.]+)\.zip/g);
-                if (matches) {
-                    let versions = [...new Set(matches.map((m: string) => m.match(/bedrock-server-([0-9\.]+)\.zip/)![1]))] as string[];
-                    
-                    const stableVersions = versions.filter(v => {
-                        const isPreview = html.includes(`bedrock-server-${v}.zip`) && 
-                                         (html.split(`bedrock-server-${v}.zip`)[1].split('>')[0].toLowerCase().includes('preview') ||
-                                          html.split(`bedrock-server-${v}.zip`)[1].substring(0, 100).toLowerCase().includes('preview'));
-                        return !isPreview;
-                    });
-
-                    if (stableVersions.length > 0) {
-                        versions = stableVersions;
-                    }
-
-                    versions.sort((a, b) => {
-                       const pa = a.split('.').map(Number);
-                       const pb = b.split('.').map(Number);
-                       for(let i=0; i<Math.max(pa.length, pb.length); i++) {
-                           if ((pa[i] || 0) > (pb[i] || 0)) return -1;
-                           if ((pa[i] || 0) < (pb[i] || 0)) return 1;
-                       }
-                       return 0;
-                    });
-
-                    this.bedrockVersionCache = {
-                        latest: versions[0],
-                        versions: versions,
-                        timestamp: Date.now()
-                    };
-                    return this.bedrockVersionCache;
-                }
-            } catch (e: any) {
-                logger.warn(`[Installer] Bedrock version scrape failed for ${locale}: ${e.message}`);
-            }
-        }
-        */
-
-        // Verified stable version for v1.11.8
-        return {
-            latest: '1.26.1.1',
-            versions: ['1.26.1.1', '1.26.0.2', '1.21.11.01']
-        };
+        return bedrockVersionService.getVersions();
     }
 
     async installBedrock(serverId: string, serverDir: string, version: string, onProgress?: (msg: string, percent?: number) => void) {
-    // Resolve 'latest' to verified working binary version
-    if (version === 'latest') version = '1.26.1.1';
+        // Resolve 'latest' to verified working binary version
+        if (version === 'latest') {
+            const bv = await bedrockVersionService.getVersions();
+            version = bv.latest;
+        }
     
-    try {
+        try {
             await SafeFileOperation.checkDiskSpace(serverDir);
             logger.info(`[Installer] Starting Bedrock install for v${version}. Platform: ${process.platform}`);
             const pMsg = `Preparing Bedrock ${version} installation...`;
@@ -1461,7 +1422,7 @@ export class InstallerService extends EventEmitter {
             this.updateProgress(serverId, eMsg, 30);
             onProgress?.(eMsg);
 
-            logger.info('[Installer] Extracting Java runtime...');
+            logger.info('[Installer] Extracting Bedrock binaries...');
             const zip = new AdmZip(cacheZipPath);
             const totalEntries = zip.getEntries().length;
             let extractedCount = 0;

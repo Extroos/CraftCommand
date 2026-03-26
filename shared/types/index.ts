@@ -227,6 +227,7 @@ export interface ServerConfig {
     tps?: string;
     latency?: number;
     playerList?: string[];
+    hasStarted?: boolean;
 }
 
 // --- Frontend Specific Types ---

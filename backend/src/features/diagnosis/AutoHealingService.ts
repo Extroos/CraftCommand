@@ -217,11 +217,7 @@ class AutoHealingService extends EventEmitter {
             const logs = processManager.getLogs(serverId);
             const stats = await healthTelemetryService.getGlobalHealth() as any; // Using consolidated telemetry
             
-            const diagnosis = await diagnosisService.diagnose(server, logs, {
-                totalMemory: os.totalmem(),
-                freeMemory: os.freemem(),
-                javaVersion: server.javaVersion || 'unknown'
-            });
+            const diagnosis = await diagnosisService.diagnose(server, logs);
             const rootCause = diagnosis.find(d => d.isRootCause) || diagnosis[0];
 
             if (rootCause?.action?.autoHeal) {
@@ -313,6 +309,26 @@ class AutoHealingService extends EventEmitter {
                 case 'ENABLE_ENTITY_PURGE': await DiagnosisActions.enableEntityPurge(server, fsManager); break;
                 case 'REASSIGN_BEDROCK_PORT': await DiagnosisActions.reassignBedrockPort(server); break;
                 default: throw new Error(`Unknown auto-heal action: ${actionType}`);
+            }
+
+            // v1.12.8: Mark this rule as resolved so it doesn't spam stale logs until next boot
+            // Map action types back to rule IDs or use generic suppression if specific mapping is unknown
+            const actionToRule: Record<string, string> = {
+                'AGREE_EULA': 'eula_check',
+                'RESOLVE_PORT_CONFLICT': 'port_binding',
+                'PURGE_GHOST': 'port_binding',
+                'INSTALL_JAVA': 'java_binary_missing',
+                'SWITCH_JAVA': 'java_version',
+                'FIX_JVM_ARGS': 'invalid_jvm_args',
+                'CLEANUP_WORLD_LOCK': 'world_corruption',
+                'RESTORE_LEVEL_DATA': 'world_corruption',
+                'ENABLE_ENTITY_PURGE': 'ticking_entity',
+                'REASSIGN_BEDROCK_PORT': 'geyser_port_conflict',
+                'INSTALL_DEPENDENCY': 'mod_dependency'
+            };
+            const ruleId = actionToRule[actionType];
+            if (ruleId) {
+                diagnosisService.markResolved(serverId, ruleId);
             }
 
             await notificationService.create(
