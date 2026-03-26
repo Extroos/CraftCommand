@@ -2,6 +2,7 @@ import { StorageProvider } from './StorageProvider';
 import { GenericJsonProvider } from './JsonRepository';
 import { SqliteProvider } from './SqliteProvider';
 import { systemSettingsService } from '../features/system/SystemSettingsService';
+import { logger } from '../utils/logger';
 import path from 'path';
 
 export class StorageFactory {
@@ -21,10 +22,10 @@ export class StorageFactory {
         const jsonFileName = `${name}.json`;
 
         if (providerType === 'sqlite') {
-            console.log(`[StorageFactory] Creating SQLite provider for ${name} (Fragmented: ${isFragmented})`);
+            logger.info(`[StorageFactory] Creating SQLite provider for ${name} (Fragmented: ${isFragmented})`);
             return new SqliteProvider<T>('core.db', finalTableName, jsonFileName, isFragmented);
         } else {
-            console.log(`[StorageFactory] Creating JSON provider for ${name} (Fragmented: ${isFragmented})`);
+            logger.info(`[StorageFactory] Creating JSON provider for ${name} (Fragmented: ${isFragmented})`);
             return new GenericJsonProvider<T>(jsonFileName, isFragmented);
         }
     }

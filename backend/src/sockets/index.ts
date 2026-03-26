@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import DOMPurify from 'isomorphic-dompurify';
+import { logger } from '../utils/logger';
 import { socketAuthMiddleware } from './middleware/authMiddleware';
 import { jitterMiddleware } from './middleware/JitterMiddleware';
 import { registerBroadcasters } from './broadcasters';
@@ -119,9 +120,9 @@ export const setupSocket = (socketIo: Server) => {
         const user = (socket as any).user;
         if (user) {
             socket.join(`user:${user.id}`);
-            console.log(`[Socket] ✓ Connected: ${user.username} (${user.role}) [${socket.id}]`);
+            logger.info(`[Socket] ✓ Connected: ${user.username} (${user.role}) [${socket.id}]`);
         } else {
-            console.log(`[Socket] ✗ Anonymous connection: ${socket.id}`);
+            logger.warn(`[Socket] ✗ Anonymous connection: ${socket.id}`);
             return; // Don't register handlers for anonymous sockets
         }
         
@@ -190,7 +191,7 @@ export const setupSocket = (socketIo: Server) => {
                 avatar: finalUser.avatarUrl 
             }, socket.id, activeView || 'dashboard');
             
-            console.log(`[Collab] ${finalUser.username} joined server:${serverId} (view: ${activeView || 'dashboard'})`);
+            logger.info(`[Collab] ${finalUser.username} joined server:${serverId} (view: ${activeView || 'dashboard'})`);
             
             // Send chat history to this client (catch-up for late joiners)
             const history = getChatHistory(serverId);
@@ -229,7 +230,7 @@ export const setupSocket = (socketIo: Server) => {
             if (!systemSettingsService.isHostMode()) return;
 
             presenceTracker.leave(serverId, user.id);
-            console.log(`[Collab] ${user.username} left server:${serverId}`);
+            logger.info(`[Collab] ${user.username} left server:${serverId}`);
 
             const collab = getCollabSettings(serverId);
 
@@ -356,13 +357,13 @@ export const setupSocket = (socketIo: Server) => {
             if (!isWhisper) {
                 chatRepository.create(message);
                 io.to(`server:${serverId}`).emit('chat:message', message);
-                console.log(`[Chat] ${finalUser.username} → server:${serverId}: "${actualContent.trim().substring(0, 60)}"`);
+                logger.debug(`[Chat] ${finalUser.username} → server:${serverId}: "${actualContent.trim().substring(0, 60)}"`);
             } else {
                 socket.emit('chat:message', { ...message, content: `(To @${targetUsername}) ${actualContent}` });
                 if (targetUserId && targetUserId !== user.id) {
                      io.to(`user:${targetUserId}`).emit('chat:message', { ...message, content: `(From @${finalUser.username}) ${actualContent}` });
                 }
-                console.log(`[Whisper] ${finalUser.username} → ${targetUsername}: "${actualContent.trim().substring(0, 60)}"`);
+                logger.debug(`[Whisper] ${finalUser.username} → ${targetUsername}: "${actualContent.trim().substring(0, 60)}"`);
             }
         });
 
@@ -379,7 +380,7 @@ export const setupSocket = (socketIo: Server) => {
                 const room = serverId && serverId !== 'global' ? `server:${serverId}` : 'server:global';
                 
                 io.to(room).emit('lock:update', { resourceId, lock });
-                console.log(`[Locking] ${user.username} acquired lock on ${resourceId}`);
+                logger.info(`[Locking] ${user.username} acquired lock on ${resourceId}`);
             } else {
                 socket.emit('lock:error', { resourceId, message: 'Resource is already locked.' });
             }
@@ -393,7 +394,7 @@ export const setupSocket = (socketIo: Server) => {
                 const room = serverId && serverId !== 'global' ? `server:${serverId}` : 'server:global';
                 
                 io.to(room).emit('lock:update', { resourceId, lock: null });
-                console.log(`[Locking] ${user.username} released lock on ${resourceId}`);
+                logger.info(`[Locking] ${user.username} released lock on ${resourceId}`);
             }
         });
 
@@ -409,12 +410,12 @@ export const setupSocket = (socketIo: Server) => {
         // --- Disconnect Cleanup ---
 
         socket.on('disconnect', () => {
-            console.log(`[Socket] ✗ Disconnected: ${user.username} [${socket.id}]`);
+            logger.info(`[Socket] ✗ Disconnected: ${user.username} [${socket.id}]`);
 
             // Release all locks held by this socket (#6 — Ghost Locks)
             const released = lockingService.releaseAllForSocket(socket.id);
             if (released.length > 0) {
-                console.log(`[Locking] Released ${released.length} lock(s) for disconnected socket ${socket.id}`);
+                logger.info(`[Locking] Released ${released.length} lock(s) for disconnected socket ${socket.id}`);
                 for (const resourceId of released) {
                     const serverId = resourceId.split(':')[1];
                     const room = serverId && serverId !== 'global' ? `server:${serverId}` : 'server:global';

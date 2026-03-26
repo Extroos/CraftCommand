@@ -1,7 +1,7 @@
-
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs-extra';
+import { logger } from '../utils/logger';
 import { StorageProvider } from './StorageProvider';
 
 export class SqliteProvider<T extends { id: string }> implements StorageProvider<T> {
@@ -48,11 +48,11 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
                 let items: any[] = [];
 
                 if (hasMonolithic) {
-                    console.log(`[SqliteProvider] Migrating from monolithic ${this.migrationJsonPath}...`);
+                    logger.info(`[SqliteProvider] Migrating from monolithic ${this.migrationJsonPath}...`);
                     const raw = fs.readJSONSync(jsonPath!);
                     items = Array.isArray(raw) ? raw : [];
                 } else if (hasFragments) {
-                    console.log(`[SqliteProvider] Migrating from fragmented directory ${fragmentDir}...`);
+                    logger.info(`[SqliteProvider] Migrating from fragmented directory ${fragmentDir}...`);
                     const files = fs.readdirSync(fragmentDir!).filter(f => f.endsWith('.json'));
                     items = files.map(f => fs.readJSONSync(path.join(fragmentDir!, f)));
                 }
@@ -63,7 +63,7 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
                         for (const item of toMigrate) insert.run(item.id, JSON.stringify(item));
                     });
                     tx(items);
-                    console.log(`[SqliteProvider] Successfully migrated ${items.length} items to SQLite.`);
+                logger.info(`[SqliteProvider] Successfully migrated ${items.length} items to SQLite.`);
                     if (migrationMarker) fs.writeFileSync(migrationMarker, new Date().toISOString());
                 }
             } catch (e: any) {

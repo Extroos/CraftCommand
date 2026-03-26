@@ -156,22 +156,22 @@ const startup = async () => {
             }
         }
 
-        console.log('\n==================================================');
-        console.log('       REMOTE ACCESS ENABLED                      ');
-        console.log('==================================================');
-        console.log(` Mode:    ${method?.toUpperCase() || 'UNKNOWN'}`);
+        logger.info('==================================================');
+        logger.info('       REMOTE ACCESS ENABLED                      ');
+        logger.info('==================================================');
+        logger.info(` Mode:    ${method?.toUpperCase() || 'UNKNOWN'}`);
         if (method === 'vpn' || method === 'direct') {
              if (appSettings.https?.enabled && appSettings.https.mode === 'bridge' && appSettings.https.domain) {
-                console.log(` Connect: https://${appSettings.https.domain}`);
-                console.log(` (Internal: http://${ip}:${PORT})`);
+                logger.info(` Connect: https://${appSettings.https.domain}`);
+                logger.info(` (Internal: http://${ip}:${PORT})`);
              } else {
-                console.log(` Connect: ${protocol}://${ip}:${PORT}`);
+                logger.info(` Connect: ${protocol}://${ip}:${PORT}`);
              }
         } else if (method === 'proxy') {
-             console.log(` Local:   ${protocol}://${ip}:${PORT}`);
-             console.log(` Action:  Point your Proxy to Port ${PORT}`);
+             logger.info(` Local:   ${protocol}://${ip}:${PORT}`);
+             logger.info(` Action:  Point your Proxy to Port ${PORT}`);
         }
-        console.log('==================================================\n');
+        logger.info('==================================================\n');
     }
 
     logger.info('Server Init Complete: Listening For Connections!');

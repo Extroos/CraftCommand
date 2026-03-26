@@ -1,8 +1,9 @@
 import fs from 'fs-extra';
 import path from 'path';
-import {  ScheduleTask  } from '@shared/types';
+import { ScheduleTask } from '@shared/types';
 import { StorageProvider } from './StorageProvider';
 import { StorageFactory } from './StorageFactory';
+import { logger } from '../utils/logger';
 
 export class ScheduleRepository {
     private scheduleTasks: StorageProvider<ScheduleTask>;
@@ -65,7 +66,7 @@ export class ScheduleRepository {
             }
 
             if (migratedCount > 0) {
-                console.log(`[ScheduleRepo] Migrated ${migratedCount} schedules to unified storage.`);
+                logger.info(`[ScheduleRepo] Migrated ${migratedCount} schedules to unified storage.`);
                 // Rename to prevent re-migration
                 fs.renameSync(this.schedulesDir, `${this.schedulesDir}.migrated_${Date.now()}`);
             }

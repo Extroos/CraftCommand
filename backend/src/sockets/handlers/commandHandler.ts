@@ -1,5 +1,7 @@
 import { Socket } from 'socket.io';
 import fs from 'fs-extra';
+import { logger } from '../../utils/logger';
+import { serverRepository } from '../../storage/ServerRepository';
 import path from 'path';
 import { permissionService } from '../../features/auth/PermissionService';
 import { processManager } from '../../features/processes/ProcessManager';
@@ -49,6 +51,6 @@ export const handleCommand = (socket: Socket, data: any) => {
         return;
     }
     
-    console.log(`[Socket] Command for ${serverId}: ${data.command} [User: ${user.username}]`);
+    logger.info(`[Socket] Command for ${serverId}: ${data.command} [User: ${user.username}]`);
     processManager.sendCommand(serverId, data.command);
 };
