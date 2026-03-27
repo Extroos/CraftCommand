@@ -17,4 +17,5 @@ export interface IServerRunner extends EventEmitter {
     isRunning(id: string): boolean;
     createBackup(id: string, serverDir: string, options: { description?: string, worldOnly?: boolean, nodeId?: string }): Promise<any>;
     restoreBackup(id: string, serverDir: string, backupId: string, options: { scope?: 'full' | 'world' | 'configs' | 'plugins', worldOnly?: boolean, nodeId?: string }): Promise<void>;
+    sync?(): Promise<void>; // Optional: Re-attach to existing processes after backend restart
 }

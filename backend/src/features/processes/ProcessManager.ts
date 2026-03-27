@@ -38,9 +38,30 @@ class ProcessManager extends EventEmitter {
     }
 
     private async initializeRunners() {
-        const dockerRunner = runnerFactory.getRunner('docker') as any;
-        if (dockerRunner.syncActiveContainers) {
-            await dockerRunner.syncActiveContainers();
+        const runners = runnerFactory.getAllRunners();
+        for (const runner of runners) {
+            if (runner.sync) {
+                logger.info(`[ProcessManager] Synchronizing runner...`);
+                await runner.sync();
+                
+                // Re-attach listeners for any processes recovered by the runner
+                const { getServer } = require('../servers/ServerService');
+                const servers = getServer();
+                for (const server of servers) {
+                    if (runner.isRunning(server.id) && !this.activeRunners.has(server.id)) {
+                        logger.info(`[ProcessManager:${server.id}] Recovery: Re-attaching listeners for recovered process.`);
+                        this.attachRunnerListeners(server.id, runner, ServerStatus.ONLINE);
+                        this.statusCache.set(server.id, { 
+                            online: true, 
+                            status: ServerStatus.ONLINE, 
+                            players: 0, 
+                            playerList: [], 
+                            uptime: 0, 
+                            tps: "0.00" 
+                        });
+                    }
+                }
+            }
         }
 
         // --- REMOTE RUNNER DESYNC FIX ---
@@ -216,6 +237,12 @@ class ProcessManager extends EventEmitter {
             logger.warn(`[ProcessManager:${id}] Start requested but runner is already active. (Idempotency)`);
             return;
         }
+
+        // --- AUTO-HEALING RESET (v2.2) ---
+        // If the user manually starts the server, we assume they've triaged it.
+        // Resetting stability markers allows Auto-Healing to resume monitoring.
+        const { autoHealingService } = require('../diagnosis/AutoHealingService');
+        autoHealingService.resetStabilityMarker(id);
         
         // --- PORT PROTECTION ENGINE ---
         const port = env.SERVER_PORT;

@@ -12,6 +12,7 @@ const execAsync = util.promisify(exec);
 export class DockerRunner extends EventEmitter implements IServerRunner {
     private containers: Map<string, string> = new Map(); // serverId -> containerName/Id
     private stdinStreams: Map<string, Writable> = new Map(); // serverId -> stdin
+    private logProcesses: Map<string, ChildProcess> = new Map(); // serverId -> log follow process
     private cpuHistory: Map<string, number> = new Map(); // serverId -> lastCpuValue
     private readonly CPU_CORES = os.cpus().length;
     private readonly SMOOTHING_FACTOR = 0.3; // EMA factor (lower = smoother)
@@ -38,8 +39,13 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
 
         console.log(`[DockerRunner] Starting container ${containerName} for ${id}...`);
 
-        // 2. Ensure previous container is gone
+        // 2. Ensure previous container and log followers are gone
         try {
+            const oldLogProc = this.logProcesses.get(id);
+            if (oldLogProc) {
+                oldLogProc.kill();
+                this.logProcesses.delete(id);
+            }
             await execAsync(`docker rm -f ${containerName}`);
         } catch (e) {}
 
@@ -124,30 +130,52 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
             this.emit('close', { id, code });
         });
     }
-
+    
     /**
      * Recovery logic: Scan for existing containers that match the CraftCommand pattern
-     * and re-register them if they are still running.
+     * and re-register them, including re-attaching log streams.
      */
-    async syncActiveContainers(): Promise<void> {
+    async sync(): Promise<void> {
         try {
             const { stdout } = await execAsync('docker ps --filter "name=craftcommand-server-" --format "{{.ID}},{{.Names}}"');
             const lines = stdout.split('\n').filter(l => l.trim() !== '');
             
             for (const line of lines) {
                 let [containerId, name] = line.split(',');
-                // Format: craftcommand-server-SERVER_ID
-                // Docker names occasionally have a leading slash
                 name = name.replace(/^\//, '');
                 const serverId = name.replace('craftcommand-server-', '');
+                
                 if (serverId && !this.containers.has(serverId)) {
                     console.log(`[DockerRunner] Re-mapped existing container ${name} to server ${serverId}`);
                     this.containers.set(serverId, name);
+                    this.attachLogFollower(serverId, name);
                 }
             }
-        } catch (e) {
+        } catch (e: any) {
             console.warn(`[DockerRunner] Failed to sync active containers: ${e.message}`);
         }
+    }
+
+    private attachLogFollower(serverId: string, containerName: string) {
+        if (this.logProcesses.has(serverId)) return;
+
+        console.log(`[DockerRunner:${serverId}] Re-attaching log follower for ${containerName}...`);
+        const logFollower = spawn(`docker logs --tail 50 --follow ${containerName}`, { shell: true });
+        this.logProcesses.set(serverId, logFollower);
+
+        let buffer = '';
+        logFollower.stdout.on('data', (data) => {
+            buffer += data.toString();
+            let lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const l of lines) {
+                this.emit('log', { id: serverId, line: l.replace(/\r$/, ''), type: 'stdout' });
+            }
+        });
+
+        logFollower.on('close', () => {
+            this.logProcesses.delete(serverId);
+        });
     }
 
     async stop(id: string, force: boolean = false): Promise<void> {
