@@ -229,11 +229,14 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
     const stats = allStats[serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, tps: "0.00", pid: 0 };
     const status = server?.status || ServerStatus.OFFLINE;
 
-    // Uptime latch
+    // Uptime latch (v1.12.7)
     const lastValidUptime = useRef<number>(0);
-    if (status === ServerStatus.ONLINE && stats.uptime > 0) lastValidUptime.current = stats.uptime;
-    else if (status !== ServerStatus.ONLINE) lastValidUptime.current = 0;
-    const displayUptime = status === ServerStatus.ONLINE ? (stats.uptime || lastValidUptime.current) : 0;
+    const isUptimeLive = [ServerStatus.ONLINE, ServerStatus.STARTING, ServerStatus.RESTARTING, ServerStatus.STOPPING].includes(status as ServerStatus);
+    
+    if (isUptimeLive && stats.uptime > 0) lastValidUptime.current = stats.uptime;
+    else if (!isUptimeLive) lastValidUptime.current = 0;
+    
+    const displayUptime = isUptimeLive ? (stats.uptime || lastValidUptime.current) : 0;
 
     const { addToast } = useToast();
     const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'restart' | null>(null);
@@ -250,10 +253,19 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
     const [tpsHistory, setTpsHistory] = useState<number[]>([]);
 
 
-    const displayCpu = status === ServerStatus.ONLINE ? (stats.cpu || 0) : 0;
-    const displayMemory = status === ServerStatus.ONLINE ? (stats.memory || 0) : 0;
-    const displayTps = status === ServerStatus.ONLINE ? parseFloat(stats.tps as string) || 0 : 0;
-    const displayLatency = status === ServerStatus.ONLINE ? (stats.latency || 0) : 0;
+    // Permissive metrics (v1.12.7): Show data if the server is in a "Live" state
+    const isLive = [
+        ServerStatus.ONLINE, 
+        ServerStatus.STARTING, 
+        ServerStatus.RESTARTING, 
+        ServerStatus.STOPPING,
+        ServerStatus.UNMANAGED
+    ].includes(status as ServerStatus);
+
+    const displayCpu = isLive ? (stats.cpu || 0) : 0;
+    const displayMemory = isLive ? (stats.memory || 0) : 0;
+    const displayTps = isLive ? parseFloat(stats.tps as string) || 0 : 0;
+    const displayLatency = isLive ? (stats.latency || 0) : 0;
 
     const latestMetrics = useRef({ cpu: displayCpu, mem: displayMemory, tps: displayTps, lat: displayLatency });
     useEffect(() => { latestMetrics.current = { cpu: displayCpu, mem: displayMemory, tps: displayTps, lat: displayLatency }; }, [displayCpu, displayMemory, displayTps, displayLatency]);
@@ -280,7 +292,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
     const peakMem = useRef(0);
     if (displayCpu > peakCpu.current) peakCpu.current = displayCpu;
     if (displayMemory > peakMem.current) peakMem.current = displayMemory;
-    if (status !== ServerStatus.ONLINE) { peakCpu.current = 0; peakMem.current = 0; }
+    if (!isLive) { peakCpu.current = 0; peakMem.current = 0; }
 
     const runDiagnosis = async () => {
         try {

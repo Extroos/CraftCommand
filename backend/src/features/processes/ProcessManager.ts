@@ -80,9 +80,9 @@ class ProcessManager extends EventEmitter {
                     if ((currentStatus === ServerStatus.STARTING || currentStatus === ServerStatus.RESTARTING) && !this.stoppingServers.has(id)) {
                         const isPortBound = await NetUtils.checkPort(server.port);
                         if (isPortBound) {
-                            logger.info(`[ProcessManager:${id}] Reachability Sync: Detected responsive port ${server.port}. Forcing ONLINE.`);
-                            this.clearStartupLock(id);
-                            this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE });
+                            // Phase 66: Passive Reachability only. 
+                            logger.debug(`[ProcessManager:${id}] Reachability Sync: Detected port ${server.port} bound. Status remains ${currentStatus} (Startup Lock Active).`);
+                            this.updateCachedStatus(id, { online: true }); 
                         }
                     }
 
@@ -135,6 +135,10 @@ class ProcessManager extends EventEmitter {
     private startStatsLoop() {
         setInterval(async () => {
             const now = Date.now();
+            const servers = Array.from(this.activeRunners.keys());
+            if (servers.length > 0) {
+                logger.info(`[ProcessManager] Stats Loop for: ${servers.join(', ')}`);
+            }
             const tasks = Array.from(this.activeRunners.entries()).map(async ([id, runner]) => {
                 try {
                     // --- ADAPTIVE STATS (v1.14.0: UI-Aware Throttling) ---
@@ -142,63 +146,56 @@ class ProcessManager extends EventEmitter {
                     const isInactive = (now - lastActivity > 60000); // 1 minute inactivity
                     const isFocused = (this.focusedServerId === id);
                     
-                    // Throttling Rules:
-                    // 1. Focused Server -> 1Hz (Always)
-                    // 2. Active Server -> 1Hz
-                    // 3. Inactive Server -> 0.2Hz (Every 5s)
                     if (isInactive && !isFocused && (Math.floor(now / 1000) % 5 !== 0)) {
                         return;
                     }
 
                     const stats = await runner.getStats(id);
                     
-                    // TPS Throttling: Regex parsing is expensive. Only do it every 5s for non-focused.
-                    let tps = this.statusCache.get(id)?.tps || "20.00";
+                    // Stabilize metrics (v1.12.7)
+                    const normalizedCpu = Math.max(0, stats.cpu || 0);
+                    const normalizedMem = Math.max(0, stats.memory || 0);
+                    
+                    const cachedStatus = this.statusCache.get(id);
+                    const currentStatus = cachedStatus?.status || ServerStatus.OFFLINE;
+                    
+                    // Allow metrics if process is running (v1.12.7)
+                    const isLive = currentStatus === ServerStatus.ONLINE || 
+                                   currentStatus === ServerStatus.STARTING || 
+                                   currentStatus === ServerStatus.RESTARTING || 
+                                   currentStatus === ServerStatus.STOPPING;
+
+                    const displayCpu = isLive ? normalizedCpu : 0;
+                    const displayMem = isLive ? normalizedMem : 0;
+
+                    // TPS Throttling
+                    let tps = cachedStatus?.tps || "0.00";
                     if (isFocused || (Math.floor(now / 1000) % 5 === 0)) {
                         tps = await this.getTPS(id);
                     }
 
                     const uptime = this.getUptime(id);
-                    
-                    // Bedrock Query Throttling (Every 10s for inactive)
-                    const { getServer } = await import('../servers/ServerService');
-                    const server = getServer(id);
-                    if (server?.software === 'Bedrock') {
-                        const bedrockThrottle = isInactive ? 10 : 2;
-                        if (Math.floor(now / 1000) % bedrockThrottle === 0) {
-                            const query = await NetUtils.queryBedrock(server.port);
-                            if (query) {
-                                this.updateCachedStatus(id, {
-                                    online: true,
-                                    players: query.players,
-                                    maxPlayers: query.maxPlayers,
-                                    latency: query.ping,
-                                    softwareVersion: query.version
-                                });
-                            }
-                        }
-                    }
+                    const latency = cachedStatus?.latency || 0;
+                    const players = cachedStatus?.players || 0;
 
-                    const latency = this.statusCache.get(id)?.latency || 0;
-                    const players = this.statusCache.get(id)?.players || 0;
-
-                    this.emit('stats', { id, ...stats, tps, uptime, latency, players });
+                    // Emit to Sockets
+                    this.emit('stats', { 
+                        id, 
+                        cpu: displayCpu, 
+                        memory: displayMem, 
+                        tps, 
+                        uptime, 
+                        latency: latency, // Correctly use latency
+                        players,
+                        pid: stats.pid || 0 // Added PID (v1.12.8)
+                    });
 
                     statsRingBuffer.push(id, {
-                        cpu: stats.cpu,
-                        memory: stats.memory,
+                        cpu: displayCpu,
+                        memory: displayMem,
                         tps: parseFloat(tps),
                         players,
                         timestamp: Date.now()
-                    });
-
-                    this.updateCachedStatus(id, { 
-                        cpu: stats.cpu,
-                        memory: stats.memory,
-                        uptime,
-                        tps,
-                        latency,
-                        players
                     });
                 } catch (e) {
                     logger.error(`[ProcessManager] Stats failed for ${id}: ${e}`);
@@ -265,7 +262,8 @@ class ProcessManager extends EventEmitter {
         try {
             await runner.start(id, runCommand, cwd, env);
             if (this.activeRunners.has(id)) {
-                this.maybeEmitStatus(id, ServerStatus.STARTING);
+                // Phase 66: Persist STARTING state so frontend pollers don't see STALE data
+                this.updateCachedStatus(id, { status: ServerStatus.STARTING, online: false }, true);
             }
         } catch (err: any) {
             this.cleanupRunner(id);
@@ -290,6 +288,7 @@ class ProcessManager extends EventEmitter {
         // Setup Event Handlers for this specific server/runner combo
         const logHandler = (data: { id: string, line: string, type: 'stdout' | 'stderr' }) => {
             if (data.id !== id) return;
+            this.lastActivityTime.set(id, Date.now()); // Any log output counts as activity
             this.handleServerLog(id, data.line, data.type);
         };
 
@@ -336,7 +335,7 @@ class ProcessManager extends EventEmitter {
         if (this.startupLocks.has(id)) {
             if (line.includes('Done (') || line.includes('Listening on')) {
                 this.clearStartupLock(id);
-                this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE });
+                this.updateCachedStatus(id, { online: true, status: ServerStatus.ONLINE }, true);
             }
         }
 
@@ -446,29 +445,42 @@ class ProcessManager extends EventEmitter {
 
     private handleServerClose(id: string, code: number) {
         logger.info(`[ProcessManager] Server ${id} closed with code ${code}`);
+        
+        // Phase 62: Startup Race Protection (v1.12.16)
+        // If a new startup is already in lock-phase, ignore close events from the previous session/purging
+        if (this.startupLocks.has(id)) {
+            logger.warn(`[ProcessManager:${id}] Ignored close event (code ${code}) during active startup sequence.`);
+            return;
+        }
+
         this.clearStartupLock(id);
 
         const isIntentional = this.stoppingServers.has(id);
         const finalStatus = (!isIntentional && code !== 0 && code !== null) ? ServerStatus.CRASHED : ServerStatus.OFFLINE;
-
+        
         this.stoppingServers.delete(id);
 
         const { getServer, saveServer } = require('../servers/ServerService');
         const server = getServer(id);
         if (server) {
-            // Only wipe startTime if it was intentional or a crash
-            // Persistence Guard: Only wipe timing metadata if intentional or crash
-            if (isIntentional || finalStatus === 'CRASHED') {
+            if (isIntentional || finalStatus === ServerStatus.CRASHED) {
                 delete server.startTime;
                 this.onlineTimes.delete(id);
+                saveServer(server); // Commit metadata changes
             }
-            server.status = finalStatus;
-            saveServer(server);
         }
 
-        // Update cache to reflect final status immediately (prevents polling desyncs)
-        this.updateCachedStatus(id, { status: finalStatus, online: false });
-        this.maybeEmitStatus(id, finalStatus);
+        // --- Phase 63/66: Unified Zero-Point Reset & Persistence ---
+        this.updateCachedStatus(id, { 
+            status: finalStatus, 
+            online: false,
+            cpu: 0,
+            memory: 0,
+            tps: "0.00",
+            uptime: 0,
+            players: 0,
+            playerList: []
+        }, true); // PERSIST final state
     }
 
     async stopServer(id: string, force: boolean = false) {
@@ -680,54 +692,91 @@ class ProcessManager extends EventEmitter {
         
         if (server?.software === 'Bedrock') {
             const cached = this.statusCache.get(id);
-            // For Bedrock, we use "Stable" or "Responsive" as a TPS proxy since we can't query actual TPS via RCON/RakNet
-            return cached?.online ? "20.0" : "0.0";
+            // Bedrock is fixed at 20 ticks theoretically
+            return cached?.online ? "20.00" : "0.00";
         }
 
         const logs = this.logHistory.get(id) || [];
-        for (let i = logs.length - 1; i >= Math.max(0, logs.length - 50); i--) {
+        // Scan deeper (150 lines) for TPS logs
+        for (let i = logs.length - 1; i >= Math.max(0, logs.length - 150); i--) {
             const line = logs[i];
-            const match = line.match(/TPS from last [\d\w\s]+: ([\d\.]+)/i) || line.match(/TPS: ([\d\.]+)/i);
+            const match = line.match(/TPS from last [\d\w\s]+: ([\d\.]+)/i) || 
+                          line.match(/TPS: ([\d\.]+)/i) ||
+                          line.match(/current tps: ([\d\.]+)/i); // Added more common format
             if (match) return parseFloat(match[1]).toFixed(2);
         }
-        return this.statusCache.get(id)?.online ? "20.00" : "0.00"; 
+
+        const cached = this.statusCache.get(id);
+        // Phase 59: TPS Latch (v1.12.14)
+        // If we have a non-zero cached TPS, keep it instead of dropping to 0 or 20
+        if (cached?.online && cached.tps && cached.tps !== "0.00") {
+            return cached.tps;
+        }
+
+        return cached?.online ? "20.00" : "0.00"; 
     }
 
-    updateCachedStatus(id: string, data: any) {
+    /**
+     * Phase 66: Unified Lifecycle Engine (v2.0)
+     * Centralizes status updates to prevent race conditions and split-brain sync fixes.
+     */
+    updateCachedStatus(id: string, data: any, persist: boolean = false) {
         const current = this.statusCache.get(id) || {};
         
-        // --- SMART PLAYER MERGE ---
+        // --- SMART PLAYER MERGE (Preserved from v1.12.16) ---
         if (data.playerList) {
             const currentList: string[] = current.playerList || [];
             const newList: string[] = data.playerList;
-            
-            // If the new list is empty but we have current players, keep the current ones (Logs are more reliable)
             if (newList.length === 0 && currentList.length > 0 && data.players > 0) {
-                 // The query said players are online but didn't give names. Trust our existing list.
                  data.playerList = currentList;
             } else if (newList.length > 0) {
-                // If the new list contains generic names like "Anonymous Player" or "Unknown", 
-                // and we already have real names, try to preserve them.
                 const hasGeneric = newList.some(n => n.toLowerCase().includes('anonymous') || n.toLowerCase().includes('unknown'));
                 if (hasGeneric && currentList.length > 0) {
-                    // Combine lists and take unique, preferring non-generic
                     const combined = new Set([...currentList, ...newList]);
                     data.playerList = Array.from(combined).filter(name => {
                         const isGeneric = name.toLowerCase().includes('anonymous') || name.toLowerCase().includes('unknown');
-                        // Only keep generic if we have nothing else
                         return !isGeneric || combined.size === 1;
                     });
                 }
             }
         }
 
-        if (data.online && current.status === ServerStatus.STARTING) {
-            data.status = ServerStatus.ONLINE;
-            this.onlineTimes.set(id, Date.now());
-            this.clearStartupLock(id);
+        // --- SOURCE OF TRUTH CONSOLIDATION ---
+        // We REMOVED the early promotion rule (online && STARTING -> ONLINE)
+        // Readiness must now be explicitly declared by the log parser or fallback timeout.
+        
+        const newStatus = data.status || current.status;
+        const isTransitioningFromBoot = current.status === ServerStatus.STARTING || current.status === ServerStatus.RESTARTING;
+        const isNowOnline = newStatus === ServerStatus.ONLINE;
+
+        if (isNowOnline && (isTransitioningFromBoot || current.status === ServerStatus.OFFLINE || !current.status)) {
+            // Only update onlineTimes and clear lock if we just officially became online
+            if (current.status !== ServerStatus.ONLINE) {
+                this.onlineTimes.set(id, Date.now());
+                this.clearStartupLock(id);
+            }
         }
+
+        // Persistence Sync: Update database if requested (ensures frontend list matches memory)
+        if (persist && data.status) {
+            const { getServer, saveServer } = require('../servers/ServerService');
+            const server = getServer(id);
+            if (server && server.status !== data.status) {
+                server.status = data.status;
+                saveServer(server);
+            }
+        }
+
+        // Event Emission
         if (data.status) this.maybeEmitStatus(id, data.status);
-        this.statusCache.set(id, { ...current, ...data, lastUpdate: Date.now() });
+        
+        // Final Merge
+        this.statusCache.set(id, { 
+            ...current, 
+            ...data, 
+            status: newStatus, 
+            lastUpdate: Date.now() 
+        });
     }
 
     getCachedStatus(id: string) {

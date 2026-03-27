@@ -5,6 +5,7 @@ import util from 'util';
 import os from 'os';
 import { Writable } from 'stream';
 import { backupService } from '../../backups/BackupService';
+import { logger } from '../../../utils/logger';
 
 const execAsync = util.promisify(exec);
 
@@ -191,8 +192,8 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
             try {
                 // Persistent STDIN absent (e.g. after backend restart), fallback to exec injection
                 await execAsync(`echo "${command}" | docker exec -i ${containerName} sh -c "cat >> /proc/1/fd/0"`);
-            } catch (e) {
-                console.warn(`[DockerRunner:${id}] SendCommand fallback failed: ${e.message}`);
+            } catch (e: any) {
+                logger.warn(`[DockerRunner:${id}] SendCommand fallback failed: ${e.message}`);
             }
         }
     }
@@ -203,37 +204,37 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
 
         try {
             const { stdout } = await execAsync(`docker stats ${containerName} --no-stream --format "{{.CPUPerc}},{{.MemUsage}}"`);
-            const [cpu, mem] = stdout.split(',');
+            if (!stdout || !stdout.includes(',')) return { cpu: 0, memory: 0 };
+
+            const [cpuStr, memStr] = stdout.split(',');
             
             // 1. Parse CPU (e.g., "0.50%")
-            let cpuVal = parseFloat(cpu.replace('%', ''));
+            let cpuVal = parseFloat(cpuStr.replace(/[^0-9.]/g, '')) || 0;
 
             // 2. Normalize CPU by core count (docker stats returns sum of all cores)
-            // This brings 500% down to ~41% on 12 cores.
-            cpuVal = cpuVal / this.CPU_CORES;
+            cpuVal = cpuVal / (this.CPU_CORES || 1);
 
             // 3. Apply Smoothing (Exponential Moving Average)
-            const lastCpu = this.cpuHistory.get(id) || cpuVal;
+            const lastCpu = this.cpuHistory.get(id) ?? cpuVal;
             const smoothedCpu = (cpuVal * this.SMOOTHING_FACTOR) + (lastCpu * (1 - this.SMOOTHING_FACTOR));
             this.cpuHistory.set(id, smoothedCpu);
 
             // 4. Parse Memory Usage (e.g., "1.2MiB / 4GiB")
-            const memPart = mem.split('/')[0].trim().toLowerCase();
-            let memVal = parseFloat(memPart);
+            const memPart = memStr.split('/')[0].trim().toLowerCase();
+            let memVal = parseFloat(memPart.replace(/[^0-9.]/g, '')) || 0;
             
-            if (memPart.includes('g')) { // Handles GiB, GB, g
+            if (memPart.includes('g')) { 
                 memVal *= 1024;
-            } else if (memPart.includes('k')) { // Handles KiB, kB, k
+            } else if (memPart.includes('k')) { 
                 memVal /= 1024;
             } else if (memPart.includes('b') && !memPart.includes('m')) {
-                // Raw bytes (B), not MB or MiB
                 memVal /= (1024 * 1024);
             }
             // Default is MiB/MB
 
             return {
                 cpu: parseFloat(smoothedCpu.toFixed(2)),
-                memory: memVal,
+                memory: parseFloat(memVal.toFixed(2)),
                 containerId: containerName
             };
         } catch (e) {

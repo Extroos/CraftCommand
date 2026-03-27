@@ -351,7 +351,13 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3 text-xs font-mono text-muted-foreground">
-                                                <span className="flex items-center gap-1"><Cpu size={12} /> {server.status === 'ONLINE' ? `${(stats[server.id]?.cpu || 0).toFixed(1)}%` : '0%'}</span>
+                                                {/* Permissive metrics (v1.12.8) */}
+                                                <span className="flex items-center gap-1">
+                                                    <Cpu size={12} /> 
+                                                    {['ONLINE', 'STARTING', 'RESTARTING', 'STOPPING', 'UNMANAGED'].includes(server.status) 
+                                                        ? `${(stats[server.id]?.cpu || 0).toFixed(1)}%` 
+                                                        : '0%'}
+                                                </span>
                                                 <span className="flex items-center gap-1"><MemoryStick size={12} /> {server.ram}GB</span>
                                             </div>
                                         </td>

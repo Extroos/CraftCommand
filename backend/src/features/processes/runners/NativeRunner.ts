@@ -22,50 +22,103 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
     // --- GLOBAL PROCESS CACHE (v1.14.0: Top-Down Aggregation) ---
     private static cachedProcessList: any[] = [];
     private static processIndex: Map<number, any> = new Map(); 
-    private static serverResourceMap: Map<number, { cpu: number, mem: number, targetPid: number, commandLine: string }> = new Map();
+    private static serverResourceMap: Map<number, { cpu: number, memory: number, targetPid: number, commandLine: string }> = new Map();
     private static lastGlobalScan = 0;
     private static scanPromise: Promise<void> | null = null;
 
-    private async updateGlobalProcessCache() {
+    private async updateGlobalProcessCache(): Promise<void> {
         const now = Date.now();
-        if (now - NativeRunner.lastGlobalScan < 1000) return; // Limit to 1Hz
+        if (now - NativeRunner.lastGlobalScan < 1000 && NativeRunner.lastGlobalScan !== 0) return;
         if (NativeRunner.scanPromise) return NativeRunner.scanPromise;
 
         NativeRunner.scanPromise = (async () => {
             try {
-                const procs = await si.processes();
-                const newList = procs.list;
-                const newIndex = new Map();
+                const isWindows = process.platform === 'win32';
+                const newList: any[] = [];
+                const newIndex = new Map<number, any>();
                 const parentChildMap = new Map<number, number[]>();
 
-                // 1. Index everything
+                // 1. Fetch Process Inventory
+                if (isWindows) {
+                    try {
+                        const { stdout } = await execAsync('powershell -Command "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine,WorkingSetSize,Caption | ConvertTo-Csv -NoTypeInformation"');
+                        const lines = stdout.split('\n');
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (!trimmed || trimmed.startsWith('"ProcessId"')) continue;
+                            
+                            const parts = trimmed.split(',');
+                            if (parts.length < 5) continue;
+
+                            const pid = parseInt(parts[0].replace(/"/g, ''));
+                            const ppid = parseInt(parts[1].replace(/"/g, ''));
+                            const mem = parseInt(parts[3].replace(/"/g, '')) || 0;
+                            const name = parts[4].replace(/"/g, '');
+                            const cmd = parts.slice(2, parts.length - 2).join(',').replace(/^"|"$/g, '').replace(/""/g, '"').trim();
+                            
+                            if (!isNaN(pid)) {
+                                const p = { 
+                                    pid, 
+                                    parentPid: ppid, 
+                                    command: cmd || name,
+                                    params: '',
+                                    cpu: 0, 
+                                    memRss: Math.floor(mem / 1024) 
+                                };
+                                newList.push(p);
+                                newIndex.set(pid, p);
+                            }
+                        }
+
+                        const siStats = await si.processes();
+                        for (const sip of siStats.list) {
+                            const p = newIndex.get(sip.pid);
+                            if (p) p.cpu = sip.cpu;
+                        }
+                    } catch (e) {
+                         logger.error(`[NativeRunner] PowerShell Tree Inventory failed: ${e}`);
+                         const siStats = await si.processes();
+                         newList.push(...siStats.list);
+                    }
+                } else {
+                    const procs = await si.processes();
+                    newList.push(...procs.list);
+                }
+
                 for (const p of newList) {
-                    newIndex.set(p.pid, p);
+                    if (!newIndex.has(p.pid)) newIndex.set(p.pid, p);
                     if (!parentChildMap.has(p.parentPid)) parentChildMap.set(p.parentPid, []);
                     parentChildMap.get(p.parentPid)!.push(p.pid);
                 }
 
-                // 2. Pre-calculate Aggregates for ALL nodes (O(N) Post-Order Traversal)
-                const newResourceMap = new Map<number, { cpu: number, mem: number, targetPid: number, commandLine: string }>();
-                const memo = new Map<number, { cpu: number, mem: number, targetPid: number, commandLine: string }>();
+                const newResourceMap = new Map<number, { cpu: number, memory: number, targetPid: number, commandLine: string }>();
+                const memo = new Map<number, { cpu: number, memory: number, targetPid: number, commandLine: string }>();
+                const inProgress = new Set<number>();
 
-                const getAggregate = (pid: number): { cpu: number, mem: number, targetPid: number, commandLine: string } => {
+                const getAggregate = (pid: number): { cpu: number, memory: number, targetPid: number, commandLine: string } => {
                     if (memo.has(pid)) return memo.get(pid)!;
+                    if (inProgress.has(pid)) return { cpu: 0, memory: 0, targetPid: pid, commandLine: '' };
+
+                    inProgress.add(pid);
 
                     const p = newIndex.get(pid);
-                    if (!p) return { cpu: 0, mem: 0, targetPid: pid, commandLine: '' };
+                    if (!p) return { cpu: 0, memory: 0, targetPid: pid, commandLine: '' };
 
-                    let totalCpu = p.cpu;
-                    let totalMem = p.memRss;
+                    let baseCpu = typeof p.cpu === 'number' ? p.cpu : (parseFloat(p.cpu) || 0);
+                    let baseMem = typeof p.memRss === 'number' ? p.memRss : (parseFloat(p.memRss) || 0);
+
+                    let totalCpu = baseCpu;
+                    let totalMem = baseMem; 
                     let targetPid = p.pid;
-                    let targetCommandLine = `${p.command} ${p.params}`.trim();
-                    let isTargetFound = p.command.toLowerCase().includes('java') || p.command.toLowerCase().includes('bedrock_server');
+                    let targetCommandLine = `${p.command} ${p.params || ''}`.trim();
+                    let commandStr = p.command.toLowerCase();
+                    let isTargetFound = commandStr.includes('java') || commandStr.includes('bedrock_server') || commandStr.includes('node');
 
                     const children = parentChildMap.get(pid) || [];
                     for (const cId of children) {
                         const childAgg = getAggregate(cId);
                         totalCpu += childAgg.cpu;
-                        totalMem += childAgg.mem * 1024; // Convert back to bytes for consistency in this loop
+                        totalMem += (childAgg.memory * 1024);
                         
                         if (!isTargetFound && childAgg.commandLine !== '') {
                             targetPid = childAgg.targetPid;
@@ -74,7 +127,13 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
                         }
                     }
 
-                    const result = { cpu: totalCpu, mem: totalMem / 1024, targetPid, commandLine: targetCommandLine };
+                    const result = { 
+                        cpu: Math.max(0, totalCpu), 
+                        memory: Math.max(0, totalMem / 1024), 
+                        targetPid, 
+                        commandLine: targetCommandLine 
+                    };
+                    inProgress.delete(pid);
                     memo.set(pid, result);
                     return result;
                 };
@@ -87,6 +146,8 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
                 NativeRunner.processIndex = newIndex;
                 NativeRunner.serverResourceMap = newResourceMap;
                 NativeRunner.lastGlobalScan = Date.now();
+            } catch (err) {
+                logger.error(`[NativeRunner] Global background scan failing: ${err}`);
             } finally {
                 NativeRunner.scanPromise = null;
             }
@@ -106,8 +167,19 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
     async start(id: string, runCommand: string, cwd: string, env: NodeJS.ProcessEnv): Promise<void> {
         if (this.processes.has(id)) throw new Error(`Process for ${id} already running.`);
         await this.fixPermissions(cwd);
-        const child = spawn(runCommand, { cwd, shell: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+        
+        // --- PROCESS TAGGING (v1.12.10: For Heuristic Discovery) ---
+        let taggedCommand = runCommand;
+        if (runCommand.trim().startsWith('java')) {
+            taggedCommand = runCommand.replace(/^(\s*java)/, `$1 -Dcraftcommand.id=${id}`);
+        } else if (runCommand.trim().startsWith('node')) {
+             taggedCommand = runCommand.replace(/^(\s*node)/, `$1 --title=craftcommand-${id}`);
+        }
+
+        const child = spawn(taggedCommand, { cwd, shell: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
         this.processes.set(id, child);
+        
+        logger.info(`[NativeRunner:${id}] Process spawned with tag. Command: ${taggedCommand.substring(0, 50)}...`);
 
         let stdoutBuffer = '', stderrBuffer = '';
         child.stdout?.on('data', (data) => {
@@ -153,15 +225,33 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
 
     async getStats(id: string): Promise<RunnerStats> {
         const child = this.processes.get(id);
-        if (!child || !child.pid) return { cpu: 0, memory: 0 };
+        const managedPid = child?.pid;
 
         try {
             await this.updateGlobalProcessCache();
-            const aggregate = NativeRunner.serverResourceMap.get(child.pid);
+            let aggregate = managedPid ? NativeRunner.serverResourceMap.get(managedPid) : null;
+            
+            // --- HEURISTIC FALLBACK (v1.12.8) ---
+            if (!aggregate || (aggregate.cpu === 0 && aggregate.memory === 0)) {
+                // Search the entire process list for a match
+                for (const [pid, agg] of NativeRunner.serverResourceMap.entries()) {
+                    // We check if the command line contains the server ID (usually in the path)
+                    // and it's a main process type.
+                    const cmd = agg.commandLine.toLowerCase();
+                    const isCandidate = cmd.includes('java') || cmd.includes('bedrock_server') || cmd.includes('node');
+                    
+                    // We check for the server ID in the command line (heuristic)
+                    if (isCandidate && cmd.includes(id.toLowerCase())) {
+                        aggregate = agg;
+                        break;
+                    }
+                }
+            }
+
             if (aggregate) {
                 return {
                     cpu: aggregate.cpu,
-                    memory: aggregate.mem,
+                    memory: aggregate.memory,
                     pid: aggregate.targetPid,
                     commandLine: aggregate.commandLine
                 };

@@ -208,5 +208,33 @@
     "lastCrash": 0,
     "consecutiveCrashes": 0,
     "isSafeMode": false
+  },
+  "local-1774555281480": {
+    "serverId": "local-1774555281480",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
+  },
+  "local-1774556233545": {
+    "serverId": "local-1774556233545",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
+  },
+  "local-1774556520436": {
+    "serverId": "local-1774556520436",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
+  },
+  "local-1774563135785": {
+    "serverId": "local-1774563135785",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
   }
 }

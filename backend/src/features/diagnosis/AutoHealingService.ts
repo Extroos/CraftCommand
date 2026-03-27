@@ -140,6 +140,13 @@ class AutoHealingService extends EventEmitter {
     private async evalServerHealth(server: any, isOverloaded: boolean) {
         if (this.healthCheckLocks.has(server.id) || this.activeRecoveries.has(server.id)) return;
 
+        // Phase 66: Startup Grace Period
+        // If a server is explicitly in STARTING or RESTARTING state, wait for the log parser
+        // or the 5-minute timeout to declare it ready before checking port health.
+        if (server.status === ServerStatus.STARTING || server.status === ServerStatus.RESTARTING) {
+            return;
+        }
+
         // DEGRADED Node Safeguard: Pause if node is melting
         if (server.nodeId && server.nodeId !== 'local') {
             const node = nodeRegistryService.getNode(server.nodeId);

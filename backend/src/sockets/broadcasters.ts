@@ -28,6 +28,10 @@ export const registerBroadcasters = (io: Server) => {
         io.emit('status:global', data);
     });
     processManager.on('stats', (data) => {
+        // [DIAGNOSTIC] v1.12.9
+        if (data.cpu > 0 || data.memory > 0) {
+            logger.info(`[Telemetry-Emit] ${data.id}: ${data.cpu}% CPU, ${data.memory}MB MEM`);
+        }
         io.to(`server:${data.id}`).emit('stats', data);
         io.to('server:global').emit('stats', data);
     });

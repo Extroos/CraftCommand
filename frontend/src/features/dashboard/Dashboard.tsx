@@ -75,14 +75,6 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     const stats = allStats[serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, tps: "0.00", pid: 0 };
     const status = server?.status || ServerStatus.OFFLINE;
 
-    // Stability: Latch last valid uptime to prevent jitter while ONLINE
-    const lastValidUptime = useRef<number>(0);
-    if (status === ServerStatus.ONLINE && stats.uptime > 0) {
-        lastValidUptime.current = stats.uptime;
-    } else if (status !== ServerStatus.ONLINE) {
-        lastValidUptime.current = 0;
-    }
-    const displayUptimeValue = status === ServerStatus.ONLINE ? (stats.uptime || lastValidUptime.current) : 0;
 
     const { addToast } = useToast();
     const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'restart' | null>(null);
@@ -101,17 +93,67 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     const [memHistory, setMemHistory] = useState<number[]>([]);
     const [tpsHistory, setTpsHistory] = useState<number[]>([]);
 
-    // Stability: Force metrics to zero if not ONLINE, and ensure no NaN values
-    const displayCpu = status === ServerStatus.ONLINE ? (stats.cpu || 0) : 0;
-    const displayMemory = status === ServerStatus.ONLINE ? (stats.memory || 0) : 0;
-    const displayTps = status === ServerStatus.ONLINE ? (typeof stats.tps === 'number' ? stats.tps : parseFloat(stats.tps as string) || 0) : 0;
-    const displayLatency = status === ServerStatus.ONLINE ? (stats.latency || 0) : 0;
+    // Phase 58: Smooth Uptime Interpolation (v1.12.13)
+    // Prevents jumping (e.g. 1s -> 6s) by ticking locally while synced to backend
+    const [localUptime, setLocalUptime] = useState<number>(0);
+    
+    useEffect(() => {
+        // v1.12.16: Only sync from backend if the server is actually ONLINE
+        // Otherwise, the local reset (0) will be overwritten by stale metrics
+        if (status === ServerStatus.ONLINE && stats.uptime > 0) {
+            setLocalUptime(stats.uptime);
+        }
+    }, [stats.uptime, status]);
+
+    // Phase 64: Metric Lifecycle Engine (v1.12.16)
+    // Permissive metrics: Show data if the server is in a "Live" state
+    const isLive = [
+        ServerStatus.ONLINE, 
+        ServerStatus.STARTING,
+        ServerStatus.RESTARTING,
+        ServerStatus.STOPPING,
+        ServerStatus.UNMANAGED
+    ].includes(status as ServerStatus);
+
+    const displayCpu = isLive ? (stats.cpu || 0) : 0;
+    const displayMemory = isLive ? (stats.memory || 0) : 0;
+    const displayTps = isLive ? (typeof stats.tps === 'number' ? stats.tps : parseFloat(stats.tps as string) || 0) : 0;
+    const displayLatency = isLive ? (stats.latency || 0) : 0;
+
+    // Phase 61: UI-Side TPS Latch (v1.12.15)
+    // Prevents flickering to 0.00 during transient query timeouts if server is live
+    const lastValidTps = useRef<number>(20);
+    useEffect(() => {
+        if (displayTps > 0) lastValidTps.current = displayTps;
+    }, [displayTps]);
+
+    const finalTps = (isLive && displayTps === 0) ? lastValidTps.current : displayTps;
+
+    // Zero-Point History Wipe (v1.12.16)
+    // Force history to clear when server stops to provide visual feedback
+    useEffect(() => {
+        if (!isLive) {
+            setCpuHistory(Array(30).fill(0));
+            setMemHistory(Array(30).fill(0));
+            setTpsHistory(Array(30).fill(0));
+        }
+    }, [isLive]);
+
+    useEffect(() => {
+        // v1.12.16: Use isLive instead of just ONLINE to catch STOPPING/OFFLINE transitions faster
+        if (!isLive || status !== ServerStatus.ONLINE) {
+            setLocalUptime(0);
+            return;
+        }
+        const ticker = setInterval(() => setLocalUptime(prev => prev + 1), 1000);
+        return () => clearInterval(ticker);
+    }, [status, isLive]);
 
     // Use a ref for the latest values to avoid stale closures in the interval
-    const latestMetrics = useRef({ cpu: displayCpu, mem: displayMemory, tps: displayTps });
+    const latestMetrics = useRef({ cpu: displayCpu, mem: displayMemory, tps: finalTps });
     useEffect(() => {
-        latestMetrics.current = { cpu: displayCpu, mem: displayMemory, tps: displayTps };
-    }, [displayCpu, displayMemory, displayTps]);
+        latestMetrics.current = { cpu: displayCpu, mem: displayMemory, tps: finalTps };
+    }, [displayCpu, displayMemory, finalTps]);
 
     // Initialize once on mount with the first valid data
     useEffect(() => {
@@ -123,21 +165,28 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     // Advance the chart every 2 seconds regardless of if the value changed
     useEffect(() => {
         const interval = setInterval(() => {
+            // ONLY advance history if the server is in a live/transitioning state (v1.12.12)
+            if (!isLive) return;
+
             setCpuHistory(prev => {
-                if (prev.length === 0) return Array(30).fill(latestMetrics.current.cpu);
-                return [...prev.slice(1), latestMetrics.current.cpu];
+                const val = latestMetrics.current.cpu || 0;
+                if (prev.length === 0) return Array(30).fill(val);
+                return [...prev.slice(1), val];
             });
             setMemHistory(prev => {
-                if (prev.length === 0) return Array(30).fill(latestMetrics.current.mem);
-                return [...prev.slice(1), latestMetrics.current.mem];
+                const val = latestMetrics.current.mem || 0;
+                if (prev.length === 0) return Array(30).fill(val);
+                return [...prev.slice(1), val];
             });
+            // tpsHistory should still only update when 'isLive' as TPS is only meaningful then
             setTpsHistory(prev => {
-                if (prev.length === 0) return Array(30).fill(latestMetrics.current.tps);
-                return [...prev.slice(1), latestMetrics.current.tps];
+                const val = latestMetrics.current.tps || 0;
+                if (prev.length === 0) return Array(30).fill(val);
+                return [...prev.slice(1), val];
             });
         }, 2000);
         return () => clearInterval(interval);
-    }, []);
+    }, [isLive]); // Re-subscribe if liveness changes
 
     const runDiagnosis = async () => {
         try {
@@ -463,8 +512,8 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
             {/* Tactical Grid Row 1 (Responsive Columns) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
-                    { label: 'UPTIME', value: formatUptime(displayUptimeValue), sub: 'SESSION DURATION', detail: '', icon: <Clock size={16} className="text-foreground/40" />, status: status === ServerStatus.ONLINE ? 'ONLINE' : 'OFFLINE' },
-                    { label: 'TICK RATE', value: Number(stats.tps || 0).toFixed(2), unit: 'TPS', sub: '', detail: '', icon: <Activity size={16} className="text-foreground/40" />, line: true },
+                    { label: 'UPTIME', value: formatUptime(localUptime), sub: 'SESSION DURATION', detail: '', icon: <Clock size={16} className="text-foreground/40" />, status: status === ServerStatus.ONLINE ? 'ONLINE' : 'OFFLINE' },
+                    { label: 'TICK RATE', value: finalTps.toFixed(2), unit: 'TPS', sub: '', detail: '', icon: <Activity size={16} className="text-foreground/40" />, line: true },
                     { label: 'PLAYERS', value: stats.players, unit: ` / ${server.maxPlayers || '20'}`, sub: '', detail: '', icon: <Users size={16} className="text-foreground/40" />, heads: true },
                     { label: 'LATENCY', value: stats.latency, unit: 'ms', sub: '', detail: '', icon: <Zap size={16} className="text-foreground/40" />, signal: true }
                 ].map((m, i) => (
@@ -485,8 +534,8 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                                 </div>
                             )}
                             {m.label === 'TICK RATE' && (() => {
-                                const tps = typeof stats.tps === 'number' ? stats.tps : parseFloat(stats.tps as string) || 0;
-                                const isOffline = status !== ServerStatus.ONLINE;
+                                const tps = finalTps; // v1.12.16: Use latched finalTps to prevent badge flickering
+                                const isOffline = status !== ServerStatus.ONLINE && status !== ServerStatus.UNMANAGED;
                                 return (
                                     <div className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-widest ${
                                         isOffline

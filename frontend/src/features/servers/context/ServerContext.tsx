@@ -186,7 +186,15 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Pre-fetch data when current server changes
     useEffect(() => {
         if (currentServer) {
-            refreshServerData(currentServer.id);
+            const serverId = currentServer.id;
+            refreshServerData(serverId);
+            
+            // Join socket room for live updates (Stats, Logs, Presence)
+            socketService.joinServer(serverId);
+
+            return () => {
+                socketService.leaveServer(serverId); // Closure capture (v1.12.10)
+            };
         }
     }, [currentServer?.id, refreshServerData]);
 
@@ -212,8 +220,14 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     const queryStats = await API.getServerStatus(server.id);
                     const isOnline = queryStats.online || false;
 
+                    const isTransitioning = [
+                        ServerStatus.STARTING,
+                        ServerStatus.RESTARTING,
+                        ServerStatus.STOPPING
+                    ].includes(server.status as ServerStatus);
+
                     let procStats = null;
-                    if (isOnline) {
+                    if (isOnline || isTransitioning) {
                         procStats = await API.getServerStats(server.id);
                     }
 
@@ -256,12 +270,10 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         return { ...prev, [server.id]: newStats };
                     });
 
-                    if (isOnline && (server.status === ServerStatus.STARTING || server.status === ServerStatus.RESTARTING)) {
-                        updateServerStatus(server.id, ServerStatus.ONLINE);
-                    }
-                    if (!isOnline && server.status === ServerStatus.STOPPING) {
-                        updateServerStatus(server.id, ServerStatus.OFFLINE);
-                    }
+                    // Phase 66: Remove optimistic promotion. 
+                    // The backend is now the single source of truth for lifecycle.
+                    // If isOnline is true but status is STARTING, we KEEP showing STARTING 
+                    // until the backend explicitly transitions to ONLINE.
                 }
             });
         };
@@ -298,18 +310,27 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
 
         const handleStats = (data: { id: string, cpu: number, memory: number, pid: number, tps: string, uptime: number }) => {
+            const server = serversRef.current.find(s => s.id === data.id);
+            const isClosing = server?.status === ServerStatus.OFFLINE || server?.status === ServerStatus.STOPPING;
+
             setStats(prev => {
                 const current = prev[data.id] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, playerList: [], isRealOnline: false, tps: "0.0", pid: 0, lastUpdate: 0 };
+                
+                // Phase 65: Stats Gate (v1.12.16)
+                // If the server is known to be offline or stopping, ignore incoming process stats 
+                // to prevent "Frozen" numbers or ghost movements.
+                if (isClosing && data.cpu > 0) return prev;
+
                 return {
                     ...prev,
                     [data.id]: {
                         ...current,
-                        cpu: data.cpu,
-                        memory: data.memory,
-                        tps: data.tps,
-                        uptime: data.uptime,
-                        pid: data.pid,
-                        lastUpdate: Date.now() // Live update
+                        cpu: isClosing ? 0 : data.cpu,
+                        memory: isClosing ? 0 : data.memory,
+                        tps: isClosing ? "0.00" : data.tps,
+                        uptime: isClosing ? 0 : data.uptime,
+                        pid: isClosing ? 0 : data.pid,
+                        lastUpdate: Date.now() 
                     }
                 };
             });

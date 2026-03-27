@@ -247,7 +247,8 @@ router.get('/:id/query', async (req, res) => {
                 });
 
                 // Reconciliation: If DB thinks it's offline/starting but we found it online
-                if (server.status !== ServerStatus.ONLINE) {
+                // Phase 66: Defensive Gating. Never promote to ONLINE if we are explicitly STARTING/RESTARTING.
+                if (server.status !== ServerStatus.ONLINE && !processManager.isStarting(id)) {
                     server.status = ServerStatus.ONLINE;
                     saveServer(server);
                 }
@@ -271,6 +272,12 @@ router.get('/:id/query', async (req, res) => {
                         latency: 1, 
                         version: q.version
                     });
+
+                    // Reconciliation (UDP Path)
+                    if (server.status !== ServerStatus.ONLINE && !processManager.isStarting(id)) {
+                        server.status = ServerStatus.ONLINE;
+                        saveServer(server);
+                    }
                 } catch (qe) {
                     // Check if port is even open
                     const isPortOpen = await new Promise((resolve) => {
@@ -283,12 +290,20 @@ router.get('/:id/query', async (req, res) => {
                     });
 
                     if (isPortOpen) {
+                        // Phase 66: Passive reachability only. Do NOT dictate ONLINE status here.
                         processManager.updateCachedStatus(id, { online: true, latency: 1 });
                     } else {
-                        processManager.updateCachedStatus(id, { online: false, players: 0, playerList: [] });
+                        // Phase 60: Conservative Status (v1.12.15)
+                        // Don't mark as online: false if the process is still running locally
+                        const isRunning = processManager.isRunning(id);
+                        processManager.updateCachedStatus(id, { 
+                            online: isRunning, 
+                            players: 0, 
+                            playerList: [] 
+                        });
                         
-                        // Only mark as OFFLINE if the process is actually dead locally
-                        if (!processManager.isRunning(id)) {
+                        // Only mark as OFFLINE in persistence if the process is actually dead locally
+                        if (!isRunning) {
                              // CLEAR PERSISTENT START TIME IF GHOST
                             if (server.startTime || server.status !== ServerStatus.OFFLINE) {
                                 delete server.startTime;
