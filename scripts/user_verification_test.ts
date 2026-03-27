@@ -54,6 +54,10 @@ async function runAudit() {
     console.log("\x1b[36m%s\x1b[0m", "   CRAFTCOMMAND DEEP STABILITY AUDIT - v3.0 (STABILIZED)");
     console.log("\x1b[36m%s\x1b[0m", "====================================================================");
     console.log("");
+    console.log("\x1b[90m This tool performs an exhaustive scan of your platform's health.\x1b[0m");
+    console.log("\x1b[90m It verifies your environment (Java/Docker), data integrity, and\x1b[0m");
+    console.log("\x1b[90m network connectivity to ensure production-level stability.\x1b[0m");
+    console.log("");
 
     const issues: string[] = [];
 

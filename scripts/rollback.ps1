@@ -9,18 +9,24 @@ $BackupDir = Join-Path $Root "backups\updates"
 Write-Host "`n[RECOVERY] ========================================" -ForegroundColor Cyan
 Write-Host "[RECOVERY] CRAFTCOMMAND EMERGENCY ROLLBACK" -ForegroundColor Cyan
 Write-Host "[RECOVERY] ========================================" -ForegroundColor Cyan
+Write-Host " This tool restores your core system files (backend/src," -ForegroundColor Gray
+Write-Host " web/current) from a previous pre-update snapshot. Use" -ForegroundColor Gray
+Write-Host " this if an update fails or if a configuration mistake" -ForegroundColor Gray
+Write-Host " has rendered the platform unusable. " -ForegroundColor Gray
+Write-Host ""
 
 if (-not (Test-Path $BackupDir)) {
-    Write-Error "[RECOVERY] No backup directory found at $BackupDir"
-    exit 1
+    New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
+    Write-Host "[RECOVERY] No update backups found (directory created)." -ForegroundColor Yellow
+    exit 0
 }
 
 # 1. Find latest snapshot
 $latestSnapshot = Get-ChildItem -Path $BackupDir -Filter "pre-update-*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
 if ($null -eq $latestSnapshot) {
-    Write-Error "[RECOVERY] No pre-update snapshots found in $BackupDir"
-    exit 1
+    Write-Host "[RECOVERY] No update snapshots found. Use 'create_snapshot' to generate one." -ForegroundColor Yellow
+    exit 0
 }
 
 Write-Host "[RECOVERY] Target Snapshot: $($latestSnapshot.Name)" -ForegroundColor Yellow
