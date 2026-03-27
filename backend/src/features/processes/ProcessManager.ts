@@ -45,8 +45,8 @@ class ProcessManager extends EventEmitter {
                 await runner.sync();
                 
                 // Re-attach listeners for any processes recovered by the runner
-                const { getServer } = require('../servers/ServerService');
-                const servers = getServer();
+                const { getServers } = require('../servers/ServerService');
+                const servers = getServers();
                 for (const server of servers) {
                     if (runner.isRunning(server.id) && !this.activeRunners.has(server.id)) {
                         logger.info(`[ProcessManager:${server.id}] Recovery: Re-attaching listeners for recovered process.`);
