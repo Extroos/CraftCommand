@@ -15,14 +15,30 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
     console.log(`[AuthMiddleware] verifyToken for ${req.path} (HostMode: ${hostMode})`);
     
     if (!hostMode) {
-        // Personal Mode: Bypass authentication, create a mock admin user
+        // Personal Mode: Bypass authentication, use the system owner
+        const owner = authService.getOwner();
+        if (owner) {
+             (req as any).user = owner;
+             console.log(`[AuthMiddleware] Personal Mode: Using system owner (${owner.email})`);
+             return next();
+        }
+        
+        // Fallback for extreme edge cases (should not happen if system is initialized)
         (req as any).user = {
             id: 'personal-mode',
             email: 'personal@localhost',
             role: 'OWNER',
-            username: 'Personal'
+            username: 'Personal',
+            preferences: {
+                accentColor: 'emerald',
+                reducedMotion: false,
+                visualQuality: false,
+                backgrounds: {},
+                notifications: { browser: true, sound: true, events: { onJoin: true, onCrash: true } },
+                terminal: { fontSize: 13, fontFamily: 'monospace' }
+            }
         };
-        console.log('[AuthMiddleware] Personal Mode: Mock user attached');
+        console.log('[AuthMiddleware] Personal Mode: Mock fallback user attached');
         return next();
     }
 
@@ -32,7 +48,15 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
             id: 'e2e-test-user',
             email: 'test@localhost',
             role: 'OWNER',
-            username: 'TestUser'
+            username: 'TestUser',
+            preferences: {
+                accentColor: 'emerald',
+                reducedMotion: false,
+                visualQuality: false,
+                backgrounds: {},
+                notifications: { browser: true, sound: true, events: { onJoin: true, onCrash: true } },
+                terminal: { fontSize: 13, fontFamily: 'monospace' }
+            }
         };
         console.log('[AuthMiddleware] E2E Test Bypass: Mock user attached');
         return next();
@@ -114,11 +138,19 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
 export const optionalVerifyToken = async (req: Request, res: Response, next: NextFunction) => {
     const settings = systemSettingsService.getSettings();
     if (!settings.app.hostMode) {
-        (req as any).user = {
+        (req as any).user = authService.getOwner() || {
             id: 'personal-mode',
             email: 'personal@localhost',
             role: 'OWNER',
-            username: 'Personal'
+            username: 'Personal',
+            preferences: {
+                accentColor: 'emerald',
+                reducedMotion: false,
+                visualQuality: false,
+                backgrounds: {},
+                notifications: { browser: true, sound: true, events: { onJoin: true, onCrash: true } },
+                terminal: { fontSize: 13, fontFamily: 'monospace' }
+            }
         };
         return next();
     }
