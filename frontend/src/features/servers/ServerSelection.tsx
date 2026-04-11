@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { getErrorHelp } from '@core/settings/ErrorHelpMap';
-import { Plus, Server, Hash, Cpu, ArrowRight, HardDrive, LogOut, Trash2, AlertTriangle, Stethoscope, Zap, Loader2, FileInput, Network, Activity, Database, RotateCw, Copy, CheckCircle2, X, Users, Clock, Gauge, ChevronUp, ChevronDown, MemoryStick, MonitorDot, Search, LayoutGrid, LayoutList, Wifi, Coffee, Globe } from 'lucide-react';
+import { Plus, Server, Hash, Cpu, ArrowRight, HardDrive, LogOut, Trash2, AlertTriangle, Stethoscope, Zap, Loader2, FileInput, Network, Activity, Database, RotateCw, Copy, CheckCircle2, X, Users, Clock, Gauge, ChevronUp, ChevronDown, MemoryStick, MonitorDot, Search, LayoutGrid, LayoutList, Wifi, Coffee, Globe, HelpCircle } from 'lucide-react';
 import { ServerConfig, ServerStatus } from '@shared/types';
 
 import { API } from '@core/services/api';
@@ -806,6 +806,14 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                     version={version}
                     metadata={metadata}
                 />
+                {/* Minimal Floating Help "?" */}
+                <button
+                    onClick={() => setShowDevWarn(true)}
+                    className="fixed bottom-6 left-6 text-muted-foreground/30 hover:text-foreground transition-colors z-[100] text-xs font-bold"
+                    title="System Information & Notes"
+                >
+                    ?
+                </button>
             </div>
         </div>
     );

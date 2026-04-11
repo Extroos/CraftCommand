@@ -7,7 +7,7 @@ interface DevWarningModalProps {
     onClose: () => void;
     visualQuality?: boolean;
     version?: string;
-    metadata?: { title: string, notes: string[], codename?: string } | null;
+    metadata?: { title: string, notes: string[], codename?: string, version?: string } | null;
 }
 
 export const DevWarningModal: React.FC<DevWarningModalProps> = ({ isOpen, onClose, visualQuality, version = '0.0.0', metadata }) => {
@@ -27,7 +27,7 @@ export const DevWarningModal: React.FC<DevWarningModalProps> = ({ isOpen, onClos
                             <div className="flex items-center gap-2">
                                 <Terminal size={14} className="text-muted-foreground" />
                                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                                    System Warning // build_{version} {metadata?.codename ? `(${metadata.codename})` : ''}
+                                    System Warning // build_{metadata?.version || version} {metadata?.codename ? `(${metadata.codename})` : ''}
                                 </span>
                             </div>
                             <button onClick={onClose} className="p-1 hover:bg-rose-500/10 hover:text-rose-500 rounded transition-colors text-muted-foreground/50">
@@ -42,12 +42,12 @@ export const DevWarningModal: React.FC<DevWarningModalProps> = ({ isOpen, onClos
                                     <AlertTriangle size={24} strokeWidth={1.5} />
                                 </div>
                                 <div className="space-y-3">
-                                    <h2 className="text-xl font-bold text-foreground tracking-tight">{metadata?.title || 'Development Environment Phase'}</h2>
+                                    <h2 className="text-xl font-bold text-foreground tracking-tight">{metadata?.title || 'System Update Preview'}</h2>
                                     <p className="text-sm text-muted-foreground leading-relaxed">
-                                        CraftCommand is presently in a <span className="text-foreground font-semibold">pre-production state</span>. While core orchestration is functional, the system has not reached full industrial stability. Regressions, data drift, and unexpected process interruptions may occur.
+                                        CraftCommand is a solo developer project currently in <span className="text-foreground font-semibold">active development</span>. While major features are functional, things may still break or change between updates as I work to stabilize the core.
                                     </p>
                                     <p className="text-xs text-muted-foreground/60 italic border-l-2 border-border pl-4">
-                                        Professional usage requires frequent backups and documentation of operational anomalies.
+                                        Please ensure you have regular backups and report any bugs on GitHub.
                                     </p>
                                 </div>
                             </div>
@@ -56,17 +56,14 @@ export const DevWarningModal: React.FC<DevWarningModalProps> = ({ isOpen, onClos
                             <div className="space-y-4">
                                 <div className="flex items-center gap-2 px-1">
                                     <div className="h-px flex-1 bg-border/40" />
-                                    <span className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.3em]">Technical Milestones [v{version.slice(0, 4)}]</span>
+                                    <span className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.3em]">
+                                        Technical Milestones [v{(metadata?.version || version).slice(0, 4)}]
+                                    </span>
                                     <div className="h-px flex-1 bg-border/40" />
                                 </div>
                                 
                                 <div className="space-y-1.5 font-mono">
-                                    {(metadata?.notes || [
-                                        "Native Linux (POSIX) deployment support integrated.",
-                                        "Atomic write-ahead-logging (AWL) for DB integrity.",
-                                        "System V3 predictive drift detection methodology.",
-                                        "Ed25519 mutual authentication for remote agents."
-                                    ]).map((note, i) => (
+                                    {(metadata?.notes || []).map((note, i) => (
                                         <div key={i} className="flex items-start gap-3 px-2 py-1 group transition-colors">
                                             <span className="text-primary/40 text-[10px] select-none mt-0.5"><ChevronRight size={12} /></span>
                                             <div className="flex gap-3 items-baseline">
@@ -74,6 +71,11 @@ export const DevWarningModal: React.FC<DevWarningModalProps> = ({ isOpen, onClos
                                             </div>
                                         </div>
                                     ))}
+                                    {(!metadata?.notes || metadata.notes.length === 0) && (
+                                        <div className="flex items-center justify-center py-4 border border-dashed border-border/20 rounded opacity-30">
+                                            <span className="text-[10px] uppercase tracking-widest">Metadata Loading...</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
