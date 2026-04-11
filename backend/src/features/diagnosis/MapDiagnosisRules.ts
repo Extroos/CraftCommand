@@ -32,7 +32,7 @@ export const MapPortConflictRule: DiagnosisRule = {
                 action: {
                     type: 'UPDATE_CONFIG',
                     payload: { reassignMapPort: true, serverId: server.id },
-                    autoHeal: false // Requires careful port selection
+                    automaticRepair: false // Requires careful port selection
                 },
                 timestamp: Date.now()
             };

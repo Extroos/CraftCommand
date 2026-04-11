@@ -5,6 +5,7 @@ import fs from 'fs-extra';
 import { DATA_PATHS } from '../../constants';
 import { verifyToken } from '../../middleware/authMiddleware';
 import { auditService } from './AuditService';
+import { logger } from '../../utils/logger';
 
 const router = express.Router();
 
@@ -45,7 +46,7 @@ const avatarStorage = multer.diskStorage({
         cb(null, dir);
     },
     filename: (req, file, cb) => {
-        const user = (req as any).user;
+        const user = req.user;
         const uniqueSuffix = Date.now();
         const ext = path.extname(file.originalname);
         cb(null, `avatar-${user?.id || 'unknown'}-${uniqueSuffix}${ext}`);
@@ -65,13 +66,13 @@ const uploadAvatar = multer({
 });
 
 router.post('/background', verifyToken, upload.single('file'), async (req, res) => {
-    console.log('[Assets] POST /background received');
+    logger.info('[Assets] POST /background received');
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        const user = (req as any).user;
+        const user = req.user;
         const publicUrl = `/uploads/backgrounds/${req.file.filename}`;
         
         auditService.log(user.id, 'ASSET_UPLOAD', 'BACKGROUND', { filename: req.file.filename }, req.ip, user.email);
@@ -83,13 +84,13 @@ router.post('/background', verifyToken, upload.single('file'), async (req, res) 
 });
 
 router.post('/avatar', verifyToken, uploadAvatar.single('file'), async (req, res) => {
-    console.log('[Assets] POST /avatar received');
+    logger.info('[Assets] POST /avatar received');
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        const user = (req as any).user;
+        const user = req.user;
         const publicUrl = `/uploads/avatars/${req.file.filename}`;
         
         auditService.log(user.id, 'ASSET_UPLOAD', 'AVATAR', { filename: req.file.filename }, req.ip, user.email);

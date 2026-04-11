@@ -1,6 +1,7 @@
 import express from 'express';
 import { modpackService } from './ModpackService';
 import { verifyToken } from '../../middleware/authMiddleware';
+import { logger } from '../../utils/logger';
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ router.get('/search', async (req, res) => {
         );
         res.json(results);
     } catch (e) {
-        console.error('[modpacks.routes] Search failed:', e);
+        logger.error(`[modpacks.routes] Search failed: ${e}`);
         res.status(500).json({ error: 'Failed to search mods/modpacks' });
     }
 });

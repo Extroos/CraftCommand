@@ -11,15 +11,15 @@ import rateLimit from 'express-rate-limit';
 const router = express.Router();
 
 const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // Limit each IP to 5 requests per windowMs
-    message: { error: 'Too many login attempts, please try again later' }
+    windowMs: 15 * 60 * 1000, 
+    max: 10, // Increased from 5 to 10 for v4.0 Resilience
+    message: { error: 'Too many login attempts. Please try again in 15 minutes or contact support.' }
 });
 
 const verify2FALimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 10,
-    message: { error: 'Too many 2FA attempts, please try again later' }
+    max: 20, // Increased from 10 to 20
+    message: { error: 'Too many 2FA attempts. Please try again in 15 minutes.' }
 });
 
 const sensitiveActionLimiter = rateLimit({
@@ -46,7 +46,7 @@ router.post('/login', loginLimiter, async (req, res) => {
 router.post('/2fa/verify', verify2FALimiter, async (req, res) => {
     const { loginToken, code } = req.body;
     try {
-        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+        const secret = process.env.JWT_SECRET as string;
         const decoded = jwt.verify(loginToken, secret) as any;
         
         if (!decoded.partial) {
@@ -103,7 +103,7 @@ router.post('/2fa/verify', verify2FALimiter, async (req, res) => {
 
 // Setup 2FA - Start
 router.post('/2fa/setup/start', verifyToken, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     try {
         const result = await authService.start2FASetup(user.id);
         res.json(result);
@@ -114,7 +114,7 @@ router.post('/2fa/setup/start', verifyToken, async (req, res) => {
 
 // Setup 2FA - Confirm
 router.post('/2fa/setup/confirm', verifyToken, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     const { code } = req.body;
     try {
         const result = await authService.confirm2FASetup(user.id, code);
@@ -127,7 +127,7 @@ router.post('/2fa/setup/confirm', verifyToken, async (req, res) => {
 
 // Disable 2FA
 router.post('/2fa/disable', verifyToken, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     const { password, code } = req.body;
     try {
         await authService.disable2FA(user.id, password, code);
@@ -140,7 +140,7 @@ router.post('/2fa/disable', verifyToken, async (req, res) => {
 
 // Regenerate Backup Codes
 router.post('/2fa/backup/regen', verifyToken, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     const { password, code } = req.body;
     try {
         const result = await authService.regenerateBackupCodes(user.id, password, code);
@@ -153,7 +153,7 @@ router.post('/2fa/backup/regen', verifyToken, async (req, res) => {
 
 // Change Password (self-service)
 router.post('/change-password', verifyToken, sensitiveActionLimiter, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     const { currentPassword, newPassword } = req.body;
     try {
         await authService.changePassword(user.id, currentPassword, newPassword);
@@ -166,12 +166,12 @@ router.post('/change-password', verifyToken, sensitiveActionLimiter, async (req,
 
 // Get Current User
 router.get('/me', verifyToken, (req, res) => {
-    res.json((req as any).user);
+    res.json(req.user);
 });
 
 // Update Profile
 router.patch('/me', verifyToken, (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     try {
         const updated = authService.updateUser(user.id, req.body, user);
         auditService.log(user.id, 'USER_UPDATE', user.id, { changes: Object.keys(req.body) }, req.ip, user.email);
@@ -183,7 +183,7 @@ router.patch('/me', verifyToken, (req, res) => {
 
 // Rotate API Key
 router.post('/rotate-api-key', verifyToken, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     try {
         const apiKey = await authService.rotateApiKey(user.id);
         res.json({ apiKey });
@@ -205,7 +205,7 @@ router.post('/users', verifyToken, requirePermission('users.manage'), async (req
     if (!systemSettingsService.isHostMode()) {
         return res.status(403).json({ error: 'Multi-user features are disabled in Solo Mode.' });
     }
-    const actor = (req as any).user;
+    const actor = req.user;
     try {
         const { password, ...data } = req.body;
         const newUser = await authService.createUser(data, password, actor);
@@ -222,7 +222,7 @@ router.patch('/users/:id', verifyToken, requirePermission('users.manage'), (req,
         return res.status(403).json({ error: 'Multi-user features are disabled in Solo Mode.' });
     }
     const { id } = req.params;
-    const actor = (req as any).user;
+    const actor = req.user;
     try {
         const updated = authService.updateUser(id, req.body, actor);
         auditService.log(actor.id, 'USER_UPDATE', id, { changes: Object.keys(req.body) }, req.ip, actor.email);
@@ -238,7 +238,7 @@ router.delete('/users/:id', verifyToken, requirePermission('users.manage'), (req
         return res.status(403).json({ error: 'Multi-user features are disabled in Solo Mode.' });
     }
     const { id } = req.params;
-    const actor = (req as any).user;
+    const actor = req.user;
     try {
         authService.deleteUser(id, actor);
         auditService.log(actor.id, 'USER_DELETE', id, undefined, req.ip, actor.email);
@@ -252,7 +252,7 @@ router.delete('/users/:id', verifyToken, requirePermission('users.manage'), (req
 
 // List sessions for current user
 router.get('/sessions', verifyToken, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     try {
         const sessions = await authService.getSessions(user.id);
         res.json(sessions);
@@ -263,7 +263,7 @@ router.get('/sessions', verifyToken, async (req, res) => {
 
 // Revoke a specific session
 router.post('/sessions/:sessionId/revoke', verifyToken, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     const { sessionId } = req.params;
     try {
         await authService.revokeSession(sessionId, user.id);
@@ -275,7 +275,7 @@ router.post('/sessions/:sessionId/revoke', verifyToken, async (req, res) => {
 
 // Revoke all sessions
 router.post('/sessions/revoke-all', verifyToken, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     try {
         await authService.revokeAllSessions(user.id, user.id);
         res.json({ success: true });

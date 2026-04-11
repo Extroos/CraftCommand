@@ -19,6 +19,10 @@ export const DuckDnsAuthRule: DiagnosisRule = {
         const networkState = networkService.getState();
         const ddnsStatus = networkState.serverDdns?.[server.id];
 
+        // --- SMART HANDLING (v4.5) ---
+        // If DDNS is now successfully matching, any old KO errors in logs are stale history.
+        if (ddnsStatus && ddnsStatus.isMatching) return null;
+
         if (ddnsStatus && ddnsStatus.errorType === 'AUTH') {
             return {
                 id: `duckdns-auth-${server.id}-${Date.now()}`,
@@ -27,6 +31,7 @@ export const DuckDnsAuthRule: DiagnosisRule = {
                 title: 'DuckDNS Auth Failed',
                 explanation: `The DuckDNS update for ${server.network.hostname} failed with an authentication error. The token is likely invalid.`,
                 recommendation: 'Verify your DuckDNS token in the server networking settings.',
+                evidence: logs.find(l => /DuckDNS.*KO|auth failed/i.test(l))?.trim(),
                 timestamp: Date.now()
             };
         }
@@ -62,7 +67,7 @@ export const PublicIpMismatchRule: DiagnosisRule = {
                 action: {
                     type: 'UPDATE_CONFIG',
                     payload: { triggerDdnsUpdate: true },
-                    autoHeal: true
+                    automaticRepair: true
                 },
                 timestamp: Date.now()
             };
@@ -104,6 +109,7 @@ export const NoFallbackRule: DiagnosisRule = {
             title: 'No Online Backends — Players Cannot Join',
             explanation: `The proxy "${server.name}" has ${links.length} linked backend${links.length !== 1 ? 's' : ''}, but none are currently online. Players connecting to the proxy will be kicked immediately because there is no server to route them to.`,
             recommendation: 'Start at least one backend server, or check if crashed servers need attention. The proxy needs at least one online backend to function.',
+            evidence: `Linked Backends: ${links.length} (Online: 0)`,
             confidence: 98,
             timestamp: Date.now()
         };
@@ -175,13 +181,20 @@ export const ProxyForwardingConfigRule: DiagnosisRule = {
         const velocityMatch = /This server requires you to connect with Velocity/i.test(fullLog);
         
         if (bungeeMatch || velocityMatch) {
+            // --- SMART HANDLING: FIX MARKER AWARENESS ---
+            const lastErrorIndex = logs.map(l => /BungeeCord config|connect with Velocity|Unexpected packet/i.test(l)).lastIndexOf(true);
+            const lastFixIndex = logs.map(l => l.includes('[CraftCommand] [FIX]')).lastIndexOf(true);
+            if (lastFixIndex !== -1 && lastFixIndex > lastErrorIndex) {
+                return null; // Fix applied after last rejection
+            }
+
             let recommendation = 'Check your proxy configuration and backend server settings.';
             let explanation = 'Your server is blocking a connection because it expects the player to connect through a proxy (like BungeeCord or Velocity) with IP forwarding enabled, but the connection was either direct or misconfigured.';
             
             if (velocityMatch) {
                 recommendation = 'Make sure you are connecting through your Velocity proxy IP/Port. If you are the proxy owner, check that `velocity-support` in `paper-global.yml` and the forwarding secret match between the proxy and this server.';
             } else if (bungeeMatch) {
-                 recommendation = 'Make sure you are connecting through your proxy IP/Port. If you are the proxy owner, check that `bungeecord: true` is set in your `spigot.yml`.';
+                  recommendation = 'Make sure you are connecting through your proxy IP/Port. If you are the proxy owner, check that `bungeecord: true` is set in your `spigot.yml`.';
             }
 
             return {
@@ -191,6 +204,7 @@ export const ProxyForwardingConfigRule: DiagnosisRule = {
                 title: 'Proxy Connection Rejected',
                 explanation: explanation,
                 recommendation: recommendation,
+                evidence: logs.find(l => /BungeeCord config|connect with Velocity|Unexpected packet/i.test(l))?.trim(),
                 timestamp: Date.now()
             };
         }

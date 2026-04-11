@@ -70,7 +70,8 @@ const Header: React.FC<HeaderProps> = ({
     const { servers } = useServers();
     const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
     const { user } = useUser();
-    const { hostMode, settings } = useSystem();
+    const { hostMode, settings, isActivityTrayOpen, setActivityTrayOpen } = useSystem();
+    const { backgroundTasks, installProgress } = useServers();
     const { can } = usePermissions();
     
     const syncServers = Array.isArray(servers) ? servers.filter(s => s.includeInTotal !== false) : [];
@@ -139,8 +140,7 @@ const Header: React.FC<HeaderProps> = ({
                         ...(can('server.schedules.manage', serverId) ? [{ id: 'SCHEDULES', label: 'Schedules', icon: <CalendarClock size={16} /> }] : []),
                         ...(can('server.backups.manage', serverId) ? [{ id: 'BACKUPS', label: 'Backups', icon: <ArchiveRestore size={16} /> }] : []),
                         ...(can('server.settings', serverId) ? [
-                             { id: 'DATABASES', label: 'Databases', icon: <Database size={16} /> },
-                             { id: 'SUBUSERS', label: 'Subusers', icon: <UserPlus size={16} /> }
+                             { id: 'DATABASES', label: 'Databases', icon: <Database size={16} /> }
                         ] : [])
                     ] : []),
                     ...(capabilities.supportsPlugins && !isVelocity && can('server.plugins.view', serverId) ? [{ id: 'PLUGINS', label: 'Plugins', icon: <Package size={16} /> }] : []),
@@ -155,7 +155,7 @@ const Header: React.FC<HeaderProps> = ({
                 type: 'dropdown',
                 children: [
                     ...(can('server.settings', serverId) ? [{ id: 'SETTINGS', label: 'Settings', icon: <Settings size={16} /> }] : []),
-                    ...(capabilities.supportsJava && !isVelocity && can('server.files.write', serverId) ? [{ id: 'ARCHITECT', label: 'Architect', icon: <BookOpenCheck size={16} /> }] : []),
+                    ...(can('server.console.read', serverId) ? [{ id: 'KNOWLEDGE_BASE', label: 'Setup Guide', icon: <BookOpenCheck size={16} /> }] : []),
                 ] as { id: TabView; label: string; icon: React.ReactNode }[]
             }
         ];
@@ -183,40 +183,40 @@ const Header: React.FC<HeaderProps> = ({
     const getStatusUI = () => {
         if (isStarting) {
             return (
-                <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900/50">
-                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
-                    <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold ml-2">Initializing</span>
+                <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/5 rounded border border-amber-500/20">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
+                    <span className="text-[11px] text-amber-600 dark:text-amber-500 font-semibold">Initializing</span>
                 </div>
             );
         }
         if (totalCount === 0) {
              return (
                 <div className="flex items-center gap-2 px-3 py-1 bg-muted rounded border border-border">
-                    <span className="w-2 h-2 rounded-full bg-muted-foreground/30"></span>
-                    <span className="text-[10px] text-muted-foreground font-bold ml-2">No Instances Detected</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30"></span>
+                    <span className="text-[11px] text-muted-foreground font-semibold">Discovery mode</span>
                 </div>
             );
         }
         if (onlineCount > 0) {
              return (
-                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-950/20 rounded border border-emerald-200 dark:border-emerald-900/50">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold ml-2">
-                        {onlineCount}/{totalCount} Systems Online
+                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/5 rounded border border-emerald-500/20">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-500 font-semibold">
+                        {onlineCount}/{totalCount} systems active
                     </span>
                 </div>
             );
         }
         return (
-            <div className="flex items-center gap-2 px-3 py-1 bg-rose-50 dark:bg-rose-950/20 rounded border border-rose-200 dark:border-rose-900/50">
-                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                <span className="text-[10px] text-rose-700 dark:text-rose-400 font-bold ml-2">Systems Offline</span>
+            <div className="flex items-center gap-2 px-3 py-1 bg-rose-500/5 rounded border border-rose-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                <span className="text-[11px] text-rose-600 dark:text-rose-500 font-semibold">Systems offline</span>
             </div>
         );
     };
 
     return (
-        <header className={`fixed top-0 left-0 w-full border-b border-border z-[100] ${user?.preferences.visualQuality ? 'glass-morphism !overflow-visible' : 'bg-card shadow-sm'} !rounded-none`}>
+        <header className={`fixed top-0 left-0 w-full border-b border-border z-[999] shadow-sm transition-colors duration-500 !overflow-visible ${user?.preferences.visualQuality ? 'glass-morphism header-locked !bg-transparent' : 'bg-card'}`}>
             <div className="max-w-[1400px] mx-auto px-4 md:px-8">
                 <div className="flex h-16 items-center justify-between gap-4">
                     
@@ -238,16 +238,16 @@ const Header: React.FC<HeaderProps> = ({
                             <span className="text-sm font-bold tracking-tight text-foreground leading-none">CraftCommand</span>
                             {currentServer ? (
                                 <motion.div initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-1.5 mt-1">
-                                    <span className="text-[10px] text-primary font-mono font-bold tracking-tight bg-primary/10 px-1.5 py-0.5 rounded leading-none shrink-0 cursor-default">
+                                    <span className="text-[10px] text-primary font-mono font-medium tracking-tight bg-primary/10 px-2 py-0.5 rounded leading-none shrink-0 cursor-default">
                                         {currentServer.ip || '127.0.0.1'}:{currentServer.port}
                                     </span>
-                                    <span className={`text-[9px] ${currentServer.software === 'Bedrock' ? 'bg-sky-500' : 'bg-orange-500'} text-white font-black px-1.5 py-0.5 rounded uppercase tracking-tighter hidden xs:block`}>
+                                    <span className={`text-[10px] ${currentServer.software === 'Bedrock' ? 'bg-sky-500' : 'bg-primary'} text-white font-semibold px-2 py-0.5 rounded uppercase tracking-tight hidden xs:block`}>
                                         {currentServer.software === 'Bedrock' ? 'Bedrock' : 'Java'}
                                     </span>
                                 </motion.div>
                             ) : (
-                                <span className="text-[9px] text-primary font-black tracking-widest mt-0.5 uppercase flex items-center gap-1">
-                                    {settings?.app?.professionalMode ? <><Zap size={10} className="fill-primary text-primary" /> Pro Mode</> : <i className="opacity-60">Enterprise Edition</i>}
+                                <span className="text-[10px] text-primary font-semibold mt-1 flex items-center gap-1 opacity-60">
+                                    {settings?.app?.professionalMode ? <><Zap size={10} className="fill-primary text-primary" /> Professional</> : <i>Standard Edition</i>}
                                 </span>
                             )}
                         </div>
@@ -286,7 +286,7 @@ const Header: React.FC<HeaderProps> = ({
                                                             initial={{ opacity: 0, y: 10, scale: 0.95 }} 
                                                             animate={{ opacity: 1, y: 0, scale: 1 }} 
                                                             exit={{ opacity: 0, y: 10, scale: 0.95 }} 
-                                                            className="absolute top-full left-0 mt-2 w-52 bg-card border border-border rounded-lg shadow-xl z-50 p-1 backdrop-blur-md"
+                                                            className="absolute top-full left-0 mt-2 w-52 bg-card border border-border rounded-lg shadow-xl z-50 p-1"
                                                         >
                                                             {item.children?.map(child => (
                                                                 <button key={child.id} onClick={() => handleChildClick(child.id)} className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors ${activeTab === child.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
@@ -317,6 +317,22 @@ const Header: React.FC<HeaderProps> = ({
                         </button>
 
                         <div className="h-4 w-[1px] bg-border/60 hidden sm:block"></div>
+
+                        {/* Global Activity Tray Toggle */}
+                        <div className="relative">
+                            <button 
+                                onClick={() => setActivityTrayOpen(!isActivityTrayOpen)}
+                                className={`relative p-2 rounded-lg transition-all ${isActivityTrayOpen ? 'bg-primary text-primary-foreground shadow-lg' : 'text-muted-foreground hover:text-primary hover:bg-primary/10'}`}
+                                title="Cluster Activity Monitor"
+                            >
+                                <Activity size={18} />
+                                {(Object.keys(backgroundTasks).length > 0 || Object.keys(installProgress).length > 0) && (
+                                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-primary text-[9px] font-bold flex items-center justify-center ring-2 ring-background text-primary-foreground">
+                                        {Object.keys(backgroundTasks).length + Object.keys(installProgress).length}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
 
                         <div className="relative" ref={notificationRef}>
                             <button 
@@ -384,7 +400,7 @@ const Header: React.FC<HeaderProps> = ({
                                 </div>
                             </button>
                             <AnimatePresence>{userDropdown && (
-                                <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-2xl z-[110] p-1 backdrop-blur-md">
+                                <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-2xl z-[110] p-1">
                                     <div className="p-2 border-b border-border/50 mb-1"><p className="text-xs font-semibold text-foreground truncate">{user?.email || 'Guest'}</p><p className="text-[10px] text-muted-foreground mt-0.5">Signed in</p></div>
                                     <button onClick={() => { onNavigateProfile(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><User size={16} /> User Profile</button>
                                     {onNavigateGlobalSettings && can('system.settings.manage') && <button onClick={() => { onNavigateGlobalSettings(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Settings size={16} /> System Config</button>}
@@ -410,9 +426,9 @@ const Header: React.FC<HeaderProps> = ({
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsMobileMenuOpen(false)} className="fixed inset-0 bg-background/60 backdrop-blur-sm z-[200] md:hidden" />
                         <motion.div ref={drawerRef} initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="fixed inset-y-0 right-0 w-[300px] bg-card border-l border-border z-[210] md:hidden flex flex-col shadow-2xl">
                             <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
-                                <div className="flex items-center gap-3">
-                                    <img src="/website-icon.png" alt="Logo" className="w-8 h-8 object-contain" />
-                                    <span className="text-sm font-black tracking-tighter uppercase">Menu</span>
+                                <div className="flex items-center gap-2">
+                                    <img src="/website-icon.png" alt="Logo" className="w-6 h-6 object-contain" />
+                                    <span className="text-sm font-semibold text-foreground">Navigation</span>
                                 </div>
                                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 hover:bg-rose-500/10 hover:text-rose-500 rounded-lg transition-colors"><X size={20} /></button>
                             </div>
@@ -420,11 +436,11 @@ const Header: React.FC<HeaderProps> = ({
                             <div className="flex-1 overflow-y-auto p-4 space-y-6">
                                 {currentServer && (
                                     <div className="space-y-2">
-                                        <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] px-2">Navigation</p>
+                                        <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2">Manage</p>
                                         <div className="space-y-1">
                                             {navigation.map(item => (
                                                 <div key={item.label}>
-                                                    <button onClick={() => handleNavClick(item)} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-bold transition-all ${item.id === activeTab || isChildActive(item) ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:bg-secondary border border-transparent'}`}>
+                                                    <button onClick={() => handleNavClick(item)} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${item.id === activeTab || isChildActive(item) ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:bg-secondary border border-transparent'}`}>
                                                         <div className="flex items-center gap-3">{item.icon}{item.label}</div>
                                                         {item.type === 'dropdown' && <motion.div animate={{ rotate: openDropdown === item.label ? 180 : 0 }}><ChevronDown size={14} /></motion.div>}
                                                     </button>
@@ -446,7 +462,7 @@ const Header: React.FC<HeaderProps> = ({
                                 )}
 
                                 <div className="space-y-4">
-                                    <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] px-2">Subsystem Status</p>
+                                    <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2">Subsystems</p>
                                     <div className="px-2">{getStatusUI()}</div>
                                     <button onClick={() => { onNavigateProfile('2FA'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center justify-center px-4 py-2.5 rounded-lg border transition-all ${user?.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-muted/30 text-muted-foreground border-border'}`}>
                                         <Shield size={16} className={user?.twoFactorEnabled ? 'fill-emerald-500/20' : ''} />
@@ -461,8 +477,8 @@ const Header: React.FC<HeaderProps> = ({
                                         {user?.avatarUrl ? <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-primary"><User size={20} /></div>}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-xs font-bold text-foreground truncate">{user?.username}</div>
-                                        <div className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">{user?.role}</div>
+                                        <div className="text-xs font-semibold text-foreground truncate">{user?.username}</div>
+                                        <div className="text-[10px] text-muted-foreground font-medium">{user?.role}</div>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">

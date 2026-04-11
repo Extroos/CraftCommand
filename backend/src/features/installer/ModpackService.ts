@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { logger } from '../../utils/logger';
 
 interface ModpackHit {
     id: string;
@@ -40,7 +41,7 @@ class ModpackService {
             } catch (e: any) {
                 if (e.response?.status === 429 && i < attempts - 1) {
                     const retryAfter = parseInt(e.response.headers['retry-after'] || '2', 10);
-                    console.warn(`[ModpackService] Rate limited (429). Retrying in ${retryAfter}s...`);
+                    logger.warn(`[ModpackService] Rate limited (429). Retrying in ${retryAfter}s...`);
                     await new Promise(r => setTimeout(r, retryAfter * 1000));
                     continue;
                 }
@@ -93,7 +94,7 @@ class ModpackService {
                 project_type: projectType,
             }));
         } catch (e: any) {
-            console.error(`[ModpackService] ${projectType} search failed:`, e.message);
+            logger.error(`[ModpackService] ${projectType} search failed: ${e.message}`);
             return []; // Graceful fallback instead of throwing
         }
     }
@@ -176,7 +177,7 @@ class ModpackService {
                 size: primaryFile.size
             };
         } catch (e) {
-            console.error('Failed to get modpack version info', e);
+            logger.error(`Failed to get modpack version info: ${e}`);
             throw e;
         }
     }

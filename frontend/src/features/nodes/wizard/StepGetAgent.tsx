@@ -11,45 +11,43 @@ interface Props {
 }
 
 export const StepGetAgent: React.FC<Props> = ({ mode, onBack, onNext, onError }) => {
+    const [joinData, setJoinData] = useState<{ command: string, powershell: string, token: string } | null>(null);
+    const [nodeData, setNodeData] = useState<{ id: string, secret: string } | null>(null);
     const [loading, setLoading] = useState(true);
-    const [nodeData, setNodeData] = useState<{ id: string, secret: string, token: string } | null>(null);
-    const [os, setOs] = useState<'linux' | 'windows'>('linux'); // Simple detection provided user can switch
+    const [os, setOs] = useState<'linux' | 'windows' | 'docker'>('linux'); 
 
     const initRef = React.useRef(false);
 
     useEffect(() => {
-        // Pre-enroll node to get ID and Secret
         const init = async () => {
             if (initRef.current) return;
             initRef.current = true;
 
             try {
-                // Auto-detect OS
                 if (navigator.platform.toLowerCase().includes('win')) {
                     setOs('windows');
                 }
 
-                // Call new API endpoint
                 const data = await API.preEnrollNode({ 
                     mode,
-                    // Generate a random suffix to prevent naming collisions (409 Conflict)
-                    name: `New ${mode === 'lan' ? 'Local' : 'Remote'} Node (${Math.random().toString(36).substring(2, 6).toUpperCase()})`
+                    name: `Node-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
                 });
                 setNodeData(data);
                 
-                // BUG FIX: DO NOT automatically notify parent of the ID yet.
-                // We must show the command/download first.
-                // Only onNext when they click "Verify" or if we detect connection.
+                // Fetch the one-click join command using the new token system
+                const join = await API.getJoinCommand(data.id);
+                setJoinData(join);
+
             } catch (err: any) {
                 onError(err.message || 'Failed to initialize node enrollment');
-                initRef.current = false; // Allow retry on error
+                initRef.current = false;
             } finally {
                 setLoading(false);
             }
         };
 
         init();
-    }, [mode, onError]); // Removed onNext from deps to prevent loop
+    }, [mode, onError]);
 
     const handleDownload = () => {
         const panelUrl = window.location.origin;
@@ -65,104 +63,134 @@ export const StepGetAgent: React.FC<Props> = ({ mode, onBack, onNext, onError })
         );
     }
 
-    if (!nodeData) return null;
+    if (!nodeData || !joinData) return null;
 
-    const panelUrl = window.location.origin; // Assume agent can reach this
+    const panelUrl = window.location.origin;
     
     // Commands
-    const cmdLinux = `curl -sSL ${panelUrl}/api/install/linux | bash -s -- --id ${nodeData.id} --secret ${nodeData.secret} --url ${panelUrl}`;
-    const cmdWindows = `iwr ${panelUrl}/api/install/windows | iex; Install-Agent -Id "${nodeData.id}" -Secret "${nodeData.secret}" -Url "${panelUrl}"`;
-    const cmdManual = `run_agent.bat --node-id ${nodeData.id} --secret ${nodeData.secret} --panel-url ${panelUrl}`;
+    const cmdLinux = joinData.command;
+    const cmdWindows = joinData.powershell;
+    const cmdDocker = `docker run -d \\
+  --name craftcommand-agent \\
+  -e AGENT_NODE_ID=${nodeData.id} \\
+  -e AGENT_NODE_SECRET=${nodeData.secret} \\
+  -e PANEL_URL=${panelUrl} \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  extroos/craftcommand-agent:latest`;
+
+    const cmdManual = `run_CraftCommand.sh --id ${nodeData.id} --secret ${nodeData.secret} --url ${panelUrl}`;
 
     return (
         <div className="space-y-6">
             <div className="space-y-1">
-                <h2 className="text-2xl font-bold">Install Node Agent</h2>
-                <p className="text-muted-foreground">
-                    Run this command on the target machine to enroll it automatically.
+                <h2 className="text-2xl font-bold font-mono tracking-tighter uppercase">Professional Enrollment</h2>
+                <p className="text-muted-foreground text-xs font-medium">
+                    Select your platform and execute the command to join this machine to your cluster.
                 </p>
             </div>
 
             {/* OS Tabs */}
-            <div className="flex bg-secondary/30 p-1 rounded-lg w-fit">
+            <div className="flex bg-secondary/30 p-1 rounded-lg w-fit border border-border/50">
                 <button
                     onClick={() => setOs('linux')}
-                    className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
-                        os === 'linux' ? 'bg-background shadow text-cyan-400' : 'text-muted-foreground hover:text-foreground'
+                    className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all ${
+                        os === 'linux' ? 'bg-zinc-800 shadow text-white border border-white/10' : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
                     Linux / Mac
                 </button>
                 <button
                     onClick={() => setOs('windows')}
-                    className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
-                        os === 'windows' ? 'bg-background shadow text-blue-400' : 'text-muted-foreground hover:text-foreground'
+                    className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all ${
+                        os === 'windows' ? 'bg-zinc-800 shadow text-white border border-white/10' : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
                     Windows
                 </button>
+                <button
+                    onClick={() => setOs('docker')}
+                    className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all ${
+                        os === 'docker' ? 'bg-zinc-800 shadow text-white border border-white/10' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                    Docker
+                </button>
             </div>
 
             {/* Command Box */}
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden shadow-inner">
-                <div className="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/5">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="bg-black/40 border border-border rounded overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2 bg-secondary/20 border-b border-border">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                         <Terminal size={12} />
-                        <span>{os === 'windows' ? 'PowerShell (Admin)' : 'Bash Terminal'}</span>
+                        <span>{os === 'windows' ? 'PowerShell 7+' : os === 'docker' ? 'Docker Compose' : 'Bash / Zsh'}</span>
                     </div>
                     <button
                         onClick={() => {
-                            navigator.clipboard.writeText(os === 'windows' ? cmdWindows : cmdLinux);
+                            const text = os === 'windows' ? cmdWindows : os === 'docker' ? cmdDocker : cmdLinux;
+                            navigator.clipboard.writeText(text);
                         }}
-                        className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-medium"
+                        className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-foreground hover:text-white transition-colors"
                     >
-                        <Copy size={12} /> Copy
+                        <Copy size={12} /> Copy Command
                     </button>
                 </div>
-                <div className="p-4 font-mono text-sm break-all text-zinc-300 selection:bg-cyan-500/30">
-                    {os === 'windows' ? cmdWindows : cmdLinux}
+                <div className="p-4 font-mono text-xs break-all text-zinc-300 selection:bg-zinc-500/30 leading-relaxed">
+                    {os === 'windows' ? cmdWindows : os === 'docker' ? cmdDocker : cmdLinux}
+                </div>
+            </div>
+
+            {/* Infrastructure Note */}
+            <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-lg flex gap-4">
+                <div className="shrink-0 text-emerald-500">
+                    <CheckCircle2 size={20} />
+                </div>
+                <div className="space-y-1">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Secure Enrollment Active</h4>
+                    <p className="text-[10px] leading-relaxed text-emerald-500/70 font-medium">
+                        This command uses a one-time short-lived join token to securely fetch node-specific credentials. 
+                        No secrets are exposed in your shell history.
+                    </p>
                 </div>
             </div>
 
             {/* Manual Fallback */}
-            <div className="bg-secondary/10 rounded-lg p-4 border border-border/50">
-                <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                    <Download size={14} /> Manual / Advanced
+            <div className="bg-secondary/10 rounded p-4 border border-border/50">
+                <h4 className="text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <Download size={14} /> Advanced / Manual Configuration
                 </h4>
-                <p className="text-xs text-muted-foreground mb-3">
-                    If the one-click script fails, you can run the agent manually or download the source zip.
-                </p>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                     <button 
                         onClick={handleDownload}
-                        className="px-3 py-1.5 text-xs border border-border rounded bg-background hover:bg-secondary transition-colors"
+                        className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest border border-border rounded bg-secondary/50 hover:bg-secondary transition-colors"
                     >
-                        Download agent.zip
+                        Download Source (ZIP)
                     </button>
                     <button 
                         onClick={() => {
                             navigator.clipboard.writeText(cmdManual);
                         }}
-                        className="px-3 py-1.5 text-xs border border-border rounded bg-background hover:bg-secondary transition-colors"
+                        className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest border border-border rounded bg-secondary/50 hover:bg-secondary transition-colors"
                     >
-                        Copy Manual Flags
+                        Copy Static Identity Flags
                     </button>
                 </div>
             </div>
 
-            <div className="pt-6 border-t border-border flex justify-between">
+            <div className="pt-6 border-t border-border flex justify-between items-center">
                 <button
                     onClick={onBack}
-                    className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                    className="text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all"
                 >
-                    Back
+                    Back to Mode Selection
                 </button>
-                <button
-                    onClick={() => onNext(nodeData.id)}
-                    className="px-6 py-2 bg-cyan-600 text-white font-bold rounded hover:bg-cyan-500 transition-colors"
-                >
-                    I've run the command
-                </button>
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => onNext(nodeData.id)}
+                        className="px-8 py-3 bg-foreground text-background font-black text-[10px] uppercase tracking-widest rounded hover:bg-foreground/90 transition-all border border-border"
+                    >
+                        I've run the command
+                    </button>
+                </div>
             </div>
         </div>
     );

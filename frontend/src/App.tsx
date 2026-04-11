@@ -8,7 +8,7 @@ import { Loader2 } from 'lucide-react';
 import Header from './features/ui/Header';
 import Dashboard from './features/dashboard/Dashboard';
 import Console from './features/servers/Console';
-import Architect from './features/installer/Architect';
+import KnowledgeBase from './features/installer/KnowledgeBase';
 import FileManager from './features/files/FileManager';
 import PlayerManager from './features/servers/PlayerManager';
 import PluginManager from './features/plugins/PluginManager';
@@ -32,6 +32,7 @@ import { DatabaseManager } from './features/servers/DatabaseManager';
 import { SubuserManager } from './features/servers/SubuserManager';
 import StatusPage from './features/servers/StatusPage';
 import DeploymentProgressOverlay from './features/servers/CreateServer/DeploymentProgressOverlay';
+import ActivityTray from './features/ui/ActivityTray';
 
 import { TabView, ServerConfig } from '@shared/types';
 import { ToastProvider } from './features/ui/Toast';
@@ -62,7 +63,8 @@ const PageShell: React.FC<{
 
     const handleNavigate = (tab: TabView) => {
         if (currentServer) {
-            navigate(`/server/${currentServer.id}/${tab.toLowerCase()}`);
+            const path = tab === 'KNOWLEDGE_BASE' ? 'guide' : tab.toLowerCase();
+            navigate(`/server/${currentServer.id}/${path}`);
         }
     };
 
@@ -80,7 +82,7 @@ const PageShell: React.FC<{
     };
 
     return (
-        <div className={wrapperClassName || `min-h-screen bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col relative overflow-hidden`}>
+        <div className={wrapperClassName || `min-h-screen bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary relative`}>
             <Header
                 activeTab={activeTab || 'DASHBOARD'}
                 setActiveTab={handleNavigate}
@@ -100,12 +102,12 @@ const PageShell: React.FC<{
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <img src="/website-icon.png" alt="Logo" className="w-5 h-5 opacity-40 filter grayscale" />
-                        <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest">
-                            Licensed under MIT &copy; 2026 Extroos
+                        <p className="text-xs text-muted-foreground/60">
+                            &copy; 2026 Extroos &bull; Licensed under MIT
                         </p>
                     </div>
                     <div className="flex items-center gap-6">
-                        <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em]">v{pkg.version}</span>
+                        <span className="text-xs font-medium text-muted-foreground/30">v{pkg.version}</span>
                     </div>
                 </div>
             </footer>
@@ -128,8 +130,8 @@ const ServerRouteWrapper: React.FC<{ tab: TabView }> = ({ tab }) => {
         if (serversLoading || systemLoading || (serverId && !currentServer)) {
             return (
                 <div className="flex flex-col items-center justify-center py-20 gap-4">
-                    <Loader2 className="w-10 h-10 text-primary animate-spin" />
-                    <span className="text-[10px] font-bold text-primary tracking-[0.3em] uppercase animate-pulse">Attaching to Instance...</span>
+                    <div className="w-10 h-10 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                    <span className="text-sm font-medium text-muted-foreground">Attaching to instance...</span>
                 </div>
             );
         }
@@ -154,7 +156,7 @@ const ServerRouteWrapper: React.FC<{ tab: TabView }> = ({ tab }) => {
             case 'DATABASES': return <DatabaseManager serverId={currentServer.id} />;
             case 'SUBUSERS': return <SubuserManager serverId={currentServer.id} />;
             case 'MAP': return <MapManager serverId={currentServer.id} />;
-            case 'ARCHITECT': return <Architect />;
+            case 'KNOWLEDGE_BASE': return <KnowledgeBase />;
             default: return <Dashboard serverId={currentServer?.id || ''} />;
         }
     };
@@ -171,7 +173,7 @@ const ServerRouteWrapper: React.FC<{ tab: TabView }> = ({ tab }) => {
 const AppContent: React.FC = () => {
     const { user, isAuthenticated, isLoading: authLoading, guestPrefs, logout } = useUser();
     const { servers, isLoading: serversLoading } = useServers();
-    const { isRestarting } = useSystem();
+    const { isRestarting, isActivityTrayOpen, setActivityTrayOpen } = useSystem();
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -193,7 +195,7 @@ const AppContent: React.FC = () => {
             if (path === '/login') return b.login;
             if (path === '/status') return b.status;
             if (path === '/servers') return b.serverSelection;
-            if (path === '/create-server') return b.architect;
+            if (path === '/create-server') return b.knowledgeBase;
 
             // User & System Management
             if (path === '/profile') return b.profile;
@@ -218,7 +220,7 @@ const AppContent: React.FC = () => {
                     case 'integrations': return b.integrations;
                     case 'network': return b.network;
                     case 'map': return b.status;
-                    case 'architect': return b.architect;
+                    case 'guide': return b.knowledgeBase;
                     default: return b.dashboard;
                 }
             }
@@ -235,12 +237,19 @@ const AppContent: React.FC = () => {
     }, [location.pathname, user, guestPrefs]);
 
     if (authLoading) {
-        return <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500 font-mono">INITIALIZING...</div>;
+        return (
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+                <div className="w-8 h-8 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                <span className="text-sm font-medium text-muted-foreground">Starting CraftCommand...</span>
+            </div>
+        );
     }
+
+    const qualityEnabled = user ? user.preferences.visualQuality : guestPrefs?.visualQuality;
 
     return (
         <MotionConfig reducedMotion={user?.preferences.reducedMotion ? "always" : "never"}>
-            <div className={`relative min-h-screen transition-colors duration-500 ${activeBg?.enabled && activeBg?.url ? 'has-custom-bg' : 'bg-background'}`}>
+            <div className={`relative min-h-screen transition-colors duration-500 ${activeBg?.enabled && activeBg?.url ? 'has-custom-bg' : 'bg-background'} ${qualityEnabled ? 'quality-enabled' : ''}`}>
                 <AnimatePresence>
                     {activeBg?.enabled && activeBg?.url && (
                         <motion.div 
@@ -253,41 +262,21 @@ const AppContent: React.FC = () => {
                     )}
                 </AnimatePresence>
 
-                <div className="relative z-10 min-h-screen flex flex-col">
+                <div className="relative z-10 min-h-screen">
                     <AnimatePresence>
                         {isRestarting && (
                             <motion.div 
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center text-center p-6"
+                                className="fixed inset-0 z-[1000] bg-background/80 backdrop-blur-md flex flex-col items-center justify-center text-center p-6"
                             >
-                                <motion.div
-                                    animate={{ 
-                                        rotate: 360,
-                                        scale: [1, 1.1, 1]
-                                    }}
-                                    transition={{ 
-                                        rotate: { duration: 2, repeat: Infinity, ease: "linear" },
-                                        scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }
-                                    }}
-                                    className="w-24 h-24 mb-8 relative"
-                                >
-                                    <div className="absolute inset-0 border-4 border-primary/20 rounded-full" />
-                                    <div className="absolute inset-0 border-4 border-primary border-t-transparent rounded-full" />
-                                    <img src="/website-icon.png" alt="Logo" className="absolute inset-0 m-auto w-12 h-12 object-contain brightness-0 invert" />
-                                </motion.div>
+                                <div className="w-16 h-16 rounded-full border-2 border-primary/20 border-t-primary animate-spin mb-8" />
                                 
-                                <h2 className="text-2xl font-black uppercase tracking-widest text-white mb-2">System Restarting</h2>
-                                <p className="text-muted-foreground text-sm font-mono max-w-sm">
-                                    CraftCommand services are power-cycling to apply updates. Re-establishing telemetry link in T-15s...
+                                <h2 className="text-xl font-semibold text-foreground mb-2">Platform Restarting</h2>
+                                <p className="text-muted-foreground text-sm max-w-sm">
+                                    CraftCommand services are restarting to apply updates. Re-establishing connection...
                                 </p>
-                                
-                                <div className="mt-12 flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse delay-75" />
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse delay-150" />
-                                </div>
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -317,14 +306,14 @@ const AppContent: React.FC = () => {
                         <Route path="/server/:serverId/integrations" element={<ServerRouteWrapper tab="INTEGRATIONS" />} />
                         <Route path="/server/:serverId/network" element={<ServerRouteWrapper tab="NETWORK" />} />
                         <Route path="/server/:serverId/databases" element={<ServerRouteWrapper tab="DATABASES" />} />
-                        <Route path="/server/:serverId/subusers" element={<ServerRouteWrapper tab="SUBUSERS" />} />
                         <Route path="/server/:serverId/map" element={<ServerRouteWrapper tab="MAP" />} />
-                        <Route path="/server/:serverId/architect" element={<ServerRouteWrapper tab="ARCHITECT" />} />
+                        <Route path="/server/:serverId/guide" element={<ServerRouteWrapper tab="KNOWLEDGE_BASE" />} />
 
                         <Route path="/" element={<Navigate to={isAuthenticated ? "/servers" : "/login"} />} />
                         <Route path="*" element={<Navigate to="/" />} />
                     </Routes>
                     <DeploymentProgressOverlay />
+                    <ActivityTray isOpen={isActivityTrayOpen} onClose={() => setActivityTrayOpen(false)} />
                 </div>
             </div>
         </MotionConfig>

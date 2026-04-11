@@ -1,94 +1,61 @@
-# Remote Access & Security Proxy Guide
+# Ingress Security & Proxy Configuration
 
-Communication in CraftCommand is secure by default (localhost only). To expose your server to friends or the public, you must understand the two layers of remote access: **Securing the Connection (HTTPS)** and **Exposing the Network**.
+Controls public exposure of the CraftCommand panel and hosted server instances.
 
-## 🛑 Security Hardening First
+## 1. Authentication & Integrity
 
-Before enabling external access, ensure your installation is hardened:
+Before enabling global ingress, verify the following security constraints:
 
-1.  **Strict Authentication**: Every administrative account must have a strong password. Manage these in `Global Settings -> Users`.
-2.  **Two-Factor Authentication (2FA)**: **Recommended** - Enable native TOTP protection in your User Profile to prevent account takeovers via leaked passwords.
-3.  **Session Management**: Use the "Logout All Devices" feature if you suspect account compromise to instantly invalidate all active JWT sessions.
-4.  **Rate Limiting**: CraftCommand automatically prevents brute-force attacks by banning IPs after 5 failed login attempts for 1 hour.
-5.  **Owner Lock**: Only accounts with the `Owner` role can toggle **Remote Access Mode**.
+- **RBAC Enforcement**: Use the `User Manager` to restrict roles; only accounts with `ROLE_OWNER` can modify ingress binding settings.
+- **2FA (TOTP)**: Authentication tokens use the Time-based One-Time Password protocol. Configure via [2FA.md](../security/2FA.md).
+- **Throttling**: The auth-layer implements rate limiting for login attempts to mitigate dictionary attacks.
 
----
+## 2. Ingress Methods
 
-## Part 1: Exposing the Network (Remote Access)
+### A. Reverse Tunneling
+- **Cloudflare Tunnels**: Establishes an outbound-only connection via `cloudflared`. See [TUNNELS.md](TUNNELS.md).
+- **Playit.gg**: Tertiary agent for UDP/TCP mapping via global relay.
 
-Choose the method that fits your technical comfort level.
+### B. Network Proxy
+Located in `Global Settings > Network`, the internal proxy layer manages:
+- **Rate Limiting**: Throttles API requests per source IP.
+- **WebSocket Gateway**: Manages `Upgrade` and `Connection` header translation for the Socket.IO event stream.
 
-### Option A: Tunneling & Mesh VPN (High Security)
+### C. Dynamic DNS (DDNS)
+For direct exposure via port forwarding on dynamic WAN IPs:
+- **Synchronization**: Automated IP detection and provider API calls (e.g., DuckDNS) maintain A-record integrity. See [DDNS.md](DDNS.md).
 
-**Best for**: Private groups, avoiding router configuration.
+## 3. TLS Termination (HTTPS)
 
-1.  **Tailscale** or **ZeroTier**: Install these on your host machine and your friends' devices.
-2.  **Private IP**: Friends connect using your assigned VPN IP (e.g., `100.x.y.z:3000`).
-3.  **Pros**: No open ports on your router; end-to-end encryption.
+Persistent SSL/TLS encryption must be handled by an external reverse proxy when using direct ingress.
 
-### Option B: Built-in Reverse Tunneling (Playit.gg)
-
-**Best for**: Game + Dashboard access without port forwarding.
-
-1.  Go to `run_CraftCommand.bat` or System Settings.
-2.  Select **[5] Setup Remote Access** -> **[2] Playit.gg (Reverse Proxy)**.
-3.  Follow the generated "Claim URL" to link your account.
-
-### Option C: Traditional Port Forwarding (Advanced)
-
-**Best for**: High-performance public servers.
-
-1.  **Router Config**: Forward TCP/UDP port **25565** (Minecraft) and TCP port **3000** (Panel) to your host's local IP.
-2.  **Toggle Mode**: Go to **Global Settings** and enable **"Remote Access Mode"**. This allows the backend to bind to `0.0.0.0` instead of `127.0.0.1`.
-3.  **Warning**: Your public IP is visible. Bots will scan these ports within minutes.
-
----
-
-## Part 2: Securing the connection (HTTPS)
-
-Once your panel is exposed, you **must** use a Reverse Proxy to provide SSL/TLS encryption.
-
-### Method 1: Caddy (Recommended for Auto-HTTPS)
-
-Caddy handles SSL certificate renewal automatically via Let's Encrypt.
-
-1.  Download [Caddy](https://caddyserver.com/).
-2.  Create a `Caddyfile` in the root directory:
-    ```caddyfile
-    your-domain.com {
-        reverse_proxy localhost:3000
-    }
-    ```
-3.  Run `caddy run`.
-
-### Method 2: Nginx (Standard Configuration)
-
-For existing Nginx setups, use the following block. Note the **Upgrade** and **Connection** headers are critical for the Socket.IO console.
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
-
-    ssl_certificate /path/to/fullchain.pem;
-    ssl_certificate_key /path/to/privkey.pem;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+### Caddy (Standard Configuration)
+Caddy manages ACME-based certificate issuance and renewal automatically.
+```caddyfile
+your-domain.com {
+    reverse_proxy localhost:3000
 }
 ```
 
-## Emergency Disable
+### Nginx (Manual Configuration)
+Ensure `Upgrade` and `Connection` headers are passed to support the WebSocket control channel:
+```nginx
+location / {
+    proxy_pass http://localhost:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+```
 
-If you suspect unauthorized access or are under a DDoS attack:
+## 4. Emergency Procedures
 
-1.  Run `run_CraftCommand.bat` -> **Option [6] Emergency Disable**.
-2.  This instantly re-binds the panel to `127.0.0.1` and blocks all external WebSocket traffic.
+### Local Binding Reset
+In the event of a security breach or network stability failure:
+1.  Execute `scripts/ops/emergency-disable-remote.cjs`.
+2.  The application will immediately re-bind to `127.0.0.1`.
+3.  Ingress traffic from non-local interfaces will be dropped at the application layer.
+
+---
+
+_For specific protocol translation details, see [CROSSPLAY.md](CROSSPLAY.md)._

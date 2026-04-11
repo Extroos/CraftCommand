@@ -36,7 +36,7 @@ router.get('/', verifyToken, requireRole(['OWNER', 'ADMIN']), requireDistributed
         const nodes = nodeRegistryService.getAllNodes();
         res.json({ nodes, total: nodes.length });
     } catch (error) {
-        console.error('[Nodes] Failed to list nodes:', error);
+        logger.error(`[Nodes] Failed to list nodes: ${error}`);
         res.status(500).json({ error: 'Failed to list nodes' });
     }
 });
@@ -64,7 +64,7 @@ router.get('/recommend', verifyToken, requireRole(['OWNER', 'ADMIN']), requireDi
             reason: result.reason
         });
     } catch (error) {
-        console.error('[Nodes] Failed to get recommendation:', error);
+        logger.error(`[Nodes] Failed to get recommendation: ${error}`);
         res.status(500).json({ error: 'Failed to get scheduler recommendation' });
     }
 });
@@ -97,7 +97,7 @@ router.post('/enroll', verifyToken, nodeEnrollLimiter, requireRole(['OWNER']), r
 
         const node = nodeRegistryService.enroll(validName, validHost, validPort, labels || []);
         
-        auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', node.id, {
+        auditService.log(req.user.id, 'SYSTEM_SETTINGS_UPDATE', node.id, {
             action: 'NODE_ENROLL',
             name: node.name,
             host: node.host
@@ -117,7 +117,7 @@ router.post('/enroll', verifyToken, nodeEnrollLimiter, requireRole(['OWNER']), r
             return res.status(400).json({ error: message });
         }
         
-        console.error('[Nodes] Failed to enroll node:', error);
+        logger.error(`[Nodes] Failed to enroll node: ${error}`);
         res.status(500).json({ error: 'Failed to enroll node' });
     }
 
@@ -141,8 +141,42 @@ router.post('/enroll-wizard', verifyToken, requireRole(['OWNER']), requireDistri
         if (error.message?.includes('already exists')) {
             return res.status(409).json({ error: error.message });
         }
-        console.error('[Nodes] Failed to pre-enroll node:', error);
+        logger.error(`[Nodes] Failed to pre-enroll node: ${error}`);
         res.status(500).json({ error: 'Failed to generate enrollment identity' });
+    }
+});
+
+/**
+ * GET /api/nodes/join-command/:id — Generate the one-click join command
+ */
+router.get('/join-command/:id', verifyToken, requireRole(['OWNER']), requireDistributedNodes, (req, res) => {
+    try {
+        const token = nodeRegistryService.createJoinToken(req.params.id);
+        const protocol = req.secure ? 'https' : 'http';
+        const panelUrl = `${protocol}://${req.get('host')}`;
+        
+        // Return both the raw components and the formatted command
+        res.json({
+            token,
+            panelUrl,
+            command: `./run_CraftCommand.sh --join ${panelUrl} ${token}`,
+            powershell: `.\\run_CraftCommand.bat --join ${panelUrl} ${token}`
+        });
+    } catch (error: any) {
+        res.status(404).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/nodes/join-config/:token — Public endpoint for the join script to fetch config
+ * No Auth required (guarded by short-lived token)
+ */
+router.get('/join-config/:token', (req, res) => {
+    try {
+        const config = nodeRegistryService.consumeJoinToken(req.params.token);
+        res.json(config);
+    } catch (error: any) {
+        res.status(401).json({ error: error.message });
     }
 });
 
@@ -179,7 +213,7 @@ router.get('/enroll-wizard/download/:id', async (req, res) => {
         
         zipStream.pipe(res);
     } catch (error: any) {
-        console.error('[Nodes] Failed to generate enrollment package:', error);
+        logger.error(`[Nodes] Failed to generate enrollment package: ${error}`);
         res.status(500).json({ error: error.message || 'Failed to generate enrollment package' });
     }
 });
@@ -210,7 +244,7 @@ router.get('/:id', verifyToken, requireRole(['OWNER', 'ADMIN']), requireDistribu
         }
         res.json(node);
     } catch (error) {
-        console.error('[Nodes] Failed to get node:', error);
+        logger.error(`[Nodes] Failed to get node: ${error}`);
         res.status(500).json({ error: 'Failed to get node' });
     }
 });
@@ -232,7 +266,7 @@ router.get('/:id/health', verifyToken, requireRole(['OWNER', 'ADMIN']), requireD
         }
         res.json({ status: node.status, health: node.health });
     } catch (error) {
-        console.error('[Nodes] Failed to get node health:', error);
+        logger.error(`[Nodes] Failed to get node health: ${error}`);
         res.status(500).json({ error: 'Failed to get node health' });
     }
 });
@@ -266,14 +300,14 @@ router.post('/:id/fix', verifyToken, requireRole(['OWNER']), requireDistributedN
         const response = await sendToAgent(id, 'agent:fix', { capability });
         res.json(response);
 
-        auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', id, {
+        auditService.log(req.user.id, 'SYSTEM_SETTINGS_UPDATE', id, {
             action: 'NODE_CAPABILITY_FIX',
             capability,
             nodeName: node.name
         }, req.ip);
 
     } catch (error: any) {
-        console.error('[Nodes] Failed to trigger fix:', error);
+        logger.error(`[Nodes] Failed to trigger fix: ${error}`);
         res.status(500).json({ error: error.message || 'Failed to trigger fix' });
     }
 });
@@ -308,13 +342,13 @@ router.post('/:id/shutdown', verifyToken, requireRole(['OWNER']), requireDistrib
         
         res.json({ message: 'Shutdown command sent to agent.' });
 
-        auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', id, {
+        auditService.log(req.user.id, 'SYSTEM_SETTINGS_UPDATE', id, {
             action: 'NODE_SHUTDOWN',
             nodeName: node.name
         }, req.ip);
 
     } catch (error: any) {
-        console.error('[Nodes] Failed to shutdown node:', error);
+        logger.error(`[Nodes] Failed to shutdown node: ${error}`);
         res.status(500).json({ error: error.message || 'Failed to shutdown node' });
     }
 });
@@ -377,7 +411,7 @@ router.post('/:id/backups/intake', async (req, res) => {
         res.json({ ok: true, message: 'Backup mirrored successfully.' });
 
     } catch (error: any) {
-        console.error('[Nodes] Mirror intake failed:', error);
+        logger.error(`[Nodes] Mirror intake failed: ${error}`);
         res.status(500).json({ error: error.message || 'Mirror intake failed' });
     }
 });

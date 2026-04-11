@@ -114,7 +114,7 @@ export const ConnectivitySettings: React.FC<ConnectivitySettingsProps> = ({ curr
         setIsResetting(true);
         try {
             await API.resetSftpPassword(serverId);
-            addToast('success', 'Access Restored', 'SFTP Password has been successfully reset. A new password has been dispatched to your secure vault.');
+            addToast('success', 'Access Restored', 'SFTP Password has been successfully reset.');
         } catch (e: any) {
             addToast('error', 'Reset Failed', e.message || 'Failed to reset SFTP access.');
         } finally {
@@ -137,7 +137,7 @@ export const ConnectivitySettings: React.FC<ConnectivitySettingsProps> = ({ curr
                             </div>
                             <div>
                                 <h3 className="text-sm font-bold text-foreground/90 uppercase tracking-tight">SFTP Credentials</h3>
-                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">Secure File Transfer Protocol access details</p>
+                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">SFTP connection details</p>
                             </div>
                         </div>
                         <div className="px-2 py-0.5 rounded text-[8px] font-black bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 uppercase tracking-widest">

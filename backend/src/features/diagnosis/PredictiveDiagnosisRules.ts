@@ -51,13 +51,18 @@ export const MemoryCrashPredictionRule: DiagnosisRule = {
                 ? 'Restart the server now to prevent a crash, or increase RAM allocation immediately.'
                 : 'Consider restarting the server soon, or investigate which plugins/mods are consuming memory. Increasing RAM allocation may also help.',
             confidence,
-            action: server.ram < 8 ? {
-                type: 'UPDATE_CONFIG',
-                payload: { ram: Math.min(server.ram + 2, 16) },
-                autoHeal: false // Predictions should advise, not auto-fix
-            } : undefined,
+            action: {
+                type: 'ADJUST_RAM',
+                payload: { serverId: server.id, newRam: Math.min(server.ram + 2, 16) },
+                automaticRepair: false // RAM changes always manual
+            },
             timestamp: Date.now()
         };
+    },
+    repair: async (server: ServerConfig): Promise<boolean> => {
+        const { DiagnosisActions } = require('./DiagnosisActions');
+        await DiagnosisActions.performSafeGC(server);
+        return true;
     }
 };
 
@@ -132,6 +137,11 @@ export const DiskExhaustionPredictionRule: DiagnosisRule = {
                     title: `Disk Space Low — ~${freeGb.toFixed(1)}GB Remaining`,
                     explanation: `The drive hosting this server is ${usedPercent.toFixed(0)}% full with only ${freeGb.toFixed(1)}GB remaining. Based on typical Minecraft server growth (world saves, logs, backups), this could be exhausted in ${daysEstimate}.`,
                     recommendation: 'Free space by: (1) Deleting old backups, (2) Trimming the world border to prevent exploration sprawl, (3) Clearing old log files in the /logs directory, (4) Moving the server to a larger disk.',
+                    action: {
+                        type: 'PERFORM_STORAGE_CLEANUP',
+                        payload: { serverId: server.id },
+                        automaticRepair: true
+                    },
                     confidence: Math.min(90, Math.round(50 + (usedPercent - 85) * 3)),
                     timestamp: Date.now()
                 };
@@ -141,6 +151,12 @@ export const DiskExhaustionPredictionRule: DiagnosisRule = {
         } catch {
             return null;
         }
+    },
+    repair: async (server: ServerConfig): Promise<boolean> => {
+        const { DiagnosisActions } = require('./DiagnosisActions');
+        const fs = require('fs-extra'); // Usually injected but rules can import locally if needed
+        await DiagnosisActions.smartLogRotation(server, fs);
+        return true;
     }
 };
 
@@ -184,9 +200,11 @@ export const CpuSaturationPredictionRule: DiagnosisRule = {
 };
 
 // ─── Export ──────────────────────────────────────────────────────────────────
-export const PredictiveRules: DiagnosisRule[] = [
-    MemoryCrashPredictionRule,
-    TpsDegradationPredictionRule,
-    DiskExhaustionPredictionRule,
-    CpuSaturationPredictionRule
-];
+export function getPredictiveRules(): DiagnosisRule[] {
+    return [
+        MemoryCrashPredictionRule,
+        TpsDegradationPredictionRule,
+        DiskExhaustionPredictionRule,
+        CpuSaturationPredictionRule
+    ];
+}

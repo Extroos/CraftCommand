@@ -11,10 +11,14 @@ export class NotificationService {
     
     private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
     private pendingGroups: Map<string, { notification: Notification, count: number }> = new Map();
+    
+    public async broadcast(type: NotificationType, title: string, message: string, metadata?: any): Promise<Notification> {
+        return this.create('ALL', type, title, message, metadata);
+    }
 
     public async create(userId: string, type: NotificationType, title: string, message: string, metadata?: any, link?: string, options?: { dismissible?: boolean, actionLabel?: string }): Promise<Notification> {
         // Check for grouping eligibility
-        // Specifically for repetitive system tasks like Auto-Healing
+        // Specifically for repetitive system tasks like Automatic Repair
         const groupKey = metadata?.serverId && metadata?.actionType ? `${userId}:${metadata.serverId}:${metadata.actionType}` : null;
 
         if (groupKey && (metadata?.actionType === 'INSTALL_DEPENDENCY')) {
@@ -122,6 +126,27 @@ export class NotificationService {
 
     public pruneOld(): void {
         notificationRepository.prune(100);
+        this.cleanupState();
+    }
+
+    /**
+     * Internal cleanup for memory optimization.
+     * Removes stale debounce timers and pending groups if they persist beyond expected TTL.
+     */
+    private cleanupState(): void {
+        const now = Date.now();
+        const MAX_PENDING_AGE = 60000; // 60 seconds safety TTL
+
+        for (const [key, pending] of this.pendingGroups.entries()) {
+            if (now - pending.notification.createdAt > MAX_PENDING_AGE) {
+                logger.debug(`[NotificationService] Pruning stale pending group: ${key}`);
+                this.pendingGroups.delete(key);
+                if (this.debounceTimers.has(key)) {
+                    clearTimeout(this.debounceTimers.get(key)!);
+                    this.debounceTimers.delete(key);
+                }
+            }
+        }
     }
 }
 

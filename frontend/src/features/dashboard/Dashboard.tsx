@@ -57,7 +57,7 @@ const Sparkline: React.FC<{ data: number[], color: string, height?: number, max?
 };
 
 const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
-    const { servers, stats: allStats, logs, players, updateServerStatus, javaDownloadStatus } = useServers();
+    const { servers, stats: allStats, logs, players, updateServerStatus, javaDownloadStatus, getUnifiedStatus, addBackgroundTask, updateBackgroundTask, removeBackgroundTask } = useServers();
     const { user } = useUser();
     const { can } = usePermissions();
     const { settings, nodes } = useSystem();
@@ -73,7 +73,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     
     const { sendChat } = useCollaboration();
     const stats = allStats[serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, tps: "0.00", pid: 0 };
-    const status = server?.status || ServerStatus.OFFLINE;
+    const status = server ? getUnifiedStatus(server) : ServerStatus.OFFLINE;
 
 
     const { addToast } = useToast();
@@ -93,19 +93,19 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     const [memHistory, setMemHistory] = useState<number[]>([]);
     const [tpsHistory, setTpsHistory] = useState<number[]>([]);
 
-    // Phase 58: Smooth Uptime Interpolation (v1.12.13)
+    // Phase 58: Smooth Uptime Interpolation (v1.13.0)
     // Prevents jumping (e.g. 1s -> 6s) by ticking locally while synced to backend
     const [localUptime, setLocalUptime] = useState<number>(0);
     
     useEffect(() => {
-        // v1.12.16: Only sync from backend if the server is actually ONLINE
+        // v1.13.0: Only sync from backend if the server is actually ONLINE
         // Otherwise, the local reset (0) will be overwritten by stale metrics
         if (status === ServerStatus.ONLINE && stats.uptime > 0) {
             setLocalUptime(stats.uptime);
         }
     }, [stats.uptime, status]);
 
-    // Phase 64: Metric Lifecycle Engine (v1.12.16)
+    // Phase 64: Metric Lifecycle Engine (v1.13.0)
     // Permissive metrics: Show data if the server is in a "Live" state
     const isLive = [
         ServerStatus.ONLINE, 
@@ -120,7 +120,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     const displayTps = isLive ? (typeof stats.tps === 'number' ? stats.tps : parseFloat(stats.tps as string) || 0) : 0;
     const displayLatency = isLive ? (stats.latency || 0) : 0;
 
-    // Phase 61: UI-Side TPS Latch (v1.12.15)
+    // Phase 61: UI-Side TPS Latch (v1.13.0)
     // Prevents flickering to 0.00 during transient query timeouts if server is live
     const lastValidTps = useRef<number>(20);
     useEffect(() => {
@@ -129,7 +129,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
 
     const finalTps = (isLive && displayTps === 0) ? lastValidTps.current : displayTps;
 
-    // Zero-Point History Wipe (v1.12.16)
+    // Zero-Point History Wipe (v1.13.0)
     // Force history to clear when server stops to provide visual feedback
     useEffect(() => {
         if (!isLive) {
@@ -140,7 +140,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     }, [isLive]);
 
     useEffect(() => {
-        // v1.12.16: Use isLive instead of just ONLINE to catch STOPPING/OFFLINE transitions faster
+        // v1.13.0: Use isLive instead of just ONLINE to catch STOPPING/OFFLINE transitions faster
         if (!isLive || status !== ServerStatus.ONLINE) {
             setLocalUptime(0);
             return;
@@ -165,7 +165,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     // Advance the chart every 2 seconds regardless of if the value changed
     useEffect(() => {
         const interval = setInterval(() => {
-            // ONLY advance history if the server is in a live/transitioning state (v1.12.12)
+            // ONLY advance history if the server is in a live/transitioning state (v1.13.0)
             if (!isLive) return;
 
             setCpuHistory(prev => {
@@ -227,12 +227,25 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
 
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {
         setPendingAction(action);
+        const taskId = `${action}-${serverId}-${Date.now()}`;
+        
         try {
             if (action === 'start') {
                 try {
+                    addBackgroundTask({
+                        id: taskId,
+                        name: `Startup: ${server?.name || serverId}`,
+                        type: 'start',
+                        serverId,
+                        status: 'running',
+                        progress: 0,
+                        message: 'Initializing server startup...'
+                    });
                     updateServerStatus(serverId, ServerStatus.STARTING);
                     await API.startServer(serverId);
+                    updateBackgroundTask(taskId, { name: `Startup: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server started' });
                 } catch (e: any) {
+                    removeBackgroundTask(taskId);
                     // If it's already running, don't revert to OFFLINE - the backend is ahead of us!
                     if (e.message?.includes('already running')) {
                         // Server is already running — don't revert, backend is ahead
@@ -268,12 +281,25 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
     const handleGracefulStop = async () => {
         setPendingAction('stop');
         setShowGraceful(false);
+        const taskId = `stop-graceful-${serverId}-${Date.now()}`;
+        
         try {
+            addBackgroundTask({
+                id: taskId,
+                name: `Shutdown: ${server?.name || serverId}`,
+                type: 'stop',
+                serverId,
+                status: 'running',
+                progress: 0,
+                message: `Graceful shutdown initiated (${gracefulCountdown}s)...`
+            });
             updateServerStatus(serverId, ServerStatus.STOPPING);
             await API.gracefulStopServer(serverId, gracefulCountdown);
             addToast('info', 'Graceful Shutdown', `Broadcast sent. Stopping in ${gracefulCountdown}s.`);
+            updateBackgroundTask(taskId, { name: `Shutdown: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Shutdown signal sent' });
         } catch (e: any) {
             updateServerStatus(serverId, status);
+            removeBackgroundTask(taskId);
             addToast('error', 'Shutdown Failed', e.message);
         } finally {
             setPendingAction(null);
@@ -282,15 +308,38 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
 
     const executePowerAction = async (action: 'stop' | 'restart') => {
         const previousStatus = status;
+        const taskId = `${action}-${serverId}-${Date.now()}`;
+        
         try {
             if (action === 'stop') {
+                 addBackgroundTask({
+                    id: taskId,
+                    name: `Shutdown: ${server?.name || serverId}`,
+                    type: 'stop',
+                    serverId,
+                    status: 'running',
+                    progress: 0,
+                    message: 'Sending termination signal...'
+                 });
                  updateServerStatus(serverId, ServerStatus.STOPPING);
                  await API.stopServer(serverId);
                  updateServerStatus(serverId, ServerStatus.OFFLINE);
+                 updateBackgroundTask(taskId, { name: `Shutdown: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server stopped' });
             } else if (action === 'restart') {
+                 addBackgroundTask({
+                    id: taskId,
+                    name: `Restart: ${server?.name || serverId}`,
+                    type: 'restart',
+                    serverId,
+                    status: 'running',
+                    progress: 0,
+                    message: 'Initiating server restart...'
+                 });
                  updateServerStatus(serverId, ServerStatus.STOPPING);
                  await API.stopServer(serverId);
                  
+                 updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, progress: 50, message: 'Waiting for process to exit...' });
+
                  // Phase 57: Robust Restart Sequence
                  // Instead of a blind timeout, we wait for OFFLINE or a short timeout before re-start
                  let attempts = 0;
@@ -298,8 +347,10 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                      // Check status via servers list in context (already pulsing via WebSocket/Polling)
                      const current = servers.find(s => s.id === serverId);
                      if (current?.status === ServerStatus.OFFLINE || attempts > 10) {
+                         updateBackgroundTask(taskId, { progress: 75, message: 'Relaunching server...' });
                          updateServerStatus(serverId, ServerStatus.STARTING);
                          await API.startServer(serverId);
+                         updateBackgroundTask(taskId, { status: 'complete', progress: 100, message: 'Server restarted' });
                      } else {
                          attempts++;
                          setTimeout(checkAndStart, 500);
@@ -309,6 +360,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
             }
         } catch (e: any) {
             updateServerStatus(serverId, previousStatus as ServerStatus);
+            removeBackgroundTask(taskId);
             addToast('error', 'Power Action Failed', e.message);
         } finally {
             setPowerConfirm({ action: 'stop', isOpen: false });
@@ -380,17 +432,19 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
             )}
 
             {/* Precision Tactical Hero Section */}
-            <div className={`cc-card transition-all duration-700 ${user?.preferences.visualQuality ? 'glass-morphism glass-spotlight quality-entrance' : ''}`}>
+            <div className="cc-card mb-6">
                 <div className="flex justify-between items-center mb-4 pb-3 border-b border-foreground/[0.04]">
                     <div className="flex items-center gap-3">
                         <div className={`w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.1)] ${
                             status === ServerStatus.ONLINE ? 'bg-emerald-500 shadow-emerald-500/40' :
+                            status === 'NODE_UNREACHABLE' ? 'bg-rose-500 shadow-rose-500/40 animate-pulse' :
                             status === ServerStatus.OFFLINE ? 'bg-rose-500 shadow-rose-500/40' :
                             'bg-amber-500 shadow-amber-500/40 animate-pulse'
                         }`} />
                         <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-[0.2em]">
                             SERVER STATUS: <span className="text-foreground/60">
-                                {status === ServerStatus.OFFLINE ? 'OFFLINE' : `LOCAL-${server.id.split('-')[0].toUpperCase()}`}
+                                {status === 'NODE_UNREACHABLE' ? 'NODE UNREACHABLE' : 
+                                 status === ServerStatus.OFFLINE ? 'OFFLINE' : `LOCAL-${server.id.split('-')[0].toUpperCase()}`}
                             </span>
                         </span>
                     </div>
@@ -414,12 +468,14 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                             } ${user?.preferences.visualQuality ? 'glass-morphism' : ''}`}>
                                 <div className={`w-1.5 h-1.5 rounded-full ${
                                     status === ServerStatus.ONLINE ? 'bg-emerald-500' :
+                                    status === 'NODE_UNREACHABLE' ? 'bg-rose-500 animate-pulse' :
                                     status === ServerStatus.OFFLINE ? 'bg-rose-500' :
                                     'bg-amber-500'
                                 }`} />
                                 <span className="text-[9px] font-bold uppercase tracking-wider">
-                                    {status === ServerStatus.ONLINE ? 'System Operational' : 
-                                     status === ServerStatus.OFFLINE ? 'System Offline' :
+                                    {status === ServerStatus.ONLINE ? 'Online' : 
+                                     status === 'NODE_UNREACHABLE' ? 'Node Unreachable' :
+                                     status === ServerStatus.OFFLINE ? 'Offline' :
                                      status.replace('_', ' ')}
                                 </span>
                             </div>
@@ -434,7 +490,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                             )}
                         </div>
                         
-                        <h1 className={`text-4xl sm:text-6xl font-bold tracking-tighter leading-[1.15] pb-2 lowercase ${user?.preferences.visualQuality ? 'bg-gradient-to-br from-foreground via-foreground to-foreground/40 bg-clip-text text-transparent tracking-[-0.08em]' : 'text-foreground'}`}>
+                        <h1 className="text-4xl sm:text-6xl font-bold tracking-tighter leading-[1.15] pb-2 lowercase text-foreground">
                             {server.name.toLowerCase()}
                         </h1>
 
@@ -517,7 +573,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                     { label: 'PLAYERS', value: stats.players, unit: ` / ${server.maxPlayers || '20'}`, sub: '', detail: '', icon: <Users size={16} className="text-foreground/40" />, heads: true },
                     { label: 'LATENCY', value: stats.latency, unit: 'ms', sub: '', detail: '', icon: <Zap size={16} className="text-foreground/40" />, signal: true }
                 ].map((m, i) => (
-                    <div key={i} className={`cc-card group relative transition-all duration-500 ${user?.preferences.visualQuality ? `glass-morphism quality-entrance ${m.label === 'UPTIME' ? 'glass-spotlight-subtle' : ''}` : ''}`} style={{ animationDelay: `${(i + 1) * 50}ms` }}>
+                    <div key={i} className="cc-card group relative" style={{ animationDelay: `${(i + 1) * 50}ms` }}>
                         <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-foreground/5 to-transparent" />
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
@@ -594,7 +650,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
 
             {/* Tactical Grid Row 2 (Responsive Columns) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className={`cc-card py-14 ${user?.preferences.visualQuality ? 'glass-morphism' : ''}`}>
+                <div className="cc-card py-14">
                     <div className="flex flex-col sm:flex-row justify-between items-start mb-10 gap-6">
                         <div className="space-y-6">
                             <div className="flex items-center gap-3">
@@ -602,7 +658,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                                 <span className="text-[11px] font-bold text-foreground tracking-widest">Process CPU</span>
                             </div>
                             <div className="flex flex-col gap-1.5">
-                                <div className="text-[10px] font-bold text-foreground/20 uppercase tracking-widest">INSTANCE LOAD</div>
+                                <div className="text-[10px] font-bold text-foreground/20 uppercase tracking-widest">CPU USAGE</div>
                                 {user?.preferences.visualQuality && (
                                     <div className="flex items-center gap-2 text-[9px] font-mono font-bold">
                                         <span className="text-foreground/30 uppercase">Peak:</span>
@@ -617,7 +673,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                             <div className="text-4xl font-bold text-foreground tracking-tighter leading-[0.9]">
                                 {displayCpu.toFixed(1)}%
                             </div>
-                            <div className="text-[9px] font-bold text-foreground/5 uppercase tracking-widest mt-2">REAL-TIME TELEMETRY</div>
+                            <div className="text-[9px] font-bold text-foreground/5 uppercase tracking-widest mt-2">LIVE</div>
                         </div>
                     </div>
                     <div className="h-48 mt-auto flex items-end">
@@ -625,7 +681,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                     </div>
                 </div>
 
-                <div className={`cc-card py-14 ${user?.preferences.visualQuality ? 'glass-morphism' : ''}`}>
+                <div className="cc-card py-14">
                     <div className="flex flex-col sm:flex-row justify-between items-start mb-10 gap-6">
                         <div className="space-y-6">
                             <div className="flex items-center gap-3">
@@ -648,7 +704,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                             <div className="text-4xl font-bold text-foreground tracking-tighter leading-[0.9]">
                                 {(displayMemory / 1024).toFixed(2)}G
                             </div>
-                            <div className="text-[9px] font-bold text-foreground/5 uppercase tracking-widest mt-2">HEAP TREND</div>
+                            <div className="text-[9px] font-bold text-foreground/5 uppercase tracking-widest mt-2">MEMORY</div>
                         </div>
                     </div>
                     <div className="h-48 mt-auto flex items-end">
@@ -662,7 +718,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                 <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-transparent pointer-events-none opacity-50" />
                 <div className="flex items-center gap-3 shrink-0 relative">
                     <Terminal size={12} className="text-emerald-500/80" />
-                    <span className="text-[9px] font-mono text-emerald-500/50 uppercase tracking-[0.2em] font-black">SYSTEM_STDOUT</span>
+                    <span className="text-[9px] font-mono text-emerald-500/50 uppercase tracking-[0.2em] font-black">CONSOLE</span>
                 </div>
                 <div className="flex-1 truncate font-mono text-[11px] text-zinc-500 pt-0.5 relative">
                     {status === ServerStatus.ONLINE ? (
@@ -672,11 +728,11 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                             <span className="opacity-30 animate-pulse italic">Waiting for process stream...</span>
                         )
                     ) : (
-                        <span className="opacity-10 uppercase tracking-widest text-[9px]">Process Inactive // Connection Severed</span>
+                        <span className="opacity-10 uppercase tracking-widest text-[9px]">Server stopped</span>
                     )}
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 relative border-t sm:border-t-0 border-white/5 pt-2 sm:pt-0">
-                    <div className="text-[9px] font-mono text-white/20 uppercase tracking-widest hidden xs:block">Live_v1.12.5</div>
+                    <div className="text-[9px] font-mono text-white/20 uppercase tracking-widest hidden xs:block">Live_v1.13.0</div>
                     <div className="flex gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/20" />
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/10" />
@@ -693,7 +749,7 @@ const Dashboard: React.FC<DashboardProps> = ({ serverId }) => {
                         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-card border border-border rounded-xl shadow-2xl p-8 max-w-md w-full text-center space-y-6">
                             <div className="flex justify-center"><AlertTriangle size={48} className="text-amber-500" /></div>
                             <div className="space-y-2">
-                                <h3 className="text-xl font-bold">Active Protocol Detected</h3>
+                                <h3 className="text-xl font-bold">Players Online</h3>
                                 <p className="text-sm text-muted-foreground">Players are currently connected to this instance. Forcing a {powerConfirm.action} may cause data loss or corruption.</p>
                             </div>
                             <div className="flex gap-4">

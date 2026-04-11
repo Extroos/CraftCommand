@@ -67,7 +67,7 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
                     if (migrationMarker) fs.writeFileSync(migrationMarker, new Date().toISOString());
                 }
             } catch (e: any) {
-                console.error(`[SqliteProvider] CRITICAL MIGRATION FAILURE:`, e);
+                logger.error(`[SqliteProvider] CRITICAL MIGRATION FAILURE: ${e}`);
                 // Throwing ensures the system doesn't start with partial/corrupted data
                 throw new Error(`Migration to SQLite failed: ${e.message}`);
             }
@@ -181,7 +181,7 @@ export class SqliteProvider<T extends { id: string }> implements StorageProvider
                     await fs.writeJSON(jsonPath, data, { spaces: 2 });
                 }
             } catch (e) {
-                console.error(`[SqliteProvider] Async sync failed for ${key}:`, e);
+                logger.error(`[SqliteProvider] Async sync failed for ${key}: ${e}`);
             }
         }, 100); // 100ms debounce for high-frequency updates
 

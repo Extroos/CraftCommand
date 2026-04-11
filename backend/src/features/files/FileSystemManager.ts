@@ -1,6 +1,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
+import { logger } from '../../utils/logger';
 
 export class FileSystemManager {
     private basePath: string;
@@ -50,8 +51,15 @@ export class FileSystemManager {
     async writeFile(filePath: string, content: string): Promise<void> {
         const fullPath = this.resolvePath(filePath);
         const tempPath = `${fullPath}.tmp`;
+        await fs.ensureDir(path.dirname(fullPath));
         await fs.writeFile(tempPath, content);
         await fs.rename(tempPath, fullPath);
+    }
+
+    async appendFile(filePath: string, content: string): Promise<void> {
+        const fullPath = this.resolvePath(filePath);
+        await fs.ensureDir(path.dirname(fullPath));
+        await fs.appendFile(fullPath, content);
     }
     
     async createDirectory(dirPath: string): Promise<void> {
@@ -71,7 +79,7 @@ export class FileSystemManager {
         
         await fs.ensureDir(path.dirname(destPath));
         await fs.move(srcPath, destPath, { overwrite: true });
-        console.log(`[FileSys] Moved ${source} -> ${dest}`);
+        logger.info(`[FileSys] Moved ${source} -> ${dest}`);
     }
 
     async copy(source: string, dest: string): Promise<void> {
@@ -90,7 +98,7 @@ export class FileSystemManager {
 
         await fs.ensureDir(path.dirname(destPath));
         await fs.copy(srcPath, destPath, { overwrite: true });
-        console.log(`[FileSys] Copied ${source} -> ${dest}`);
+        logger.info(`[FileSys] Copied ${source} -> ${dest}`);
     }
 
     async compress(paths: string[], archiveName: string): Promise<void> {

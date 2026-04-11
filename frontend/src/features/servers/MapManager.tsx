@@ -77,12 +77,12 @@ export const MapManager: React.FC<MapManagerProps> = ({ serverId: propId }) => {
         try {
             const result = await API.verifyMap(serverId);
             if (result.verified) {
-                if (!silent) addToast('success', 'Handshake Verified', 'Telemetry link established!');
+                if (!silent) addToast('success', 'Connection Verified', 'Map link established!');
                 fetchStatus();
                 return true;
             } else {
                 if (!silent) {
-                    addToast('error', 'Handshake Failed', result.error || 'Connection refused');
+                    addToast('error', 'Connection Failed', result.error || 'Connection refused');
                     setStatus(prev => prev ? { ...prev, verified: false, error: result.error } : null);
                 }
                 return false;
@@ -137,7 +137,7 @@ export const MapManager: React.FC<MapManagerProps> = ({ serverId: propId }) => {
         return (
             <div className="flex flex-col items-center justify-center h-full min-h-[400px]">
                 <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest animate-pulse">Initializing World Layer...</p>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest animate-pulse">Loading Map...</p>
             </div>
         );
     }
@@ -161,7 +161,7 @@ export const MapManager: React.FC<MapManagerProps> = ({ serverId: propId }) => {
                         </div>
                         <h2 className="text-2xl font-bold tracking-tight text-foreground mb-3">Dynmap Integration Ready</h2>
                         <p className="text-sm text-muted-foreground mb-8 max-w-md mx-auto leading-relaxed">
-                            Deploy real-time world telemetry and player logistics. Automate your dynamic map generation with a single click.
+                            View your world in real-time with an interactive web map. Install the Dynmap plugin with a single click.
                         </p>
                         
                         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
@@ -183,7 +183,7 @@ export const MapManager: React.FC<MapManagerProps> = ({ serverId: propId }) => {
                         </div>
 
                         <div className="bg-muted/30 border border-border rounded-lg p-6 text-left max-w-lg mx-auto">
-                            <h4 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Deployment Checklist</h4>
+                            <h4 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Setup Checklist</h4>
                             <div className="space-y-3">
                                 <div className="flex gap-3 text-xs text-muted-foreground">
                                     <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
@@ -213,12 +213,12 @@ export const MapManager: React.FC<MapManagerProps> = ({ serverId: propId }) => {
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-3">
                         <MapIcon size={24} className="text-primary" />
-                        World Telemetry
+                        World Map
                     </h2>
                     <div className="flex items-center gap-3 mt-1">
                         <div className={`w-2 h-2 rounded-full ${status.verified ? 'bg-emerald-500' : isPolling ? 'bg-primary animate-pulse' : 'bg-amber-500'}`}></div>
                         <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest leading-none">
-                            {status.verified ? 'Link Active' : isPolling ? 'Synchronizing Telemetry' : 'Waiting for Handshake'}
+                            {status.verified ? 'Connected' : isPolling ? 'Connecting...' : 'Not Connected'}
                         </span>
                         {status.port && (
                             <>
@@ -338,8 +338,8 @@ export const MapManager: React.FC<MapManagerProps> = ({ serverId: propId }) => {
                     <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/10 flex gap-3 text-amber-600/80">
                         <AlertTriangle size={18} className="shrink-0" />
                         <div className="text-xs font-medium">
-                            <span className="font-bold text-amber-700 block mb-0.5">Integration Handshake Required</span>
-                            Plugin detected, but telemetry link is not established. Click "Verify Link" above or restart your server if you just installed it.
+                            <span className="font-bold text-amber-700 block mb-0.5">Connection Required</span>
+                            Plugin detected, but the map connection is not established. Click "Verify Link" above or restart your server if you just installed it.
                         </div>
                     </div>
                 )}
@@ -348,7 +348,7 @@ export const MapManager: React.FC<MapManagerProps> = ({ serverId: propId }) => {
                     <div className="p-4 rounded-lg bg-rose-500/5 border border-rose-500/10 flex gap-3 text-rose-600/80">
                         <ShieldAlert size={18} className="shrink-0" />
                         <div className="text-xs font-medium uppercase tracking-wide">
-                            <span className="font-bold text-rose-700 block mb-0.5 uppercase tracking-widest text-[10px]">Fault Detected</span>
+                            <span className="font-bold text-rose-700 block mb-0.5 uppercase tracking-widest text-[10px]">Error</span>
                             {status.error}
                         </div>
                     </div>
@@ -361,7 +361,7 @@ export const MapManager: React.FC<MapManagerProps> = ({ serverId: propId }) => {
                 <div className="h-10 bg-muted/20 border-b border-border flex items-center px-4 shrink-0 justify-between">
                      <div className="flex items-center gap-2 opacity-60">
                          <div className={`w-1.5 h-1.5 rounded-full ${status.verified ? 'bg-emerald-500' : 'bg-zinc-500'}`}></div>
-                         <span className="text-[10px] font-bold uppercase tracking-widest">Viewport Layer</span>
+                         <span className="text-[10px] font-bold uppercase tracking-widest">Map View</span>
                      </div>
                      {status.verified && (
                          <span className="text-[10px] font-mono text-muted-foreground/40">{status.internalUrl}</span>
@@ -394,9 +394,9 @@ export const MapManager: React.FC<MapManagerProps> = ({ serverId: propId }) => {
                                 <div className="w-20 h-20 rounded-full bg-muted/10 flex items-center justify-center mb-6 border border-border">
                                     <MapIcon size={32} className="text-muted-foreground/20" />
                                 </div>
-                                <h3 className="text-lg font-bold text-muted-foreground/30 uppercase tracking-[0.2em] mb-2">Telemetry Offline</h3>
+                                <h3 className="text-lg font-bold text-muted-foreground/30 uppercase tracking-[0.2em] mb-2">Map Offline</h3>
                                 <p className="text-xs text-muted-foreground/40 max-w-xs font-medium">
-                                    Establish a secure handshake to unlock real-time world intelligence.
+                                    Verify the connection to view your real-time world map.
                                 </p>
                             </motion.div>
                         )}

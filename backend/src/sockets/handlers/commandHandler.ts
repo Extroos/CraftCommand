@@ -24,7 +24,7 @@ export const handleCommand = (socket: Socket, data: any) => {
     const user = getUserById(userId);
 
     if (!user) {
-        console.warn(`[Socket] Unauthorized command attempt from ${socket.id}`);
+        logger.warn(`[Socket] Unauthorized command attempt from ${socket.id}`);
         return;
     }
 
@@ -33,7 +33,7 @@ export const handleCommand = (socket: Socket, data: any) => {
     const requiredPerm: any = 'server.console.write';
 
     if (!permissionService.can(user, requiredPerm, serverId)) {
-        console.warn(`[Socket] Forbidden command attempt by ${user.username} for ${serverId}`);
+        logger.warn(`[Socket] Forbidden command attempt by ${user.username} for ${serverId}`);
         
         // Audit Log (Phase 2/5 Requirement)
         import('../../features/system/AuditService').then(({ auditService }) => {

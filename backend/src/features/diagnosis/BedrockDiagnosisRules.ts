@@ -27,7 +27,7 @@ export const BedrockExecutableRule: DiagnosisRule = {
                 action: {
                     type: 'REINSTALL_BEDROCK',
                     payload: { serverId: server.id },
-                    autoHeal: true
+                    automaticRepair: true
                 },
                 timestamp: Date.now()
             };
@@ -47,23 +47,24 @@ export const BedrockPortRule: DiagnosisRule = {
         if (server.software !== 'Bedrock') return null;
 
         const { NetUtils } = require('../../utils/NetUtils');
-        const hasLogMatch = logs.some(l => /Failed to bind|Address already in use/i.test(l));
         const isPortBusy = await NetUtils.checkUDPPortBind(server.port);
 
-        if (hasLogMatch || isPortBusy) {
-            return {
-                id: `br-port-${server.id}-${Date.now()}`,
-                ruleId: 'bedrock_port_binding',
-                severity: 'CRITICAL',
-                title: 'Bedrock Port Conflict',
-                explanation: `Bedrock failed to bind to UDP port ${server.port}. This port is already in use by another instance or blocked by a firewall.`,
-                recommendation: 'Change the port in Server Settings or stop the conflicting process.',
-                timestamp: Date.now()
-            };
-        }
-        return null;
+        // --- SMART HANDLING ---
+        // If the port is currently FREE, we ignore previous bind errors in logs.
+        if (!isPortBusy) return null;
+
+        return {
+            id: `br-port-${server.id}-${Date.now()}`,
+            ruleId: 'bedrock_port_binding',
+            severity: 'CRITICAL',
+            title: 'Bedrock Port Conflict',
+            explanation: `Bedrock failed to bind to UDP port ${server.port}. This port is already in use by another instance or blocked by a firewall.`,
+            recommendation: 'Change the port in Server Settings or stop the conflicting process.',
+            evidence: logs.find(l => /Failed to bind|Address already in use/i.test(l))?.trim() || `UDP Port ${server.port} is BUSY`,
+            timestamp: Date.now()
+        };
     },
-    heal: async (server: ServerConfig) => {
+    repair: async (server: ServerConfig) => {
         const { getServer, saveServer } = require('../servers/ServerService');
         const s = getServer(server.id);
         if (s) {
@@ -107,6 +108,7 @@ export const BedrockJSONCorruptionRule: DiagnosisRule = {
                         title: `Malformed ${file}`,
                         explanation: `The file ${file} contains invalid JSON syntax and will be ignored by the server.`,
                         recommendation: `Repair the syntax in ${file} or delete it to let the server regenerate a fresh one.`,
+                        evidence: `JSON Error: ${e.message}`,
                         timestamp: Date.now()
                     };
                 }
@@ -142,6 +144,7 @@ export const BedrockDependencyRule: DiagnosisRule = {
                 title: 'Missing System Library',
                 explanation: `The Bedrock server cannot start because a system library is missing: ${missingLib}.`,
                 recommendation: 'Install the missing dependencies (e.g., openssl 1.1) using your linux package manager (apt/yum).',
+                evidence: match.trim(),
                 timestamp: Date.now()
             };
         }
@@ -172,6 +175,7 @@ export const BedrockVCRedistRule: DiagnosisRule = {
                 title: 'Missing C++ Redistributable',
                 explanation: 'The Bedrock server requires the Visual C++ 2015-2019 Redistributable (x64) to run.',
                 recommendation: 'Download and install the latest "vc_redist.x64.exe" from the official Microsoft website.',
+                evidence: logs.find(l => /VCRUNTIME140\.dll|MSVCP140\.dll/i.test(l))?.trim(),
                 timestamp: Date.now()
             };
         }
@@ -209,9 +213,18 @@ export const BedrockLevelDatRule: DiagnosisRule = {
     analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
         if (server.software !== 'Bedrock') return null;
 
+        // --- SMART STATE CHECK ---
         const worldName = 'Bedrock Level'; // Default
         const levelDatPath = path.join(server.workingDirectory, 'worlds', worldName, 'level.dat');
         
+        // If the file exists and is readable, we assume the log error is historical
+        if (await fs.pathExists(levelDatPath)) {
+            try {
+                const stats = await fs.stat(levelDatPath);
+                if (stats.size > 0) return null; // File is physically present and non-empty
+            } catch (e) {}
+        }
+
         const hasLogMatch = logs.some(l => /Failed to open level.dat|Level format not recognized/i.test(l));
         
         if (hasLogMatch) {
@@ -222,6 +235,12 @@ export const BedrockLevelDatRule: DiagnosisRule = {
                 title: 'World Data Corruption',
                 explanation: 'The server failed to load the world because the level.dat file is corrupted or unreadable.',
                 recommendation: 'Restore the level.dat from a backup or use a world repair tool.',
+                action: {
+                    type: 'RESTORE_LEVEL_DATA',
+                    payload: { serverId: server.id },
+                    automaticRepair: true
+                },
+                evidence: logs.find(l => /Failed to open level.dat|Level format not recognized/i.test(l))?.trim(),
                 timestamp: Date.now()
             };
         }
@@ -257,6 +276,7 @@ export const BedrockWSLPathRule: DiagnosisRule = {
                 title: 'WSL Path Permission Issue',
                 explanation: 'The server is located on a WSL network share. Bedrock Server often has issues with block-level locking over WSL shares.',
                 recommendation: 'Move the server folder to a local drive (e.g., C:\\Servers) for better compatibility.',
+                evidence: `WSL Share Detected: ${server.workingDirectory}`,
                 timestamp: Date.now()
             };
         }

@@ -46,4 +46,31 @@ export class ValidationUtils {
         }
         return r;
     }
+    private static readonly RESERVED_NAMES = [
+        'backend', 'frontend', 'node_modules', 'data', 'logs', 'backups', 
+        'config', 'public', 'src', 'dist', 'build', 'temp', 'tmp',
+        'auth', 'system', 'api', 'server', 'servers', 'minecraft_servers'
+    ];
+
+    /**
+     * Validates a folder name (Alphanumeric, underscores, dashes only).
+     * Rejects reserved system names.
+     */
+    public static validateFolderName(name: string): boolean {
+        // 1. Basic Regex: Alphanumeric, underscores, dashes only.
+        if (!/^[a-zA-Z0-9_\-]+$/.test(name)) return false;
+
+        // 2. Reserved Names Check (Case-insensitive)
+        if (this.RESERVED_NAMES.includes(name.toLowerCase())) return false;
+
+        return true;
+    }
+
+    /**
+     * Validates a build ID (Prevent path traversal).
+     */
+    public static validateBuildId(build: string): boolean {
+        // Typical build: "1.2.3", "47.1.0", "1.20.1-47.1.0"
+        return /^[a-zA-Z0-9.\-]+$/.test(build) && !build.includes('..');
+    }
 }

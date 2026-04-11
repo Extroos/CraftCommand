@@ -25,6 +25,8 @@ export class DiscordService {
     private listenersAttached = false;
     private activeListeners: { emitter: any, event: string, handler: Function }[] = [];
     private playerEventDebounce: Map<string, NodeJS.Timeout> = new Map();
+    private reconnectAttempts = 0;
+    private readonly MAX_RECONNECT_ATTEMPTS = 5;
 
     getStatus() {
         return {
@@ -61,6 +63,7 @@ export class DiscordService {
             this.client = null;
             this.initialized = false;
             this.connecting = false;
+            this.reconnectAttempts = 0; // Reset on manual reconnect
             
             // Wait a bit before re-initializing
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -103,6 +106,7 @@ export class DiscordService {
                 logger.success(`Discord Bot logged in as ${this.client?.user?.tag}`);
                 this.initialized = true;
                 this.connecting = false;
+                this.reconnectAttempts = 0; // Reset on successful connection
                 this.setupEventForwarding();
             });
 
@@ -155,10 +159,16 @@ export class DiscordService {
             this.connecting = false;
             this.lastError = errorMsg;
             
-            // Critical Retry Logic: Try again in 30 seconds if it's a transient error
+            // Retry with backoff if it's a transient error (not a bad token)
             if (!error.message.includes('token')) {
-                logger.info('Scheduling Discord reconnection attempt in 30s...');
-                setTimeout(() => this.initialize(), 30000);
+                this.reconnectAttempts++;
+                if (this.reconnectAttempts <= this.MAX_RECONNECT_ATTEMPTS) {
+                    const delay = 30000 * this.reconnectAttempts; // 30s, 60s, 90s...
+                    logger.info(`Scheduling Discord reconnection attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS} in ${delay / 1000}s...`);
+                    setTimeout(() => this.initialize(), delay);
+                } else {
+                    logger.error(`Discord reconnection failed after ${this.MAX_RECONNECT_ATTEMPTS} attempts. Giving up. Use manual reconnect to retry.`);
+                }
             }
         }
     }
@@ -238,8 +248,8 @@ export class DiscordService {
             
             if (status === ServerStatus.RECOVERING) {
                 this.sendNotification(
-                    '🛡️ Recovery Protocol Active',
-                    `The system has detected an issue with **${server.name}**. \n**Action**: Attempting automated stabilization...`,
+                    '🛡️ Auto-Recovery Active',
+                    `Server **${server.name}** crashed. Attempting automatic restart...`,
                     0xf59e0b
                 );
                 return;
@@ -278,7 +288,7 @@ export class DiscordService {
             if (msg === 'Backup created successfully') {
                 this.sendNotification(
                     '💾 Backup Successful',
-                    'A new system snapshot has been successfully archived to the primary storage vault.',
+                    'A new backup has been saved successfully.',
                     0x10b981
                 );
             }
@@ -383,7 +393,7 @@ export class DiscordService {
                 const servers = getServers();
                 const embed = new EmbedBuilder()
                     .setTitle('🗄️ Minecraft Server List')
-                    .setDescription('Current infrastructure configuration and status.')
+                    .setDescription('Your Minecraft servers and their current status.')
                     .setColor(0x5865F2)
                     .setTimestamp();
 
@@ -406,22 +416,22 @@ export class DiscordService {
             else if (commandName === 'start') {
                 const id = interaction.options.getString('id');
                 const server = getServer(id!);
-                if (!server) return interaction.reply({ content: '❌ **Error**: Protocol ID not recognized in current context.', ephemeral: true });
+                if (!server) return interaction.reply({ content: '❌ **Error**: Server not found. Check the ID with `/list`.', ephemeral: true });
 
                 if (processManager.isRunning(id!)) {
                     return interaction.reply({ content: `⚠️ **Warning**: Server **${server.name}** is already in an active state.`, ephemeral: true });
                 }
 
-                await interaction.reply({ content: `🚀 **Protocol Initialization**: Booting up **${server.name}**...` });
+                await interaction.reply({ content: `🚀 **Starting** **${server.name}**...` });
                 
                 // Set up status listener for confirmation
                 const statusListener = async ({ id: statusId, status }: { id: string, status: string }) => {
                     if (statusId === id && status === ServerStatus.ONLINE) {
                         processManager.removeListener('status', statusListener);
-                        await interaction.followUp({ content: `✅ **System Ready**: **${server.name}** is now fully operational. Use \`/status\` to view telemetry.` });
+                        await interaction.followUp({ content: `✅ **Online**: **${server.name}** is now running. Use \`/status\` for details.` });
                     } else if (statusId === id && status === ServerStatus.CRASHED) {
                         processManager.removeListener('status', statusListener);
-                        await interaction.followUp({ content: `❌ **Critical Failure**: **${server.name}** failed to stabilize during boot sequence.` });
+                        await interaction.followUp({ content: `❌ **Failed**: **${server.name}** crashed during startup. Check the console for errors.` });
                     }
                 };
 
@@ -441,18 +451,18 @@ export class DiscordService {
             else if (commandName === 'stop') {
                 const id = interaction.options.getString('id');
                 const server = getServer(id!);
-                if (!server) return interaction.reply({ content: '❌ **Error**: Protocol ID not recognized.', ephemeral: true });
+                if (!server) return interaction.reply({ content: '❌ **Error**: Server not found. Check the ID with `/list`.', ephemeral: true });
 
                 if (!processManager.isRunning(id!)) {
-                    return interaction.reply({ content: `⚠️ **Warning**: Server **${server.name}** is already dormant (Offline).`, ephemeral: true });
+                    return interaction.reply({ content: `⚠️ **Warning**: Server **${server.name}** is already stopped.`, ephemeral: true });
                 }
 
-                await interaction.reply({ content: `🛑 **Shutdown Sequence**: Sending termination signal to **${server.name}**...` });
+                await interaction.reply({ content: `🛑 **Stopping** **${server.name}**...` });
                 
                 const stopListener = async ({ id: statusId, status }: { id: string, status: string }) => {
                     if (statusId === id && (status === ServerStatus.OFFLINE || status === ServerStatus.CRASHED)) {
                         processManager.removeListener('status', stopListener);
-                        await interaction.followUp({ content: `💤 **Status: Dormant**: **${server.name}** has reached a safe shutdown state.` });
+                        await interaction.followUp({ content: `💤 **Stopped**: **${server.name}** has shut down safely.` });
                     }
                 };
 
@@ -467,10 +477,10 @@ export class DiscordService {
                 const servers = id ? [getServer(id)] : getServers();
                 
                 const embed = new EmbedBuilder()
-                    .setTitle('📊 Server Infrastructure Status')
+                    .setTitle('📊 Server Status')
                     .setColor(0x5865F2)
                     .setTimestamp()
-                    .setFooter({ text: 'CraftCommand Infrastructure Monitor' });
+                    .setFooter({ text: 'CraftCommand' });
 
                 for (const s of servers) {
                     if (!s) continue;
@@ -487,8 +497,8 @@ export class DiscordService {
                     embed.addFields({ 
                         name: `${statusEmoji} ${s.name}`, 
                         value: isRunning 
-                            ? `> **State**: ${statusText}\n> **Users**: \`${stats?.players || 0}\` / \`${s.maxPlayers || '?'}\`\n> **Telemetry**: \`${stats?.tps || '20.00'}\` TPS | \`${Math.round(stats?.memory || 0)}\` MB\n> **Last Backup**: \`${lastBackup}\``
-                            : `> **State**: ${statusText}\n> **Last Backup**: \`${lastBackup}\`\n> **Action**: Use \`/start ${s.id}\``,
+                            ? `> **Status**: ${statusText}\n> **Players**: \`${stats?.players || 0}\` / \`${s.maxPlayers || '?'}\`\n> **Performance**: \`${stats?.tps || '20.00'}\` TPS | \`${Math.round(stats?.memory || 0)}\` MB RAM\n> **Last Backup**: \`${lastBackup}\``
+                            : `> **Status**: ${statusText}\n> **Last Backup**: \`${lastBackup}\`\n> **Start with**: \`/start ${s.id}\``,
                         inline: false 
                     });
                 }
@@ -499,9 +509,9 @@ export class DiscordService {
             else if (commandName === 'backup') {
                 const id = interaction.options.getString('id');
                 const server = getServer(id!);
-                if (!server) return interaction.reply({ content: '❌ **Error**: Protocol ID not recognized.', ephemeral: true });
+                if (!server) return interaction.reply({ content: '❌ **Error**: Server not found. Check the ID with `/list`.', ephemeral: true });
 
-                await interaction.reply({ content: `💾 **Snapshot Protocol**: Initiating backup for **${server.name}**...` });
+                await interaction.reply({ content: `💾 **Backup**: Creating backup for **${server.name}**...` });
 
                 try {
                     await backupService.createBackup(server.workingDirectory, id!, `Discord Command: ${interaction.user.tag}`);

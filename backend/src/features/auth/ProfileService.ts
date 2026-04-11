@@ -3,6 +3,7 @@ import path from 'path';
 import { getServer } from '../servers/ServerService';
 import {  ServerProfile  } from '@shared/types';
 import { systemSettingsService } from '../system/SystemSettingsService';
+import { logger } from '../../utils/logger';
 
 export class ProfileService {
     
@@ -26,7 +27,7 @@ export class ProfileService {
                 });
             }
         } catch (e) {
-            console.warn(`[ProfileService] Failed to scan plugins for ${serverId}:`, e);
+            logger.warn(`[ProfileService] Failed to scan plugins for ${serverId}: ${e}`);
         }
 
         const profile: ServerProfile = {

@@ -1,6 +1,7 @@
 import express from 'express';
 import { templateService } from './TemplateService';
 import { verifyToken, requireRole } from '../../middleware/authMiddleware';
+import { logger } from '../../utils/logger';
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ router.post('/install', verifyToken, async (req, res) => {
         await templateService.installTemplate(serverId, templateId, options);
         res.json({ success: true });
     } catch (e: any) {
-        console.error('Template install failed:', e);
+        logger.error(`Template install failed: ${e}`);
         res.status(500).json({ error: e.message });
     }
 });

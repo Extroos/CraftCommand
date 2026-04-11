@@ -1,25 +1,27 @@
-# Zero-Config Remote Access (Cloudflare Tunnels)
+# Outbound Reverse Tunneling (Cloudflare)
 
-CraftCommand v1.11.3 integrates **Cloudflare Tunnels** (formerly Argo Tunnels) to provide secure, global access to your panel and servers without the need for manual port forwarding or DDNS.
+Integrates `cloudflared` to establish secure, outbound-only connectivity without ingress port configuration.
 
-## 1. How it Works
+## 1. Protocol Architecture
 
-A Cloudflare Tunnel creates a secure, outbound-only connection between your host machine and the Cloudflare edge network.
+The tunnel system establishes a persistent connection between the host machine and the Cloudflare edge network:
 
-- **No Inbound Ports**: You do not need to open Port 80, 443, or 25565 on your router.
-- **TLS by Default**: All traffic is encrypted with Cloudflare's enterprise-grade certificates.
-- **Identity Protection**: Easily hook into Cloudflare Access to add an extra layer of 2FA before anyone even reaches your login page.
+- **Ingress Isolation**: No inbound ports (e.g., 80, 443, 25565) are opened on the local gateway/firewall.
+- **TLS Termination**: Traffic is encrypted via Cloudflare's edge-level TLS certificates.
+- **Authentication**: Access control is managed via Cloudflare Access (Zero Trust) JWT verification before reaching the application ingress.
 
-## 2. Setup Flow
+## 2. Configuration Flow
 
-1. **Enable**: Go to `Global Settings > Networking > Remote Access`.
-2. **Provision**: Click "Generate Tunnel". The system will provide a `cloudflared` token.
-3. **Activate**: Once the token is verified, your panel will be accessible via your chosen custom domain (e.g., `panel.yourdomain.com`).
+1. **Authorization**: Primary Panel requests a tunnel configuration from the Cloudflare API.
+2. **Token Injection**: The system provisions a `cloudflared` token, which is injected into the local process runner.
+3. **Provisioning**: The backend maps the tunnel UUID to a user-defined custom domain (DNS CNAME record).
 
-## 3. Distributed Considerations
+## 3. Node Orchestration
 
-Worker Nodes can also utilize Tunnels. When a node is enrolled, it can be configured to use a **Private Tunnel** (v1.11.3+) to communicate back to the Primary node. This effectively allows you to host servers behind strict CGNAT, mobile hotspots, or corporate firewalls without any port configuration.
+Distributed Worker Nodes can utilize **Private Tunnels** (v1.11.3+). 
+- **Topology**: Allows nodes behind CGNAT or mobile networks to establish a secure back-channel to the Primary Node.
+- **Connectivity**: Communication is routed through the Cloudflare global backbone, bypassing traditional routing constraints.
 
 ---
 
-_See [Network Overview](OVERVIEW.md) for local networking alternatives._
+_For local connectivity alternatives, see [OVERVIEW.md](OVERVIEW.md)._

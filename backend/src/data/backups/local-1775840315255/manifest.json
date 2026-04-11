@@ -1,0 +1,25 @@
+{
+  "backups": [
+    {
+      "id": "backup-1775915565615-jkw3fw",
+      "serverId": "local-1775840315255",
+      "filename": "backup-1775915565615-jkw3fw.zip",
+      "size": 504722,
+      "createdAt": "2026-04-11T13:52:45.615Z",
+      "description": "Recovered Archive",
+      "locked": false,
+      "type": "Manual"
+    },
+    {
+      "id": "backup-1775915565615-jkw3fw",
+      "serverId": "local-1775840315255",
+      "filename": "backup-1775915565615-jkw3fw.zip",
+      "size": 504722,
+      "createdAt": "2026-04-11T13:52:45.615Z",
+      "description": "Auto-Save: Pre-fix (eula_not_accepted)",
+      "type": "Manual",
+      "scope": "world",
+      "sha256": "8afebb2bf47204382e3afc83e8a9100aa83eef4b1ed313d753b4fae565721335"
+    }
+  ]
+}

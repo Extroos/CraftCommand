@@ -1,47 +1,36 @@
 # Frequently Asked Questions (FAQ)
 
-## General Questions
+## 1. Core Functionality
 
-### Is CraftCommand free?
+### License and Usage
+CraftCommand is open-source under the AGPLv3 license. It is available for both personal and production environments without licensing fees.
 
-Yes. CraftCommand is open-source and released under the AGPLv3 license. You can use it for personal and commercial servers for free.
+### Modpack Management
+The system utilizes the Modrinth API for recursive dependency resolution.
+- **Environment Filtering**: Projects tagged as `client` but `server-unsupported` are automatically quarantined in the `_client_mods/` directory to prevent startup failures.
 
-### Does it support Modpacks?
+### Java Versioning
+CraftCommand manages the Java runtime environment per-server:
+- **v1.21.x**: Java 21+
+- **v1.18 - v1.20**: Java 17
+- **v1.8 - v1.16**: Java 8/11
 
-Absolutely. The system includes a **Modpack Intelligence Engine (v1.12.5)** that automatically detects, resolves dependencies, and quarantines client-side only mods from CurseForge and Modrinth.
+## 2. Distributed Architecture
 
-### Does it support Minecraft 1.21.1+?
+### Node Enrollment Protocol
+The platform uses a secure, time-limited Join Token (15m window) for node enrollment.
+- **Identity Issuance**: The agent uses the token to retrieve persistent Ed25519 identity strings via WebSocket.
+- **Scaling**: The Primary Panel supports N-count physical machines (Nodes) within the registry.
 
-Yes. CraftCommand is fully compatible with the latest Minecraft releases and automatically manages the required **Java 21** environment.
+### Storage Optimization
+- **Default**: Flat-file JSON (`data/`).
+- **High Concurrency**: SQLite is available as an alternative storage provider for deployments requiring higher read/write parallelism or improved crash resilience.
 
-### Why were some mods moved to `_client_mods/`?
+## 3. Operations & Safety
 
-This is part of our **Triple-Layer Mod Stabilization**. The system identifies mods that only work on the game client (like HUDs or Zoom mods) and disables them on the server to prevent startup crashes.
+### Credentials Recovery
+Administrative credentials can be reset by applying a BCrypt hash directly to the `password` field in `backend/data/users.json`.
 
-### Can I clear the system cache?
-
-Yes. Under `Global Settings > System Health`, you can manually clear the **Java Runtime Cache** and **Temporary Uploads** to free up disk space.
-
-## Technical Questions
-
-### Where are my servers stored?
-
-By default, all Minecraft instances are stored in the `minecraft_servers/` directory in the project root.
-
-### How do I reset my Admin password?
-
-If you lose access, you can manually edit `backend/data/users.json` and replace the hashed password with a known bcrypt hash, or use the emergency restore script if available in `scripts/`.
-
-### Can I run multiple nodes?
-
-Yes! Version 1.10.x introduced **Distributed Operations**. You can add additional "Worker Nodes" in Global Settings and manage them all from a single dashboard.
-
-## Networking
-
-### Do I NEED a domain?
-
-No. You can always join via your public or local IP. However, using a Domain makes it easier for friends to remember and join.
-
-### Is it safe to open ports?
-
-Any time you open a port, there is a risk. I recommend using a mesh VPN like **Tailscale** for private groups or a hardened **Reverse Proxy** for public access. Always keep "The Doctor" diagnostics active to monitor for unusual behavior.
+### Network Security
+- **Visibility**: The panel binds to `127.0.0.1` by default. Remote access requires explicit binding to `0.0.0.0` or the use of an outbound reverse tunnel (Cloudflare).
+- **Hardening**: We recommend TLS termination via Caddy or Nginx for all production environments.

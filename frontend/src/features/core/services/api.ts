@@ -23,16 +23,31 @@ class ApiService {
         return token ? { 'Authorization': `Bearer ${token}` } : {};
     }
 
+    private async handleResponse(res: Response, fullPath: string) {
+        if (!res.ok) {
+            // Session Guard: Auto-logout on auth failure
+            if (res.status === 401 || res.status === 403) {
+                console.warn(`[ApiService] Session expired or forbidden (${res.status}). Redirecting to login.`);
+                localStorage.removeItem('cc_token');
+                if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+                    window.location.href = '/login?expired=true';
+                }
+            }
+
+            const data = await res.json().catch(() => ({}));
+            const error = new Error(data.error || `Request failed: ${res.status}`);
+            (error as any).status = res.status;
+            throw error;
+        }
+        return res.json();
+    }
+
     async get(path: string): Promise<any> {
         const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
         const res = await fetch(fullPath, {
             headers: this.getAuthHeader()
         });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || `GET ${fullPath} failed: ${res.status}`);
-        }
-        return res.json();
+        return this.handleResponse(res, fullPath);
     }
 
     async post(path: string, body: any): Promise<any> {
@@ -45,11 +60,7 @@ class ApiService {
             },
             body: JSON.stringify(body)
         });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || `POST ${fullPath} failed: ${res.status}`);
-        }
-        return res.json();
+        return this.handleResponse(res, fullPath);
     }
 
     async patch(path: string, body: any): Promise<any> {
@@ -62,11 +73,7 @@ class ApiService {
             },
             body: JSON.stringify(body)
         });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || `PATCH ${fullPath} failed: ${res.status}`);
-        }
-        return res.json();
+        return this.handleResponse(res, fullPath);
     }
 
     async put(path: string, body: any): Promise<any> {
@@ -79,11 +86,7 @@ class ApiService {
             },
             body: JSON.stringify(body)
         });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || `PUT ${fullPath} failed: ${res.status}`);
-        }
-        return res.json();
+        return this.handleResponse(res, fullPath);
     }
 
     async delete(path: string, body?: any): Promise<any> {
@@ -96,11 +99,7 @@ class ApiService {
             },
             body: body ? JSON.stringify(body) : undefined
         });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || `DELETE ${fullPath} failed: ${res.status}`);
-        }
-        return res.json();
+        return this.handleResponse(res, fullPath);
     }
 
     // --- Server Management ---
@@ -172,6 +171,10 @@ class ApiService {
 
     async stopServer(id: string): Promise<void> {
         await this.post(`/servers/${id}/stop`, {});
+    }
+
+    async restartServer(id: string): Promise<void> {
+        await this.post(`/servers/${id}/restart`, {});
     }
 
     async gracefulStopServer(id: string, delay: number = 30): Promise<{ delay: number; message: string }> {
@@ -949,6 +952,10 @@ class ApiService {
 
     async preEnrollNode(data: { name: string; mode: string }): Promise<{ id: string; secret: string; token: string }> {
         return this.post('/nodes/enroll-wizard', data);
+    }
+
+    async getJoinCommand(nodeId: string): Promise<{ token: string; panelUrl: string; command: string; powershell: string }> {
+        return this.get(`/nodes/join-command/${nodeId}`);
     }
 
     async removeNode(nodeId: string): Promise<void> {

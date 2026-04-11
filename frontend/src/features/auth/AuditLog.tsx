@@ -144,9 +144,9 @@ const AuditLog: React.FC = () => {
             
             if (action === 'EULA_ACCEPT') return 'Accepted Minecraft EULA';
             
-            if (action === 'AUTO_HEAL' || action === 'SERVER_HEAL') {
+            if (action === 'AUTOMATIC_REPAIR' || action === 'SERVER_HEAL') {
                 const type = meta.actionType || 'Fix';
-                return `Auto-Heal: ${type.replace(/_/g, ' ')} ${meta.success ? '(Success)' : '(Failed)'}`;
+                return `Repair: ${type.replace(/_/g, ' ')} ${meta.success ? '(Success)' : '(Failed)'}`;
             }
             
             if (action === 'LOGIN_SUCCESS') return `IP: ${log.ip || 'Unknown'}`;
@@ -326,7 +326,7 @@ const AuditLog: React.FC = () => {
                             <option value="BACKUP_CREATE">Backup Create</option>
                             <option value="BACKUP_RESTORE">Backup Restore</option>
                             <option value="PROXY_LINK">Proxy Linked</option>
-                            <option value="AUTO_HEAL">Auto-Healing Fix</option>
+                            <option value="AUTOMATIC_REPAIR">Automatic Repair</option>
                         </optgroup>
                     </select>
                 </div>

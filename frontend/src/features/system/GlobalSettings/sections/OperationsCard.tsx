@@ -106,7 +106,7 @@ export const OperationsCard: React.FC<OperationsCardProps> = ({ settings, setSet
                             Professional Mode <Activity size={12} className="text-zinc-500" />
                         </div>
                         <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight max-w-[280px]">
-                            Upgrades the Server Selection to an enterprise operations dashboard with live CPU, memory, TPS, player counts, and system health.
+                            Show live CPU, memory, TPS, and player counts on the server list.
                         </p>
                     </div>
                     <button

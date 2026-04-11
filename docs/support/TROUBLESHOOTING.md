@@ -2,13 +2,13 @@
 
 This guide is the primary resource for resolving common runtime errors, configuration issues, and platform bugs.
 
-## 🩺 Use "The Doctor" First
+## 1. Integrated Diagnostics
 
-Before manual troubleshooting, always use the built-in diagnostic engine:
+The platform includes a diagnostic engine that parses logs and system state to identify root causes:
 
-1.  Go to the **Server Dashboard**.
-2.  Click the **Stethoscope** icon (**Diagnostics**).
-3.  The system will analyze your logs and environment to provide a targeted solution.
+1.  Navigate to the **Server Dashboard**.
+2.  Select **Diagnostics**.
+3.  The engine analyzes recent `stdout` patterns and identifies common failure signatures (EULA, Port Conflicts, RAM exhaustion).
 
 ---
 
@@ -16,13 +16,12 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 
 ### 1. Server Starts then Immediately Stops
 
-- **Cause**: You likely haven't accepted the EULA.
-- **Fix**: Check the console for a message requiring an "Accept" interaction, or go to the server folder and set `eula=true` in `eula.txt`. Note that in **v1.12.5**, the Doctor may skip this check on the first boot to reduce noise.
+- **Fix**: Check the console for a message requiring an "Accept" interaction, or go to the server folder and set `eula=true` in `eula.txt`. The diagnostic engine may skip this check on the first boot to reduce noise.
 
-### 2. Modpack Crash on First Boot
+### 2. Mod/Plugin Loading Failures
 
-- **Cause**: Client-side mods or missing dependencies.
-- **Fix**: CraftCommand's **Modpack Intelligence** should handle this automatically. If it persists, check the `_client_mods/` folder for any missed entries or use the **"Force Re-Scan"** action in the server's Mod Manager.
+- **Heuristic Filtering**: The panel identifies client-only mods by scanning Modrinth environment tags.
+- **Resolution**: Incompatible mods are automatically moved to the `_client_mods/` subdirectory. If a crash persists, execute a **"Force Re-Scan"** in the Mod Manager to re-evaluate dependencies.
 
 ### 2. "Java Version Mismatch"
 
@@ -37,20 +36,17 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 ### 3. Port Conflict (`E_PORT_IN_USE`)
 
 - **Cause**: Another program (possibly another Minecraft server or a previous crashed instance) is using the port.
-- **Fix**:
-  - Change the server port in **Settings**.
-  - Or, use the panel's "Port Protection" feature which should automatically offer to kill the "Ghost Process".
+- **Resolution**: 
+  - Modify the server port in **Settings**.
+  - Enable the **Port Reclamation** feature to automatically identify and terminate conflicting PIDs.
 
 ---
 
 ## 🌐 Networking & Connectivity
 
-### 1. "Connection Refused" (Friends cannot join)
-
-- **Check Firewalls**: Ensure your host machine allows the Minecraft port (default: 25565) and the Panel port (default: 3000) through Windows Firewall.
-- **Port Forwarding**: Verify your router configuration. Your public IP should be reachable at the specified port.
-- **Remote Access Mode**: Ensure the global toggle is **ON** in System Settings if you are not using a tunnel like Playit.gg.
-- **Can't Connect**: Ensure your DuckDNS synchronization is active in Global Settings.
+- **Firewalls**: Verify that the host firewall permits traffic on the Minecraft port (`25565`) and the panel ingress port (`3000`).
+- **Gateway Forwarding**: Ensure the router routes external traffic to the server's local IP.
+- **DDNS Logic**: If using Dynamic DNS, verify that the `NetworkService` is successfully synchronizing IP changes.
 
 ### v1.11.3 Systems Integrity Errors
 
@@ -61,10 +57,10 @@ Before manual troubleshooting, always use the built-in diagnostic engine:
 | `NODE_VERSION_INCOMPATIBLE` | Your worker node agent is too old for the primary panel. | Go to Nodes settings, generate a new Bootstrap ZIP, and update your node.                              |
 | `MIGRATION_FAILED`          | The SQLite/JSON schema upgrade failed.                   | Check the `backend/data/migrations` logs. Restore from the automatic backup created during the update. |
 
-### Distributed Node Connectivity
-
-- **E_NODE_OFFLINE**: Background worker is detached. Restart `run_CraftCommand.bat`.
-- **E_PORT_IN_USE**: Port conflict detected. Use the **Environment Doctor** to identify the conflicting process.
+- **E_NODE_OFFLINE**: Node agent is detached. Restart the process or check container health.
+- **E_PORT_IN_USE**: Conflicting process detected on the node. Use the **Environment Doctor** functionality in the node registry.
+- **Token Expired (401 Unauthorized)**: Join tokens during One-Click Enrollment are securely capped at 15 minutes. Generate a new command from the Node Registry.
+- **Agent Socket Rejection**: Ensure the `PANEL_URL` provided to the agent correctly matches the routable IP of the backend, including `http://` or `https://`.
 
 ### 2. DNS Resolution Failures
 

@@ -1,5 +1,5 @@
 import express from 'express';
-import { webhookService } from './WebhookService';
+import { webhookService } from '../integrations/WebhookService';
 import { verifyToken } from '../../middleware/authMiddleware';
 
 const router = express.Router();

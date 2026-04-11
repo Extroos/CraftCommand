@@ -1,5 +1,5 @@
-
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { LogEntry, ServerStatus } from '@shared/types';
 import { Play, Pause, Trash2, ArrowRight, Power, Ban, RotateCcw, ArrowDown, Terminal as TerminalIcon, Wifi, Download, Search, Filter, FileText, Clock } from 'lucide-react';
 
@@ -33,7 +33,7 @@ interface ConsoleProps {
 
 import { useServers } from '@features/servers/context/ServerContext';
 const Console: React.FC<ConsoleProps> = ({ serverId }) => {
-    const { servers, javaDownloadStatus, updateServerStatus } = useServers();
+    const { servers, javaDownloadStatus, updateServerStatus, addBackgroundTask, updateBackgroundTask, removeBackgroundTask } = useServers();
     const server = servers.find(s => s.id === serverId);
     const status = server?.status || ServerStatus.OFFLINE;
     
@@ -165,23 +165,29 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
         };
     }, [serverId]);
 
-    // Smart Auto-Scroll
+    // Smart Auto-Scroll Stabilization
     useLayoutEffect(() => {
         if (isPaused || userHasScrolledUp) return;
-        const reducedMotion = user?.preferences?.reducedMotion ?? false;
-        endRef.current?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'instant' }); 
-    }, [logs, isPaused, userHasScrolledUp, user?.preferences?.reducedMotion]);
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+    }, [logs, isPaused, userHasScrolledUp]);
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-        const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+        // Threshold: 32px from bottom (approx 1.5 lines)
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 32;
         setUserHasScrolledUp(!isAtBottom);
     };
 
     const scrollToBottom = () => {
         setUserHasScrolledUp(false);
-        const reducedMotion = user?.preferences?.reducedMotion ?? false;
-        endRef.current?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth' });
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTo({
+                top: scrollContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
     };
 
 
@@ -326,7 +332,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
             return <span className="text-white font-semibold opacity-90">{msg}</span>;
         }
 
-        // Improved Telemetry-grade highlighting
+        // Syntax highlighting
         // 1. Handle Log Levels & Timestamps
         // Regex to match [HH:mm:ss LEVEL]: or [HH:mm:ss] [STDOUT/INFO]:
         const logHeaderRegex = /^(\[?\d{2}:\d{2}:\d{2}\]?)\s*(\[.*?\])?\s*(:?)/;
@@ -382,7 +388,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
             }
             if (part && (part.includes('joined') || part.includes('left'))) {
                 return (
-                    <span key={i} className="text-emerald-400/90 font-bold flex items-center gap-1.5 inline-flex bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10 my-0.5">
+                    <span key={i} className="text-emerald-400/90 font-bold inline-flex items-center gap-1.5 bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10 my-0.5">
                         <ArrowRight size={10} className={part.includes('left') ? 'rotate-180 text-rose-400' : ''} />
                         {part}
                     </span>
@@ -446,34 +452,68 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
 
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {
         const previousStatus = status;
+        const taskId = `${action}-${serverId}-${Date.now()}`;
+        
         try {
             if (action === 'start') {
                 if (!canStart) {
                     addToast('error', 'Permissions', 'Insufficient permissions to start server');
                     return;
                 }
+                addBackgroundTask({
+                    id: taskId,
+                    name: `Startup: ${server?.name || serverId}`,
+                    type: 'start',
+                    serverId,
+                    status: 'running',
+                    progress: 0,
+                    message: 'Initializing server startup...'
+                });
                 updateServerStatus(serverId, ServerStatus.STARTING);
-                addToast('info', 'Console', 'Boot sequence initiated.');
+                addToast('info', 'Console', 'Server starting...');
                 await API.startServer(serverId);
+                updateBackgroundTask(taskId, { name: `Startup: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server started' });
             } else if (action === 'stop') {
                 if (!canStop) {
                     addToast('error', 'Permissions', 'Insufficient permissions to stop server');
                     return;
                 }
                 setIsGracefulStopping(false);
+                addBackgroundTask({
+                    id: taskId,
+                    name: `Shutdown: ${server?.name || serverId}`,
+                    type: 'stop',
+                    serverId,
+                    status: 'running',
+                    progress: 0,
+                    message: 'Sending termination signal...'
+                });
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 addToast('warning', 'Console', 'Termination signal sent.');
                 await API.stopServer(serverId);
+                updateBackgroundTask(taskId, { name: `Shutdown: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server stopped' });
             } else if (action === 'restart') {
                 if (!canRestart) {
                     addToast('error', 'Permissions', 'Insufficient permissions to restart server');
                     return;
                 }
                 setIsGracefulStopping(false);
+                addBackgroundTask({
+                    id: taskId,
+                    name: `Restart: ${server?.name || serverId}`,
+                    type: 'restart',
+                    serverId,
+                    status: 'running',
+                    progress: 0,
+                    message: 'Initiating server restart...'
+                });
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 addToast('info', 'Console', 'Restarting process...');
                 await API.stopServer(serverId);
-                // Wait for OFFLINE status via socket event (closure-safe, not stale state)
+                
+                updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, progress: 50, message: 'Waiting for process to exit...' });
+
+                // Wait for OFFLINE status via socket event
                 const maxWait = 15000;
                 await new Promise<void>((resolve) => {
                     const timeout = setTimeout(() => {
@@ -488,11 +528,15 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         }
                     });
                 });
+                
+                updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, progress: 75, message: 'Relaunching server...' });
                 updateServerStatus(serverId, ServerStatus.STARTING);
                 await API.startServer(serverId);
+                updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server restarted' });
             }
         } catch (e: any) {
             updateServerStatus(serverId, previousStatus as ServerStatus);
+            removeBackgroundTask(taskId);
             addToast('error', 'Power Action Failed', e.message);
         }
     };
@@ -699,27 +743,34 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
             <div 
                 ref={scrollContainerRef}
                 onScroll={handleScroll}
-                className="flex-1 overflow-y-auto p-4 font-mono space-y-0.5 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent bg-[#09090b] relative"
+                className="flex-1 overflow-y-auto p-4 font-mono space-y-0.5 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent relative transition-all duration-500"
                 style={{ 
                     fontSize: `${user?.preferences?.terminal?.fontSize || 14}px`,
-                    fontFamily: user?.preferences?.terminal?.fontFamily === 'monospace' ? "'JetBrains Mono', monospace" : 'sans-serif'
+                    fontFamily: user?.preferences?.terminal?.fontFamily === 'monospace' ? "'JetBrains Mono', monospace" : 'sans-serif',
+                    backgroundColor: user?.preferences.visualQuality ? 'rgba(0,0,0,0.45)' : '#09090b',
+                    backdropFilter: user?.preferences.visualQuality ? 'blur(32px) saturate(140%)' : 'none'
                 }}
             >
-                {/* Scroll Notification */}
-                {userHasScrolledUp && !isPaused && (
-                    <button 
-                        onClick={scrollToBottom}
-                        className={`sticky top-2 left-1/2 -translate-x-1/2 text-white px-3 py-1.5 rounded-full shadow-xl text-xs font-bold flex items-center gap-2 z-20 animate-in slide-in-from-top-2 transition-colors ${theme.bg}`}
-                    >
-                        <ArrowDown size={12} /> New Logs Received
-                    </button>
-                )}
+                {/* Scroll Notification Overlay */}
+                <AnimatePresence>
+                    {userHasScrolledUp && !isPaused && (
+                        <motion.button 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            onClick={scrollToBottom}
+                            className={`sticky top-2 left-1/2 -translate-x-1/2 text-white px-4 py-2 rounded-full shadow-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 z-50 transition-colors ${theme.bg} border border-white/10`}
+                        >
+                            <ArrowDown size={12} strokeWidth={3} /> Synchronize Stream
+                        </motion.button>
+                    )}
+                </AnimatePresence>
 
                 {visibleLogs.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground/30 select-none">
                         <TerminalIcon size={48} className="mb-4 opacity-20" />
                         <p className="text-sm">Server is offline or log buffer is empty.</p>
-                        <p className="text-xs mt-1">Press 'Start' to initialize boot sequence.</p>
+                        <p className="text-xs mt-1">Press 'Start' to launch the server.</p>
                     </div>
                 )}
                                 {visibleLogs.map((log) => (
@@ -809,9 +860,11 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         value={command}
                         onChange={handleCommandChange}
                         onKeyDown={handleKeyDown}
-                        placeholder={status === ServerStatus.ONLINE ? "Type a command... (Tab to complete, ↑↓ for history)" : status === ServerStatus.STARTING ? "Server is starting..." : status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING ? "Server is shutting down..." : "Server is offline."}
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder={status === ServerStatus.ONLINE ? "Awaiting command... (Tab to complete, ↑↓ history)" : status === ServerStatus.STARTING ? "Node Initializing..." : "Node Offline."}
                         disabled={status !== ServerStatus.ONLINE}
-                        className="flex-1 bg-transparent border-none text-sm font-mono text-zinc-100 focus:outline-none placeholder:text-zinc-500 disabled:cursor-not-allowed"
+                        className="flex-1 bg-transparent border-none text-[13px] font-mono text-zinc-100 focus:outline-none placeholder:text-zinc-600 disabled:cursor-not-allowed"
                     />
                     <button 
                         type="submit"

@@ -1,10 +1,10 @@
 import { systemSettingsService } from './SystemSettingsService';
 import { auditService } from './AuditService';
 import { logger } from '../../utils/logger';
-import { ConnectivityProvider } from '../networking/ConnectivityProvider';
-import { DirectProvider } from '../networking/DirectProvider';
-import { UPnPProvider } from '../networking/UPnPProvider';
-import { PlayitProvider } from '../networking/PlayitProvider';
+import { ConnectivityProvider } from '../network/providers/ConnectivityProvider';
+import { DirectProvider } from '../network/providers/DirectProvider';
+import { UPnPProvider } from '../network/providers/UPnPProvider';
+import { PlayitProvider } from '../network/providers/PlayitProvider';
 import {  ConnectionStatus, ConnectivityMethod  } from '@shared/types';
 
 import os from 'os';

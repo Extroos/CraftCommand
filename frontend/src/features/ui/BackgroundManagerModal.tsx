@@ -264,7 +264,7 @@ const BackgroundManagerModal: React.FC<BackgroundManagerModalProps> = ({ onClose
                                         <div className="space-y-4 p-4 bg-zinc-950/40 rounded-xl border border-border/50">
                                             <div className="flex justify-between items-center mb-2">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                                    <Monitor size={12} /> Gaussian Blur
+                                                    <Monitor size={12} /> Blur
                                                 </label>
                                                 <span className="text-xs font-mono text-primary font-black">
                                                     {backgrounds[activeKey as keyof CustomBackgrounds]?.blur || 0}px
@@ -339,7 +339,7 @@ const BackgroundManagerModal: React.FC<BackgroundManagerModalProps> = ({ onClose
 
                 {/* Footer Actions */}
                 <div className="p-6 border-t border-border bg-zinc-950/40 flex justify-between items-center">
-                    <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-[0.2em]">CraftCommand Customization Protocol</p>
+                    <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-[0.2em]">Background Settings</p>
                     <div className="flex items-center gap-3">
                         <button
                             onClick={onClose}
@@ -351,7 +351,7 @@ const BackgroundManagerModal: React.FC<BackgroundManagerModalProps> = ({ onClose
                             onClick={() => onSave(backgrounds)}
                             className="px-8 py-2.5 bg-primary text-primary-foreground text-sm font-black rounded-lg hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20 uppercase tracking-widest"
                         >
-                            Commit Changes
+                            Save
                         </button>
                     </div>
                 </div>

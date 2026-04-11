@@ -43,7 +43,7 @@ export interface CustomBackgrounds {
     players?: BackgroundSettings;
     access?: BackgroundSettings;
     settings?: BackgroundSettings;
-    architect?: BackgroundSettings;
+    knowledgeBase?: BackgroundSettings;
     integrations?: BackgroundSettings;
     users?: BackgroundSettings;
     globalSettings?: BackgroundSettings;
@@ -131,7 +131,7 @@ export interface ServerAdvancedFlags {
     gcEngine?: 'G1GC' | 'ZGC' | 'Shenandoah' | 'Parallel';
     socketBuffer?: number;
     compressionThreshold?: number;
-    autoHealing?: boolean;
+    automaticRepair?: boolean;
     healthCheckInterval?: number;
     retryPattern?: string;
     threadPriority?: 'low' | 'normal' | 'high' | 'ultra';
@@ -154,7 +154,7 @@ export interface ServerConfig {
     port: number;
     ram: number; // GB
     cpuPriority?: 'normal' | 'high' | 'realtime';
-    javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21';
+    javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21' | 'Java 25';
     autoStart?: boolean;
     status: ServerStatus;
     iconUrl?: string; // Data URI
@@ -232,7 +232,7 @@ export interface ServerConfig {
 
 // --- Frontend Specific Types ---
 
-export type TabView = 'DASHBOARD' | 'CONSOLE' | 'FILES' | 'PLUGINS' | 'SCHEDULES' | 'BACKUPS' | 'PLAYERS' | 'ACCESS' | 'SETTINGS' | 'ARCHITECT' | 'INTEGRATIONS' | 'NETWORK' | 'MAP' | 'DATABASES' | 'SUBUSERS';
+export type TabView = 'DASHBOARD' | 'CONSOLE' | 'FILES' | 'PLUGINS' | 'SCHEDULES' | 'BACKUPS' | 'PLAYERS' | 'ACCESS' | 'SETTINGS' | 'KNOWLEDGE_BASE' | 'INTEGRATIONS' | 'NETWORK' | 'MAP' | 'DATABASES' | 'SUBUSERS';
 
 export type AppState = 'LOGIN' | 'PUBLIC_STATUS' | 'SERVER_SELECTION' | 'CREATE_SERVER' | 'MANAGE_SERVER' | 'USER_MANAGEMENT' | 'USER_PROFILE' | 'GLOBAL_SETTINGS' | 'AUDIT_LOG' | 'GLOBAL_OPERATIONS';
 
@@ -255,7 +255,8 @@ export enum ServerStatus {
     RECOVERING = 'RECOVERING',
     SAFE_MODE = 'SAFE_MODE',
     UNMANAGED = 'UNMANAGED',
-    INSTALLING = 'INSTALLING'
+    INSTALLING = 'INSTALLING',
+    NODE_UNREACHABLE = 'NODE_UNREACHABLE'
 }
 
 export interface GlobalSettings {
@@ -285,8 +286,8 @@ export interface GlobalSettings {
             nodeHeartbeatThresholdMs?: number;
             mirrorRemoteBackups?: boolean;
         };
-        autoHealing?: boolean;
-        autoHealingV3?: {
+        automaticRepair?: boolean;
+        automaticRepairV3?: {
             driftDetectionEnabled: boolean;
             ioThrottlingThreshold: number;
             healthSnapshotInterval: number;
@@ -458,7 +459,7 @@ export type AuditAction =
     | 'TEMPLATE_INSTALL' | 'FILE_EDIT' | 'EULA_ACCEPT' | 'PERMISSION_DENIED'
     | 'SYSTEM_SETTINGS_UPDATE' | 'SYSTEM_CACHE_CLEAR' | 'DISCORD_RECONNECT' | 'DISCORD_SYNC'
     | 'ASSET_UPLOAD' | 'WEB_UPDATE_RUN' | 'WEB_UPDATE_ROLLBACK' | 'WEB_UPDATE_FAIL'
-    | 'SERVER_IMPORT' | 'SERVER_IMPORT_UNDO' | 'AUTO_HEAL' | 'SERVER_HEAL' | 'SERVER_HEAL_RESET'
+    | 'SERVER_IMPORT' | 'SERVER_IMPORT_UNDO' | 'AUTOMATIC_REPAIR' | 'SERVER_REPAIR' | 'SERVER_REPAIR_RESET' | 'SERVER_HEAL'
     | 'SERVER_ICON_UPDATE' | 'SERVER_RESTORE'
     | 'AUTH_2FA_ENABLE' | 'AUTH_2FA_DISABLE' | 'AUTH_2FA_SUCCESS' | 'AUTH_2FA_FAIL' | 'AUTH_2FA_RECOVERY_USE'
     | 'AUTH_2FA_BACKUP_REGEN' | 'SYSTEM_STORAGE_MIGRATE' | 'REMOTE_ACCESS_VALIDATED'
@@ -488,7 +489,7 @@ export interface ImportAnalysis {
     port: number;
     motd: string;
     ram: number;
-    javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21';
+    javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21' | 'Java 25';
     isModded: boolean;
     portConflict?: { port: number; process?: string };
     javaMissing?: boolean;
@@ -507,9 +508,9 @@ export interface DiagnosisResult {
     explanation: string;
     recommendation: string;
     action?: {
-        type: 'UPDATE_CONFIG' | 'SWITCH_JAVA' | 'AGREE_EULA' | 'INSTALL_DEPENDENCY' | 'REPAIR_PROPERTIES' | 'CLEANUP_TELEMETRY' | 'OPTIMIZE_ARGUMENTS' | 'PURGE_GHOST' | 'RESOLVE_PORT_CONFLICT' | 'REMOVE_DUPLICATE_PLUGIN' | 'CREATE_PLUGIN_FOLDER' | 'TAKE_HEAP_SNAPSHOT' | 'RESTORE_DATA_BACKUP' | 'REINSTALL_BEDROCK' | 'RESYNC_VELOCITY_SECRET' | 'INSTALL_JAVA' | 'TRIGGER_DDNS_UPDATE' | 'REINSTALL_GEYSER' | 'REINSTALL_FLOODGATE' | 'RESYNC_CROSSPLAY_FORWARDING' | 'REASSIGN_BEDROCK_PORT' | 'CLEANUP_WORLD_LOCK' | 'FIX_JVM_ARGS' | 'ENABLE_ENTITY_PURGE' | 'RESTORE_LEVEL_DATA';
+        type: 'UPDATE_CONFIG' | 'SWITCH_JAVA' | 'AGREE_EULA' | 'INSTALL_DEPENDENCY' | 'REPAIR_PROPERTIES' | 'CLEANUP_TELEMETRY' | 'OPTIMIZE_ARGUMENTS' | 'PURGE_GHOST' | 'RESOLVE_PORT_CONFLICT' | 'REMOVE_DUPLICATE_PLUGIN' | 'CREATE_PLUGIN_FOLDER' | 'TAKE_HEAP_SNAPSHOT' | 'RESTORE_DATA_BACKUP' | 'REINSTALL_BEDROCK' | 'RESYNC_VELOCITY_SECRET' | 'INSTALL_JAVA' | 'TRIGGER_DDNS_UPDATE' | 'REINSTALL_GEYSER' | 'REINSTALL_FLOODGATE' | 'RESYNC_CROSSPLAY_FORWARDING' | 'REASSIGN_BEDROCK_PORT' | 'CLEANUP_WORLD_LOCK' | 'FIX_JVM_ARGS' | 'ENABLE_ENTITY_PURGE' | 'RESTORE_LEVEL_DATA' | 'CLEANUP_LOGS' | 'REPAIR_PERMISSIONS' | 'FIX_IP_BINDING' | 'SMART_LOG_ROTATION' | 'ROTATE_LOGS' | 'SAFE_GC' | 'SYSTEM_MAINTENANCE' | 'REINSTALL_LOADER' | 'PERFORM_STORAGE_CLEANUP' | 'ADJUST_RAM' | 'REINSTALL_GEYSER' | 'REINSTALL_FLOODGATE' | 'RESYNC_CROSSPLAY_FORWARDING';
         payload: any;
-        autoHeal?: boolean; // If true, AutoHealingService can execute this automatically
+        automaticRepair?: boolean; // If true, AutomaticRepairService can execute this automatically
     };
     connectedCrashReport?: {
         id: string;
@@ -519,9 +520,14 @@ export interface DiagnosisResult {
     // Intelligence Brain v2 Properties
     confidence?: number; // 0-100 (Optional: Brain will populate if missing)
     isRootCause?: boolean; // Primary issue
-    isHealable?: boolean; // Quick hint for UI
+    isRepairable?: boolean; // Quick hint for UI
     suppressedBy?: string[]; // IDs of deeper issues that suppressed this
     
+    // Intelligence Brain v4 (Causality)
+    linkedIssueId?: string; // ID of the root cause issue this is linked to
+    causalWeight?: number; // 0-1.0 probability that this is a symptom of another issue
+    
+    evidence?: string; // Captured log line or system metric that triggered the rule
     timestamp: number;
 }
 
@@ -746,7 +752,7 @@ export interface ServerProfile {
     description?: string;
     version: string; // Minecraft version
     software: 'Paper' | 'Spigot' | 'Forge' | 'Fabric' | 'Vanilla' | 'Purpur' | 'Bedrock' | 'Velocity' | 'Folia';
-    javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21';
+    javaVersion: 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21' | 'Java 25';
     ram: number;
     port?: number;
     advancedFlags?: ServerAdvancedFlags;

@@ -54,7 +54,7 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({ serverId, onClose
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-foreground">Invite Team Member</h2>
-                            <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest opacity-60">Access Control Protocol</p>
+                            <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest opacity-60">Permissions</p>
                         </div>
                     </div>
                     <button 
@@ -74,7 +74,7 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({ serverId, onClose
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-foreground">Invitation Sent!</h3>
-                                <p className="text-sm text-muted-foreground">Verification link dispatched to {email}.</p>
+                                <p className="text-sm text-muted-foreground">Invite sent to {email}.</p>
                             </div>
                         </div>
                     ) : (
@@ -155,7 +155,7 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({ serverId, onClose
                                     ) : (
                                         <>
                                             <UserPlus size={16} />
-                                            <span>Dispatch Invite</span>
+                                            <span>Send Invite</span>
                                         </>
                                     )}
                                 </button>

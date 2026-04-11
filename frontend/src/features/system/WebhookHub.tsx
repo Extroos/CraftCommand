@@ -190,7 +190,7 @@ export const WebhookHub: React.FC = () => {
                         <Globe size={20} className="text-foreground" />
                         Outbound Webhook Hub
                     </h2>
-                    <p className="text-xs text-muted-foreground font-medium">Synchronize system events with external REST services and analytics platforms.</p>
+                    <p className="text-xs text-muted-foreground font-medium">Send automatic notifications to external services when events happen on your servers.</p>
                 </div>
                 <button 
                     onClick={() => setShowCreateModal(true)}
@@ -290,7 +290,7 @@ export const WebhookHub: React.FC = () => {
                     <div className="md:col-span-2 border border-dashed border-border/50 rounded-xl p-12 flex flex-col items-center justify-center text-center opacity-40">
                         <Globe size={32} className="mb-3 text-muted-foreground" />
                         <h3 className="text-sm font-bold mb-1">No endpoints configured</h3>
-                        <p className="text-xs max-w-xs">Register your first webhook to begin orchestrating system-wide event flows.</p>
+                        <p className="text-xs max-w-xs">Register your first webhook to start sending event notifications.</p>
                     </div>
                 )}
             </motion.div>

@@ -85,7 +85,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {capabilities.supportsJava && (
                                 <div className="space-y-1 group/select">
-                                    <label className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground group-hover/select:text-foreground">JVM Architecture</label>
+                                    <label className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground group-hover/select:text-foreground">Java Version</label>
                                     <div className="relative">
                                         <select 
                                             value={config.javaVersion}
@@ -187,7 +187,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                     </div>
                 </motion.div>
 
-                {/* Orchestration & Virtualization */}
+                {/* Execution Engine */}
                 {globalSettings?.app?.dockerEnabled && (
                     <motion.div 
                         variants={STAGGER_ITEM}
@@ -198,7 +198,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                                 <Database size={14} className="text-primary/70" />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xs font-bold text-foreground/90">Orchestration & Virtualization</h3>
+                                <h3 className="text-xs font-bold text-foreground/90">Execution Engine</h3>
                                 <p className="text-[10px] text-muted-foreground font-medium opacity-70">Containerized Runtime Engine</p>
                             </div>
                         </div>
@@ -230,47 +230,40 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                                     </div>
                                 </div>
                                 {servers.find(s => s.id === serverId)?.status !== 'OFFLINE' && (
-                                    <p className="text-[7px] font-bold text-rose-400/60 uppercase tracking-tighter mt-1">Shutdown instance to reconfigure orchestration layer</p>
+                                    <p className="text-[7px] font-bold text-rose-400/60 uppercase tracking-tighter mt-1">Stop server to change execution engine</p>
                                 )}
                             </div>
 
-                            {config.executionEngine === 'docker' && (
-                                <div className="space-y-3 p-3 rounded-lg bg-primary/5 border border-primary/10 ">
-                                    <InputField 
-                                        label="Docker Image" 
-                                        propKey="dockerImage" 
-                                        placeholder="eclipse-temurin:17-jre" 
-                                        note="Image to pull for this server instance" 
-                                        config={config} 
-                                        errors={errors} 
-                                        handleChange={handleChange} 
-                                    />
-                                    
-                                    <div className="flex items-center justify-between pt-2 border-t border-primary/10">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-1.5 h-1.5 rounded-full ${dockerStatus.online ? 'bg-emerald-500' : 'bg-rose-500'} ${dockerStatus.checking ? '' : ''}`} />
-                                            <span className={`text-[8px] font-bold uppercase tracking-widest ${dockerStatus.online ? 'text-emerald-500/80' : 'text-rose-500/80'}`}>
-                                                {dockerStatus.checking ? 'Checking Daemon...' : dockerStatus.online ? `Docker ${dockerStatus.version || 'Active'}` : 'Daemon Unreachable'}
-                                            </span>
+                                    {dockerStatus.online && (
+                                        <div className="space-y-2 pt-3 border-t border-primary/10">
+                                            <div className="flex justify-between items-center h-4">
+                                                <div className="flex items-center gap-1.5">
+                                                    <label className="text-[9px] uppercase tracking-wider font-bold text-primary/80">Disk I/O Throttling</label>
+                                                    <div className="group/io relative">
+                                                        <Database size={8} className="text-primary/40" />
+                                                        <div className="absolute hidden group-hover/io:block left-0 bottom-full mb-2 p-2 bg-popover border border-border rounded text-[8px] w-32 shadow-xl z-50">
+                                                            Limits disk throughput (MB/s). Prevents disk-heavy servers from freezing the host.
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[9px] font-mono font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded border border-primary/20">{config.ioLimit || 0} MB/s</span>
+                                            </div>
+                                            <div className="relative flex items-center h-6">
+                                                <input 
+                                                    type="range" 
+                                                    min="0" 
+                                                    max="500" 
+                                                    step="10"
+                                                    value={config.ioLimit || 0}
+                                                    onChange={(e) => handleChange('ioLimit', parseInt(e.target.value))}
+                                                    className="w-full h-1 bg-primary/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-primary-foreground/30 [&::-webkit-slider-thumb]:hover:scale-110 [&::-webkit-slider-thumb]:transition-all"
+                                                />
+                                            </div>
+                                            <p className="text-[7px] text-muted-foreground/60 uppercase font-bold text-center">Set to 0 for unlimited throughput</p>
                                         </div>
-                                        <button 
-                                            onClick={checkDocker}
-                                            disabled={dockerStatus.checking}
-                                            className="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded text-[9px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 border border-primary/20"
-                                        >
-                                            <RotateCcw size={10} className={dockerStatus.checking ? 'animate-spin' : ''} />
-                                            Run Diagnostic
-                                        </button>
-                                    </div>
-                                    {!dockerStatus.online && !dockerStatus.checking && (
-                                        <p className="text-[7px] font-bold text-rose-400/60 uppercase tracking-tighter bg-rose-500/5 p-1.5 rounded border border-rose-500/10">
-                                            Ensure Docker Desktop is running. Native fallback will trigger if Docker remains unreachable.
-                                        </p>
                                     )}
                                 </div>
-                            )}
-                        </div>
-                    </motion.div>
+                        </motion.div>
                 )}
             </div>
             
@@ -299,20 +292,29 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                         <div className="p-3 rounded-md bg-primary/5 border border-primary/10">
                             <div className="flex justify-between items-center mb-1.5">
                                 <div className="flex items-center gap-2">
-                                    <RotateCcw size={12} className="text-primary/70" />
-                                    <label className="text-[9px] font-bold uppercase tracking-widest text-primary/80">Auto-Healing Logic</label>
+                                     <div className={`w-2 h-2 rounded-full transition-all ${config.advancedFlags.automaticRepair ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
                                 </div>
-                                <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
-                                    config.advancedFlags.autoHealing
-                                    ? 'bg-primary border-primary justify-end' 
-                                    : 'bg-muted border-border justify-start'
-                                }`} onClick={() => {
-                                    const newFlags = { ...config.advancedFlags, autoHealing: !config.advancedFlags.autoHealing };
-                                    setConfig({ ...config, advancedFlags: newFlags });
-                                    setIsDirty(true);
-                                }}>
-                                     <div className={`w-2 h-2 rounded-full transition-all ${config.advancedFlags.autoHealing ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
+                            </div>
+                            
+                            <div className="flex justify-between items-center py-2 border-y border-primary/10 mb-2">
+                                <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-foreground/80 uppercase tracking-tighter">Deep Integrity Scan</span>
+                                    <span className="text-[7px] text-muted-foreground uppercase opacity-60">Verified Core Executables</span>
                                 </div>
+                                <button 
+                                    onClick={() => {
+                                        const newFlags = { ...config.advancedFlags, deepIntegrity: !config.advancedFlags.deepIntegrity };
+                                        setConfig({ ...config, advancedFlags: newFlags });
+                                        setIsDirty(true);
+                                    }}
+                                    className={`w-8 h-4 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
+                                        config.advancedFlags.deepIntegrity
+                                        ? 'bg-emerald-500 border-emerald-600 justify-end' 
+                                        : 'bg-muted border-border justify-start'
+                                    }`}
+                                >
+                                    <div className={`w-2 h-2 rounded-full transition-all ${config.advancedFlags.deepIntegrity ? 'bg-white' : 'bg-muted-foreground'}`} />
+                                </button>
                             </div>
                             <div className="grid grid-cols-2 gap-2 mt-2">
                                 <InputField label="Check Int." propKey="advancedFlags.healthCheckInterval" type="number" suffix="s" config={config} errors={errors} handleChange={handleChange} />

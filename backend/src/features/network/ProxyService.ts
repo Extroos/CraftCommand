@@ -7,6 +7,8 @@ import { logger } from '../../utils/logger';
 import { getServer, saveServer, getServers } from '../servers/ServerService';
 import path from 'path';
 import fs from 'fs-extra';
+import { networkConfigGenerator } from './NetworkConfigGenerator';
+import { systemSettingsService } from '../system/SystemSettingsService';
 
 export class ProxyService {
     /**
@@ -40,6 +42,10 @@ export class ProxyService {
         proxy.network.proxyConfig.links.push({ serverId: backendId, alias });
         
         saveServer(proxy);
+        this.syncAdvancedVelocityConfig(proxyId);
+        
+        // v2.1: Trigger async reload so the fabric change takes effect immediately
+        this.triggerVelocityReload(proxyId).catch(e => logger.warn(`[ProxyService] Auto-reload failed: ${e.message}`));
     }
 
     /**
@@ -51,6 +57,7 @@ export class ProxyService {
         
         proxy.network.proxyConfig.links = proxy.network.proxyConfig.links.filter(l => l.serverId !== backendId);
         saveServer(proxy);
+        this.syncAdvancedVelocityConfig(proxyId);
 
         // Revert online-mode for backend if it's managed by this panel
         const backend = getServer(backendId);
@@ -160,6 +167,33 @@ export class ProxyService {
             } catch (e: any) {
                 logger.error(`[ProxyService] Failed to write forwarding.secret: ${e.message}`);
             }
+        }
+    }
+
+    /**
+     * Syncs advanced settings from SystemSettings to velocity proxy
+     */
+    public async syncAdvancedVelocityConfig(proxyId: string): Promise<void> {
+        const settings = systemSettingsService.getSettings();
+        const advanced = settings.app.advancedNetworking;
+
+        if (advanced) {
+            await networkConfigGenerator.generateVelocityAdvancedConfig(proxyId, {
+                compressionLevel: advanced.trafficCompression?.level || 6,
+                compressionThreshold: 256,
+                enableRateLimiting: advanced.ddosShield?.enabled || false,
+                maxPacketsPerSecond: advanced.ddosShield?.burstThreshold || 50
+            });
+        }
+    }
+    /**
+     * Sends a 'velocity reload' command to the proxy process if it is running.
+     */
+    public async triggerVelocityReload(proxyId: string): Promise<void> {
+        const { processManager } = await import('../processes/ProcessManager');
+        if (processManager.isRunning(proxyId)) {
+            logger.info(`[ProxyService] Dispatching hot-reload to Velocity (${proxyId})`);
+            processManager.sendCommand(proxyId, 'velocity reload');
         }
     }
 }

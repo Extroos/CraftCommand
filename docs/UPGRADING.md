@@ -29,20 +29,20 @@ If you are a developer or using a custom fork:
 
 ---
 
-## v1.12.x: Security & Modpack Intelligence
+## v1.12.x: Security & Mod/Plugin Filtering
 
-Version 1.12.5 is a mandatory security update.
+Version 1.12.5 implements critical security and dependency resolution updates.
 
-- **2FA Migration**: If you previously used a placeholder 2FA guide, you must now enable the **Native 2FA Security Suite** in your Profile settings.
-- **Mobile Optimization**: This version introduces a professional `viewport` meta tag. If you are using a custom frontend build, ensure your `index.html` is synchronized with the latest source to enable mobile responsiveness.
-- **Diagnostic Skip Logic**: On first boot of a fresh server, the "Doctor" diagnostic engine will now skip certain unnecessary checks (like EULA) until the first attempted start to reduce noise.
-- **Modpack Stabilization**: Transitioning to v1.12.0 automatically enables **Triple-Layer Mod Stabilization**. Your existing modpacks will be scanned for client-side only mods upon the next server restart.
+- **2FA Migration**: Users MUST migrate to the native TOTP implementation. Secrets are hashed and encrypted via the primary security service.
+- **Frontend Assets**: Introduction of standard `viewport` meta tags for cross-device visibility. Custom builds require synchronization with the current `index.html` template.
+- **Diagnostic Heuristics**: Automated startup checks now utilize a suppression window to prevent redundant diagnostic flags during initial server provisioning.
+- **Mod/Plugin Quarantining**: The update enables automated side-specific filtering. Artifacts tagged as `client-only` by the Modrinth API are migrated to `_client_mods/` to ensure Java runtime stability.
 
 ## v1.11.x: Systems Integrity & Signatures
 
 ## v1.10.x: Distributed Ops & DB Migration
 
-v1.10.x represents a significant architectural shift. Note the following:
+v1.10.x represents a significant architectural shift.
 
 ### 1. Root Module System
 
@@ -50,7 +50,7 @@ The project has moved away from a root-level `"type": "module"` configuration to
 
 ### 2. Node Re-Enrollment
 
-If you were using early beta multi-node features, your workers must be re-paired using the **Add Node Wizard** in the Global Settings tab.
+Worker agents deployed during the beta phase must be re-initialized via the **Node Registry** to establish a secure Ed25519 identity and update the WebSocket handshake protocol.
 
 ### 3. Database Migration
 

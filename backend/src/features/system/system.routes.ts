@@ -7,23 +7,24 @@ import { discordService } from '../integrations/DiscordService';
 import { auditService } from './AuditService';
 import { verifyToken, requireRole, requirePermission } from '../../middleware/authMiddleware';
 import { installerService } from '../installer/InstallerService';
-import { autoHealingService } from '../diagnosis/AutoHealingService';
-import { healthTelemetryService } from './HealthTelemetryService';
+import { automaticRepairService } from '../diagnosis/AutomaticRepairService';
+import { healthMonitoringService } from './HealthMonitoringService';
 import { migrationService } from './MigrationService';
+import { logger } from '../../utils/logger';
 
 const router = express.Router();
 
 // System Stats
 router.get('/stats', async (req, res) => {
-    console.log('[SystemRoute] GET /stats');
+    logger.debug('[SystemRoute] GET /stats');
     const stats = await getSystemStats();
     res.json(stats);
 });
 
-// Real-time Health Telemetry (AutoHealing v3)
+// Real-time Health Monitoring
 router.get('/health', verifyToken, (req, res) => {
     try {
-        const platformHealth = healthTelemetryService.getGlobalHealth();
+        const platformHealth = healthMonitoringService.getGlobalHealth();
         
         res.json({
             ...platformHealth,
@@ -53,7 +54,7 @@ router.post('/cache/clear', verifyToken, requireRole(['OWNER', 'ADMIN']), async 
     try {
         await systemService.clearCache(type);
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'SYSTEM_CACHE_CLEAR', 'system', { type });
+        auditService.log(req.user.id, 'SYSTEM_CACHE_CLEAR', 'system', { type });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -104,7 +105,7 @@ router.get('/settings', verifyToken, (req, res) => {
     // Wait, viewer might need theme? 
     // Theme is in user preferences usually. Global settings are system-wide.
     // Safe to require ADMIN for global config.
-    if ((req as any).user.role !== 'OWNER' && (req as any).user.role !== 'ADMIN') {
+    if (req.user.role !== 'OWNER' && req.user.role !== 'ADMIN') {
         const safe = { app: { theme: settings.app.theme } }; // Only expose theme
         return res.json(safe);
     }
@@ -115,7 +116,7 @@ router.get('/settings', verifyToken, (req, res) => {
 router.patch('/settings', verifyToken, requireRole(['OWNER', 'ADMIN']), (req, res) => {
     const updated = systemSettingsService.updateSettings(req.body);
     res.json(updated);
-    auditService.log((req as any).user.id, 'SYSTEM_SETTINGS_UPDATE', 'system', { updates: Object.keys(req.body) });
+    auditService.log(req.user.id, 'SYSTEM_SETTINGS_UPDATE', 'system', { updates: Object.keys(req.body) });
 });
 
 // Discord Integration (Strict)
@@ -127,7 +128,7 @@ router.post('/discord/reconnect', verifyToken, requireRole(['OWNER', 'ADMIN']), 
     try {
         await discordService.reconnect();
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'DISCORD_RECONNECT', 'system');
+        auditService.log(req.user.id, 'DISCORD_RECONNECT', 'system');
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -137,7 +138,7 @@ router.post('/discord/sync-commands', verifyToken, requireRole(['OWNER', 'ADMIN'
     try {
         await discordService.deployCommands();
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'DISCORD_SYNC', 'system');
+        auditService.log(req.user.id, 'DISCORD_SYNC', 'system');
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -207,7 +208,7 @@ router.get('/docker/status', verifyToken, async (req, res) => {
 // Storage Migration (Strict)
 router.post('/storage/migrate', verifyToken, requireRole(['OWNER']), async (req, res) => {
     const { target } = req.body;
-    const actorId = (req as any).user.id;
+    const actorId = req.user.id;
     try {
         if (target === 'sqlite') {
             const result = await migrationService.migrateToSqlite(actorId);

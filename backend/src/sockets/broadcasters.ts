@@ -6,6 +6,7 @@ import { backupService } from '../features/backups/BackupService';
 import { fileWatcherService } from '../features/files/FileWatcherService';
 import { nodeRegistryService } from '../features/nodes/NodeRegistryService';
 import { networkFabricService } from '../features/network/NetworkFabricService';
+import { systemSettingsService } from '../features/system/SystemSettingsService';
 import { logger } from '../utils/logger';
 
 let isRegistered = false;
@@ -59,7 +60,10 @@ export const registerBroadcasters = (io: Server) => {
     backupService.removeAllListeners('progress');
     backupService.removeAllListeners('status');
     backupService.on('progress', (data) => io.emit('backup:progress', data));
-    backupService.on('status', (data) => io.emit('backup:status', { message: data }));
+    backupService.on('status', (data) => {
+        const payload = typeof data === 'string' ? { message: data } : data;
+        io.emit('backup:status', payload);
+    });
 
     // 4. File Watcher (Global — file changes)
     fileWatcherService.removeAllListeners('fileChange');
@@ -92,4 +96,10 @@ export const registerBroadcasters = (io: Server) => {
 
     // 7. Network Fabric (Self-managed proxy automation)
     networkFabricService.initialize();
+
+    // 8. System Settings — Global version & theme sync
+    systemSettingsService.removeAllListeners('updated');
+    systemSettingsService.on('updated', (data) => {
+        io.emit('settings:updated', data);
+    });
 };

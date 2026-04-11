@@ -1,6 +1,6 @@
 
-import { DiagnosisRule } from './types';
-import { ServerConfig, DiagnosisResult } from '@shared/types';
+import { DiagnosisRule, DiagnosisResult, ServerConfig, SystemStats } from './types';
+import { ServerStatus } from '@shared/types';
 
 /**
  * ╔══════════════════════════════════════════════════════╗
@@ -83,7 +83,163 @@ export const NoRemoteAccessRule: DiagnosisRule = {
     }
 };
 
+export const PortConflictRule: DiagnosisRule = {
+    id: 'port_conflict',
+    name: 'Port Conflict',
+    description: 'Checks if the server port is already in use',
+    triggers: [
+        /BindException: Address already in use/i,
+        /Could not bind to port/i,
+        /Address already in use/i,
+        /FAILED TO BIND TO PORT/i
+    ],
+    tier: 1,
+    defaultConfidence: 100,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const hasError = logs.some(l => /already in use|FAILED TO BIND TO PORT|Could not bind to port/i.test(l));
+        if (hasError) {
+            return {
+                id: `port-conflict-${server.id}-${Date.now()}`,
+                ruleId: 'port_conflict',
+                severity: 'CRITICAL',
+                title: 'Port Already In Use',
+                explanation: `Port ${server.port} is already being used by another process.`,
+                recommendation: `Change the server port in settings or stop the application using port ${server.port}.`,
+                action: {
+                    type: 'UPDATE_CONFIG',
+                    payload: { serverId: server.id, port: (server.port || 25565) + 1 },
+                    automaticRepair: false
+                },
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+export const InvalidIpRule: DiagnosisRule = {
+    id: 'invalid_ip_binding',
+    name: 'Invalid IP Binding',
+    description: 'Checks for invalid server-ip in properties',
+    triggers: [
+        /Can't assign requested address/i,
+        /Perhaps a server is already running on that port/i,
+        /server-ip/i
+    ],
+    tier: 1,
+    defaultConfidence: 95,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+         const hasError = logs.some(l => /Can't assign requested address/i.test(l));
+         if (hasError) {
+              return {
+                id: `ip-bind-${server.id}-${Date.now()}`,
+                ruleId: 'invalid_ip_binding',
+                severity: 'CRITICAL',
+                title: 'Invalid IP Binding',
+                explanation: `Server is trying to bind to an IP that doesn't exist on this machine.`,
+                recommendation: `Set 'server-ip' to blank (empty) in server.properties or your startup flags.`,
+                action: {
+                    type: 'FIX_IP_BINDING',
+                    payload: { serverId: server.id },
+                    automaticRepair: true
+                },
+                timestamp: Date.now()
+              };
+         }
+         return null;
+    }
+};
+
+export const NetworkOfflineRule: DiagnosisRule = {
+    id: 'network_offline',
+    name: 'Network Offline',
+    description: 'Detects if the server cannot reach authentication servers',
+    triggers: [
+        /UnknownHostException: authlib\.game-host\.org/i,
+        /Could not connect to authlib/i,
+        /Authentication servers are down/i
+    ],
+    tier: 2,
+    defaultConfidence: 90,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const hasError = logs.some(l => /UnknownHostException|Authentication servers are down/i.test(l));
+        if (hasError) {
+            return {
+                id: `net-offline-${server.id}-${Date.now()}`,
+                ruleId: 'network_offline',
+                severity: 'WARNING',
+                title: 'Network Connectivity Issue',
+                explanation: 'Server cannot reach Minecraft authentication servers.',
+                recommendation: 'Check host internet connection or firewall rules.',
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+export const NetworkProtocolRule: DiagnosisRule = {
+    id: 'protocol_mismatch',
+    name: 'Protocol Mismatch',
+    description: 'Checks for incompatible client/server protocols',
+    triggers: [
+        /Outdated client/i,
+        /Outdated server/i,
+        /Incompatible packet/i
+    ],
+    tier: 3,
+    defaultConfidence: 100,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const logLine = logs.find(l => /Outdated client|Outdated server/i.test(l));
+        if (logLine) {
+            return {
+                id: `protocol-${server.id}-${Date.now()}`,
+                ruleId: 'protocol_mismatch',
+                severity: 'INFO',
+                title: 'Client Version Mismatch',
+                explanation: 'A player tried to connect with an incompatible Minecraft version.',
+                recommendation: 'Ensure players are using the correct version or install ViaVersion.',
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+export const PacketTooBigRule: DiagnosisRule = {
+    id: 'packet_too_big',
+    name: 'Packet Too Large',
+    description: 'Detects payload size violations',
+    triggers: [
+        /Packet too large/i,
+        /tried to send too many bytes/i,
+        /Payload may not be larger than/i
+    ],
+    tier: 3,
+    defaultConfidence: 100,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const logLine = logs.find(l => /Packet too large|too many bytes/i.test(l));
+        if (logLine) {
+            return {
+                id: `packet-size-${server.id}-${Date.now()}`,
+                ruleId: 'packet_too_big',
+                severity: 'WARNING',
+                title: 'Network Packet Violation',
+                explanation: 'Modded data packet exceeded the Minecraft protocol limit.',
+                recommendation: 'Install "Connectivity" or "Packet Size" mods to increase limits.',
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
 export const ConnectivityRules: DiagnosisRule[] = [
     PortUnreachableRule,
-    NoRemoteAccessRule
+    NoRemoteAccessRule,
+    PortConflictRule,
+    InvalidIpRule,
+    NetworkOfflineRule,
+    NetworkProtocolRule,
+    PacketTooBigRule
 ];

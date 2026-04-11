@@ -43,7 +43,7 @@ export const SubuserManager: React.FC<SubuserManagerProps> = ({ serverId }) => {
     const handleInvite = async (email: string, role: string) => {
         try {
             const result = await API.addServerMember(serverId, email, role);
-            addToast('success', 'Invitation Dispatched', `Security credentials dispatched to ${email}.`);
+            addToast('success', 'Invite Sent', `Invitation sent to ${email}.`);
             fetchMembers();
             return result;
         } catch (e: any) {

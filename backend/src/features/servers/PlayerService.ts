@@ -4,6 +4,7 @@ import path from 'path';
 import { processManager } from '../processes/ProcessManager';
 import { getServer } from './ServerService';
 import axios from 'axios'; 
+import { logger } from '../../utils/logger';
 
 export class PlayerService {
     
@@ -18,7 +19,7 @@ export class PlayerService {
             try {
                 return await fs.readJSON(filePath);
             } catch (e) {
-                console.error(`[PlayerService] Failed to read ${file}:`, e);
+                logger.error(`[PlayerService] Failed to read ${file}: ${e}`);
                 return [];
             }
         }
@@ -238,7 +239,7 @@ export class PlayerService {
                 return `${raw.substr(0,8)}-${raw.substr(8,4)}-${raw.substr(12,4)}-${raw.substr(16,4)}-${raw.substr(20)}`;
             }
         } catch (e) {
-            console.warn(`[PlayerService] Failed to fetch UUID for ${name}. Using offline-mode UUID logic or dummy.`);
+            logger.warn(`[PlayerService] Failed to fetch UUID for ${name}. Using offline-mode UUID logic or dummy.`);
         }
         // Fallback: Generate offline UUID or dummy
         return '00000000-0000-0000-0000-000000000000'; 

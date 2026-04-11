@@ -13,6 +13,7 @@ export abstract class JsonRepository<T extends { id: string }> implements Storag
     protected isFragmented: boolean;
     protected fragmentDir: string;
     private fragmentSyncTimeouts: Map<string, NodeJS.Timeout> = new Map();
+    private writeQueue: Promise<void> = Promise.resolve();
 
     constructor(fileName: string, isFragmented: boolean = false) {
         this.filePath = path.join(process.cwd(), 'data', fileName);
@@ -59,7 +60,8 @@ export abstract class JsonRepository<T extends { id: string }> implements Storag
                 }
             }
         } catch (e) {
-            console.error(`[Repository] Failed to load ${this.filePath}:`, e);
+            const { logger } = require('../utils/logger');
+            logger.error(`[Repository] Failed to load ${this.filePath}: ${e}`);
             this.data = [];
         }
     }
@@ -82,14 +84,26 @@ export abstract class JsonRepository<T extends { id: string }> implements Storag
         // Debounce per-fragment to handle rapid status bursts (e.g. STARTING -> RUNNING)
         if (this.fragmentSyncTimeouts.has(item.id)) return;
 
-        const timeout = setTimeout(async () => {
+        const timeout = setTimeout(() => {
             this.fragmentSyncTimeouts.delete(item.id);
-            try {
-                const fPath = path.join(this.fragmentDir, `${item.id}.json`);
-                await fs.writeJSON(fPath, item, { spaces: 2 });
-            } catch (e) {
-                console.error(`[Repository] Async fragment save failed for ${item.id}:`, e);
-            }
+            // Chain to write queue to prevent concurrent EBUSY crashes (Phase 9)
+            this.writeQueue = this.writeQueue.then(async () => {
+                try {
+                    const fPath = path.join(this.fragmentDir, `${item.id}.json`);
+                    const tempPath = `${fPath}.tmp`;
+                    // Atomic write: write to temp file, then rename
+                    await fs.writeJSON(tempPath, item, { spaces: 2 });
+                    await fs.rename(tempPath, fPath);
+                } catch (e) {
+                    const { logger } = require('../utils/logger');
+                    logger.error(`[Repository] Async fragment save failed for ${item.id}: ${e}`);
+                    // Cleanup temp file if rename failed
+                    try {
+                        const tempPath = path.join(this.fragmentDir, `${item.id}.json.tmp`);
+                        if (await fs.pathExists(tempPath)) await fs.unlink(tempPath);
+                    } catch { /* ignore cleanup errors */ }
+                }
+            });
         }, 50);
 
         this.fragmentSyncTimeouts.set(item.id, timeout);
@@ -101,7 +115,8 @@ export abstract class JsonRepository<T extends { id: string }> implements Storag
             const fPath = path.join(this.fragmentDir, `${id}.json`);
             if (fs.existsSync(fPath)) fs.unlinkSync(fPath);
         } catch (e) {
-            console.error(`[Repository] Failed to delete fragment ${id}:`, e);
+            const { logger } = require('../utils/logger');
+            logger.error(`[Repository] Failed to delete fragment ${id}: ${e}`);
         }
     }
 
@@ -111,7 +126,8 @@ export abstract class JsonRepository<T extends { id: string }> implements Storag
             fs.writeJSONSync(tempPath, this.data, { spaces: 2 });
             fs.renameSync(tempPath, this.filePath);
         } catch (e) {
-            console.error(`[Repository] Failed to save ${this.filePath}:`, e);
+            const { logger } = require('../utils/logger');
+            logger.error(`[Repository] Failed to save ${this.filePath}: ${e}`);
             try { 
                 if (fs.existsSync(`${this.filePath}.tmp`)) fs.unlinkSync(`${this.filePath}.tmp`); 
             } catch (cleanupErr) { /* ignore */ }

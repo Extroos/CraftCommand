@@ -11,6 +11,7 @@ import {
     PortReachability 
 } from '@shared/types/network';
 import { systemSettingsService } from '../system/SystemSettingsService';
+import { logger } from '../../utils/logger';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const NETWORK_STATE_FILE = path.join(DATA_DIR, 'network-state.json');
@@ -44,7 +45,7 @@ class NetworkService extends EventEmitter {
                 };
             }
         } catch (e) {
-            console.error('[NetworkService] Failed to load state:', e);
+            logger.error(`[NetworkService] Failed to load state: ${e}`);
         }
 
         return {
@@ -61,8 +62,8 @@ class NetworkService extends EventEmitter {
             fs.writeJSONSync(tempPath, this.state, { spaces: 4 });
             fs.moveSync(tempPath, NETWORK_STATE_FILE, { overwrite: true });
         } catch (e) {
-            console.error('[NetworkService] Failed to save state:', e);
-            try { if (fs.existsSync(`${NETWORK_STATE_FILE}.tmp`)) fs.unlinkSync(`${NETWORK_STATE_FILE}.tmp`); } catch (err) {}
+            logger.error(`[NetworkService] Failed to save state: ${e}`);
+            try { if (fs.existsSync(`${NETWORK_STATE_FILE}.tmp`)) fs.unlinkSync(`${NETWORK_STATE_FILE}.tmp`); } catch (err) { logger.debug(`[NetworkService] Final cleanup failed: ${err}`); }
         }
     }
 
@@ -82,7 +83,7 @@ class NetworkService extends EventEmitter {
                     return ip;
                 }
             } catch (e) {
-                console.warn(`[NetworkService] Source ${source} failed:`, (e as Error).message);
+                logger.warn(`[NetworkService] Source ${source} failed: ${(e as Error).message}`);
             }
         }
         return null;
@@ -131,7 +132,7 @@ class NetworkService extends EventEmitter {
             } catch (e) {
                 lastError = e as Error;
                 if (i < retries) {
-                    console.warn(`[NetworkService] DNS attempt ${i + 1} for ${hostname} failed (${lastError.message}), retrying...`);
+                    logger.warn(`[NetworkService] DNS attempt ${i + 1} for ${hostname} failed (${lastError.message}), retrying...`);
                     await new Promise(r => setTimeout(r, 1000 * (i + 1))); // Exponential-ish backoff
                 }
             }
@@ -163,11 +164,11 @@ class NetworkService extends EventEmitter {
         if (provider === 'duckdns') {
             const domain = hostname.split('.')[0]; // e.g. "lbogos" from "lbogos.duckdns.org"
             try {
-                console.log(`[NetworkService] Updating DuckDNS for ${hostname} to ${currentIp}...`);
+                logger.info(`[NetworkService] Updating DuckDNS for ${hostname} to ${currentIp}...`);
                 const response = await axios.get(`https://www.duckdns.org/update?domains=${domain}&token=${token}&ip=${currentIp || ''}`);
                 
                 if (response.data === 'OK') {
-                    console.log(`[NetworkService] DuckDNS update successful for ${hostname}`);
+                    logger.info(`[NetworkService] DuckDNS update successful for ${hostname}`);
                     return await this.verifyDdns(hostname);
                 } else {
                     return {
@@ -227,18 +228,18 @@ class NetworkService extends EventEmitter {
 
         return result;
     } catch (e: any) {
-        console.warn(`[NetworkService] Port check failed for ${port}: ${e.message}`);
+        logger.warn(`[NetworkService] Port check failed for ${port}: ${e.message}`);
         // Fallback: try a simple TCP self-check as a secondary signal
         return { port, status: 'unknown', lastCheckedAt: Date.now() };
     }
     }
 
     private async update() {
-        console.log('[NetworkService] Running periodic update...');
+        logger.debug('[NetworkService] Running periodic update...');
         const newIp = await this.getPublicIp();
         
         if (newIp && newIp !== this.state.publicIp.current) {
-            console.log(`[NetworkService] IP Changed: ${this.state.publicIp.current} -> ${newIp}`);
+            logger.info(`[NetworkService] IP Changed: ${this.state.publicIp.current} -> ${newIp}`);
             this.state.publicIp.lastKnown = this.state.publicIp.current;
             this.state.publicIp.current = newIp;
             this.state.publicIp.lastChangedAt = Date.now();
@@ -261,7 +262,7 @@ class NetworkService extends EventEmitter {
 
                 // If mismatch and update enabled, trigger update
                 if (!status.isMatching && server.network.updateEnabled && server.network.token) {
-                    console.log(`[NetworkService] Mismatch detected for ${server.name} (${server.network.hostname}). Triggering update...`);
+                    logger.info(`[NetworkService] Mismatch detected for ${server.name} (${server.network.hostname}). Triggering update...`);
                     const newStatus = await this.updateDdns(server.id);
                     this.state.serverDdns[server.id] = newStatus;
                 }

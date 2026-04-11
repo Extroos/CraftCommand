@@ -71,7 +71,7 @@ export class ScheduleRepository {
                 fs.renameSync(this.schedulesDir, `${this.schedulesDir}.migrated_${Date.now()}`);
             }
         } catch (e) {
-            console.error('[ScheduleRepo] Migration failed:', e);
+            logger.error(`[ScheduleRepo] Migration failed: ${e}`);
         }
     }
 

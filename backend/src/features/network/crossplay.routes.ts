@@ -1,6 +1,7 @@
 
 import { Router, Request, Response } from 'express';
 import { crossPlayService } from './CrossPlayService';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.post('/:serverId/enable', async (req: Request, res: Response) => {
         const result = await crossPlayService.enable(serverId, bedrockPort);
         res.json(result);
     } catch (e: any) {
-        console.error('[CrossPlay] Enable failed:', e);
+        logger.error(`[CrossPlay] Enable failed: ${e}`);
         res.status(500).json({ success: false, message: e.message });
     }
 });
@@ -30,7 +31,7 @@ router.post('/:serverId/disable', async (req: Request, res: Response) => {
         const result = await crossPlayService.disable(serverId);
         res.json(result);
     } catch (e: any) {
-        console.error('[CrossPlay] Disable failed:', e);
+        logger.error(`[CrossPlay] Disable failed: ${e}`);
         res.status(500).json({ success: false, message: e.message });
     }
 });
@@ -45,7 +46,7 @@ router.get('/:serverId/status', async (req: Request, res: Response) => {
         const status = await crossPlayService.getStatus(serverId);
         res.json(status);
     } catch (e: any) {
-        console.error('[CrossPlay] Status check failed:', e);
+        logger.error(`[CrossPlay] Status check failed: ${e}`);
         res.status(500).json({ error: e.message });
     }
 });

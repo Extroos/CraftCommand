@@ -9,7 +9,7 @@ import { ServerStatus } from '@shared/types';
 
 /**
  * RULE: Geyser plugin is missing when cross-play is enabled.
- * Auto-healable — reinstalls Geyser from Modrinth.
+ * Auto-repairable — reinstalls Geyser from Modrinth.
  */
 export const GeyserMissingRule: DiagnosisRule = {
     id: 'geyser_missing',
@@ -18,7 +18,7 @@ export const GeyserMissingRule: DiagnosisRule = {
     triggers: [], // Proactive check
     tier: 2,
     defaultConfidence: 100,
-    isHealable: true,
+    isRepairable: true,
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
         if (!server.crossPlay?.enabled) return null;
 
@@ -42,14 +42,14 @@ export const GeyserMissingRule: DiagnosisRule = {
                 action: {
                     type: 'REINSTALL_GEYSER',
                     payload: { serverId: server.id },
-                    autoHeal: true
+                    automaticRepair: true
                 },
                 timestamp: Date.now()
             };
         }
         return null;
     },
-    heal: async (server: ServerConfig): Promise<boolean> => {
+    repair: async (server: ServerConfig): Promise<boolean> => {
         try {
             const topology = crossPlayService.detectTopology(server.id);
             const target = topology === 'velocity'
@@ -63,7 +63,7 @@ export const GeyserMissingRule: DiagnosisRule = {
 
 /**
  * RULE: Floodgate plugin is missing when cross-play is enabled.
- * Auto-healable — reinstalls Floodgate from Modrinth.
+ * Auto-repairable — reinstalls Floodgate from Modrinth.
  */
 export const FloodgateMissingRule: DiagnosisRule = {
     id: 'floodgate_missing',
@@ -72,7 +72,7 @@ export const FloodgateMissingRule: DiagnosisRule = {
     triggers: [],
     tier: 2,
     defaultConfidence: 90,
-    isHealable: true,
+    isRepairable: true,
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
         if (!server.crossPlay?.enabled) return null;
 
@@ -95,14 +95,14 @@ export const FloodgateMissingRule: DiagnosisRule = {
                 action: {
                     type: 'REINSTALL_FLOODGATE',
                     payload: { serverId: server.id },
-                    autoHeal: true
+                    automaticRepair: true
                 },
                 timestamp: Date.now()
             };
         }
         return null;
     },
-    heal: async (server: ServerConfig): Promise<boolean> => {
+    repair: async (server: ServerConfig): Promise<boolean> => {
         try {
             const topology = crossPlayService.detectTopology(server.id);
             const target = topology === 'velocity'
@@ -116,7 +116,7 @@ export const FloodgateMissingRule: DiagnosisRule = {
 
 /**
  * RULE: Cross-play forwarding secret mismatch (Velocity topology).
- * Auto-healable — re-syncs configs.
+ * Auto-repairable — re-syncs configs.
  */
 export const CrossPlayForwardingMismatchRule: DiagnosisRule = {
     id: 'crossplay_forwarding_mismatch',
@@ -129,7 +129,7 @@ export const CrossPlayForwardingMismatchRule: DiagnosisRule = {
     ],
     tier: 2,
     defaultConfidence: 95,
-    isHealable: true,
+    isRepairable: true,
     analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
         if (!server.crossPlay?.enabled || server.crossPlay.topology !== 'velocity') return null;
 
@@ -150,14 +150,14 @@ export const CrossPlayForwardingMismatchRule: DiagnosisRule = {
                 action: {
                     type: 'RESYNC_CROSSPLAY_FORWARDING',
                     payload: { serverId: server.id },
-                    autoHeal: true
+                    automaticRepair: true
                 },
                 timestamp: Date.now()
             };
         }
         return null;
     },
-    heal: async (server: ServerConfig): Promise<boolean> => {
+    repair: async (server: ServerConfig): Promise<boolean> => {
         try {
             await crossPlayService.syncConfigs(server.id);
             return true;
@@ -167,7 +167,7 @@ export const CrossPlayForwardingMismatchRule: DiagnosisRule = {
 
 /**
  * RULE: Bedrock UDP port conflict.
- * Auto-healable — reassigns to next available UDP port.
+ * Auto-repairable — reassigns to next available UDP port.
  */
 export const CrossPlayUdpPortConflictRule: DiagnosisRule = {
     id: 'crossplay_udp_port_conflict',
@@ -176,7 +176,7 @@ export const CrossPlayUdpPortConflictRule: DiagnosisRule = {
     triggers: [],
     tier: 1,
     defaultConfidence: 95,
-    isHealable: true,
+    isRepairable: true,
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
         if (!server.crossPlay?.enabled) return null;
         if (server.status === ServerStatus.ONLINE) return null; // Port is in use by Geyser — expected
@@ -195,14 +195,14 @@ export const CrossPlayUdpPortConflictRule: DiagnosisRule = {
                 action: {
                     type: 'REASSIGN_BEDROCK_PORT',
                     payload: { serverId: server.id },
-                    autoHeal: true
+                    automaticRepair: true
                 },
                 timestamp: Date.now()
             };
         }
         return null;
     },
-    heal: async (server: ServerConfig): Promise<boolean> => {
+    repair: async (server: ServerConfig): Promise<boolean> => {
         try {
             // Find next available UDP port starting from current + 1
             const current = server.crossPlay?.bedrockPort || 19132;
@@ -222,7 +222,7 @@ export const CrossPlayUdpPortConflictRule: DiagnosisRule = {
 
 /**
  * RULE: Bedrock port is likely blocked by firewall.
- * NOT auto-healable — provides instructions.
+ * NOT auto-repairable — provides instructions.
  */
 export const CrossPlayBedrockPortBlockedRule: DiagnosisRule = {
     id: 'crossplay_bedrock_port_blocked',
@@ -267,7 +267,7 @@ export const CrossPlayBedrockPortBlockedRule: DiagnosisRule = {
 
 /**
  * RULE: Geyser/Floodgate version may be incompatible with Minecraft version.
- * NOT auto-healable — informational.
+ * NOT auto-repairable — informational.
  */
 export const CrossPlayVersionMismatchRule: DiagnosisRule = {
     id: 'crossplay_version_mismatch',

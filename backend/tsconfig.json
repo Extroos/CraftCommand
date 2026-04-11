@@ -9,8 +9,13 @@
     "paths": {
       "@shared/*": ["../shared/*"],
       "@features/*": ["src/features/*"]
-    }
+    },
+    "typeRoots": ["./node_modules/@types", "./src/types"]
   },
   "include": ["src/**/*", "scripts/**/*", "../shared/**/*"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"],
+  "ts-node": {
+    "files": true,
+    "require": ["tsconfig-paths/register"]
+  }
 }

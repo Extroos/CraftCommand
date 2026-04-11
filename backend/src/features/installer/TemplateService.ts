@@ -95,7 +95,7 @@ export class TemplateService {
             try {
                 this.templates = fs.readJSONSync(TEMPLATES_FILE);
             } catch (e) {
-                console.error('[TemplateService] Failed to load templates, using defaults:', e);
+                logger.error(`[TemplateService] Failed to load templates, using defaults: ${e}`);
                 this.templates = DEFAULT_TEMPLATES;
             }
         } else {

@@ -1,0 +1,76 @@
+# CraftCommand — Distributed Deployment
+#
+# This Docker Compose file runs the CraftCommand panel alongside
+# one or more Node Agents for distributed Minecraft server management.
+#
+# Usage:
+#   1. Copy .env.example to .env and configure JWT_SECRET
+#   2. docker-compose -f docker-compose.distributed.yml up -d
+#   3. Open http://localhost:3000
+#   4. Enroll agent nodes via Settings → Distributed Nodes
+#   5. Scale agents: docker-compose -f docker-compose.distributed.yml up -d --scale agent=3
+#
+# For remote agents on separate machines, run the agent service
+# independently with the correct PANEL_URL pointing to the panel host.
+
+services:
+  # ── Panel (Backend + Frontend) ──
+  panel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: craftcommand-panel
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # Frontend
+      - "3001:3001"   # Backend API + WebSocket
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env}
+      - BACKEND_PORT=3001
+    volumes:
+      - panel-data:/app/data
+      - panel-backups:/app/backups
+      - panel-servers:/app/minecraft_servers
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/system/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - craftcommand
+
+  # ── Node Agent (Local co-located) ──
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      panel:
+        condition: service_healthy
+    environment:
+      - PANEL_URL=http://panel:3001
+      - NODE_ID=${AGENT_NODE_ID:-local-docker-agent}
+      - NODE_SECRET=${AGENT_NODE_SECRET:-change-me}
+      - SERVERS_DIR=/app/servers
+    volumes:
+      - agent-servers:/app/servers
+    networks:
+      - craftcommand
+
+volumes:
+  panel-data:
+    driver: local
+  panel-backups:
+    driver: local
+  panel-servers:
+    driver: local
+  agent-servers:
+    driver: local
+
+networks:
+  craftcommand:
+    driver: bridge

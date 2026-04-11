@@ -150,7 +150,7 @@ export class InstallerService extends EventEmitter {
             return true;
 
         } catch (e) {
-            console.error('Paper install failed', e);
+            logger.error(`Paper install failed: ${e}`);
             this.clearProgress(serverId);
             throw e;
         }
@@ -199,7 +199,7 @@ export class InstallerService extends EventEmitter {
             return true;
 
         } catch (e) {
-            console.error('Purpur install failed', e);
+            logger.error(`Purpur install failed: ${e}`);
             this.clearProgress(serverId);
             throw e;
         }
@@ -325,7 +325,7 @@ export class InstallerService extends EventEmitter {
                     this.updateProgress(serverId, `WARNING: Minecraft version not provided. Base server not installed.`);
                 }
                 
-                // SMART MOD MANAGEMENT: Filter client-side projects + resolve dependencies
+                // MOD MANAGEMENT: Filter client-side projects + resolve dependencies
                 if (mcVersion) {
                     await this.verifyServerCompatibility(serverId, serverDir, onProgress);
                     await this.resolveModDependencies(serverId, serverDir, mcVersion, loader, onProgress);
@@ -438,7 +438,7 @@ export class InstallerService extends EventEmitter {
                     this.updateProgress(serverId, `${loader} Installed. Modrinth Pack Ready.`);
                 }
                 
-                // SMART MOD MANAGEMENT: Filter client-side projects + resolve dependencies
+                // MOD MANAGEMENT: Filter client-side projects + resolve dependencies
                 const mrpackMcVer = mrpackMcVersion || mcVersion;
                 if (mrpackMcVer) {
                     await this.verifyServerCompatibility(serverId, serverDir, onProgress);
@@ -509,7 +509,7 @@ export class InstallerService extends EventEmitter {
             await fs.remove(tempExtractDir);
             await fs.remove(zipPath);
 
-            // SMART INSTALLER LOGIC
+            // INSTALLER LOGIC
             if (packType.type === 'CLIENT_PACK') {
                 this.updateProgress(serverId, `Detected Client-Only Modpack (${packType.loader}). Checking Version...`);
                 
@@ -570,7 +570,7 @@ export class InstallerService extends EventEmitter {
 
         this.updateProgress(serverId, `🔍 Verifying ${jarFiles.length} mods against Modrinth API...`);
         onProgress?.(`🔍 Verifying ${jarFiles.length} mods against Modrinth API...`);
-        onLog?.(`[SmartMod] Verifying ${jarFiles.length} mods against Modrinth API...`);
+        onLog?.(`[ModManager] Verifying ${jarFiles.length} mods against Modrinth API...`);
 
         // Scan local metadata to get IDs
         const modMeta: Map<string, { file: string; name: string; env: string; deps: string[] }> = new Map();
@@ -581,6 +581,9 @@ export class InstallerService extends EventEmitter {
             try {
                 const zip = new AdmZip(jarPath);
                 const fabricEntry = zip.getEntry('fabric.mod.json');
+                const forgeEntry = zip.getEntry('META-INF/mods.toml');
+                const neoEntry = zip.getEntry('META-INF/neoforge.mods.toml');
+
                 if (fabricEntry) {
                     const content = JSON.parse(fabricEntry.getData().toString('utf8'));
                     const modId = content.id || jarFile;
@@ -590,8 +593,21 @@ export class InstallerService extends EventEmitter {
                     );
                     modMeta.set(modId, { file: jarFile, name: content.name || modId, env, deps });
                     modIdToFile.set(modId, jarFile);
+                } else if (forgeEntry || neoEntry) {
+                    const content = (forgeEntry || neoEntry)!.getData().toString('utf8');
+                    // Simple regex fallback for TOML parsing since 'toml' lib is not available
+                    const modIdMatch = content.match(/modId\s*=\s*"([^"]+)"/) || content.match(/modId\s*=\s*'([^']+)'/);
+                    const modId = modIdMatch ? modIdMatch[1] : jarFile;
+                    
+                    // Check for common client-only hints in Forge/NeoForge
+                    const isClientOnly = content.includes('displayClientOnly=true') || content.includes('displayClientOnly = true');
+                    const env = isClientOnly ? 'client' : '*';
+                    
+                    // Dependencies in Forge TOML are complex — skip deep parsing for now, rely on Modrinth API
+                    modMeta.set(modId, { file: jarFile, name: modId, env, deps: [] });
+                    modIdToFile.set(modId, jarFile);
                 }
-            } catch (e) {}
+            } catch (e) { /* Jar may be corrupted or not a mod jar — skip silently */ }
         }
 
         const idsToCheck = [...modMeta.keys()];
@@ -642,7 +658,7 @@ export class InstallerService extends EventEmitter {
                             }
                         }
                     }
-                } catch (e) {}
+                } catch (e) { logger.debug(`[Installer] Could not read local modrinth_env.json fallback: ${e}`); }
             }
         } catch (err: any) {
             logger.error(`[Installer] Modrinth verification process failed: ${err.message}`);
@@ -695,14 +711,14 @@ export class InstallerService extends EventEmitter {
                     await fs.move(src, dest, { overwrite: true });
                     filtered.push(meta.name);
                 }
-            } catch (e) {}
+            } catch (e) { logger.warn(`[Installer] Failed to quarantine client mod ${meta.file}: ${e}`); }
         }
 
         if (filtered.length > 0) {
             const msg = `🚫 Moved ${filtered.length} client-side projects to _client_mods/: ${filtered.join(', ')}`;
             this.updateProgress(serverId, msg, 100);
             onProgress?.(msg, 100);
-            onLog?.(`[SmartMod] ${msg}`);
+            onLog?.(`[ModManager] ${msg}`);
             logger.success(`[Installer] Server ${serverId}: ${msg}`);
             
             // Log quarantined mods to audit trail
@@ -721,7 +737,7 @@ export class InstallerService extends EventEmitter {
             const msg = `✅ All ${jarFiles.length} mods are server-compatible.`;
             this.updateProgress(serverId, msg, 100);
             onProgress?.(msg, 100);
-            onLog?.(`[SmartMod] ${msg}`);
+            onLog?.(`[ModManager] ${msg}`);
             setTimeout(() => this.clearProgress(serverId), 3000);
         }
 
@@ -860,7 +876,7 @@ export class InstallerService extends EventEmitter {
             const depMsg = `📦 Installing ${missingDeps.size} missing dependenc${missingDeps.size === 1 ? 'y' : 'ies'}...`;
             this.updateProgress(serverId, depMsg);
             onProgress?.(depMsg);
-            onLog?.(`[SmartMod] ${depMsg}`);
+            onLog?.(`[ModManager] ${depMsg}`);
             logger.info(`[Installer] Auto-resolving ${missingDeps.size} missing dependencies: ${[...missingDeps.keys()].join(', ')}`);
 
             const failedDeps: { id: string; reason: string }[] = [];
@@ -873,7 +889,7 @@ export class InstallerService extends EventEmitter {
                     
                     await pluginService.install(serverId, depId, 'modrinth');
                     installedMods.push(depId);
-                    onLog?.(`[SmartMod] ✅ Auto-installed dependency: ${depId}`);
+                    onLog?.(`[ModManager] ✅ Auto-installed dependency: ${depId}`);
                     logger.success(`[Installer] Auto-installed dependency: ${depId}`);
                 } catch (e: any) {
                     const errMsg = e.message || '';
@@ -909,7 +925,7 @@ export class InstallerService extends EventEmitter {
                 const successMsg = parts.join(' | ');
                 this.updateProgress(serverId, successMsg);
                 onProgress?.(successMsg);
-                onLog?.(`[SmartMod] ${successMsg}`);
+                onLog?.(`[ModManager] ${successMsg}`);
                 logger.success(`[Installer] Server ${serverId}: ${successMsg}`);
             }
         }
@@ -1003,7 +1019,7 @@ export class InstallerService extends EventEmitter {
             setTimeout(() => this.clearProgress(serverId), 2000);
             
         } catch (e) {
-            console.error('Vanilla install failed', e);
+            logger.error(`Vanilla install failed: ${e}`);
             this.clearProgress(serverId);
             throw e;
         }
@@ -1045,9 +1061,10 @@ export class InstallerService extends EventEmitter {
         try {
             await SafeFileOperation.checkDiskSpace(serverDir, 1000); // Modded servers need 1GB min
             const { javaManager } = await import('../processes/JavaManager');
-            const { validateBuildId } = await import('../../utils/validation');
+            const { ValidationUtils } = await import('../../utils/ValidationUtils');
+            const buildId = build;
 
-            if (build && !validateBuildId(build)) {
+            if (buildId && !ValidationUtils.validateBuildId(buildId)) {
                 throw new Error('Invalid Build ID format.');
             }
             logger.info(`[Installer:Forge] Starting install for ${version}. LocalModpack: ${localModpack || 'None'}`);
@@ -1091,7 +1108,7 @@ export class InstallerService extends EventEmitter {
                     onProgress?.(msg);
                 }
 
-                // --- Smart-Flatten Logic ---
+                // --- Flatten Logic ---
                 const entries = await fs.readdir(serverDir);
                 const candidates = entries.filter(e => e !== localModpack && e !== '__MACOSX' && !e.startsWith('.'));
                 
@@ -1204,9 +1221,10 @@ export class InstallerService extends EventEmitter {
         try {
             await SafeFileOperation.checkDiskSpace(serverDir, 1000); // Modded servers need 1GB min
             const { javaManager } = await import('../processes/JavaManager');
-            const { validateBuildId } = await import('../../utils/validation');
+            const { ValidationUtils } = await import('../../utils/ValidationUtils');
+            const buildId = build;
 
-            if (build && !validateBuildId(build)) {
+            if (buildId && !ValidationUtils.validateBuildId(buildId)) {
                 throw new Error('Invalid Build ID format.');
             }
 
@@ -1440,20 +1458,20 @@ export class InstallerService extends EventEmitter {
                 }
             });
 
-            // --- Smart Flattening (v1.10.1) ---
+            // --- Flattening ---
             // Some zip versions might contain a subfolder. Let's check.
             const exeName = process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server';
             const exePath = path.join(serverDir, exeName);
 
             if (!(await fs.pathExists(exePath))) {
-                console.log(`[Installer] ${exeName} not found in root. Checking for nested folder...`);
+                logger.info(`[Installer] ${exeName} not found in root. Checking for nested folder...`);
                 const items = await fs.readdir(serverDir);
                 const subDirs = items.filter(f => !['eula.txt', 'server.properties', 'bedrock.zip'].includes(f));
                 
                 if (subDirs.length === 1) {
                     const nestedDir = path.join(serverDir, subDirs[0]);
                     if ((await fs.stat(nestedDir)).isDirectory()) {
-                        console.log(`[Installer] Found single subfolder: ${subDirs[0]}. Flattening...`);
+                        logger.info(`[Installer] Found single subfolder: ${subDirs[0]}. Flattening...`);
                         const nestedFiles = await fs.readdir(nestedDir);
                         const protectedFiles = ['server.properties', 'allowlist.json', 'permissions.json', 'whitelist.json', 'valid_known_packs.json', 'world_behavior_packs.json', 'world_resource_packs.json'];
                         
@@ -1485,7 +1503,7 @@ export class InstallerService extends EventEmitter {
                  if (await fs.pathExists(winExePath)) {
                       logger.info(`[Installer] Bedrock Executable verified at: ${winExePath}`);
                  } else {
-                      console.warn(`[Installer] CRITICAL: Bedrock Executable (bedrock_server.exe) NOT FOUND after extraction/flattening!`);
+                      logger.warn(`[Installer] CRITICAL: Bedrock Executable (bedrock_server.exe) NOT FOUND after extraction/flattening!`);
                  }
             }
 
@@ -1495,7 +1513,7 @@ export class InstallerService extends EventEmitter {
             setTimeout(() => this.clearProgress(serverId), 2000);
 
         } catch (e) {
-            console.error('Bedrock install failed', e);
+            logger.error(`Bedrock install failed: ${e}`);
             this.clearProgress(serverId);
             throw e;
         }
@@ -1594,14 +1612,14 @@ player-info-forwarding-mode = "modern"
                             logger.info(`[Installer:${serverId}] Updated executable to velocity.jar`);
                         }
                     } catch (err) {
-                        console.error(`[Installer:${serverId}] Failed to update executable:`, err);
+                        logger.error(`[Installer:${serverId}] Failed to update executable: ${err}`);
                     }
 
                     setTimeout(() => this.clearProgress(serverId), 2000);
                     return true;
 
                 } catch (e: any) {
-                    console.error(`Velocity install attempt ${attempt} failed`, e.message);
+                    logger.error(`Velocity install attempt ${attempt} failed: ${e.message}`);
                     if (attempt >= maxRetries) {
                         throw new Error(`Failed to install Velocity after ${maxRetries} attempts: ${e.message}`);
                     }
@@ -1609,7 +1627,7 @@ player-info-forwarding-mode = "modern"
                 }
             }
         } catch (e) {
-            console.error('Velocity install failed', e);
+            logger.error(`Velocity install failed: ${e}`);
             this.clearProgress(serverId);
             throw e;
         }

@@ -151,25 +151,29 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
 
     return (
         <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex bg-muted p-1 rounded-lg">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex bg-muted/20 border border-border/40 p-1 rounded-lg backdrop-blur-md">
                     {(['ONLINE', 'ALL', 'WHITELIST', 'OPS', 'BANNED', 'ACTIVITY'] as const).map(tab => (
                         <button
                             key={tab}
                             onClick={() => setActiveList(tab)}
-                            className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeList === tab ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
+                            className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
+                                activeList === tab 
+                                ? 'bg-card shadow-sm text-foreground border border-border/60' 
+                                : 'text-muted-foreground hover:text-foreground/70'
+                            }`}
                         >
                             {tab}
                         </button>
                     ))}
                 </div>
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                <div className="relative group/search w-full md:w-auto">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/40 group-focus-within/search:text-primary transition-colors" size={14} />
                     <input 
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Search players..."
-                        className="pl-10 pr-4 py-2 bg-muted border-none rounded-lg text-sm w-64 focus:ring-1 focus:ring-primary outline-none"
+                        placeholder="Live Filter Players..."
+                        className="pl-9 pr-4 py-2 bg-muted/20 border border-border/60 rounded-lg text-[11px] font-bold w-full md:w-64 focus:ring-1 focus:ring-primary/40 focus:border-primary/60 outline-none transition-all placeholder:text-muted-foreground/30 placeholder:uppercase"
                     />
                 </div>
             </div>
@@ -177,13 +181,13 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
             {activeList === 'ACTIVITY' ? (
                 <ActivityTimeline serverId={serverId} />
             ) : (
-                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">
                     <table className="w-full text-left">
-                        <thead className="bg-muted/50 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        <thead className="bg-muted/30 border-b border-border/40">
                             <tr>
-                                <th className="px-6 py-4">Player</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-muted-foreground uppercase tracking-wider">Entity Identifier</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-muted-foreground uppercase tracking-wider">Diagnostic Status</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-muted-foreground uppercase tracking-wider text-right">Administrative Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -202,25 +206,51 @@ const PlayerManager: React.FC<PlayerManagerProps> = ({ serverId }) => {
                             ) : filtered.map(player => (
                                 <tr key={player.uuid} className="group hover:bg-muted/30 transition-colors">
                                     <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <img src={player.skinUrl} alt={player.name} className="w-8 h-8 rounded bg-muted" />
+                                        <div className="flex items-center gap-4">
+                                            <div className="relative">
+                                                <img src={player.skinUrl} alt={player.name} className="w-10 h-10 rounded-lg bg-muted border border-border/40 object-cover shadow-sm" />
+                                                {player.online && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-card rounded-full" />}
+                                            </div>
                                             <div>
-                                                <p className="font-bold">{player.name}</p>
-                                                <p className="text-[10px] text-muted-foreground font-mono">{player.uuid.slice(0, 18)}...</p>
+                                                <p className="text-[11px] font-black text-foreground/90 uppercase tracking-tight">{player.name}</p>
+                                                <p className="text-[9px] text-muted-foreground/40 font-mono tracking-tighter uppercase tabular-nums">UUID: {player.uuid.slice(0, 18)}...</p>
                                             </div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${player.online ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'}`}>
-                                            {player.online ? 'ONLINE' : 'OFFLINE'}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-0.5 rounded border text-[9px] font-black uppercase tracking-widest ${
+                                                player.online 
+                                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' 
+                                                : player.banReason ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-muted/40 border-border/40 text-muted-foreground'
+                                            }`}>
+                                                {player.online ? 'Online' : player.banReason ? 'Banned' : 'Offline'}
+                                            </span>
+                                            {player.isOp && (
+                                                <span className="px-1.5 py-0.5 rounded border border-amber-500/20 bg-amber-500/10 text-amber-500 text-[8px] font-black uppercase tracking-widest">
+                                                    Operator
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="flex justify-end gap-1.5 opacity-30 group-hover:opacity-100 transition-opacity">
                                             {canManage && (
                                                 <>
-                                                    <button onClick={() => handleAction(player, 'KICK')} className="p-2 hover:bg-red-500/10 hover:text-red-500 rounded"><Gavel size={16} /></button>
-                                                    <button onClick={() => handleAction(player, 'BAN')} className="p-2 hover:bg-red-500/10 hover:text-red-500 rounded"><Ban size={16} /></button>
+                                                    <button 
+                                                        onClick={() => handleAction(player, 'KICK')} 
+                                                        className="p-1.5 hover:bg-amber-500/10 hover:text-amber-500 text-muted-foreground transition-all rounded"
+                                                        title="Force Disconnect"
+                                                    >
+                                                        <Gavel size={14} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleAction(player, 'BAN')} 
+                                                        className="p-1.5 hover:bg-rose-500/10 hover:text-rose-500 text-muted-foreground transition-all rounded"
+                                                        title="Terminal Termination"
+                                                    >
+                                                        <Ban size={14} />
+                                                    </button>
                                                 </>
                                             )}
                                         </div>

@@ -9,12 +9,13 @@ import { scheduleRepository } from '../../storage/ScheduleRepository';
 import { sessionRepository } from '../../storage/SessionRepository';
 import fs from 'fs-extra';
 import path from 'path';
+import { logger } from '../../utils/logger';
 
 class MigrationService {
     private inProgress = false;
 
     async runMigrations(): Promise<void> {
-        console.log('[MigrationService] Running startup migrations/initialization...');
+        logger.info('[MigrationService] Running startup migrations/initialization...');
         const repos: any[] = [
             userRepository,
             serverRepository,
@@ -30,7 +31,7 @@ class MigrationService {
                     await repo.init();
                 }
             } catch (e) {
-                console.error(`[MigrationService] Failed to initialize repository:`, e);
+                logger.error(`[MigrationService] Failed to initialize repository: ${e}`);
             }
         }
     }
@@ -45,7 +46,7 @@ class MigrationService {
 
         this.inProgress = true;
         try {
-            console.log(`[MigrationService] Starting storage migration to SQLite (triggered by ${actorId})`);
+            logger.info(`[MigrationService] Starting storage migration to SQLite (triggered by ${actorId})`);
             
             // Step 1: Create atomic backup of JSON storage (#5 — SQLite Rollback)
             const storageDir = path.resolve(__dirname, '../../../../storage');
@@ -80,7 +81,7 @@ class MigrationService {
                         await repo.init();
                     }
                 } catch (migrateError) {
-                    console.error(`[MigrationService] Repo re-init failed, rolling back...`);
+                    logger.error(`[MigrationService] Repo re-init failed, rolling back...`);
                     // Rollback settings
                     systemSettingsService.updateSettings({
                         app: { ...settings.app, storageProvider: 'json' }
@@ -98,7 +99,7 @@ class MigrationService {
             await fs.remove(backupDir);
             return { success: true, message: 'Migration to SQLite complete. System is now using database storage.' };
         } catch (e: any) {
-            console.error(`[MigrationService] Migration failed:`, e);
+            logger.error(`[MigrationService] Migration failed: ${e}`);
             // Revert setting if possible?
             systemSettingsService.updateSettings({
                 app: { ...settings.app, storageProvider: 'json' }

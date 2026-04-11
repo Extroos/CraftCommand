@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { verifyToken, requireRole } from '../../middleware/authMiddleware';
 import { systemSettingsService } from './SystemSettingsService';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -10,7 +11,7 @@ router.get('/global', verifyToken, async (req, res) => {
         const settings = systemSettingsService.getSettings();
         
         // Data Masking for non-ADMIN/OWNER roles
-        const userRole = (req as any).user.role;
+        const userRole = req.user.role;
         if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
             const maskedSettings = JSON.parse(JSON.stringify(settings));
             
@@ -30,7 +31,7 @@ router.get('/global', verifyToken, async (req, res) => {
 
         res.json(settings);
     } catch (error) {
-        console.error('Failed to get global settings:', error);
+        logger.error(`Failed to get global settings: ${error}`);
         res.status(500).json({ error: 'Failed to load settings' });
     }
 });
@@ -41,7 +42,7 @@ router.put('/global', verifyToken, requireRole(['OWNER']), async (req, res) => {
         const updatedSettings = systemSettingsService.updateSettings(req.body);
         res.json(updatedSettings);
     } catch (error) {
-        console.error('Failed to update global settings:', error);
+        logger.error(`Failed to update global settings: ${error}`);
         res.status(500).json({ error: 'Failed to save settings' });
     }
 });

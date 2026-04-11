@@ -1,34 +1,22 @@
 # Networking & Connectivity Overview
 
-This section covers how CraftCommand handles internal communication, public exposure, and dynamic domain management.
+Manages ingress traffic, DNS synchronization, and cross-platform protocol translation.
 
-## The Networking Architecture
+## Connectivity Methods
 
-CraftCommand uses a **Decoupled Connectivity Layer**. This means the backend handles the heavy lifting of IP detection and DNS propagation, while the frontend provides a high-level wizard for user interaction.
+| Method | Protocol | Architecture | Security |
+| :--- | :--- | :--- | :--- |
+| **Cloudflare Tunnel** | Outbound HTTPS/UDP | Reverse Tunnel (no ports) | Cloudflare Edge / TLS |
+| **Reverse Proxy** | Port 80/443 | Local Proxy (Caddy/Nginx) | Panel-managed TLS |
+| **Dynamic DNS** | Direct Port | Dynamic IP Sync | Firewall-dependent |
 
-### Core Modules
+## Protocol Details
 
-1.  **[Dynamic DNS (DDNS)](DDNS.md)**: Tools for assigning professional hostnames (DuckDNS, No-IP, etc.) to your servers.
-2.  **[Remote Access & Tunnels](TUNNELS.md)**: **Recommended** - Zero-config connectivity via Cloudflare.
-3.  **[Traditional Security & Proxies](REMOTE_ACCESS.md)**: Details on Caddy, Nginx, and manual port forwarding.
-4.  **[Cross-Play Ecosystem](CROSSPLAY.md)**: Managing Java & Bedrock (Geyser/Floodgate)
-
-### Option B: Built-in Reverse Tunneling (Cloudflare)
-
-**Best for**: Instant, zero-config global access.
-
-1.  See the dedicated [**Cloudflare Tunnels Guide**](TUNNELS.md).
-2.  Provides automated TLS (HTTPS) and custom domain provisioning.
-
-### Option C: Legacy Reverse Tunneling (Playit.gg)
-
-## Key Concepts
-
-- **Binding**: By default, the panel "binds" to `127.0.0.1`. This means only YOU can see it. Enabling "Remote Access Mode" changes this to `0.0.0.0`, allowing external traffic.
-- **Resolution**: The system periodically checks your Public IP against your configured hostnames. If they don't match, the "Networking" tab will show a Warning.
-- **v1.12.0 Infrastructure Checks**: The panel now performs real-time health checks on your remote access layer, including Caddy/Nginx status and Cloudflare tunnel heartbeats.
-- **Reverse Proxy**: I strongly recommend using a proxy like **Caddy** or **Nginx** to handle SSL (HTTPS).
+- **Host Binding**: Software binds to `127.0.0.1` by default for local-only access. `0.0.0.0` allows global ingress.
+- **Health Verification**: The panel periodically queries reverse proxy PIDs and tunnel processes to verify status.
+- **Domain Resolution**: Automated checks compare public IP against DNS A-records; mismatches trigger status warnings.
+- **Standard Routing**: Caddy is utilized as the default internal entry point for HTTPS termination.
 
 ---
 
-_Need help with a specific configuration? Visit the [Troubleshooting Guide](../support/TROUBLESHOOTING.md)._
+_For specific configurations, refer to the [Dynamic DNS](DDNS.md) or [Tunnels](TUNNELS.md) documentation._

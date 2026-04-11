@@ -4,7 +4,7 @@ import { ActivityEvent } from '@shared/types';
 
 class ActivityRepository implements StorageProvider<ActivityEvent> {
     private provider: StorageProvider<ActivityEvent>;
-    private readonly MAX_HISTORY = 200;
+    private readonly MAX_HISTORY = 1000;
 
     constructor() {
         this.provider = StorageFactory.get<ActivityEvent>('activity_history', 'activity_history');

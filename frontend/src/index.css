@@ -85,7 +85,7 @@ body {
   border: 1px solid var(--card-border);
   border-radius: var(--radius); /* Standardized tactical radius */
   padding: 0.75rem 1rem; /* High-Density tactical padding */
-  transition: border-color 0.1s ease-in-out;
+  transition: border-color 0.1s ease-in-out, background 0.5s ease-in-out, backdrop-filter 0.5s ease-in-out;
   position: relative;
   overflow: hidden;
   box-shadow: inset 0 1px 0 0 var(--card-shadow-inset); /* Micro-elevation */
@@ -93,13 +93,49 @@ body {
   flex-direction: column;
 }
 
+.quality-enabled .cc-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)) !important;
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-top-color: rgba(255, 255, 255, 0.15) !important;
+  border-left-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 
+    0 4px 20px -10px rgba(0, 0, 0, 0.5),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.03);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0); /* Force HW acceleration for crisp text */
+  backface-visibility: hidden;
+}
+
+.quality-enabled .has-custom-bg .cc-card,
+.has-custom-bg .cc-card {
+  background: rgba(0, 0, 0, 0.8) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  transform: translateZ(0);
+}
+
+.has-custom-bg .cc-card * {
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.has-custom-bg .cc-card .text-muted-foreground,
+.has-custom-bg .cc-card .text-foreground\/40,
+.has-custom-bg .cc-card .text-foreground\/20,
+.has-custom-bg .cc-card .opacity-20,
+.has-custom-bg .cc-card .opacity-40 {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
 .cc-detail-text {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  opacity: 0.15;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted-alpha);
 }
 
 .cc-card:hover {
@@ -116,10 +152,8 @@ body {
 
 /* Typography & Labels */
 .cc-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 600;
   color: hsl(var(--muted-foreground));
   display: flex;
   align-items: center;
@@ -127,19 +161,17 @@ body {
 }
 
 .cc-value {
-  font-size: 3rem; /* 48px - text-5xl equivalent to fill empty space */
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-size: 2.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: hsl(var(--foreground));
   line-height: 0.9;
   font-variant-numeric: tabular-nums; /* Critical for stability: prevents jumping numbers */
 }
 
 .cc-sub-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-muted-alpha);
   margin-top: 0.25rem;
 }
@@ -154,11 +186,9 @@ body {
 /* Status Badges */
 .status-pill {
   padding: 4px 10px;
-  border-radius: 9999px;
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -276,17 +306,26 @@ body {
     transform 0.3s ease;
 }
 
-/* DEEP CONTRAST MODE - Triggered when a photo is active */
+/* STRICT HEADER LOCK - Prevents browser from de-fixing the header due to glass-morphism transforms */
+.header-locked {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  transform: none !important;
+  will-change: auto !important;
+  transition: background 0.5s ease-in-out, border-color 0.5s ease-in-out, opacity 0.5s ease-in-out !important;
+}
+
+/* DEEP CONTRAST MODE - Clinical Matte Glass */
 .has-custom-bg .glass-morphism {
-  background: rgba(
-    0,
-    0,
-    0,
-    0.85
-  ) !important; /* Hardened charcoal for high-density photo legibility */
-  box-shadow:
-    0 12px 32px -8px rgba(0, 0, 0, 0.95),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.86)) !important;
+  backdrop-filter: blur(24px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(150%) !important;
+  box-shadow: 
+    0 24px 48px -12px rgba(0, 0, 0, 0.85), 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  transform: translateZ(0);
 }
 
 /* Brighten Footer for Legibility */
@@ -338,29 +377,7 @@ body {
 
 .visual-quality-high .cc-card:hover {
   border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px); /* Physical lift signal */
-  box-shadow:
-    0 12px 24px -8px rgba(0, 0, 0, 0.6),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-
-.has-custom-bg .visual-quality-high .cc-card:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 16px 32px -10px rgba(0, 0, 0, 0.9),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-
-/* Terminal Expansion Animation */
-@keyframes expand-up {
-  from {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  transform: translateY(0);
 }
 
 .terminal-expand-enter {

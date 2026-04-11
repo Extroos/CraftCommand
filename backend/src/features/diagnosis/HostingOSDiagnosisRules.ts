@@ -1,6 +1,8 @@
 
-import { DiagnosisRule } from './types';
-import { ServerConfig, DiagnosisResult } from '@shared/types';
+import os from 'os';
+import { DiagnosisRule, DiagnosisResult, ServerConfig, SystemStats } from './types';
+import path from 'path';
+import fs from 'fs-extra';
 
 /**
  * ╔══════════════════════════════════════════════════════╗
@@ -91,7 +93,159 @@ export const MemoryPressureRule: DiagnosisRule = {
     }
 };
 
+export const InsufficientRamRule: DiagnosisRule = {
+    id: 'insufficient_ram_allocation',
+    name: 'Insufficient RAM Allocation',
+    description: 'Checks if the allocated RAM meets minimum requirements',
+    tier: 1,
+    defaultConfidence: 100,
+    triggers: [],
+    analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
+        const minRam = 1;
+        if (server.ram < minRam) {
+            return {
+                id: `low-ram-${server.id}-${Date.now()}`,
+                ruleId: 'insufficient_ram_allocation',
+                severity: 'WARNING',
+                title: 'Low Memory Allocation',
+                explanation: `Server is allocated ${server.ram}GB RAM. Some software versions require at least ${minRam}GB to start reliably.`,
+                recommendation: `Increase RAM to ${minRam}GB or more.`,
+                action: {
+                    type: 'UPDATE_CONFIG',
+                    payload: { serverId: server.id, ram: minRam },
+                    automaticRepair: false
+                },
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+export const DiskSpaceRule: DiagnosisRule = {
+    id: 'low_disk_space',
+    name: 'Low Disk Space',
+    description: 'Checks for low disk space on the hosting drive',
+    triggers: [
+        /No space left on device/i,
+        /Insufficient space/i,
+        /IOException: Disk full/i
+    ],
+    tier: 1,
+    defaultConfidence: 100,
+    analyze: async (server: ServerConfig, logs: string[], env: SystemStats): Promise<DiagnosisResult | null> => {
+        const hasError = logs.some(l => /No space left on device|Insufficient space/i.test(l));
+        
+        // env.diskFree is in MB (from DiagnosisService)
+        const diskFreeMB = env.diskFree || 0;
+        const lowDisk = diskFreeMB > 0 && diskFreeMB < 500; // < 500MB
+
+        if (hasError || lowDisk) {
+            return {
+                id: `disk-full-${server.id}-${Date.now()}`,
+                ruleId: 'low_disk_space',
+                severity: 'CRITICAL',
+                title: 'Disk Space Exhausted',
+                explanation: hasError ? 'Server crashed because the disk is full.' : `Disk space is critically low (${Math.round(diskFreeMB)}MB remaining).`,
+                recommendation: 'Delete old backups, logs, or unused files to free up space.',
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+// --- CPU SMOOTHING (v4.8) ---
+// We track the last 3 CPU readings to ensure we don't fire on quick spikes.
+const cpuHistory: number[] = [];
+const HISTORY_LIMIT = 3;
+
+export const NodeHealthRule: DiagnosisRule = {
+    id: 'node_system_health',
+    name: 'Local Node Health',
+    description: 'Monitors the health of the local hosting engine',
+    tier: 1,
+    defaultConfidence: 90,
+    triggers: [],
+    analyze: async (server: ServerConfig, logs: string[], env: SystemStats): Promise<DiagnosisResult | null> => {
+        // v4.0 Resilience: Stabilization Period (2 Minutes)
+        const uptime = os.uptime();
+        if (uptime < 120) return null;
+
+        // Use system-wide CPU from the environment stats
+        const systemCpu = env.cpuUsage || 0;
+        
+        // Update History
+        cpuHistory.push(systemCpu);
+        if (cpuHistory.length > HISTORY_LIMIT) cpuHistory.shift();
+
+        // v4.8 Smoothing Logic:
+        // 1. Threshold raised to 98% (Requested)
+        // 2. Requires ALL history points to be above threshold (Smoothed)
+        // 3. Immediately clears if current load is normal (Real-time suppression)
+        const isSustainedHighLoad = cpuHistory.length >= HISTORY_LIMIT && cpuHistory.every(v => v >= 98);
+        
+        if (systemCpu >= 98 && isSustainedHighLoad) {
+             return {
+                id: `node-health-${Date.now()}`,
+                ruleId: 'node_system_health',
+                severity: 'WARNING',
+                title: 'Node Overloaded',
+                explanation: `The hosting panel is experiencing sustained extreme CPU usage (${Math.round(systemCpu)}%). Background tasks may be delayed.`,
+                recommendation: 'Reduce the number of simultaneously running automated tasks or wait for background indexing to complete.',
+                timestamp: Date.now()
+            };
+        }
+        
+        // If CPU is below 98%, any previous history is irrelevant for a "Fix"
+        if (systemCpu < 98) {
+            cpuHistory.length = 0; // Clear history to ensure it requires a FRESH sustained period to re-trigger
+        }
+
+        return null;
+    }
+};
+
+export const LogManagementRule: DiagnosisRule = {
+    id: 'log_file_oversize',
+    name: 'Oversized Log File',
+    description: 'Detects massive log files that cause performance lag',
+    tier: 3,
+    defaultConfidence: 100,
+    triggers: [],
+    analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
+        if (!server.workingDirectory) return null;
+        const logPath = path.join(server.workingDirectory, 'logs', 'latest.log');
+        
+        try {
+            const stats = await fs.stat(logPath);
+            const sizeMb = stats.size / 1024 / 1024;
+            if (sizeMb > 250) {
+                return {
+                    id: `huge-log-${server.id}-${Date.now()}`,
+                    ruleId: 'log_file_oversize',
+                    severity: 'WARNING',
+                    title: 'Oversized Log File',
+                    explanation: `latest.log is ${Math.round(sizeMb)}MB. Large logs can cause panel lag and high disk I/O.`,
+                    recommendation: 'Enable log compression or clear the mods/plugins causing excessive output.',
+                    action: {
+                         type: 'SMART_LOG_ROTATION',
+                         payload: { serverId: server.id },
+                         automaticRepair: false
+                    },
+                    timestamp: Date.now()
+                };
+            }
+        } catch (e) {}
+        return null;
+    }
+};
+
 export const HostingOSRules: DiagnosisRule[] = [
     ThermalAlertRule,
-    MemoryPressureRule
+    MemoryPressureRule,
+    InsufficientRamRule,
+    DiskSpaceRule,
+    NodeHealthRule,
+    LogManagementRule
 ];

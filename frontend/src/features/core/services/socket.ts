@@ -8,7 +8,12 @@ class SocketService {
 
     constructor() {
         this.socket = io(SOCKET_URL, {
-            autoConnect: false // We connect manually after auth
+            autoConnect: false,
+            transports: ['websocket'], // Prevent 400 polling errors on fast restart
+            reconnectionAttempts: 20,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
         });
     }
 

@@ -1,6 +1,7 @@
 import { StorageProvider } from './StorageProvider';
 import { StorageFactory } from './StorageFactory';
 import {  AuditLog  } from '@shared/types';
+import { logger } from '../utils/logger';
 
 export class AuditRepository implements StorageProvider<AuditLog> {
     private provider: StorageProvider<AuditLog>;
@@ -19,18 +20,36 @@ export class AuditRepository implements StorageProvider<AuditLog> {
     delete(id: string) { return this.provider.delete(id); }
     saveAll(items: AuditLog[]) { return this.provider.saveAll(items); }
 
+    private addCount = 0;
+    private readonly MAX_LOGS = 5000;
+    private readonly PRUNE_THRESHOLD = 100;
+
     public async add(entry: AuditLog) {
-        // We use create for consistency. 
-        // Note: Capping logic could be done here, but unshift is easier in memory.
-        // For SQLite, we should probably delete oldest if count > 5000.
         this.create(entry);
-        
-        // Background pruning (Async-ish)
-        const all = this.findAll();
-        if (all.length > 5000) {
-            const sorted = all.sort((a, b) => b.timestamp - a.timestamp);
-            const toKeep = sorted.slice(0, 5000);
-            this.saveAll(toKeep);
+        this.addCount++;
+
+        // --- BACKGROUND PRUNING (v1.16.0) ---
+        // Only run prune every 100 logs to minimize IO/CPU overhead
+        if (this.addCount >= this.PRUNE_THRESHOLD) {
+            this.addCount = 0;
+            this.prune();
+        }
+    }
+
+    /**
+     * Optimized FIFO pruning for system stability.
+     */
+    private prune() {
+        try {
+            const all = this.findAll();
+            if (all.length > this.MAX_LOGS) {
+                logger.info(`[AuditRepository] Pruning audit history (${all.length} -> ${this.MAX_LOGS})`);
+                const sorted = all.sort((a, b) => b.timestamp - a.timestamp);
+                const toKeep = sorted.slice(0, this.MAX_LOGS);
+                this.saveAll(toKeep);
+            }
+        } catch (e) {
+            logger.error(`[AuditRepository] Pruning failed: ${e.message}`);
         }
     }
 

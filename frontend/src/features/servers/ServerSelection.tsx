@@ -8,6 +8,7 @@ import { useToast } from '../ui/Toast';
 import ImportServerModal from './ImportServerModal';
 
 import { useNavigate } from 'react-router-dom';
+import { DevWarningModal } from '../ui/DevWarningModal';
 
 interface ServerSelectionProps {
     onSelectServer: (server: ServerConfig) => void;
@@ -31,7 +32,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
     const navigate = useNavigate();
     const { servers, refreshServers, installProgress, stats, isLoading } = useServers();
     const { user } = useUser();
-    const { nodes, settings } = useSystem();
+    const { nodes, settings, version, metadata } = useSystem();
     const [userDropdown, setUserDropdown] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
     const [cloningServer, setCloningServer] = useState<ServerConfig | null>(null);
@@ -41,9 +42,21 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
     const [searchQuery, setSearchQuery] = useState('');
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+    const [showDevWarn, setShowDevWarn] = useState(false);
     const userRef = React.useRef<HTMLDivElement>(null);
     const { addToast } = useToast();
     const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
+
+    const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+    const { registerVisibleServers, addBackgroundTask, updateBackgroundTask, removeBackgroundTask } = useServers();
+
+    // Report visible IDs to context (debounced)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            registerVisibleServers(Array.from(visibleIds));
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [visibleIds, registerVisibleServers]);
 
     const isPro = !!settings?.app?.professionalMode;
 
@@ -99,13 +112,25 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
     const handleClone = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!cloningServer || !newCloneName.trim()) return;
+        const taskId = `clone-${cloningServer.id}-${Date.now()}`;
         setIsCloning(true);
         try {
+            addBackgroundTask({
+                id: taskId,
+                name: `Clone: ${cloningServer.name}`,
+                type: 'clone',
+                serverId: cloningServer.id,
+                status: 'running',
+                progress: 0,
+                message: `Cloning storage volumes for "${cloningServer.name}"...`
+            });
             await API.cloneServer(cloningServer.id, newCloneName.trim());
+            updateBackgroundTask(taskId, { name: `Clone: ${cloningServer.name}`, status: 'complete', progress: 100, message: 'Clone complete' });
             addToast('success', 'Clone', `Cloned to "${newCloneName.trim()}"`);
             setCloningServer(null);
             refreshServers();
         } catch (err: any) {
+            removeBackgroundTask(taskId);
             addToast('error', 'Clone Failed', err?.message || 'Clone failed');
         } finally {
             setIsCloning(false);
@@ -122,6 +147,21 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    useEffect(() => {
+        // Version-aware Dev Warning logic
+        const lastWarnedVersion = localStorage.getItem('cc_last_warned_version');
+        if (version && version !== '0.0.0' && lastWarnedVersion !== version) {
+            setShowDevWarn(true);
+        }
+    }, [version]);
+
+    const handleCloseDevWarn = () => {
+        if (version && version !== '0.0.0') {
+            localStorage.setItem('cc_last_warned_version', version);
+        }
+        setShowDevWarn(false);
+    };
 
     useEffect(() => {
         // Redundant fetch removed to prevent initialization loops.
@@ -143,11 +183,23 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
         });
 
         if (isConfirmed) {
+            const taskId = `delete-${id}-${Date.now()}`;
             try {
+                addBackgroundTask({
+                    id: taskId,
+                    name: `Purge: ${name}`,
+                    type: 'delete',
+                    serverId: id,
+                    status: 'running',
+                    progress: 0,
+                    message: `Purging instance data for "${name}"...`
+                });
                 await API.deleteServer(id);
+                updateBackgroundTask(taskId, { name: `Purge: ${name}`, status: 'complete', progress: 100, message: 'Purge complete' });
                 addToast('success', 'Deleted', 'Server has been removed.');
                 refreshServers();
             } catch (err: any) {
+                removeBackgroundTask(taskId);
                 const help = getErrorHelp(err.code);
                 if (help) {
                     addToast('error', help.title, help.description);
@@ -458,7 +510,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                     </div>
                                 </div>
                                 {/* System Features */}
-                                {(settings?.app?.dockerEnabled || settings?.app?.https?.enabled || settings?.app?.remoteAccess?.enabled || settings?.app?.hostMode || settings?.app?.autoHealing || settings?.app?.storageProvider === 'sqlite' || settings?.app?.distributedNodes?.enabled) && (
+                                {(settings?.app?.dockerEnabled || settings?.app?.https?.enabled || settings?.app?.remoteAccess?.enabled || settings?.app?.hostMode || settings?.app?.automaticRepair || settings?.app?.storageProvider === 'sqlite' || settings?.app?.distributedNodes?.enabled) && (
                                     <div className="pt-3 border-t border-border/30">
                                         <div className="flex items-center gap-1.5 mb-2.5">
                                             <Zap size={11} className="text-foreground/50" />
@@ -485,9 +537,9 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                                     <Shield size={9} /> Host Mode
                                                 </span>
                                             )}
-                                            {settings?.app?.autoHealing && (
+                                            {settings?.app?.automaticRepair && (
                                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-bold uppercase tracking-wider bg-green-500/10 border border-green-500/20 text-green-400">
-                                                    <Activity size={9} /> Auto-Heal
+                                                    <Activity size={9} /> Automatic Repair
                                                 </span>
                                             )}
                                             {settings?.app?.storageProvider === 'sqlite' && (
@@ -600,144 +652,31 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                         </button>
                                     )}
                                 </motion.div>
-                            ) : (() => {
-                                // --- CUSTOM VIRTUALIZATION ENGINE ---
-                                // For 1000+ servers without external dependencies like react-window,
-                                // we use a simple "Windowing" technique: only render the first 40 items,
-                                // and load more as the user scrolls.
-                                const WINDOW_SIZE = 50;
-                                const renderedServers = sortedServers.slice(0, WINDOW_SIZE);
-                                const hiddenCount = sortedServers.length - WINDOW_SIZE;
-
-                                return (
-                                    <>
-                                        {renderedServers.map((server) => {
-                                            const stat = stats[server.id];
-                                            const isOnline = server.status === ServerStatus.ONLINE;
-                                            const isTransitioning = server.status === ServerStatus.STARTING || server.status === ServerStatus.STOPPING || server.status === ServerStatus.RESTARTING;
-                                            const isInstalling = !!installProgress[server.id] || server.status === ServerStatus.INSTALLING;
-                                            const isCrashed = server.status === ServerStatus.CRASHED;
-                                            const cpuVal = stat?.cpu || 0;
-                                            const memPct = stat && server.ram ? (stat.memory / (server.ram * 1024)) * 100 : 0;
-                                            const serverCpuColor = cpuVal > 80 ? '#ef4444' : cpuVal > 50 ? '#f59e0b' : '#3b82f6';
-                                            const serverMemColor = memPct > 80 ? '#ef4444' : memPct > 50 ? '#f59e0b' : '#ffffff';
-                                            const tpsVal = stat ? parseFloat(stat.tps) : 0;
-
-                                            return (
-                                                <div key={server.id}
-                                                    onClick={() => onSelectServer(server)}
-                                                    className={`group rounded-md border transition-all cursor-pointer overflow-hidden ${
-                                                        isOnline ? 'border-l-2 border-l-emerald-500/40 border-border/80' : 'border-border/80'
-                                                    } ${user?.preferences.visualQuality ? 'glass-morphism hover:border-primary/30 hover:scale-[1.005]' : 'bg-card hover:border-border-strong'}`}>
-                                                    <div className={`flex ${viewMode === 'grid' ? 'flex-col gap-3 p-4' : 'items-center gap-5 p-4'}`}>
-                                                        {/* Status icon */}
-                                                        <div className="relative flex-shrink-0">
-                                                            <div className={`w-11 h-11 rounded-lg flex items-center justify-center border transition-all ${
-                                                                isInstalling ? 'bg-foreground/5 border-foreground/10 text-foreground/40' :
-                                                                isOnline ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
-                                                                isCrashed ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' :
-                                                                isTransitioning ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
-                                                                'bg-secondary border-border text-muted-foreground/40'
-                                                            }`}>
-                                                                {isInstalling ? <Loader2 size={20} className="animate-spin" /> :
-                                                                 isTransitioning ? <RotateCw size={20} className="animate-spin" /> :
-                                                                 <Server size={20} />}
-                                                            </div>
-                                                            {isOnline && <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-card bg-emerald-500" />}
-                                                        </div>
-
-                                                        {/* Server info */}
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2">
-                                                                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors truncate">{server.name}</h3>
-                                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 ${server.software === 'Bedrock' ? 'bg-sky-500/10 text-sky-500 border border-sky-500/20' : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'}`}>{server.software === 'Bedrock' ? 'Bedrock' : 'Java'}</span>
-                                                                {server.executionEngine === 'docker' && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 bg-blue-500/10 text-blue-400 border border-blue-500/20"><Database size={9} /> Docker</span>}
-                                                                {server.executionEngine === 'remote' && server.nodeId && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 bg-violet-500/10 text-violet-400 border border-violet-500/20"><Globe size={9} /> {nodes.find(n => n.id === server.nodeId)?.name || 'Remote'}</span>}
-                                                                {isCrashed && <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded text-[8px] font-bold uppercase flex-shrink-0">Crashed</span>}
-                                                            </div>
-                                                            <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground/40 font-mono">
-                                                                {isInstalling ? (
-                                                                    <span className="text-foreground/40">{installProgress[server.id]?.message || 'Installing...'}</span>
-                                                                ) : (
-                                                                    <>
-                                                                        <span>{server.software} {server.version}</span>
-                                                                        <span className="text-border">|</span>
-                                                                        <span>:{server.port}</span>
-                                                                        <span className="text-border">|</span>
-                                                                        <span>{server.ram}G RAM</span>
-                                                                    </>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Live metrics */}
-                                                        {isOnline && stat && (
-                                                            <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-2 xlg:grid-cols-5 gap-3 w-full bg-secondary/10 p-3.5 rounded-md border border-border/40" : "hidden md:flex items-center gap-5 flex-shrink-0"}>
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="relative">
-                                                                        <MiniRing value={cpuVal} max={100} color={serverCpuColor} />
-                                                                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-foreground tabular-nums">{cpuVal.toFixed(0)}</span>
-                                                                    </div>
-                                                                    <div>
-                                                                        <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider">CPU</div>
-                                                                        <div className="text-[11px] font-bold text-foreground tabular-nums">{cpuVal.toFixed(1)}%</div>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="relative">
-                                                                        <MiniRing value={memPct} max={100} color={serverMemColor} />
-                                                                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-foreground tabular-nums">{Math.round(memPct)}</span>
-                                                                    </div>
-                                                                    <div>
-                                                                        <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider">Mem</div>
-                                                                        <div className="text-[11px] font-bold text-foreground tabular-nums">{stat.memory > 1024 ? `${(stat.memory/1024).toFixed(1)}G` : `${Math.round(stat.memory)}M`}</div>
-                                                                    </div>
-                                                                </div>
-                                                                <div className={`text-center px-2 ${viewMode === 'grid' ? 'flex flex-col items-center justify-center' : ''}`}>
-                                                                    <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider mb-0.5">TPS</div>
-                                                                    <div className={`text-sm font-black tabular-nums ${tpsVal >= 18 ? 'text-emerald-500' : tpsVal >= 15 ? 'text-amber-500' : 'text-rose-500'}`}>{tpsVal.toFixed(1)}</div>
-                                                                </div>
-                                                                <div className={`flex flex-col gap-1 min-w-[80px] ${viewMode === 'grid' ? 'items-center justify-center' : ''}`}>
-                                                                    <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider">RAM</div>
-                                                                    <RamBar used={stat.memory / 1024} total={server.ram} width={80} height={6} />
-                                                                    <div className="text-[9px] text-muted-foreground/40 font-mono tabular-nums">{stat.memory > 1024 ? `${(stat.memory/1024).toFixed(1)}` : `${(stat.memory/1024).toFixed(2)}`}G / {server.ram}G</div>
-                                                                </div>
-                                                                <div className={`${viewMode === 'grid' ? 'col-span-2 flex justify-evenly mt-2 pt-3 border-t' : 'border-l pl-4 flex items-center gap-4'} border-border/30`}>
-                                                                    <div className="text-center">
-                                                                        <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider mb-0.5">Players</div>
-                                                                        <div className="text-sm font-bold text-foreground tabular-nums">{stat.players}</div>
-                                                                    </div>
-                                                                    <div className="text-center">
-                                                                        <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider mb-0.5">Uptime</div>
-                                                                        <div className="text-[11px] font-bold text-foreground font-mono">{formatUptime(stat.uptime)}</div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Actions */}
-                                                        <div className={`flex flex-shrink-0 ${viewMode === 'grid' ? 'w-full gap-2 mt-2' : 'items-center gap-1'}`}>
-                                                            <button onClick={(e) => { e.stopPropagation(); setCloningServer(server); setNewCloneName(`${server.name} (Clone)`); }} className={`p-2 rounded-lg opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-all text-foreground hover:bg-secondary ${viewMode === 'grid' ? 'bg-secondary/40 !opacity-100' : ''}`} title="Clone"><Copy size={14} /></button>
-                                                            <button disabled={isOnline || server.status === ServerStatus.STARTING || isInstalling} onClick={(e) => handleDelete(e, server.id, server.name)} className={`p-2 rounded-lg opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-all ${(isOnline || server.status === ServerStatus.STARTING || isInstalling) ? 'text-foreground/15 cursor-not-allowed' : 'text-foreground hover:text-rose-500 hover:bg-rose-500/10'} ${viewMode === 'grid' ? 'bg-secondary/40 !opacity-100' : ''}`} title="Delete"><Trash2 size={14} /></button>
-                                                            <div className={`px-4 py-1.5 rounded-md bg-primary/10 border border-primary/20 hover:bg-primary hover:text-primary-foreground text-primary transition-all text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 ${viewMode === 'grid' ? 'flex-1 ml-auto' : 'ml-1'}`}>
-                                                                Connect <ArrowRight size={12} className={viewMode === 'list' ? 'ml-1' : ''} />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                        {hiddenCount > 0 && (
-                                            <div className={`${viewMode === 'grid' ? 'col-span-2' : ''} py-4 text-center border border-dashed border-border/30 rounded-md bg-secondary/5`}>
-                                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">
-                                                    + {hiddenCount} additional servers hidden
-                                                </p>
-                                                <p className="text-[9px] text-muted-foreground/40 mt-1">Use search or virtualization for professional fleet exploration</p>
-                                            </div>
-                                        )}
-                                    </>
-                                );
-                            })()}
+                            ) : (
+                                <>
+                                    {sortedServers.map((server) => (
+                                        <ServerCardWrapper 
+                                            key={server.id}
+                                            server={server}
+                                            viewMode={viewMode}
+                                            onSelect={onSelectServer}
+                                            onVisibilityChange={(id, visible) => {
+                                                setVisibleIds(prev => {
+                                                    const next = new Set(prev);
+                                                    if (visible) next.add(id);
+                                                    else next.delete(id);
+                                                    return next;
+                                                });
+                                            }}
+                                            onDelete={handleDelete}
+                                            onClone={(s) => { 
+                                                setCloningServer(s); 
+                                                setNewCloneName(`${s.name} (Clone)`); 
+                                            }}
+                                        />
+                                    ))}
+                                </>
+                            )}
                             </div>
                         </div>
                     </>);
@@ -789,84 +728,27 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                         </div>
                     )}
 
-                    {Array.isArray(sortedServers) && sortedServers.length > 0 && sortedServers.map((server) => {
-                        const stat = stats[server.id];
-                        const status = server.status;
-                        const isTransitioning = status === ServerStatus.STARTING || status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING || status === ServerStatus.INSTALLING;
-                        const isOnline = status === ServerStatus.ONLINE;
-
-                        return (
-                            <motion.div 
-                                variants={{
-                                    hidden: { opacity: 0, x: -10 },
-                                    visible: { opacity: 1, x: 0, transition: { type: 'spring', damping: 25, stiffness: 200 } }
-                                }}
-                                key={server.id}
-                                onClick={() => onSelectServer(server)}
-                                className={`group relative border border-border transition-all cursor-pointer overflow-hidden ${user?.preferences.visualQuality ? 'glass-morphism rounded-md p-5 hover:border-primary/30' : 'bg-card rounded-md p-4 hover:border-border-strong shadow-sm'}`}
-                            >
-                                <div className="flex items-center gap-6">
-                                    <div className="relative">
-                                        <div className={`w-12 h-12 rounded-md flex items-center justify-center border transition-all ${
-                                            installProgress[server.id] ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500 animate-pulse' :
-                                            isOnline ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
-                                            status === ServerStatus.OFFLINE ? 'bg-secondary border-border text-muted-foreground' :
-                                            status === ServerStatus.INSTALLING ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' :
-                                            'bg-amber-500/10 border-amber-500/20 text-amber-500'
-                                        }`}>
-                                            {installProgress[server.id] ? <Loader2 size={24} className="animate-spin" /> : 
-                                             isTransitioning ? <RotateCw size={24} className="animate-spin text-amber-500" /> : 
-                                             <Server size={24} />}
-                                        </div>
-                                        {isOnline && <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background bg-emerald-500"></div>}
-                                        {isTransitioning && <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background bg-amber-500 animate-pulse"></div>}
-                                    </div>
-
-                                    <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-                                        <div>
-                                            <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{server.name}</h3>
-                                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 font-mono">
-                                                {installProgress[server.id] ? (
-                                                    <ProgressOverlay isVisible={true} variant="compact" percent={installProgress[server.id].percent} message={installProgress[server.id].message} />
-                                                ) : (
-                                                    <span>{server.id}</span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="hidden md:flex gap-6 text-xs text-muted-foreground font-mono border-l border-border pl-6">
-                                            <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Platform</span><span className="text-foreground">{server.software === 'Bedrock' ? 'Bedrock' : 'Java'}</span></div>
-                                            <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Port</span><span className="text-foreground">{server.port}</span></div>
-                                            <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Memory</span><span className="text-foreground">{server.ram} GB</span></div>
-                                            <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Version</span><span className="text-foreground">{server.version}</span></div>
-                                            {server.executionEngine === 'docker' && (
-                                                <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Engine</span><span className="flex items-center gap-1.5 text-blue-400 font-semibold"><Database size={12} /> Docker</span></div>
-                                            )}
-                                            {server.executionEngine === 'remote' && (
-                                                <div><span className="block text-foreground/50 text-[10px] uppercase tracking-wider mb-0.5">Node</span><span className="flex items-center gap-1.5 text-foreground"><Network size={12} className="text-blue-400" /><span className="text-blue-400 font-semibold">{nodes.find(n => n.id === server.nodeId)?.name || 'Unknown'}</span></span></div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex justify-end items-center gap-4">
-                                            {status === ServerStatus.CRASHED && (
-                                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-rose-500 text-white rounded text-[9px] font-bold uppercase tracking-tight shadow-sm whitespace-nowrap">
-                                                    <AlertTriangle size={10} className="stroke-[3px]" /><span>Analysis Required</span>
-                                                </div>
-                                            )}
-                                            <div className="flex items-center gap-3">
-                                                <button disabled={isOnline || status === ServerStatus.STARTING || !!installProgress[server.id] || status === ServerStatus.INSTALLING} onClick={(e) => handleDelete(e, server.id, server.name)} className={`p-2 rounded-md opacity-0 group-hover:opacity-100 transition-all ${(isOnline || status === ServerStatus.STARTING || !!installProgress[server.id] || status === ServerStatus.INSTALLING) ? 'text-muted-foreground/30 cursor-not-allowed' : 'text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10'}`} title={(isOnline || status === ServerStatus.STARTING) ? "Stop server to delete" : "Delete Instance"}><Trash2 size={16} /></button>
-                                                {installProgress[server.id] ? (
-                                                    <div className="px-3 py-1.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 transition-colors text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin" /> Installing...</div>
-                                                ) : (
-                                                    <div className="px-3 py-1.5 rounded bg-secondary border border-border group-hover:bg-foreground group-hover:text-background transition-colors text-xs font-medium flex items-center gap-2">Connect <ArrowRight size={12} /></div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        );
-                    })}
+                    {Array.isArray(sortedServers) && sortedServers.length > 0 && sortedServers.map((server) => (
+                        <ServerCardWrapper 
+                            key={server.id}
+                            server={server}
+                            viewMode="list"
+                            onSelect={onSelectServer}
+                            onVisibilityChange={(id, visible) => {
+                                setVisibleIds(prev => {
+                                    const next = new Set(prev);
+                                    if (visible) next.add(id);
+                                    else next.delete(id);
+                                    return next;
+                                });
+                            }}
+                            onDelete={handleDelete}
+                            onClone={(s) => { 
+                                setCloningServer(s); 
+                                setNewCloneName(`${s.name} (Clone)`); 
+                            }}
+                        />
+                    ))}
                 </motion.div>
                 )}
 
@@ -916,6 +798,157 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                     onConfirm={handleConfirm}
                     onCancel={handleCancel}
                 />
+
+                <DevWarningModal 
+                    isOpen={showDevWarn} 
+                    onClose={handleCloseDevWarn} 
+                    visualQuality={user?.preferences.visualQuality} 
+                    version={version}
+                    metadata={metadata}
+                />
+            </div>
+        </div>
+    );
+};
+
+const ServerCardWrapper: React.FC<{
+    server: ServerConfig;
+    viewMode: 'list' | 'grid';
+    onSelect: (s: ServerConfig) => void;
+    onVisibilityChange: (id: string, visible: boolean) => void;
+    onDelete: (e: React.MouseEvent, id: string, name: string) => void;
+    onClone: (server: ServerConfig) => void;
+}> = ({ server, viewMode, onSelect, onVisibilityChange, onDelete, onClone }) => {
+    const { stats, installProgress, getUnifiedStatus } = useServers();
+    const { nodes } = useSystem();
+    const { user } = useUser();
+    const cardRef = React.useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(([entry]) => {
+            onVisibilityChange(server.id, entry.isIntersecting);
+        }, { threshold: 0.1 });
+        
+        if (cardRef.current) observer.observe(cardRef.current);
+        return () => observer.disconnect();
+    }, [server.id, onVisibilityChange]);
+
+    const stat = stats[server.id];
+    const status = getUnifiedStatus(server);
+    
+    const isUnreachable = status === ServerStatus.NODE_UNREACHABLE;
+    const isOnline = status === ServerStatus.ONLINE;
+    const isTransitioning = (status === ServerStatus.STARTING || status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING);
+    const isInstalling = (!!installProgress[server.id] || status === ServerStatus.INSTALLING);
+    const isCrashed = status === ServerStatus.CRASHED;
+    const cpuVal = stat?.cpu || 0;
+    const memPct = stat && server.ram ? (stat.memory / (server.ram * 1024)) * 100 : 0;
+    const serverCpuColor = cpuVal > 80 ? '#ef4444' : cpuVal > 50 ? '#f59e0b' : '#3b82f6';
+    const serverMemColor = memPct > 80 ? '#ef4444' : memPct > 50 ? '#f59e0b' : '#ffffff';
+    const tpsVal = stat ? parseFloat(stat.tps) : 0;
+
+    const formatUptime = (seconds: number) => {
+        if (!seconds || seconds <= 0) return '—';
+        const d = Math.floor(seconds / 86400);
+        const h = Math.floor((seconds % 86400) / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        if (d > 0) return `${d}d ${h}h`;
+        if (h > 0) return `${h}h ${m}m`;
+        return `${m}m`;
+    };
+
+    return (
+        <div 
+            ref={cardRef}
+            onClick={() => onSelect(server)}
+            className={`group relative rounded-md border transition-all cursor-pointer overflow-hidden border-border/80 ${user?.preferences.visualQuality ? 'glass-morphism hover:border-primary/30 hover:scale-[1.005]' : 'bg-card hover:border-border-strong'}`}
+        >
+
+            <div className={`flex ${viewMode === 'grid' ? 'flex-col gap-3 p-4' : 'items-center gap-5 p-4'}`}>
+                {/* Status icon */}
+                <div className={`relative flex-shrink-0 ${viewMode === 'grid' ? 'mt-2' : ''}`}>
+                    <div className={`w-11 h-11 rounded-lg flex items-center justify-center border transition-all ${
+                        isInstalling ? 'bg-foreground/5 border-foreground/10 text-foreground/40' :
+                        isOnline ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                        isCrashed ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' :
+                        isTransitioning ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
+                        isUnreachable ? 'bg-rose-500/20 border-rose-500/40 text-rose-500 animate-pulse' :
+                        'bg-secondary border-border text-muted-foreground/40'
+                    }`}>
+                        {isInstalling ? <Loader2 size={20} className="animate-spin" /> :
+                         isUnreachable ? <Wifi size={20} className="opacity-50" /> :
+                         isTransitioning ? <RotateCw size={20} className="animate-spin" /> :
+                         <Server size={20} />}
+                    </div>
+                </div>
+
+                {/* Server info */}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors truncate">{server.name}</h3>
+                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 ${server.software === 'Bedrock' ? 'bg-sky-500/10 text-sky-500 border border-sky-500/20' : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'}`}>{server.software === 'Bedrock' ? 'Bedrock' : 'Java'}</span>
+                        {server.executionEngine === 'docker' && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 bg-blue-500/10 text-blue-400 border border-blue-500/20"><Database size={9} /> Docker</span>}
+                        {server.executionEngine === 'remote' && server.nodeId && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 border ${isUnreachable ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-violet-500/10 text-violet-400 border-violet-500/20'}`}><Globe size={9} /> {nodes.find(n => n.id === server.nodeId)?.name || 'Remote'}</span>}
+                        {isCrashed && <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded text-[8px] font-bold uppercase flex-shrink-0">Crashed</span>}
+                        {isUnreachable && <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded text-[8px] font-bold uppercase flex-shrink-0 animate-pulse">Node Unreachable</span>}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground/40 font-mono">
+                        {isInstalling ? (
+                            <span className="text-foreground/40">{installProgress[server.id]?.message || 'Installing...'}</span>
+                        ) : (
+                            <>
+                                <span>{server.software} {server.version}</span>
+                                <span className="text-border">|</span>
+                                <span>:{server.port}</span>
+                                <span className="text-border">|</span>
+                                <span>{server.ram}G RAM</span>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* Mini Stats (v1.14.0) */}
+                {isOnline && stat && (
+                    <div className={viewMode === 'grid' ? "grid grid-cols-2 gap-3 w-full bg-secondary/10 p-3.5 rounded-md border border-border/40" : "hidden md:flex items-center gap-5 flex-shrink-0"}>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-bold text-foreground tabular-nums">{cpuVal.toFixed(1)}%</span>
+                            <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider">CPU</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-bold text-foreground tabular-nums">{stat.memory > 1024 ? `${(stat.memory/1024).toFixed(1)}G` : `${Math.round(stat.memory)}M`}</span>
+                            <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider">Mem</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                           <span className="text-[11px] font-bold text-foreground tabular-nums">{stat.players}</span>
+                           <div className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-wider">Players</div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Actions */}
+                <div className={`flex flex-shrink-0 items-center ${viewMode === 'grid' ? 'w-full gap-2 mt-2' : 'gap-1'}`}>
+                    {/* Management Actions (Secondary) */}
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onClone(server); }} 
+                        className={`p-2 rounded-lg opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-all text-foreground hover:bg-secondary ${viewMode === 'grid' ? 'bg-secondary/40 !opacity-100' : ''}`}
+                        title="Clone Instance"
+                    >
+                        <Copy size={14} />
+                    </button>
+                    <button 
+                        disabled={isOnline || server.status === ServerStatus.STARTING || isInstalling} 
+                        onClick={(e) => onDelete(e, server.id, server.name)} 
+                        className={`p-2 rounded-lg opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-all ${(isOnline || server.status === ServerStatus.STARTING || isInstalling) ? 'text-foreground/15 cursor-not-allowed' : 'text-foreground hover:text-rose-500 hover:bg-rose-500/10'} ${viewMode === 'grid' ? 'bg-secondary/40 !opacity-100' : ''}`}
+                        title="Delete Instance"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                    
+                    {/* Main Action */}
+                    <div className={`px-4 py-1.5 rounded-md bg-primary/10 border border-primary/20 group-hover:bg-primary group-hover:text-primary-foreground text-primary transition-all text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 ${viewMode === 'grid' ? 'flex-1 ml-auto' : 'ml-1'}`}>
+                        Connect <ArrowRight size={12} />
+                    </div>
+                </div>
             </div>
         </div>
     );

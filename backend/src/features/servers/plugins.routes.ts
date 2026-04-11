@@ -3,6 +3,7 @@ import { pluginService } from '../plugins/PluginService';
 import { pluginConfigService } from '../plugins/PluginConfigService';
 import { verifyToken, requirePermission, requireCapability } from '../../middleware/authMiddleware';
 import { auditService } from '../system/AuditService';
+import { logger } from '../../utils/logger';
 
 import {  PluginSearchQuery, PluginSource  } from '@shared/types';
 
@@ -38,7 +39,7 @@ router.get('/search', requirePermission('server.view'), async (req, res) => {
         const result = await pluginService.search(query, serverId);
         res.json(result);
     } catch (err: any) {
-        console.error('[PluginRoutes] Search error:', err.message);
+        logger.error(`[PluginRoutes] ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -53,7 +54,7 @@ router.get('/servers/:id', requirePermission('server.view'), async (req, res) =>
         const plugins = pluginService.getInstalled(req.params.id);
         res.json(plugins);
     } catch (err: any) {
-        console.error('[PluginRoutes] List error:', err.message);
+        logger.error(`[PluginRoutes] List error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -64,7 +65,7 @@ router.get('/servers/:id/scan', requirePermission('server.files.read'), async (r
         const plugins = await pluginService.scanInstalled(req.params.id);
         res.json(plugins);
     } catch (err: any) {
-        console.error('[PluginRoutes] Scan error:', err.message);
+        logger.error(`[PluginRoutes] Scan error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -84,13 +85,13 @@ router.post('/servers/:id/install', requirePermission('server.files.write'), asy
 
         const plugin = await pluginService.install(req.params.id, sourceId, source as PluginSource);
         res.json(plugin);
-        auditService.log((req as any).user.id, 'PLUGIN_INSTALL', req.params.id, { 
+        auditService.log(req.user.id, 'PLUGIN_INSTALL', req.params.id, { 
             pluginName: plugin.name, 
             source, 
             sourceId 
         });
     } catch (err: any) {
-        console.error('[PluginRoutes] Install error:', err.message);
+        logger.error(`[PluginRoutes] Install error: ${err.message}`);
         const msg = err.message || 'Install failed';
         
         if (msg.includes('not found') || msg.includes('not exist')) {
@@ -112,9 +113,9 @@ router.delete('/servers/:id/:pluginId', requirePermission('server.files.write'),
     try {
         await pluginService.uninstall(req.params.id, req.params.pluginId);
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'PLUGIN_UNINSTALL', req.params.id, { pluginId: req.params.pluginId });
+        auditService.log(req.user.id, 'PLUGIN_UNINSTALL', req.params.id, { pluginId: req.params.pluginId });
     } catch (err: any) {
-        console.error('[PluginRoutes] Uninstall error:', err.message);
+        logger.error(`[PluginRoutes] Uninstall error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -124,13 +125,13 @@ router.patch('/servers/:id/:pluginId/toggle', requirePermission('server.files.wr
     try {
         const plugin = await pluginService.toggle(req.params.id, req.params.pluginId);
         res.json(plugin);
-        auditService.log((req as any).user.id, 'PLUGIN_TOGGLE', req.params.id, { 
+        auditService.log(req.user.id, 'PLUGIN_TOGGLE', req.params.id, { 
             pluginId: req.params.pluginId, 
             pluginName: plugin.name,
             enabled: plugin.enabled 
         });
     } catch (err: any) {
-        console.error('[PluginRoutes] Toggle error:', err.message);
+        logger.error(`[PluginRoutes] Toggle error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -140,13 +141,13 @@ router.post('/servers/:id/:pluginId/update', requirePermission('server.files.wri
     try {
         const plugin = await pluginService.update(req.params.id, req.params.pluginId);
         res.json(plugin);
-        auditService.log((req as any).user.id, 'PLUGIN_UPDATE', req.params.id, { 
+        auditService.log(req.user.id, 'PLUGIN_UPDATE', req.params.id, { 
             pluginId: req.params.pluginId, 
             pluginName: plugin.name,
             version: plugin.version 
         });
     } catch (err: any) {
-        console.error('[PluginRoutes] Update error:', err.message);
+        logger.error(`[PluginRoutes] Update error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -161,12 +162,12 @@ router.post('/servers/:id/bulk-update', requirePermission('server.files.write'),
         
         const results = await pluginService.bulkUpdate(req.params.id, pluginIds);
         res.json(results);
-        auditService.log((req as any).user.id, 'PLUGIN_BULK_UPDATE', req.params.id, { 
+        auditService.log(req.user.id, 'PLUGIN_BULK_UPDATE', req.params.id, { 
             pluginIds,
             count: results.length 
         });
     } catch (err: any) {
-        console.error('[PluginRoutes] Bulk update error:', err.message);
+        logger.error(`[PluginRoutes] Bulk update error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -177,7 +178,7 @@ router.get('/servers/:id/updates', requirePermission('server.view'), async (req,
         const updates = await pluginService.checkUpdates(req.params.id);
         res.json(updates);
     } catch (err: any) {
-        console.error('[PluginRoutes] Update check error:', err.message);
+        logger.error(`[PluginRoutes] Update check error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -193,7 +194,7 @@ router.get('/servers/:id/:pluginId/config/files', requirePermission('server.file
         const files = await pluginConfigService.listFiles(req.params.id, req.params.pluginId, subPath);
         res.json(files);
     } catch (err: any) {
-        console.error('[PluginRoutes] Config list error:', err.message);
+        logger.error(`[PluginRoutes] Config list error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -207,7 +208,7 @@ router.get('/servers/:id/:pluginId/config/read', requirePermission('server.files
         const content = await pluginConfigService.readFile(req.params.id, req.params.pluginId, filePath);
         res.json({ content });
     } catch (err: any) {
-        console.error('[PluginRoutes] Config read error:', err.message);
+        logger.error(`[PluginRoutes] Config read error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
@@ -222,12 +223,12 @@ router.post('/servers/:id/:pluginId/config/save', requirePermission('server.file
         
         await pluginConfigService.saveFile(req.params.id, req.params.pluginId, filePath, content);
         res.json({ success: true });
-        auditService.log((req as any).user.id, 'PLUGIN_CONFIG_SAVE', req.params.id, { 
+        auditService.log(req.user.id, 'PLUGIN_CONFIG_SAVE', req.params.id, { 
             pluginId: req.params.pluginId, 
             path: filePath 
         });
     } catch (err: any) {
-        console.error('[PluginRoutes] Config save error:', err.message);
+        logger.error(`[PluginRoutes] Config save error: ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });

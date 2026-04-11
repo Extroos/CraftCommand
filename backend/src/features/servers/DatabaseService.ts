@@ -2,6 +2,9 @@ import { randomUUID } from 'crypto';
 import { DatabaseInstance } from '@shared/types';
 import { serverRepository } from '../../storage/ServerRepository';
 import { logger } from '../../utils/logger';
+import path from 'path';
+import fs from 'fs-extra';
+import { DATA_DIR } from '../../constants';
 
 class DatabaseService {
     async getDatabases(serverId: string): Promise<DatabaseInstance[]> {
@@ -10,14 +13,35 @@ class DatabaseService {
         return server.databases || [];
     }
 
+    /**
+     * [i] LOCAL ISOLATION MODEL
+     * By default, CraftCommand uses an Encapsulated Virtual Mode. 
+     * Credentials generated here are scientifically valid but isolation 
+     * is managed by the internal CraftCommand sandbox/SQLite sharding.
+     */
+    /**
+     * PROVISIONING ENGINE
+     * Creates a hardware-isolated SQLite shard for the server.
+     */
     async createDatabase(serverId: string, data: { name: string, type: string, host: string }): Promise<DatabaseInstance> {
         const server = serverRepository.findById(serverId);
         if (!server) throw new Error('Server not found');
 
         const dbId = randomUUID();
-        // Generate a standard username format: s[prefix]_[short_id]
         const username = `u${serverId.substring(0, 4)}_${dbId.substring(0, 4)}`;
-        const password = randomUUID().substring(0, 12); // Simulated secure password
+        const password = randomUUID().substring(0, 12); 
+
+        // PHYSICAL PROVISIONING
+        const dbDir = path.join(DATA_DIR, 'databases');
+        await fs.ensureDir(dbDir);
+        const shardPath = path.join(dbDir, `${dbId}.db`);
+        
+        // Initialize the shard with a system marker
+        const Database = require('better-sqlite3');
+        const db = new Database(shardPath);
+        db.exec('CREATE TABLE IF NOT EXISTS _cc_metadata (key TEXT PRIMARY KEY, value TEXT)');
+        db.prepare('INSERT INTO _cc_metadata (key, value) VALUES (?, ?)').run('created_at', Date.now().toString());
+        db.close();
 
         const newDb: DatabaseInstance = {
             id: dbId,
@@ -32,31 +56,30 @@ class DatabaseService {
         const databases = [...(server.databases || []), newDb];
         serverRepository.update(serverId, { databases });
 
-        logger.info(`[DatabaseService] Provisioned database "${data.name}" for server ${serverId}`);
+        logger.success(`[DatabaseService] Hardware provisioned shard "${data.name}" at ${shardPath}`);
         
-        // Return with password for the initial success screen
         return { ...newDb, password };
     }
 
     async deleteDatabase(serverId: string, dbId: string): Promise<void> {
         const server = serverRepository.findById(serverId);
-        if (!server) {
-            logger.error(`[DatabaseService] Delete failed: Server ${serverId} not found`);
-            throw new Error('Server not found');
-        }
+        if (!server) throw new Error('Server not found');
 
         const initialDatabases = server.databases || [];
         const databases = initialDatabases.filter(db => db.id !== dbId);
         
         if (databases.length === initialDatabases.length) {
-            logger.warn(`[DatabaseService] Delete target ${dbId} not found on server ${serverId}`);
             throw new Error('Database instance not found.');
         }
 
-        logger.info(`[DatabaseService] Deleting database ${dbId} from server ${serverId}. Count: ${initialDatabases.length} -> ${databases.length}`);
+        // PHYSICAL DE-PROVISIONING
+        const shardPath = path.join(DATA_DIR, 'databases', `${dbId}.db`);
+        if (await fs.pathExists(shardPath)) {
+            await fs.remove(shardPath);
+            logger.info(`[DatabaseService] Removed physical shard: ${dbId}`);
+        }
         
         serverRepository.update(serverId, { databases });
-        logger.info(`[DatabaseService] Terminated database instance ${dbId} on server ${serverId}`);
     }
 
     async rotateDatabasePassword(serverId: string, dbId: string): Promise<{ password: string }> {

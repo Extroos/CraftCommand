@@ -39,6 +39,10 @@ export interface DiagnosisRule {
     analyze: (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport) => Promise<DiagnosisResult | null>;
     
     // Proactive properties
-    isHealable?: boolean;
-    heal?: (server: ServerConfig) => Promise<boolean>;
+    isRepairable?: boolean;
+    repair?: (server: ServerConfig) => Promise<boolean>;
+
+    // Anti-Spam & UI metadata
+    cooldownHours?: number; // How long to wait before re-triggering this rule
+    tags?: string[];        // Metadata tags like 'optimization', 'critical', 'network'
 }

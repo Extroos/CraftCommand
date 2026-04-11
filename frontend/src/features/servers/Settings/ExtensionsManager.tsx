@@ -122,7 +122,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                     </div>
                     <div>
                         <h3 className="text-xs font-bold text-foreground/90 uppercase tracking-wider">Webhook Extensions</h3>
-                        <p className="text-[9px] text-muted-foreground/50 font-medium tracking-tight">Dispatch real-time server events to external HTTP endpoints.</p>
+                        <p className="text-[9px] text-muted-foreground/50 font-medium tracking-tight">Send webhook notifications when events happen.</p>
                     </div>
                 </div>
                 <button
@@ -158,7 +158,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                                 </div>
                                 <div className="space-y-1.5 group">
                                     <label className="text-[11px] font-bold text-muted-foreground/80 lowercase tracking-normal flex items-center gap-1.5">
-                                        <Link size={10} className="text-primary/60" /> Payload URL
+                                        <Link size={10} className="text-primary/60" /> Webhook URL
                                     </label>
                                     <input
                                         type="text"
@@ -277,7 +277,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                                         onClick={() => handleTest(wh.id)}
                                         disabled={testingId === wh.id}
                                         className="p-2 hover:bg-emerald-500/10 rounded-md text-muted-foreground/40 hover:text-emerald-500 transition-colors shadow-none"
-                                        title="Trigger Test Payload"
+                                        title="Send Test"
                                     >
                                         {testingId === wh.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                                     </button>

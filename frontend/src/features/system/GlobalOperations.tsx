@@ -123,10 +123,10 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-border pb-6">
                 <div>
                     <h1 className="text-2xl font-semibold tracking-tight text-foreground flex items-center gap-3">
-                        <Globe className="text-primary" size={24} />
+                        <Globe className="text-primary" size={24} strokeWidth={1.5} />
                         Global Operations
                     </h1>
-                    <p className="text-muted-foreground mt-1 text-sm">Real-time orchestration and telemetry for multi-node deployments.</p>
+                    <p className="text-muted-foreground mt-1 text-sm">Cluster-wide overview of nodes, instances, and distributed resources.</p>
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -136,7 +136,7 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                         className="bg-secondary/50 border border-border hover:bg-secondary text-foreground px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition-all"
                     >
                         <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-                        Refresh Telemetry
+                        Refresh Data
                     </button>
                     <div className="h-6 w-px bg-border mx-2"></div>
                     <div className="flex items-center bg-muted p-1 rounded-lg border border-border">
@@ -166,7 +166,7 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                     trend={clusterStats.onlineNodes === clusterStats.totalNodes ? 'stable' : 'down'}
                 />
                 <StatCard 
-                    label="Instance Density" 
+                    label="Online Servers" 
                     value={clusterStats.onlineServers} 
                     sub={`of ${clusterStats.totalServers} Total`}
                     icon={<Server className="text-emerald-500" />}
@@ -179,7 +179,7 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                     progress={parseFloat(clusterStats.avgCpu.toString())}
                 />
                 <StatCard 
-                    label="Mem Commitment" 
+                    label="Memory Usage" 
                     value={`${clusterStats.totalMemUsed} GB`} 
                     sub={`of ${clusterStats.totalMemTotal} GB`}
                     icon={<MemoryStick className="text-violet-500" />}
@@ -194,10 +194,10 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                         <h2 className="text-sm font-medium text-foreground flex items-center gap-2">
                             <Layers size={16} className="text-muted-foreground" /> Resource Distribution
                         </h2>
-                        <div className="flex items-center gap-4 text-[10px] font-medium text-muted-foreground">
-                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-secondary border border-border"></div> Idle</div>
+                        <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground">
+                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-muted border border-border"></div> Idle</div>
                             <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-primary/40"></div> Active</div>
-                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-primary"></div> Heavy</div>
+                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-primary"></div> High Load</div>
                         </div>
                     </div>
                     <div className="bg-card border border-border rounded-xl p-6 min-h-[200px] flex flex-col justify-center shadow-sm">
@@ -223,8 +223,8 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                 </div>
 
                 <div className="space-y-4">
-                    <h2 className="text-sm font-black uppercase tracking-widest text-muted-foreground/60 flex items-center gap-2">
-                        <Shield size={14} /> Environment Health
+                    <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        <Shield size={16} className="text-muted-foreground" /> Environment Health
                     </h2>
                     <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
                         <div className="space-y-3">
@@ -242,22 +242,22 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                                         <button 
                                             onClick={() => handleFix(node.id, node.name, !node.capabilities?.java ? 'java' : 'docker')}
                                             disabled={!!fixingIds[node.id]}
-                                            className="w-full py-2 bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-black uppercase tracking-widest rounded-lg transition-all border border-primary/20 flex items-center justify-center gap-2"
+                                            className="w-full py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-lg transition-all shadow-sm flex items-center justify-center gap-2"
                                         >
                                             {fixingIds[node.id] ? (
-                                                <RefreshCw size={12} className="animate-spin" />
+                                                <RefreshCw size={14} className="animate-spin" />
                                             ) : (
-                                                <Wand2 size={12} />
+                                                <Shield size={14} />
                                             )}
-                                            {fixingIds[node.id] ? 'Fixing...' : 'Resolve Issues'}
+                                            {fixingIds[node.id] ? 'Repairing...' : 'Resolve Dependencies'}
                                         </button>
                                     </div>
                                 ))
                             ) : (
                                 <div className="py-12 text-center">
                                     <CheckCircle2 size={32} className="mx-auto text-emerald-500/30 mb-3" />
-                                    <p className="text-xs font-bold text-foreground">Cluster Stabilized</p>
-                                    <p className="text-[10px] text-muted-foreground mt-1">All nodes meet runtime prerequisites.</p>
+                                    <p className="text-xs font-bold text-foreground">All Healthy</p>
+                                    <p className="text-[10px] text-muted-foreground mt-1">All nodes have required dependencies.</p>
                                 </div>
                             )}
                         </div>
@@ -269,10 +269,10 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
                     <h2 className="text-sm font-medium text-foreground flex items-center gap-2">
-                        <Network size={16} className="text-muted-foreground" /> Node Fleet
+                        <Network size={16} className="text-muted-foreground" /> Nodes
                     </h2>
-                    <span className="text-[10px] font-medium text-muted-foreground bg-secondary px-2 py-1 rounded-md border border-border">
-                        {nodes.length} AGENTS
+                    <span className="text-[10px] font-bold text-muted-foreground bg-muted px-2 py-1 rounded border border-border">
+                        {nodes.length} NODES
                     </span>
                 </div>
                 
@@ -282,9 +282,9 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                     ))}
                     {nodes.length === 0 && (
                         <div className="col-span-full py-12 border-2 border-dashed border-border rounded-2xl text-center">
-                            <WifiOff className="mx-auto text-muted-foreground/20 mb-4" size={48} />
-                            <p className="text-muted-foreground font-medium">No distributed nodes connected.</p>
-                            <p className="text-[10px] text-muted-foreground/50 mt-1 uppercase tracking-wider font-mono">Check system settings to enroll an agent</p>
+                            <WifiOff className="mx-auto text-muted-foreground/20 mb-4" size={48} strokeWidth={1} />
+                            <p className="text-muted-foreground font-medium text-sm">No distributed nodes connected</p>
+                            <p className="text-xs text-muted-foreground/50 mt-1">Enroll an agent in system settings to extend the cluster.</p>
                         </div>
                     )}
                 </div>
@@ -293,15 +293,15 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
             {/* Unified Instance Monitor */}
             <div className="space-y-4 pt-4">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <h2 className="text-sm font-black uppercase tracking-widest text-muted-foreground/60 flex items-center gap-2">
-                        <Activity size={14} /> Unified Instance Monitor
+                    <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        <Activity size={16} className="text-muted-foreground" /> Instance Monitor
                     </h2>
                     
                     <div className="relative w-full md:w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
                         <input 
                             type="text"
-                            placeholder="Filter across cluster..."
+                            placeholder="Search servers..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full bg-secondary/30 border border-border rounded-full pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
@@ -311,15 +311,15 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
 
                 <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-muted/50 border-b border-border text-[10px] uppercase tracking-tighter font-black text-muted-foreground/40">
+                        <table className="w-full text-left text-sm border-separate border-spacing-0">
+                            <thead className="bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground">
                                 <tr>
-                                    <th className="px-6 py-4">Instance / ID</th>
-                                    <th className="px-6 py-4">Status</th>
-                                    <th className="px-6 py-4">Orchestrator Node</th>
-                                    <th className="px-6 py-4">Telemetry</th>
-                                    <th className="px-6 py-4">Security</th>
-                                    <th className="px-6 py-4 text-right">Actions</th>
+                                    <th className="px-6 py-4 border-b border-border">Instance</th>
+                                    <th className="px-6 py-4 border-b border-border">Status</th>
+                                    <th className="px-6 py-4 border-b border-border">Host Node</th>
+                                    <th className="px-6 py-4 border-b border-border">Resources</th>
+                                    <th className="px-6 py-4 border-b border-border">Architecture</th>
+                                    <th className="px-6 py-4 border-b border-border text-right">Options</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/50">
@@ -374,7 +374,7 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                                 {filteredServers.length === 0 && (
                                     <tr>
                                         <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground font-medium italic">
-                                            No instances found matching your filter query.
+                                            No servers found matching your search.
                                         </td>
                                     </tr>
                                 )}
@@ -387,11 +387,11 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
             {/* Global Audit Feed */}
             <div className="space-y-4 pt-4">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-black uppercase tracking-widest text-muted-foreground/60 flex items-center gap-2">
-                        <Clock size={14} /> Global Audit Feed
+                    <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        <Clock size={16} className="text-muted-foreground" /> Recent Activity
                     </h2>
-                    <button onClick={() => navigate('/audit')} className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline">
-                        View Full Logs
+                    <button onClick={() => navigate('/audit')} className="text-xs font-semibold text-primary hover:underline">
+                        View Audit Log
                     </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -409,8 +409,8 @@ const GlobalOperations: React.FC<GlobalOperationsProps> = () => {
                                     <div className="text-xs font-bold truncate text-foreground">{log.action.replace(/_/g, ' ')}</div>
                                     <div className="text-[9px] font-mono text-muted-foreground">{new Date(log.timestamp).toLocaleTimeString()}</div>
                                 </div>
-                                <div className="text-[10px] text-muted-foreground truncate opacity-70 mt-0.5">
-                                    by <span className="text-foreground font-medium">{log.userEmail || 'System'}</span> on {log.resourceId || 'Global'}
+                                <div className="text-xs text-muted-foreground truncate opacity-70 mt-1">
+                                    User <span className="text-foreground font-medium">{log.userEmail || 'System'}</span> on {log.resourceId || 'Global'}
                                 </div>
                             </div>
                         </div>

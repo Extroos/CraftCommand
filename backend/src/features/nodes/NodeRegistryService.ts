@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger';
 import { auditService } from '../system/AuditService';
 import { DATA_DIR } from '../../constants';
 import { systemSettingsService } from '../system/SystemSettingsService';
+import { NetUtils } from '../../utils/NetUtils';
 
 const NODES_FILE = path.join(DATA_DIR, 'nodes.json');
 
@@ -26,8 +27,11 @@ export class NodeRegistryService extends EventEmitter {
 
     private nodes: Map<string, NodeInfo> = new Map();
     private heartbeatInterval: NodeJS.Timeout | null = null;
+    private ipRefreshInterval: NodeJS.Timeout | null = null;
     private saveTimeout: NodeJS.Timeout | null = null;
     private dirty: boolean = false;
+    private panelPublicIp: string = '127.0.0.1';
+    private joinTokens: Map<string, { nodeId: string; expires: number }> = new Map();
 
     constructor() {
         super();
@@ -41,12 +45,39 @@ export class NodeRegistryService extends EventEmitter {
                 this.stopHeartbeatSweep();
             }
         });
-
-        // Initialize state
         const settings = systemSettingsService.getSettings();
         if (settings.app?.distributedNodes?.enabled) {
             this.startHeartbeatSweep();
+            this.startIpDiscovery();
         }
+    }
+
+    private async startIpDiscovery() {
+        if (this.ipRefreshInterval) return;
+        
+        const refresh = async () => {
+            try {
+                const ip = await NetUtils.getPublicIP();
+                if (ip && ip !== this.panelPublicIp) {
+                    this.panelPublicIp = ip;
+                    logger.info(`[NodeRegistry] Panel Public IP discovered: ${ip}`);
+                }
+            } catch (e: any) {
+                logger.warn(`[NodeRegistry] Public IP discovery failed (External Connectivity Issue): ${e.message}`);
+                // Fallback to local if totally isolated
+                if (this.panelPublicIp === '127.0.0.1') {
+                    this.panelPublicIp = NetUtils.getLocalIP();
+                }
+            }
+        };
+
+        await refresh();
+        // Refresh every hour
+        this.ipRefreshInterval = setInterval(refresh, 3600000);
+    }
+
+    public getPanelPublicIp(): string {
+        return this.panelPublicIp;
     }
 
     // ── Persistence (Debounced) ──
@@ -192,13 +223,14 @@ export class NodeRegistryService extends EventEmitter {
         const id = crypto.randomUUID();
         const now = Date.now();
 
-        // Read version.json for protocol version
+        // Read version.json for protocol version (v1.13.0 Resilience)
         let protocolVersion = '0.0.0';
         try {
             const vf = path.join(__dirname, '../../../../version.json');
             if (fs.existsSync(vf)) {
                 const versionData = fs.readJSONSync(vf);
-                if (versionData?.version) protocolVersion = versionData.version;
+                // Handle both object { version: "..." } and legacy string "..." formats
+                protocolVersion = versionData?.version || (typeof versionData === 'string' ? versionData : '0.0.0');
             }
         } catch (e) { /* use fallback */ }
 
@@ -211,7 +243,8 @@ export class NodeRegistryService extends EventEmitter {
             protocolVersion,
             enrolledAt: now,
             lastHeartbeat: now,
-            labels: labels.filter(l => typeof l === 'string' && l.trim().length > 0).map(l => l.trim())
+            labels: labels.filter(l => typeof l === 'string' && l.trim().length > 0).map(l => l.trim()),
+            enrollmentSecret: crypto.randomBytes(32).toString('hex')
         };
 
         this.nodes.set(id, node);
@@ -227,6 +260,51 @@ export class NodeRegistryService extends EventEmitter {
         logger.info(`[NodeRegistry] Enrolled node "${name}" (${id}) at ${host}:${port}`);
         this.emit('status', { nodeId: id, status: node.status, node });
         return node;
+    }
+
+    /**
+     * Creates a short-lived join token for a specific node.
+     * Valid for 15 minutes.
+     */
+    public createJoinToken(nodeId: string): string {
+        const node = this.nodes.get(nodeId);
+        if (!node) throw new Error(`Node ${nodeId} not found.`);
+
+        const token = crypto.randomBytes(16).toString('hex');
+        this.joinTokens.set(token, {
+            nodeId,
+            expires: Date.now() + (15 * 60 * 1000)
+        });
+
+        return token;
+    }
+
+    /**
+     * Validates and consumes a join token, returning the encoded enrollment config.
+     */
+    public consumeJoinToken(token: string): { panelUrl: string; nodeId: string; nodeSecret: string } {
+        const entry = this.joinTokens.get(token);
+        if (!entry) throw new Error('Invalid or expired join token.');
+
+        if (Date.now() > entry.expires) {
+            this.joinTokens.delete(token);
+            throw new Error('Join token has expired.');
+        }
+
+        const node = this.nodes.get(entry.nodeId);
+        if (!node || !node.enrollmentSecret) {
+            this.joinTokens.delete(token);
+            throw new Error('Node information corrupted or missing.');
+        }
+
+        // Consume token
+        this.joinTokens.delete(token);
+
+        return {
+            panelUrl: `http://${this.panelPublicIp}:3001`,
+            nodeId: node.id,
+            nodeSecret: node.enrollmentSecret
+        };
     }
 
     /**
@@ -268,13 +346,13 @@ export class NodeRegistryService extends EventEmitter {
         const secret = crypto.randomBytes(32).toString('hex');
         const token = crypto.randomBytes(16).toString('hex'); // Short-lived download token
 
-        // Protocol version
+        // Protocol version (v1.13.0 Resilience)
         let protocolVersion = '0.0.0';
         try {
             const vf = path.join(__dirname, '../../../../version.json');
             if (fs.existsSync(vf)) {
                 const versionData = fs.readJSONSync(vf);
-                if (versionData?.version) protocolVersion = versionData.version;
+                protocolVersion = versionData?.version || (typeof versionData === 'string' ? versionData : '0.0.0');
             }
         } catch (e) { /* use fallback */ }
 
@@ -392,44 +470,66 @@ export class NodeRegistryService extends EventEmitter {
      * Called when a node agent sends a heartbeat.
      * Uses debounced save to prevent disk thrashing.
      */
-    heartbeat(nodeId: string, health?: NodeInfo['health']): boolean {
+    heartbeat(nodeId: string, health?: NodeInfo['health'], signature?: string, nonce?: string): boolean {
         const node = this.nodes.get(nodeId);
         if (!node) return false;
+
+        // ── SECURITY CHALLENGE VERIFICATION ──
+        // v1.15.0: Nodes must sign the heartbeat using their enrollmentSecret
+        if (nodeId !== 'local' && node.enrollmentSecret) {
+            if (!signature || !nonce) {
+                logger.warn(`[NodeRegistry] Node "${node.name}" (${nodeId}) sent unsigned heartbeat. Rejecting.`);
+                return false;
+            }
+
+            if (!this.verifyHeartbeatSignature(node, signature, nonce)) {
+                logger.error(`[NodeRegistry] 🚨 SECURITY ALERT: Node "${node.name}" (${nodeId}) failed signature challenge! FORCING OFFLINE.`);
+                node.status = NodeStatus.OFFLINE;
+                this.emit('status', { nodeId, status: node.status, node });
+                return false;
+            }
+        }
 
         node.lastHeartbeat = Date.now();
         if (health) node.health = health;
 
-        // 1. Determine Status Based on Health Metrics (Core Rule 5/7)
-        let newStatus = NodeStatus.ONLINE;
+        // 1. Determine Status Based on Health Metrics
+        const newStatus = this.calculateNodeStatus(node, health);
 
-        if (health) {
-            const memPercent = (health.memoryUsed / health.memoryTotal) * 100;
-            const isCpuStressed = health.cpu > 90;
-            const isMemStressed = memPercent > 95;
+        // 2. Transition Back if Healthy
+        if (node.status !== newStatus) {
+            // Only transition if not in a PROTECTED state (RECOVERING or ENROLLING), unless degraded.
+            const isRecovering = node.status === NodeStatus.RECOVERING;
+            const isEnrolling = node.status === NodeStatus.ENROLLING;
 
-            if (isCpuStressed || isMemStressed) {
-                newStatus = NodeStatus.DEGRADED;
-                if (node.status !== NodeStatus.DEGRADED) {
-                    logger.warn(`[NodeRegistry] Node "${node.name}" (${nodeId}) is DEGRADED: ${isCpuStressed ? 'CPU Stressed' : ''} ${isMemStressed ? 'RAM Stressed' : ''}`);
-                }
+            if ((!isRecovering && !isEnrolling) || newStatus === NodeStatus.DEGRADED) {
+                node.status = newStatus;
+                this.emit('status', { nodeId, status: node.status, node });
             }
         }
-
-            // 2. Transition Back if Healthy
-            if (node.status !== newStatus) {
-                // Only transition if we are not in a PROTECTED state (RECOVERING or ENROLLING)
-                // unless the new status is a failure state.
-                const isRecovering = node.status === NodeStatus.RECOVERING;
-                const isEnrolling = node.status === NodeStatus.ENROLLING;
-
-                if ((!isRecovering && !isEnrolling) || newStatus === NodeStatus.DEGRADED) {
-                    node.status = newStatus;
-                    this.emit('status', { nodeId, status: node.status, node });
-                }
-            }
         
-        this.scheduleSave(); // Debounced — heartbeats are frequent
+        this.scheduleSave(); // Debounced write
         return true;
+    }
+
+    /**
+     * Helper to compute node status based on memory/CPU heuristics.
+     */
+    private calculateNodeStatus(node: NodeInfo, health?: NodeInfo['health']): NodeStatus {
+        if (!health) return NodeStatus.ONLINE;
+        
+        const memPercent = (health.memoryUsed / health.memoryTotal) * 100;
+        const isCpuStressed = health.cpu > 90;
+        const isMemStressed = memPercent > 95;
+
+        if (isCpuStressed || isMemStressed) {
+            if (node.status !== NodeStatus.DEGRADED) {
+                logger.warn(`[NodeRegistry] Node "${node.name}" (${node.id}) is DEGRADED: ${isCpuStressed ? 'CPU Stressed' : ''} ${isMemStressed ? 'RAM Stressed' : ''}`);
+            }
+            return NodeStatus.DEGRADED;
+        }
+
+        return NodeStatus.ONLINE;
     }
 
     /**
@@ -545,6 +645,31 @@ export class NodeRegistryService extends EventEmitter {
     }
 
     // ── Input Sanitization ──
+
+    // ── SECURITY HELPERS ──
+
+    /**
+     * Generates a 32-byte randomized nonce for the next heartbeat challenge.
+     */
+    public generateNextNonce(): string {
+        return crypto.randomBytes(32).toString('hex');
+    }
+
+    /**
+     * Verifies that the heartbeat was signed with the node's enrollment secret.
+     */
+    private verifyHeartbeatSignature(node: NodeInfo, signature: string, nonce: string): boolean {
+        if (!node.enrollmentSecret) return false;
+
+        const expected = crypto.createHmac('sha256', node.enrollmentSecret)
+            .update(nonce)
+            .digest('hex');
+
+        return crypto.timingSafeEqual(
+            Buffer.from(signature, 'hex'),
+            Buffer.from(expected, 'hex')
+        );
+    }
 
     private sanitizeName(name: string): string {
         return (name || '')

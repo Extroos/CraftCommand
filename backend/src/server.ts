@@ -3,31 +3,58 @@ import dotenv from 'dotenv';
 
 import { logger } from './utils/logger';
 
+import crypto from 'crypto';
+import fs from 'fs';
+
 function validateEnvironment() {
+    const envPath = path.resolve(__dirname, '../../.env');
+    let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+
     const required = ['JWT_SECRET', 'BACKEND_PORT'];
-    const missing = required.filter(key => !process.env[key]);
-    if (missing.length > 0) {
-        logger.error(`[CRITICAL] Missing required environment variables: ${missing.join(', ')}`);
-        logger.error(`Please check your .env file in the root directory.`);
-        process.exit(1);
+    const BLOCKED_SECRETS = ['dev-secret-do-not-use-in-prod', 'craftcommand_default_jwt_secret', 'stable-dev-secret-key-12345', 'CHANGE_ME_BEFORE_RUNNING'];
+    let modified = false;
+
+    if (!process.env.BACKEND_PORT) {
+        process.env.BACKEND_PORT = '3001';
+        if (!envContent.includes('BACKEND_PORT=')) {
+            envContent += `\nBACKEND_PORT=3001`;
+            modified = true;
+        }
+    }
+
+    if (!process.env.JWT_SECRET || BLOCKED_SECRETS.includes(process.env.JWT_SECRET)) {
+        logger.warn(`[SECURITY] Insecure or missing JWT_SECRET detected! Auto-generating a secure key...`);
+        const newSecret = crypto.randomBytes(64).toString('hex');
+        process.env.JWT_SECRET = newSecret;
+        
+        if (envContent.match(/JWT_SECRET=.*/)) {
+            envContent = envContent.replace(/JWT_SECRET=.*/, `JWT_SECRET=${newSecret}`);
+        } else {
+            envContent += `\nJWT_SECRET=${newSecret}`;
+        }
+        modified = true;
+        logger.info(`[SECURITY] Saved new JWT_SECRET to your .env file.`);
+    }
+
+    if (modified) {
+        try {
+            fs.writeFileSync(envPath, envContent.trim() + '\n', 'utf-8');
+        } catch (e) {
+            logger.error(`[CRITICAL] Failed to write generated configuration to .env file: ${e}`);
+        }
     }
 }
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import express from 'express';
-import compression from 'compression';
 import cors from 'cors';
+import compression from 'compression';
 import { createServer } from 'http';
 import https from 'https';
-import fs from 'fs';
 import { Server } from 'socket.io';
 import { setupRoutes } from './routes';
 import { setupSocket } from './sockets';
-
-// ... (imports)
-
-// Note: We need to define routes AFTER io is created relative to the original code flow? 
-// Actually server.ts calls setupRoutes later.
-// But we need to inject IO first.
 
 // import { logger } from './utils/logger'; // Moved to top
 import { getServers, startServer, cleanupInstallState } from './features/servers/ServerService';
@@ -36,10 +63,10 @@ import { processManager } from './features/processes/ProcessManager';
 import { fileWatcherService } from './features/files/FileWatcherService';
 import { discordService } from './features/integrations/DiscordService';
 import { systemSettingsService } from './features/system/SystemSettingsService';
-import { autoHealingService } from './features/diagnosis/AutoHealingService';
+import { automaticRepairService } from './features/diagnosis/AutomaticRepairService';
 import { updateService } from './features/system/UpdateService';
 import { migrationService } from './features/system/MigrationService';
-import { healthTelemetryService } from './features/system/HealthTelemetryService';
+import { healthMonitoringService } from './features/system/HealthMonitoringService';
 import { errorHandler } from './middleware/errorHandler';
 import os from 'os';
 
@@ -70,10 +97,10 @@ const initHttpServer = async () => {
             const currentProtocol = 'https';
             const currentSslStatus = isSelfSigned ? 'SELF_SIGNED' : 'VALID';
             setSystemStatus(currentProtocol, currentSslStatus);
-            logger.info(`SECURE MODE: HTTPS Enabled (${currentSslStatus}).`);
+            logger.info(`System protocol configured: ${currentProtocol.toUpperCase()} (${currentSslStatus})`);
         } catch (e: any) {
-            logger.error(`HTTPS Failed to start: ${e.message}`);
-            logger.warn('Falling back to HTTP.');
+            logger.error(`Failed to initialize secure listener: ${e.message}`);
+            logger.warn('Falling back to standard HTTP listener.');
             httpServer = createServer(app);
             setSystemStatus('http', 'NONE');
         }
@@ -88,7 +115,12 @@ import { remoteAccessService } from './features/system/RemoteAccessService';
 const PORT = process.env.BACKEND_PORT ? parseInt(process.env.BACKEND_PORT) : 3001;
 const BIND_IP = remoteAccessService.getBindAddress();
 
+// CORS origin policy: restrict to panel's own origin in production
+const CORS_ORIGIN = process.env.CORS_ORIGIN || (process.env.NODE_ENV === 'development' ? '*' : true);
+
 const startup = async () => {
+    validateEnvironment();
+
     // Ensure temp dirs
     const { DATA_PATHS } = await import('./constants');
     await import('fs-extra').then(f => f.ensureDir(DATA_PATHS.TEMP_UPLOADS_DIR));
@@ -99,7 +131,7 @@ const startup = async () => {
     await migrationService.runMigrations();
     logger.info('Initializing system components...');
 
-    // 0. Self-Healing: Cleanup stuck installation states (Phase 53.3)
+    // 0. Automatic Repair: Cleanup stuck installation states (Phase 53.3)
     cleanupInstallState();
 
     try {
@@ -123,13 +155,13 @@ const startup = async () => {
         logger.warn(`Initial server load failed: ${e.message}`);
     }
 
-    // Initialize Integrations & Auto-Healing
+    // Initialize Integrations & Automatic Repair
     try {
         await discordService.initialize();
         await remoteAccessService.initialize();
-        autoHealingService.initialize();
+        automaticRepairService.initialize();
         updateService.initialize();
-        healthTelemetryService.getGlobalHealth(); // Side effect: ensure singleton is active
+        healthMonitoringService.getGlobalHealth(); // Side effect: ensure singleton is active
         
         // Start Embedded Agent (if enabled)
         const { localAgentManager } = await import('./features/nodes/LocalAgentManager');
@@ -182,12 +214,25 @@ const startMain = async () => {
     await initHttpServer();
 
     const io = new Server(httpServer, {
-        cors: { origin: "*", methods: ["GET", "POST"] }
+        cors: { origin: CORS_ORIGIN, methods: ["GET", "POST"] },
+        transports: ['websocket', 'polling'] // Prefer websocket for stability
     });
 
-    app.use(cors());
+    app.use(helmet({
+        contentSecurityPolicy: false, // Disabled for now to allow external assets if needed, but should be tightened later
+    }));
+    app.use(cors({ origin: CORS_ORIGIN }));
     app.use(compression());
-    app.use(express.json());
+    app.use(express.json({ limit: '1mb' }));
+
+    // Global Rate Limiting
+    const limiter = rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit: 5000, // Increased from 1000 to 5000 to prevent false-positive logouts
+        standardHeaders: 'draft-7',
+        legacyHeaders: false,
+    });
+    app.use('/api/', limiter);
 
     // Inject IO for routes
     app.use((req, res, next) => {
@@ -284,6 +329,11 @@ const startMain = async () => {
         try {
             // 1. Stop accepting new connections (if we had a way to stop express, but httpServer.close is async)
             if (httpServer) {
+                // Phase 66: Explicitly close IO and HTTP server to release ports immediately
+                if (io) {
+                    logger.info('[System] Closing Socket.io connections...');
+                    io.close();
+                }
                 httpServer.close(() => {
                     logger.info('[System] HTTP server closed.');
                 });

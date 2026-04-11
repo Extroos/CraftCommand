@@ -114,7 +114,7 @@ export const NetworkingSettings: React.FC<NetworkingSettingsProps> = ({
                         </div>
                         <div className="flex-1">
                             <div className="flex justify-between items-center">
-                                <h3 className="text-xs font-bold text-foreground/90">Network Fabric</h3>
+                                <h3 className="text-xs font-bold text-foreground/90">Networking Configuration</h3>
                                 {servers.find(s => s.id === serverId)?.status === 'ONLINE' && (
                                     <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                                         <div className="w-1 h-1 rounded-full bg-emerald-600" />

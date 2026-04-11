@@ -1,0 +1,58 @@
+# CraftCommand Node Agent — systemd Service Unit
+#
+# Installation:
+#   1. Copy this file to /etc/systemd/system/craftcommand-agent.service
+#   2. Edit the paths and environment variables below
+#   3. Run: sudo systemctl daemon-reload
+#   4. Run: sudo systemctl enable craftcommand-agent
+#   5. Run: sudo systemctl start craftcommand-agent
+#
+# Configuration:
+#   Edit /etc/craftcommand/agent.env with your panel URL, node ID, and secret.
+#
+# Logs:
+#   sudo journalctl -u craftcommand-agent -f
+
+[Unit]
+Description=CraftCommand Node Agent (Remote Server Manager)
+Documentation=https://github.com/Extroos/Craft-Commands
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=craftcommand
+Group=craftcommand
+WorkingDirectory=/opt/craftcommand/agent
+ExecStart=/usr/bin/node dist/index.js --panel-url ${PANEL_URL} --node-id ${NODE_ID} --secret ${NODE_SECRET} --servers-dir ${SERVERS_DIR}
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# Agent-specific environment
+# Create this file with your configuration:
+#   PANEL_URL=http://192.168.1.10:3001
+#   NODE_ID=your-node-uuid-here
+#   NODE_SECRET=your-shared-secret-here
+#   SERVERS_DIR=/opt/craftcommand/minecraft_servers
+EnvironmentFile=/etc/craftcommand/agent.env
+
+# Security Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/craftcommand/agent /opt/craftcommand/minecraft_servers
+PrivateTmp=true
+
+# Resource Limits (Agent manages Minecraft servers — needs more headroom)
+LimitNOFILE=65535
+MemoryMax=4G
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=craftcommand-agent
+
+[Install]
+WantedBy=multi-user.target

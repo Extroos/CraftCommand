@@ -1,11 +1,13 @@
 {
-    "version": "1.12.5",
-    "title": "Stability & Resilience Update",
+    "version": "1.13.0",
+    "status": "beta",
+    "codename": "Stable Infrastructure",
+    "title": "Linux Support & Process Hardening",
     "notes": [
-        "Hardened 2FA Recovery: Increased entropy to 128-bit for elite security.",
-        "Engine Optimization: Replaced busy-wait loops with Promise-based mutexes in NativeRunner.",
-        "Fail-Safe Migrations: Atomic SQLite state markers and automated JSON fallbacks.",
-        "Shared Logic Architecture: Centralized world detection and integrity hashing in @shared utilities.",
-        "Resilient Backups: Fixed Hub Agent dependencies and restoration exclusion logic."
+        "Added native Linux and macOS support via POSIX-compliant shell launchers.",
+        "Integrated systemd unit templates for reliable background process management.",
+        "Refactored process monitoring with port-release verification loops.",
+        "Implemented boot-time cleanup of orphaned temporary directories.",
+        "Enhanced security with JIT session tracking and stricter rate limiting."
     ]
 }

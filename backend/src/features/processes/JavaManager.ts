@@ -20,7 +20,7 @@ export class JavaManager extends EventEmitter {
 
     // Download portable Java if missing
     async ensureJava(version: string, serverId?: string): Promise<string> {
-        console.log(`[JavaManager] Request to ensure ${version}`);
+        logger.info(`[JavaManager] Request to ensure ${version}`);
         
         // 1. SMART CHECK: Check for existing system-wide Java first (v1.12.0)
         const majorVer = version.replace('Java ', '').trim(); 
@@ -28,10 +28,19 @@ export class JavaManager extends EventEmitter {
             const { stdout, stderr } = await execAsync('java -version');
             const output = stdout + stderr;
             if (output.includes(`version "${majorVer}`) || output.includes(`build ${majorVer}`) || output.includes(`version "${version}`)) {
-                console.log(`[JavaManager] Detected compatible system Java: ${majorVer}`);
+                logger.info(`[JavaManager] Detected compatible system Java: ${majorVer}`);
+                try {
+                    // Try to resolve absolute path to avoid PATH priority issues (v1.12.11)
+                    const { stdout: pathOut } = await execAsync(process.platform === 'win32' ? 'powershell -Command "(Get-Command java).Source"' : 'which java');
+                    const absolute = pathOut.trim();
+                    if (absolute && await fs.pathExists(absolute)) {
+                        logger.info(`[JavaManager] Resolved absolute system path: ${absolute}`);
+                        return absolute;
+                    }
+                } catch (pe) { logger.debug(`[JavaManager] Failed to resolve absolute path for system Java: ${pe}`); }
                 return 'java'; // Use system java
             }
-        } catch (e) {}
+        } catch (e) { logger.debug(`[JavaManager] System Java not on PATH: ${e}`); }
 
         const detected = await this.detectJavaVersions();
         
@@ -58,12 +67,12 @@ export class JavaManager extends EventEmitter {
 
         // 2. Check Managed Runtimes
         if (await fs.pathExists(javaBin)) {
-            console.log(`[JavaManager] Found existing managed runtime at ${javaBin}`);
+            logger.info(`[JavaManager] Found existing managed runtime at ${javaBin}`);
             return javaBin;
         }
 
         // 3. Fallback: Download it
-        console.log(`[JavaManager] No compatible Java found. Downloading ${version}...`);
+        logger.info(`[JavaManager] No compatible Java found. Downloading ${version}...`);
         this.currentStatus = { message: `Downloading ${version}...` };
         this.emit('status', { ...this.currentStatus, serverId });
         await this.downloadJava(majorVer, runtimeDir, serverId);
@@ -79,7 +88,7 @@ export class JavaManager extends EventEmitter {
         try {
             await fs.ensureDir(path.dirname(zipPath));
 
-            console.log(`[JavaManager] Downloading JDK ${majorVer} from ${url}`);
+            logger.info(`[JavaManager] Downloading JDK ${majorVer} from ${url}`);
             this.currentStatus = { message: `Downloading Java ${majorVer}...`, phase: 'downloading' };
             this.emit('status', { ...this.currentStatus, serverId });
             
@@ -127,18 +136,37 @@ export class JavaManager extends EventEmitter {
                 dataStream.on('error', reject);
             });
 
-            console.log(`[JavaManager] Download complete.`);
+            logger.info(`[JavaManager] Download complete.`);
             
             // Update status IMMEDIATELY after download finishes to avoid "frozen at 100%" feeling
             this.currentStatus = { message: `Verifying and Extracting Java ${majorVer}...`, phase: 'extracting', percent: 100 };
             this.emit('status', { ...this.currentStatus, serverId });
             
-            console.log(`[JavaManager] Extracting JDK ${majorVer}...`);
+            logger.info(`[JavaManager] Extracting JDK ${majorVer}...`);
             this.currentStatus = { message: `Extracting Java ${majorVer}...`, phase: 'extracting' };
             this.emit('status', { ...this.currentStatus, serverId });
             
             const zip = new AdmZip(zipPath);
+
+            // ZIP Archive Bomb Protection (defense-in-depth for trusted sources)
+            const MAX_JDK_ENTRIES = 10000;
+            const MAX_JDK_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+
+            const jdkEntries = zip.getEntries();
+            if (jdkEntries.length > MAX_JDK_ENTRIES) {
+                throw new Error(`JDK archive exceeds entry limit (${jdkEntries.length}/${MAX_JDK_ENTRIES})`);
+            }
+
+            let jdkTotalSize = 0;
+            for (const entry of jdkEntries) {
+                jdkTotalSize += entry.header.size;
+                if (jdkTotalSize > MAX_JDK_SIZE) {
+                    throw new Error('JDK archive exceeds maximum uncompressed size (2GB)');
+                }
+            }
+
             zip.extractAllTo(path.dirname(zipPath), true);
+            logger.info(`[JavaManager] Extracted ${jdkEntries.length} entries (${Math.round(jdkTotalSize / 1024 / 1024)}MB).`);
             
             // Adoptium zips usually have a root folder like 'jdk-17.0.x+y'. We need to find it and rename/move contents to destDir
             // Or just find the bin path dynamically. Let's try to locate the extracted folder.
@@ -168,12 +196,12 @@ export class JavaManager extends EventEmitter {
                         try {
                             await fs.remove(source);
                         } catch (cleanupErr) {
-                            console.warn(`[JavaManager] Warning: Could not cleanup source ${source}: ${cleanupErr}`);
+                            logger.warn(`[JavaManager] Warning: Could not cleanup source ${source}: ${cleanupErr}`);
                         }
                         break;
                     } catch (e: any) {
                         attempts++;
-                        console.warn(`[JavaManager] Copy failed (Attempt ${attempts}/5). Retrying in 2s... Error: ${e.message}`);
+                        logger.warn(`[JavaManager] Copy failed (Attempt ${attempts}/5). Retrying in 2s... Error: ${e.message}`);
                         await new Promise(r => setTimeout(r, 2000));
                         if (attempts === 5) throw e;
                     }
@@ -183,7 +211,7 @@ export class JavaManager extends EventEmitter {
             }
 
             await fs.remove(zipPath);
-            console.log(`[JavaManager] JDK ${majorVer} installed to ${destDir}`);
+            logger.info(`[JavaManager] JDK ${majorVer} installed to ${destDir}`);
             this.emit('status', { message: `Java ${majorVer} ready`, phase: 'complete', percent: 100, serverId });
             this.emit('complete', { serverId });
             this.currentStatus = null; // Clear on success
@@ -198,7 +226,7 @@ export class JavaManager extends EventEmitter {
                     await fs.remove(destDir);
                 }
             } catch (cleanupErr) {
-                console.warn(`[JavaManager] Failed to cleanup after error: ${cleanupErr}`);
+                logger.warn(`[JavaManager] Failed to cleanup after error: ${cleanupErr}`);
             }
             
             // Emit error event with user-friendly message
@@ -225,8 +253,15 @@ export class JavaManager extends EventEmitter {
             // Attempt to parse version from output
             const versionMatch = output.match(/(?:java|openjdk) version "(.*?)"/);
             const versionString = versionMatch ? versionMatch[1] : 'System Default';
-            foundJavas.push({ version: versionString, path: 'java' });
-        } catch (e) { /* Java not found on path or error executing */ }
+            
+            let finalPath = 'java';
+            try {
+                const { stdout: pathOut } = await execAsync(process.platform === 'win32' ? 'powershell -Command "(Get-Command java).Source"' : 'which java');
+                finalPath = pathOut.trim() || 'java';
+            } catch (pe) { logger.debug(`[JavaManager] Failed to resolve absolute path for detected Java: ${pe}`); }
+            
+            foundJavas.push({ version: versionString, path: finalPath });
+        } catch (e) { logger.debug(`[JavaManager] Error detecting system Java on PATH: ${e}`); }
         
         // Check Managed Runtimes
         const runtimesDir = path.join(__dirname, '../../runtimes');
@@ -265,7 +300,7 @@ export class JavaManager extends EventEmitter {
     /**
      * Smart Heuristic: Get recommended Java Major Version for a specific Minecraft Version
      */
-    getRecommendedJavaVersion(minecraftVersion: string): 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21' {
+    getRecommendedJavaVersion(minecraftVersion: string): 'Java 8' | 'Java 11' | 'Java 17' | 'Java 21' | 'Java 25' {
         if (!minecraftVersion) return 'Java 21'; 
 
         const parts = minecraftVersion.split('.');
@@ -274,10 +309,11 @@ export class JavaManager extends EventEmitter {
         const patch = parseInt(parts[2] || '0');
 
         // Mojang switched to 26.x in 2026
-        if (major >= 26) return 'Java 21';
+        if (major >= 26) return 'Java 25';
 
         // Legacy 1.x logic
         if (major === 1) {
+            if (minor > 21) return 'Java 25';
             if (minor > 20 || (minor === 20 && patch >= 5)) return 'Java 21';
             if (minor >= 17) return 'Java 17';
             if (minor >= 16) return 'Java 11';
@@ -302,11 +338,11 @@ export class JavaManager extends EventEmitter {
             if (num <= 11) return 'eclipse-temurin:11-jre';
             if (num <= 17) return 'eclipse-temurin:17-jre';
             
-            // For 21 and any future versions (22, 23, etc.)
+            // For 21, 25 and any future versions
             return `eclipse-temurin:${num}-jre`;
         }
         
-        return 'eclipse-temurin:21-jre';
+        return 'eclipse-temurin:25-jre';
     }
 }
 

@@ -34,7 +34,7 @@ export const PluginFolderMissingRule: DiagnosisRule = {
                 action: {
                     type: 'CREATE_PLUGIN_FOLDER',
                     payload: { path: pluginsDir },
-                    autoHeal: true
+                    automaticRepair: true
                 },
                 timestamp: Date.now()
             };
@@ -82,8 +82,9 @@ export const DuplicatePluginJarRule: DiagnosisRule = {
                 action: {
                     type: 'REMOVE_DUPLICATE_PLUGIN',
                     payload: { dir: pluginsDir, files: duplicates },
-                    autoHeal: false // Manual confirmation safer for deletions
+                    automaticRepair: false // Manual confirmation safer for deletions
                 },
+                evidence: `Conflicting Files: ${duplicates.join(', ')}`,
                 timestamp: Date.now()
             };
         }
@@ -111,6 +112,7 @@ export const PluginIncompatibleRule: DiagnosisRule = {
                 title: 'Plugin Incompatibility',
                 explanation: 'A plugin cannot be loaded because it requires a newer Java version or is incompatible with this Minecraft version.',
                 recommendation: 'Check the logs to find the specific plugin, then update it or switch to a compatible Java version.',
+                evidence: errorLine.trim(),
                 timestamp: Date.now()
             };
         }
@@ -159,7 +161,7 @@ export const PluginAccessRule: DiagnosisRule = {
             action: {
                 type: 'UPDATE_CONFIG',
                 payload: { repairPermissions: true },
-                autoHeal: true
+                automaticRepair: true
             },
             confidence: hasLogMatch ? 100 : 90,
             timestamp: Date.now()
@@ -208,26 +210,30 @@ export const GeyserPortConflictRule: DiagnosisRule = {
     tier: 1,
     defaultConfidence: 100,
     analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
-        const fullLog = logs.join('\n');
+        const { NetUtils } = require('../../utils/NetUtils');
         
-        if (/Geyser failed to start: Address already in use: bind/i.test(fullLog) || (/Address already in use: bind/i.test(fullLog) && /19132/i.test(fullLog)) || (/Address already in use/i.test(fullLog) && /Geyser/i.test(fullLog))) {
-            
-            return {
-                id: `geyser-port-${server.id}-${Date.now()}`,
-                ruleId: 'geyser_port_conflict',
-                severity: 'CRITICAL',
-                title: 'Geyser Port Conflict Detected',
-                explanation: 'GeyserMC tried to start but its Bedrock port (usually 19132) is already being used by another Minecraft Bedrock edition server or another Geyser instance on this machine.',
-                recommendation: 'Change the Geyser Bedrock port in your cross-play settings to an available port, or use the "Fix Now" button to have it randomly assigned and synced.',
-                action: {
-                    type: 'REASSIGN_BEDROCK_PORT',
-                    payload: { serverId: server.id },
-                    autoHeal: true
-                },
-                timestamp: Date.now()
-            };
-        }
-        return null;
+        // --- SMART HANDLING (v4.5) ---
+        // Geyser typically uses UDP 19132. Check if the port is busy right now.
+        const isPortBusy = await NetUtils.checkUDPPortBind(19132);
+        
+        // If port is free, ignore the log error (it's stale)
+        if (!isPortBusy) return null;
+
+        return {
+            id: `geyser-port-${server.id}-${Date.now()}`,
+            ruleId: 'geyser_port_conflict',
+            severity: 'CRITICAL',
+            title: 'Geyser Port Conflict Detected',
+            explanation: 'GeyserMC tried to start but its Bedrock port (usually 19132) is already being used by another Minecraft Bedrock edition server or another Geyser instance on this machine.',
+            recommendation: 'Change the Geyser Bedrock port in your cross-play settings to an available port, or use the "Fix Now" button to have it randomly assigned and synced.',
+            action: {
+                type: 'REASSIGN_BEDROCK_PORT',
+                payload: { serverId: server.id },
+                automaticRepair: true
+            },
+            evidence: logs.find(l => /already in use: bind|19132/i.test(l))?.trim(),
+            timestamp: Date.now()
+        };
     }
 };
 

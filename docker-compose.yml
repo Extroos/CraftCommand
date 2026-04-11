@@ -1,6 +1,4 @@
 
-version: '3.8'
-
 services:
   frontend:
     build:
@@ -28,6 +26,34 @@ services:
     environment:
       - NODE_ENV=production
       - BACKEND_PORT=3001
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env or shell environment}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set in .env or shell environment}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://backend:3001/api/system/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - craftcommand-network
+
+  agent:
+    image: node:20-slim
+    container_name: craftcommand-agent
+    working_dir: /app/agent
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agent-servers:/app/agent/servers
+    environment:
+      - NODE_ENV=production
+      - AGENT_NODE_ID=${AGENT_NODE_ID:-local}
+      - AGENT_NODE_SECRET=${AGENT_NODE_SECRET}
+      - PANEL_URL=http://backend:3001
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - craftcommand-network
@@ -35,6 +61,7 @@ services:
 volumes:
   backend-data:
   backend-servers:
+  agent-servers:
 
 networks:
   craftcommand-network:

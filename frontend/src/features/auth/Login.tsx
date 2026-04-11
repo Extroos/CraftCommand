@@ -90,7 +90,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                         <h1 className="text-xl font-bold tracking-tight text-white/90">
                             CraftCommand
                         </h1>
-                        <p className="text-[#71717a] text-[10px] font-black uppercase tracking-wider">Infrastructure Suite v{pkg.version}</p>
+                        <p className="text-[#71717a] text-[10px] font-black uppercase tracking-wider">v{pkg.version}</p>
                     </div>
                 </div>
 
@@ -104,7 +104,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                             className="space-y-6 relative z-10"
                         >
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-[#52525b] uppercase tracking-widest ml-1">Account Identifier</label>
+                                <label className="text-[10px] font-bold text-[#52525b] uppercase tracking-widest ml-1">Email</label>
                                 <div className="relative">
                                     <input 
                                         type="email" 
@@ -119,7 +119,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                             
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between ml-1">
-                                    <label className="text-[10px] font-bold text-[#52525b] uppercase tracking-widest">Access Key</label>
+                                    <label className="text-[10px] font-bold text-[#52525b] uppercase tracking-widest">Password</label>
                                 </div>
                                 <div className="relative">
                                     <input 
@@ -166,7 +166,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                                     <Loader2 className="animate-spin h-4 w-4" />
                                 ) : (
                                     <>
-                                        Establish Connection <ArrowRight size={12} />
+                                        Sign In <ArrowRight size={12} />
                                     </>
                                 )}
                             </button>
@@ -188,13 +188,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, onViewStatus }) => {
                             onClick={onViewStatus}
                             className="text-[9px] font-black uppercase tracking-[0.2em] text-[#3f3f46] hover:text-[#71717a] transition-colors py-1"
                         >
-                            Monitor System Node Status
+                            View Server Status
                         </button>
                     )}
                     
                     <div className="flex items-center gap-3 opacity-5">
                         <div className="h-[1px] w-6 bg-white"></div>
-                        <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white">SYSTEM READY</span>
+                        <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white">READY</span>
                         <div className="h-[1px] w-6 bg-white"></div>
                     </div>
                 </div>

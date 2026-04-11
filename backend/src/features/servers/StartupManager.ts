@@ -20,6 +20,7 @@ import { proxyService } from '../network/ProxyService';
 import { serverConfigService } from './ServerConfigService';
 import { SafeFileOperation } from '../../utils/fs';
 import { AppError } from '../../utils/AppError';
+import { preFlightService } from './PreFlightService';
 
 export class StartupManager {
 
@@ -30,10 +31,14 @@ export class StartupManager {
         const id = server.id;
 
         try {
-            // 0.1 Safety Checks (Skip if forced)
+            // 0. Safety Guards
             if (!force) {
                 await safetyService.validateServer(server);
             }
+
+            // 0.5 PreFlight Validation (Smart Connector)
+            // Synchronously checks for Port conflict, RAM over-allocation, Java version, etc.
+            await preFlightService.validate(server);
 
             // 1. Double-Start Check
             const isPortInUse = await NetUtils.checkPort(Number(server.port));
@@ -50,7 +55,7 @@ export class StartupManager {
             // 2. Prepare Environment
             await this.prepareEnvironment(server);
 
-            // 2.5 Smart Mod Management: Verify & Resolve dependencies before boot (Fabric/Forge/NeoForge)
+            // 2.5 Mod Management: Verify & Resolve dependencies before boot (Fabric/Forge/NeoForge)
             const softwareLower = (server.software || '').toLowerCase();
             if (softwareLower.includes('fabric') || softwareLower.includes('forge') || softwareLower.includes('neoforge')) {
                 try {
@@ -58,7 +63,7 @@ export class StartupManager {
                     const onLog = (line: string) => processManager.emit('log', { id, line, type: 'stdout' });
 
                     // Instant Feedback
-                    onLog(`[SmartMod] Pre-boot environment check starting...`);
+                    onLog(`[ModManager] Pre-boot environment check starting...`);
 
                     // Pass 1: Verify Compatibility (Move client-only mods)
                     const filtered = await installerService.verifyServerCompatibility(id, server.workingDirectory, undefined, onLog);
@@ -98,7 +103,7 @@ export class StartupManager {
             }
 
             if (engine === 'docker' && !settings.app.dockerEnabled) {
-                console.warn(`[StartupManager:${id}] Docker is disabled globally. Overriding execution engine to 'native' for safety.`);
+                logger.warn(`[StartupManager:${id}] Docker is disabled globally. Overriding execution engine to 'native' for safety.`);
                 engine = 'native';
             }
 
@@ -108,12 +113,12 @@ export class StartupManager {
             let dockerImage = server.dockerImage;
             const autoImage = javaManager.getDockerImageForJava(server.javaVersion);
 
-            // Smart Override: If no image set, OR if it's common default/stale, use auto-mapped
+            // Override: If no image set, OR if it's common default/stale, use auto-mapped
             if (!dockerImage || dockerImage.includes('eclipse-temurin')) {
                 if (!dockerImage) dockerImage = autoImage;
             }
 
-            console.log(`[StartupManager:${id}] Selected Docker image: ${dockerImage}`);
+            logger.info(`[StartupManager:${id}] Selected Docker image: ${dockerImage}`);
             
             processManager.startServer(id, cmd, cwd, { 
                 ...env, 
@@ -164,9 +169,9 @@ export class StartupManager {
         if (software.includes('forge') || software.includes('fabric') || software.includes('neoforge')) {
             const modsDir = path.join(cwd, 'mods');
             if (!(await fs.pathExists(modsDir))) {
-                 console.warn(`[StartupManager:${id}] Modded server (${server.software}) detected but 'mods' folder is missing.`);
+                 logger.warn(`[StartupManager:${id}] Modded server (${server.software}) detected but 'mods' folder is missing.`);
                  await SafeFileOperation.ensureDir(modsDir);
-                 console.log(`[StartupManager:${id}] Created empty 'mods' directory.`);
+                 logger.info(`[StartupManager:${id}] Created empty 'mods' directory.`);
             }
         } else if (software.includes('paper') || software.includes('spigot') || software.includes('purpur') || software.includes('velocity')) {
              const pluginsDir = path.join(cwd, 'plugins');
@@ -193,11 +198,11 @@ export class StartupManager {
              if (await fs.pathExists(argsFile)) {
                  // Good, it exists.
              } else {
-                 console.warn(`[StartupManager] user_jvm_args.txt missing for Forge/Bat server. This might cause startup failure.`);
+                 logger.warn(`[StartupManager] user_jvm_args.txt missing for Forge/Bat server. This might cause startup failure.`);
              }
         }
 
-        // 3. Automated Icon Deployment (Branding Stabilization)
+        // 3. Icon Deployment
         try {
             const iconName = server.software === 'Bedrock' ? 'world_icon.png' : 'server-icon.png';
             const serverIconPath = path.join(cwd, iconName);
@@ -261,7 +266,7 @@ export class StartupManager {
             // Default: G1GC
             jvmArgs += " -XX:+UseG1GC";
             if (server.advancedFlags?.aikarFlags) {
-                console.log(`[StartupManager] Injecting Aikar's Optimization Suite for ${server.name}`);
+                logger.info(`[StartupManager] Injecting Aikar's Optimization Suite for ${server.name}`);
                 jvmArgs += ` ${AIKAR_FLAGS}`;
             }
         }
@@ -272,7 +277,7 @@ export class StartupManager {
             jvmArgs += ` -Dnetwork.socket.sendBuffer=${bufferSize} -Dnetwork.socket.receiveBuffer=${bufferSize} -Dsun.net.maxDatagramSockets=${bufferSize / 1024}`;
         }
 
-        // 3. GraalVM Native JIT Optimization
+        // 3. GraalVM Optimization
         if (server.advancedFlags?.useGraalVM) {
             jvmArgs += " -XX:+UnlockExperimentalVMOptions -XX:+EnableJVMCI -XX:+UseJVMCICompiler";
         }
@@ -311,7 +316,7 @@ export class StartupManager {
         }
 
         if (jarFile.endsWith('.bat')) {
-            // Smart Forge Handler: Parse the bat to bypass PATH issues
+            // Forge Handler: Parse the bat to bypass PATH issues
             try {
                 const batPath = path.join(cwd, jarFile);
                 const batContent = await fs.readFile(batPath, 'utf8');
@@ -320,12 +325,12 @@ export class StartupManager {
                 const match = batContent.match(/^java\s+(@user_jvm_args\.txt.*)$/m);
                 if (match) {
                     const forgeArgs = match[1].replace('%*', '').trim(); // Remove %* placeholder
-                    console.log(`[StartupManager] Parsed Forge run.bat args: ${forgeArgs}`);
+                    logger.info(`[StartupManager] Parsed Forge run.bat args: ${forgeArgs}`);
                     
                     cmd = `${runPrefix}${actualJava} ${jvmArgs} ${forgeArgs} nogui`;
                     
                 } else {
-                    console.log('[StartupManager] Could not parse run.bat args, falling back to execution via cmd.');
+                    logger.info('[StartupManager] Could not parse run.bat args, falling back to execution via cmd.');
                     // Fallback to executing bat
                     if (isWin) {
                         cmd = `${runPrefix}cmd /c "cd /d "${cwd}" && "${jarFile}" ${jvmArgs} nogui"`;
@@ -334,7 +339,7 @@ export class StartupManager {
                     }
                 }
             } catch (e) {
-                console.error('[StartupManager] Error reading run.bat:', e);
+                logger.error(`[StartupManager] Error reading run.bat: ${e}`);
                  // Fallback
                  if (isWin) {
                     cmd = `${runPrefix}cmd /c "cd /d "${cwd}" && "${jarFile}" ${jvmArgs} nogui"`;
@@ -433,7 +438,7 @@ export class StartupManager {
                     // 6. Ensure forwarding secret files etc. are synced
                     await proxyService.syncForwarding(server.id);
 
-                    // 7. SMART SYNC: Automatically enforce configuration for all linked backend servers
+                    // SYNC: Automatically enforce configuration for all linked backend servers
                     const links = server.network?.proxyConfig?.links || [];
                     if (links.length > 0) {
                         logger.info(`[StartupManager:${server.id}] Proxy starting. Auto-syncing ${links.length} linked backend servers...`);
@@ -457,7 +462,7 @@ export class StartupManager {
 
             // --- STANDALONE / BACKEND LOGIC (Java/Bedrock) ---
             
-            // 1. General Property Sync (Phase 54.2)
+            // 1. General Property Sync
             // This handles port, online-mode, motd, max-players, and difficulty
             await serverConfigService.enforceConfig(server);
 
@@ -516,7 +521,7 @@ export class StartupManager {
             }
 
         } catch (err) {
-             console.error(`[StartupManager] Failed to enforce properties:`, err);
+             logger.error(`[StartupManager] Failed to enforce properties: ${err}`);
         }
     }
 

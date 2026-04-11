@@ -6,20 +6,19 @@ import { systemSettingsService } from '../features/system/SystemSettingsService'
 import { Permission, ServerCapabilities } from '../../../shared/types';
 import { getServer } from '../features/servers/ServerService';
 import { getServerCapabilities } from '../../../shared/utils/CapabilityUtils';
+import { logger } from '../utils/logger';
 
 
 export const verifyToken = async (req: Request, res: Response, next: NextFunction) => {
     // Check if Host Mode is disabled (Personal Mode)
     const settings = systemSettingsService.getSettings();
     const hostMode = settings?.app?.hostMode ?? true;
-    console.log(`[AuthMiddleware] verifyToken for ${req.path} (HostMode: ${hostMode})`);
     
     if (!hostMode) {
         // Personal Mode: Bypass authentication, use the system owner
         const owner = authService.getOwner();
         if (owner) {
              (req as any).user = owner;
-             console.log(`[AuthMiddleware] Personal Mode: Using system owner (${owner.email})`);
              return next();
         }
         
@@ -38,7 +37,6 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
                 terminal: { fontSize: 13, fontFamily: 'monospace' }
             }
         };
-        console.log('[AuthMiddleware] Personal Mode: Mock fallback user attached');
         return next();
     }
 
@@ -58,21 +56,19 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
                 terminal: { fontSize: 13, fontFamily: 'monospace' }
             }
         };
-        console.log('[AuthMiddleware] E2E Test Bypass: Mock user attached');
         return next();
     }
 
     // Host Mode: Require authentication
     const authHeader = req.headers['authorization'];
     if (!authHeader) {
-        console.warn(`[AuthMiddleware] Missing Authorization header for ${req.path}`);
+        logger.warn(`[AuthMiddleware] Missing Authorization header for ${req.path}`);
         return res.status(401).json({ error: 'Access denied: Missing Authorization header' });
     }
 
     // Format: "Bearer token"
     const parts = authHeader.split(' ');
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
-        console.warn(`[AuthMiddleware] Malformed Authorization header for ${req.path}: ${authHeader}`);
         return res.status(401).json({ error: 'Access denied: Malformed header' });
     }
 
@@ -80,14 +76,11 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
     
     // Verify JWT
     try {
-        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+        const secret = process.env.JWT_SECRET as string;
         const decoded = jwt.verify(token, secret) as any;
-        
-        console.log(`[AuthMiddleware] Token verified for user ID: ${decoded.id}`);
 
         const user = authService.getUser(decoded.id);
         if (!user) {
-            console.error(`[AuthMiddleware] User not found for ID ${decoded.id} in storage.`);
             return res.status(401).json({ error: 'Invalid token: User not found' });
         }
 
@@ -99,18 +92,31 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
             const { sessionRepository } = require('../storage/SessionRepository');
             const session = sessionRepository.findById(decoded.jti);
             
-            if (!session || session.expiresAt < Date.now() || session.revokedAt) {
-                 console.warn(`[AuthMiddleware] Revoked or expired session: ${decoded.jti} for user ${user.email}`);
+            // v4.0 Resilience: Expiration Grace Period (60s)
+            const GRACE_PERIOD_MS = 60 * 1000;
+            const isExpired = session?.expiresAt < Date.now();
+            const isWithinGrace = session && (Date.now() - session.expiresAt < GRACE_PERIOD_MS);
+
+            if (!session || (isExpired && !isWithinGrace) || session.revokedAt) {
+                 logger.warn(`[AuthMiddleware] Revoked or expired session: ${decoded.jti} for user ${user.email}`);
                  return res.status(401).json({ error: 'Session has been revoked or expired. Please login again.' });
             }
 
-            // Strict IP Binding
+            // Strict IP Binding (v4.0 Subnet-Aware Logic)
             const enforceIp = settings?.app?.security?.ipSessionBinding ?? false;
             if (enforceIp && session.ipAddress && session.ipAddress !== req.ip) {
-                 console.error(`[Security] Session IP Mismatch! Session: ${session.ipAddress}, Request: ${req.ip} (User: ${user.email})`);
-                 return res.status(401).json({ 
-                     error: 'Security Alert: Your IP address has changed since login. Please login again for your protection.' 
-                 });
+                 // Check if it's just a minor change in the same subnet (e.g. 192.168.1.10 -> 192.168.1.11)
+                 const sessionSubnet = session.ipAddress.split('.').slice(0, 3).join('.');
+                 const currentSubnet = req.ip.split('.').slice(0, 3).join('.');
+                 
+                 if (sessionSubnet !== currentSubnet) {
+                    logger.error(`[Security] Session Subnet Mismatch! Session: ${session.ipAddress}, Request: ${req.ip} (User: ${user.email})`);
+                    return res.status(401).json({ 
+                        error: 'Security Alert: Your IP subnet has changed significantly since login. Please login again.' 
+                    });
+                 } else {
+                    logger.info(`[AuthMiddleware] Subnet-Aware match for ${user.email} (IP shifted from ${session.ipAddress} to ${req.ip}). Bypassing logout.`);
+                 }
             }
         }
 
@@ -120,7 +126,7 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
         const force2FA = settings?.app?.security?.forceAdmin2FA ?? false;
         
         if (force2FA && isAppAdmin && !user.twoFactorEnabled) {
-            console.warn(`[AuthMiddleware] User ${user.email} blocked by forceAdmin2FA policy.`);
+            logger.warn(`[AuthMiddleware] User ${user.email} blocked by forceAdmin2FA policy.`);
             return res.status(403).json({ 
                 error: 'Two-Factor Authentication Required', 
                 policyEnforced: true,
@@ -130,7 +136,7 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
 
         next();
     } catch (e: any) {
-        console.error(`[AuthMiddleware] JWT Verification Failed: ${e.message}`, e.stack);
+        logger.error(`[AuthMiddleware] JWT Verification Failed: ${e.message} | ${e.stack}`);
         res.status(401).json({ error: 'Invalid or expired token' });
     }
 };
@@ -162,7 +168,7 @@ export const optionalVerifyToken = async (req: Request, res: Response, next: Nex
     if (!token) return next();
 
     try {
-        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+        const secret = process.env.JWT_SECRET as string;
         const decoded = jwt.verify(token, secret) as any;
         const user = authService.getUser(decoded.id);
         if (user) {

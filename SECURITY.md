@@ -2,13 +2,11 @@
 
 ## Supported Versions
 
-The following versions of CraftCommand are currently supported with security updates:
-
 | Version         | Supported                    |
 | --------------- | ---------------------------- |
-| 1.12.x (Stable) | :white_check_mark: (Current) |
-| 1.11.x          | :warning: (Maintenance)      |
-| < 1.11          | :x:                          |
+| 1.13.x (Active) | :test_tube: (Beta)         |
+| 1.11.x (Stable) | :white_check_mark: (Legacy) |
+| < 1.11          | :no_entry_sign: (EOL)      |
 
 ## Reporting a Vulnerability
 
@@ -23,31 +21,31 @@ Please contact me directly through GitHub or via the [Discord](https://discord.g
 
 Once a patch is released, you will be credited for the discovery unless you prefer to remain anonymous.
 
-## Hardening Measures (v1.12.5+)
+## Core Security Infrastructure
 
 CraftCommand implements several layers of defense-in-depth:
 
-- **Trio-State RBAC Engine**: Granular permissions (Inherit, Allow, Deny) with strict role isolation: **Owner > Admin > Manager > Viewer**.
-- **Hierarchical Guard System**: Prevents staff from elevating their own privileges or modifying accounts higher in the hierarchy.
-- **Network Isolation**: Backend services bind to `127.0.0.1` by default. Remote exposure requires explicit opt-in and owner-level "Remote Access Mode" activation.
-- **Network Isolation (Panic Kill)**: Immediate, hard-termination of all external bridges (tunnels, proxies) via the "Panic Kill" protocol.
-- **Systems Integrity Engine**: All updates are cryptographically signed with **Ed25519** and verified via SHA256 hashing to prevent supply-chain attacks.
-- **Resource Stewardship**: Active `ProcessLimiter` and `MemoryScalerService` prevent Denial-of-Service (DoS) via resource exhaustion.
-- **Zero-Config SSL**: Automated self-signed certificate generation protects local LAN traffic with HTTPS/TLS.
-- **Atomic Persistence Layer**: Database and configuration writes use atomic operations to prevent data corruption or partial state injection during system crashes.
-- **Audit Synchronization**: Immutable logging of all sensitive actions (Permission changes, Logins, Server management) with high-fidelity timestamps.
-- **Session Security**: JWT-based authentication with `bcryptjs` hashing and industry-standard token rotation.
+- **Role-Based Access Control (RBAC)**: Granular permissions with Inherit/Allow/Deny states. Strict role hierarchy: **Owner > Admin > Manager > Viewer**.
+- **Privilege Escalation Guards**: Users cannot modify accounts with higher privileges or elevate their own role.
+- **Hardware Throttling**: OS-level resource enforcement (Windows Job Objects / Linux Cgroups) prevents a compromised or runaway server from crashing the host.
+- **Automatic Repair Integrity**: Diagnostic rules are now lazily loaded and isolated to prevent circular dependency deadlocks and runtime failures during critical healing operations.
+- **WebSocket-First Transport**: Real-time communication is hardened against session hijacking and 400 polling errors via mandatory WebSocket prioritization.
+- **Network Binding**: Backend binds to `127.0.0.1` by default. Remote access requires explicit opt-in by the owner.
+- **Emergency Disconnect**: Immediate termination of all external bridges (tunnels, proxies) when triggered.
+- **Update Verification**: All updates are signed and verified via SHA256 hashing before application.
+- **Session Security**: JWT-based auth with `bcryptjs` password hashing and session revocation support.
+- **Audit Logging**: All sensitive actions (permission changes, logins, server management) are logged with timestamps.
 
-## File System & Runtime Security
+## File System & Runtime Isolation
 
-- **Path Traversal Protection**: All file-based operations use strict sanitization and validation to prevent directory traversal.
-- **Instance Isolation**: Minecraft servers run in isolated subdirectories within `minecraft_servers/`.
-- **Repository Pattern**: Direct file I/O is abstracted and restricted to the Repository Layer, preventing ad-hoc file mutations elsewhere in the codebase.
+- **Path Traversal Protection**: All file operations use strict sanitization and `path.resolve` validation to prevent directory traversal.
+- **Process Isolation**: Minecraft servers run in dedicated subdirectories with restricted environment variables. Sensitive secrets (JWT_SECRET) are stripped from the child process environment.
+- **Repository Pattern**: Data persistence is abstracted behind an ACID-compliant repository layer to prevent ad-hoc file mutations or corruption.
 
 ## Security Best Practices
 
-- **Update Regularly**: Always run the latest stable version from the `main` branch.
-- **Environment Safety**: Review allowed IPs in `servers.json` and keep `2FA` enabled for sensitive roles.
-- **Monitor Audit Logs**: Regularly check the Audit Log tab for suspicious entry or configuration patterns.
+- **Update Regularly**: Always run the latest stable version from the `main` branch to receive security patches.
+- **Environment Safety**: Review allowed IPs in `servers.json` and keep 2FA enabled for admin roles.
+- **Monitor Audit Logs**: Regularly check the Audit Log tab for suspicious activity.
 
 Thank you for helping keep the CraftCommand ecosystem safe and secure!

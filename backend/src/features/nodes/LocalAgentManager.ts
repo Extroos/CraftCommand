@@ -9,6 +9,14 @@ class LocalAgentManager {
     private restartTimer: NodeJS.Timeout | null = null;
     private intentionalStop: boolean = false;
 
+    // Phase 1 Fix: Crash loop prevention
+    private consecutiveFailures: number = 0;
+    private readonly MAX_CONSECUTIVE_RESTARTS = 5;
+    private readonly BASE_RESTART_DELAY_MS = 1000;
+    private readonly MAX_RESTART_DELAY_MS = 30000;
+    private stabilityTimer: NodeJS.Timeout | null = null;
+    private agentSafeMode: boolean = false;
+
     initialize() {
         // Initial check
         this.checkAndApplyState();
@@ -31,6 +39,8 @@ class LocalAgentManager {
         }
 
         this.intentionalStop = false;
+        this.agentSafeMode = false;
+        this.consecutiveFailures = 0;
 
         // Auto-Enrollment for Local Node
         const secret = nodeRegistryService.getLocalNodeSecret();
@@ -47,8 +57,22 @@ class LocalAgentManager {
         // Logic for other distributed features (if any) could go here
     }
 
+    private getRestartDelay(): number {
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (capped)
+        const delay = Math.min(
+            this.BASE_RESTART_DELAY_MS * Math.pow(2, this.consecutiveFailures),
+            this.MAX_RESTART_DELAY_MS
+        );
+        return delay;
+    }
+
     private startAgent(secret: string) {
         if (this.agentProcess) return;
+
+        if (this.agentSafeMode) {
+            logger.error('[LocalAgent] Agent is in Safe Mode after repeated failures. Re-enable Distributed Nodes in settings to retry.');
+            return;
+        }
 
         logger.info('[LocalAgent] Spawning embedded Node Agent...');
 
@@ -105,14 +129,38 @@ class LocalAgentManager {
 
         this.agentProcess.on('close', (code) => {
             this.agentProcess = null;
+
+            // Clear stability timer since agent is no longer running
+            if (this.stabilityTimer) {
+                clearTimeout(this.stabilityTimer);
+                this.stabilityTimer = null;
+            }
+
             if (!this.intentionalStop) {
-                logger.warn(`[LocalAgent] Process exited with code ${code}. Restarting in 5s...`);
-                // Always try to restart if it crashes
-                this.restartTimer = setTimeout(() => this.startAgent(secret), 5000);
+                this.consecutiveFailures++;
+
+                if (this.consecutiveFailures >= this.MAX_CONSECUTIVE_RESTARTS) {
+                    logger.error(`[LocalAgent] Agent crashed ${this.consecutiveFailures} times consecutively. Entering Agent Safe Mode.`);
+                    logger.error('[LocalAgent] To retry: Toggle "Distributed Nodes" off and on in Settings.');
+                    this.agentSafeMode = true;
+                    return;
+                }
+
+                const delay = this.getRestartDelay();
+                logger.warn(`[LocalAgent] Process exited with code ${code}. Restart ${this.consecutiveFailures}/${this.MAX_CONSECUTIVE_RESTARTS} in ${Math.round(delay / 1000)}s...`);
+                this.restartTimer = setTimeout(() => this.startAgent(secret), delay);
             } else {
                 logger.info('[LocalAgent] Process shut down gracefully (Feature Disabled).');
             }
         });
+
+        // Stability timer: if agent stays alive for 60s, reset failure counter
+        this.stabilityTimer = setTimeout(() => {
+            if (this.agentProcess && this.consecutiveFailures > 0) {
+                logger.info(`[LocalAgent] Agent stable for 60s. Resetting failure counter (was ${this.consecutiveFailures}).`);
+                this.consecutiveFailures = 0;
+            }
+        }, 60000);
     }
 
     stop() {
@@ -120,6 +168,10 @@ class LocalAgentManager {
         if (this.restartTimer) {
             clearTimeout(this.restartTimer);
             this.restartTimer = null;
+        }
+        if (this.stabilityTimer) {
+            clearTimeout(this.stabilityTimer);
+            this.stabilityTimer = null;
         }
         if (this.agentProcess) {
             // Force kill tree? For now standard kill

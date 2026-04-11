@@ -29,6 +29,7 @@ class ProcessManager extends EventEmitter {
     private focusedServerId: string | null = null; // v1.14.0: Focus mode for UI
     private readonly MAX_ACTIVITY_HISTORY = 100;
     private runnerListeners: Map<string, { log: any, close: any }> = new Map();
+    private serverEpochs: Map<string, number> = new Map(); // v2.2: Epoch tracking for race protection
 
     constructor() {
         super();
@@ -83,9 +84,13 @@ class ProcessManager extends EventEmitter {
         }
     }
 
+    private isSyncing = false;
+
     private startSyncLoop() {
         // Periodic sync to detect external/unmanaged processes and recover stuck STARTING states
         setInterval(async () => {
+             if (this.isSyncing) return;
+             this.isSyncing = true;
              try {
                 const { getServers } = await import('../servers/ServerService');
                 const servers = getServers();
@@ -144,6 +149,8 @@ class ProcessManager extends EventEmitter {
                 }
              } catch (err) {
                  // Prevent interval crash
+             } finally {
+                 this.isSyncing = false;
              }
         }, 30000); // Increased interval to 30s for better scalability
     }
@@ -238,11 +245,11 @@ class ProcessManager extends EventEmitter {
             return;
         }
 
-        // --- AUTO-HEALING RESET (v2.2) ---
+        // --- AUTOMATIC REPAIR RESET (v2.2) ---
         // If the user manually starts the server, we assume they've triaged it.
-        // Resetting stability markers allows Auto-Healing to resume monitoring.
-        const { autoHealingService } = require('../diagnosis/AutoHealingService');
-        autoHealingService.resetStabilityMarker(id);
+        // Resetting stability markers allows Automatic Repair to resume monitoring.
+        const { automaticRepairService } = require('../diagnosis/AutomaticRepairService');
+        automaticRepairService.resetStabilityMarker(id);
         
         // --- PORT PROTECTION ENGINE ---
         const port = env.SERVER_PORT;
@@ -258,6 +265,15 @@ class ProcessManager extends EventEmitter {
         const engine = env.executionEngine || 'native';
         const runner = runnerFactory.getRunner(engine);
         
+        // --- RESOURCE ENFORCEMENT (v1.14.0) ---
+        // Pass hardware limits to the runner for OS-level throttling
+        const { getServer } = require('../servers/ServerService');
+        const server = getServer(id);
+        if (server) {
+            env.CC_RAM_LIMIT_MB = (server.ram * 1024).toString();
+            env.CC_CPU_PRIORITY = (server.cpuPriority || 'normal').toLowerCase();
+        }
+
         this.stoppingServers.delete(id);
         this.startupLocks.add(id);
         logger.info(`[ProcessManager] Initializing server ${id} using ${engine} engine.`);
@@ -312,15 +328,31 @@ class ProcessManager extends EventEmitter {
     }
 
     private attachRunnerListeners(id: string, runner: IServerRunner, initialStatus: ServerStatus = ServerStatus.STARTING) {
+        // --- v2.2: EPOCH EVOLUTION ---
+        // Increment epoch for this server to invalidate any pending events from previous runs
+        const epoch = (this.serverEpochs.get(id) || 0) + 1;
+        this.serverEpochs.set(id, epoch);
+
         // Setup Event Handlers for this specific server/runner combo
         const logHandler = (data: { id: string, line: string, type: 'stdout' | 'stderr' }) => {
             if (data.id !== id) return;
+            
+            // Validate Epoch: Ignore logs from dead/recycled processes
+            if (this.serverEpochs.get(id) !== epoch) return;
+
             this.lastActivityTime.set(id, Date.now()); // Any log output counts as activity
             this.handleServerLog(id, data.line, data.type);
         };
 
         const closeHandler = (data: { id: string, code: number }) => {
             if (data.id !== id) return;
+
+            // Validate Epoch: Ignore close events from old instances
+            if (this.serverEpochs.get(id) !== epoch) {
+                logger.warn(`[ProcessManager:${id}] Ignored late 'close' event (Epoch ${epoch} vs Current ${this.serverEpochs.get(id)})`);
+                return;
+            }
+
             this.cleanupRunner(id); // Comprehensive cleanup
             this.handleServerClose(id, data.code);
         };
@@ -486,14 +518,17 @@ class ProcessManager extends EventEmitter {
         const finalStatus = (!isIntentional && code !== 0 && code !== null) ? ServerStatus.CRASHED : ServerStatus.OFFLINE;
         
         this.stoppingServers.delete(id);
-
-        const { getServer, saveServer } = require('../servers/ServerService');
+        const { getServer, saveServer, invalidateDiagnosisCache } = require('../servers/ServerService');
         const server = getServer(id);
         if (server) {
             if (isIntentional || finalStatus === ServerStatus.CRASHED) {
                 delete server.startTime;
                 this.onlineTimes.delete(id);
                 saveServer(server); // Commit metadata changes
+                
+                if (finalStatus === ServerStatus.CRASHED) {
+                    invalidateDiagnosisCache(id);
+                }
             }
         }
 
@@ -526,10 +561,21 @@ class ProcessManager extends EventEmitter {
             // Normal Stop: Try stdin first
             await runner.stop(id, false);
 
-            // Bedrock-Specific Smart Shutdown Orchestration
-            // Bedrock-Specific Smart Shutdown Orchestration (Phase 12: Optimized Polling)
             const { getServer } = require('../servers/ServerService');
             const server = getServer(id);
+
+            // Universal Zombie Process Killer Timeout (Phase 7)
+            const shutdownMs = server?.shutdownTimeout || 30000;
+            const killTargetRunner = runner;
+            setTimeout(async () => {
+                if (this.activeRunners.get(id) === killTargetRunner && this.stoppingServers.has(id)) {
+                    logger.warn(`[ProcessManager] ${id} did not stop within ${shutdownMs}ms. Forcing SIGKILL to prevent zombie process.`);
+                    await killTargetRunner.kill?.(id, 'SIGKILL');
+                }
+            }, shutdownMs);
+
+            // Bedrock-Specific Smart Shutdown Orchestration
+            // Bedrock-Specific Smart Shutdown Orchestration (Phase 12: Optimized Polling)
             if (server?.software === 'Bedrock' && runner.kill) {
                 // Poll for up to 10s for stdin 'stop' to work
                 const pollAndEscalate = async (stage: 'STDIN' | 'SIGINT', timeoutMs: number, nextSignal: string) => {

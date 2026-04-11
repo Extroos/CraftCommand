@@ -7,6 +7,7 @@ import { discordService } from '../integrations/DiscordService';
 import { logger } from '../../utils/logger';
 import { notificationService } from './NotificationService';
 import { nodeRegistryService } from '../nodes/NodeRegistryService';
+import { systemSettingsService } from './SystemSettingsService';
 
 import { setSystemStatus, protocol, sslStatus } from './SystemStatusState';
 import { updateVerifier } from './UpdateVerifier';
@@ -19,10 +20,11 @@ export type UpdateStatus = 'IDLE' | 'CHECKING' | 'DOWNLOADING' | 'VERIFYING' | '
 
 export interface UpdateStateInfo {
     status: UpdateStatus;
-    progress: number; // 0-100
+    progress: number;
     currentStep?: string;
     error?: string;
     targetVersion?: string;
+    isAutoUpdate?: boolean;
 }
 
 type UpdateLevel = 'MAJOR' | 'MINOR' | 'PATCH';
@@ -77,6 +79,13 @@ class UpdateService {
         setSystemStatus(protocol, sslStatus, this.currentVersion);
         logger.info(`[UpdateService] Initialized. Current Version: v${this.currentVersion} | CWD: ${process.cwd()}`);
 
+        // --- HEALTH-CHECK HANDSHAKE (v1.16.0) ---
+        // If we just updated, wait 30 seconds of stable uptime before marking "SUCCESS".
+        // This allows the launcher to detect "Instant Crashes" and rollback.
+        setTimeout(() => {
+            this.markBootSuccess();
+        }, 30000);
+
         // Initial check after short delay
         setTimeout(() => {
             this.checkForUpdates();
@@ -89,6 +98,24 @@ class UpdateService {
     }
 
     /**
+     * Writes a success flag to the disk. 
+     * The Launcher/Bootstrapper checks for this flag to decide if a rollback is needed.
+     */
+    private markBootSuccess() {
+        try {
+            const flagFile = path.join(process.cwd(), '../boot_success.flag');
+            fs.writeFileSync(flagFile, JSON.stringify({
+                version: this.currentVersion,
+                timestamp: Date.now(),
+                stable: true
+            }));
+            logger.info(`[UpdateService] 🟢 Health Handshake Verified. Build v${this.currentVersion} is stable.`);
+        } catch (e) {
+            logger.error(`[UpdateService] Failed to write health flag: ${e.message}`);
+        }
+    }
+
+    /**
      * Checks for application updates with advanced infrastructure awareness.
      * Ensures perfect backward compatibility with older Dashboard versions.
      * @param force - If true, bypasses the cache and user preferences.
@@ -97,8 +124,8 @@ class UpdateService {
         const currentVersion = this.getLocalVersion();
 
         try {
-            const owner = authService.getOwner();
-            const updatesEnabled = owner?.preferences?.updates?.check ?? true;
+            const settings = systemSettingsService.getSettings();
+            const updatesEnabled = settings?.app?.autoUpdate ?? true;
             
             if (!updatesEnabled && !force) {
                 return { available: false, currentVersion, latestVersion: currentVersion };
@@ -119,7 +146,6 @@ class UpdateService {
             
             if (remoteData.minAgentVersion) {
                  for (const node of nodes) {
-                    // Local node shares version with backend, so it's always compatible after update
                     if (node.id === 'local') continue; 
                     
                     if (node.agentVersion && this.compareVersions(node.agentVersion, remoteData.minAgentVersion) < 0) {
@@ -150,8 +176,8 @@ class UpdateService {
                 notes: remoteData.notes || (remoteData.body ? remoteData.body.split('\n') : []),
                 priority: remoteData.priority || (level === 'MAJOR' ? 'CRITICAL' : (level === 'MINOR' ? 'HIGH' : 'LOW')),
                 breaking,
-                incompatible, // General flag
-                incompatibleNodes, // Specific details
+                incompatible,
+                incompatibleNodes,
                 level: level || undefined,
                 assetsAvailable: !!(remoteData.assets && remoteData.assets.length > 0)
             } as any;
@@ -159,6 +185,13 @@ class UpdateService {
 
             if (available) {
                 this.handleUpdateNotifications(this.cachedResult);
+                
+                // v4.0 Autonomous Trigger: If autoUpdate is enabled and we are not already processing
+                if (updatesEnabled && this.updateStatus.status === 'IDLE') {
+                    this.initiateAutoUpdateSequence(this.cachedResult.latestVersion).catch(err => {
+                        logger.error(`[UpdateService] Auto-update sequence failed: ${err.message}`);
+                    });
+                }
             }
             
             return this.cachedResult;
@@ -327,7 +360,7 @@ class UpdateService {
             if (fs.existsSync(this.stateFile)) {
                 return fs.readJSONSync(this.stateFile);
             }
-        } catch (e) {}
+        } catch (e) { logger.warn(`[UpdateService] Failed to read update state file: ${e}`); }
         return {};
     }
 
@@ -335,7 +368,7 @@ class UpdateService {
         try {
             fs.ensureDirSync(path.dirname(this.stateFile));
             fs.writeJSONSync(this.stateFile, state, { spaces: 2 });
-        } catch (e) {}
+        } catch (e) { logger.warn(`[UpdateService] Failed to save update state file: ${e}`); }
     }
 
 
@@ -353,9 +386,27 @@ class UpdateService {
     }
 
     /**
+     * v4.0 Shadows: Initiates background download and staging.
+     */
+    public async initiateAutoUpdateSequence(version: string): Promise<void> {
+        logger.info(`[UpdateService] Initiating autonomous update sequence for v${version}...`);
+        try {
+            await this.downloadUpdate(version, true);
+            notificationService.broadcast(
+                'INFO',
+                'System Update Prepared',
+                `v${version} has been pre-downloaded and verified. It is ready to apply on next restart.`,
+                { version, type: 'AUTO_STAGED' }
+            );
+        } catch (e: any) {
+            logger.error(`[UpdateService] Autonomous update failed: ${e.message}`);
+        }
+    }
+
+    /**
      * Step 1: Download the update bundle and signature from GitHub
      */
-    public async downloadUpdate(version: string): Promise<void> {
+    public async downloadUpdate(version: string, isAuto = false): Promise<void> {
         if (this.updateStatus.status !== 'IDLE' && this.updateStatus.status !== 'ERROR') {
             throw new Error('Update already in progress.');
         }
@@ -364,7 +415,8 @@ class UpdateService {
             status: 'DOWNLOADING', 
             progress: 0, 
             targetVersion: version,
-            currentStep: 'Fetching release metadata...' 
+            currentStep: 'Fetching release metadata...',
+            isAutoUpdate: isAuto
         };
 
         try {
@@ -487,9 +539,26 @@ class UpdateService {
         try {
             this.updateStatus.currentStep = 'Preparing update plan...';
             
-            // Unzip to extracted
+            // Unzip to extracted (with archive bomb protection)
             const zip = new AdmZip(path.join(this.TEMP_DIR, 'update.zip'));
+            const entries = zip.getEntries();
+            const MAX_UPDATE_ENTRIES = 5000;
+            const MAX_UPDATE_SIZE = 1 * 1024 * 1024 * 1024; // 1GB
+
+            if (entries.length > MAX_UPDATE_ENTRIES) {
+                throw new Error(`Update archive exceeds entry limit (${entries.length}/${MAX_UPDATE_ENTRIES})`);
+            }
+
+            let totalSize = 0;
+            for (const entry of entries) {
+                totalSize += entry.header.size;
+                if (totalSize > MAX_UPDATE_SIZE) {
+                    throw new Error('Update archive exceeds maximum uncompressed size (1GB)');
+                }
+            }
+
             zip.extractAllTo(this.EXTRACT_DIR, true);
+            logger.info(`[UpdateService] Extracted ${entries.length} entries (${Math.round(totalSize / 1024 / 1024)}MB).`);
 
             // Create Plan
             const plan = {

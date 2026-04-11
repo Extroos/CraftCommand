@@ -1,0 +1,44 @@
+[
+  {
+    "id": "5bdc1d9d-b079-4bce-a2f9-ec87634c0942",
+    "timestamp": 1775839885593,
+    "userId": "SYSTEM",
+    "userEmail": "system@craftcommand.internal",
+    "action": "AUTOMATIC_REPAIR",
+    "resourceId": "test-safety-1",
+    "metadata": {
+      "actionType": "SMART_LOG_ROTATION",
+      "payload": {},
+      "success": true
+    },
+    "ip": "127.0.0.1"
+  },
+  {
+    "id": "4fc188af-970d-4420-9d7f-501f185d75f0",
+    "timestamp": 1775839900449,
+    "userId": "SYSTEM",
+    "userEmail": "system@craftcommand.internal",
+    "action": "AUTOMATIC_REPAIR",
+    "resourceId": "test-safety-1",
+    "metadata": {
+      "actionType": "SMART_LOG_ROTATION",
+      "payload": {},
+      "success": true
+    },
+    "ip": "127.0.0.1"
+  },
+  {
+    "id": "a1739d12-2f9d-4cfd-ae79-59e0dcb7669e",
+    "timestamp": 1775839915270,
+    "userId": "SYSTEM",
+    "userEmail": "system@craftcommand.internal",
+    "action": "AUTOMATIC_REPAIR",
+    "resourceId": "test-safety-1",
+    "metadata": {
+      "actionType": "SMART_LOG_ROTATION",
+      "payload": {},
+      "success": true
+    },
+    "ip": "127.0.0.1"
+  }
+]

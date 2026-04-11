@@ -115,7 +115,7 @@ export class PluginService {
             await installerService.downloadFile(downloadInfo.url, destPath);
         } catch (err: any) {
             // Clean up partial/corrupted download
-            try { await fs.remove(destPath); } catch (_) {}
+            try { await fs.remove(destPath); } catch (e) { logger.debug(`[PluginService] Failed to clean up failed download: ${e}`); }
             logger.error(`[PluginService] Download failed for ${downloadInfo.fileName}: ${err.message}`);
             throw new Error(`Failed to download plugin. The marketplace may be temporarily unavailable. (${err.message})`);
         }

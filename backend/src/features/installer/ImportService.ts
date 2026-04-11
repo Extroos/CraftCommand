@@ -318,6 +318,34 @@ class ImportService {
         const { removeServer } = await import('../servers/ServerService');
         removeServer(serverId);
     }
+
+    /**
+     * Cleanup orphaned temp directories on system start.
+     */
+    async cleanupTempDirectories(): Promise<void> {
+        const uploadDir = path.join(path.dirname(SERVERS_ROOT), 'temp_uploads');
+        
+        try {
+            if (await fs.pathExists(uploadDir)) {
+                const entries = await fs.readdir(uploadDir);
+                if (entries.length > 0) {
+                    logger.info(`[ImportService] Cleaning up ${entries.length} orphaned upload directories...`);
+                    await fs.emptyDir(uploadDir);
+                }
+            }
+
+            // Also check for 'temp_extract' inside SERVERS_ROOT (leftover from Modpack install)
+            const rootEntries = await fs.readdir(SERVERS_ROOT);
+            for (const entry of rootEntries) {
+                if (entry.includes('temp_extract')) {
+                    logger.info(`[ImportService] Cleaning up orphaned modpack extraction: ${entry}`);
+                    await fs.remove(path.join(SERVERS_ROOT, entry)).catch(() => {});
+                }
+            }
+        } catch (e) {
+            logger.debug(`[ImportService] Temp cleanup failed (non-critical): ${e}`);
+        }
+    }
 }
 
 export const importService = new ImportService();

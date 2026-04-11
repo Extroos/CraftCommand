@@ -1,0 +1,50 @@
+[
+  {
+    "id": "9de2a043-ca31-4500-9c7e-56f29d0ec87e",
+    "userId": "ALL",
+    "type": "SUCCESS",
+    "title": "Automatic Repair Applied",
+    "message": "System applied SMART LOG ROTATION to Safety Test Server.",
+    "read": false,
+    "createdAt": 1775839885593,
+    "metadata": {
+      "serverId": "test-safety-1",
+      "actionType": "SMART_LOG_ROTATION",
+      "timestamp": 1775839885593,
+      "code": "E_FS_ATOMIC_FAIL"
+    },
+    "dismissible": true
+  },
+  {
+    "id": "ccf7a76b-598e-481f-8ae1-a4a0c4ad7945",
+    "userId": "ALL",
+    "type": "SUCCESS",
+    "title": "Automatic Repair Applied",
+    "message": "System applied SMART LOG ROTATION to Safety Test Server.",
+    "read": false,
+    "createdAt": 1775839900449,
+    "metadata": {
+      "serverId": "test-safety-1",
+      "actionType": "SMART_LOG_ROTATION",
+      "timestamp": 1775839900449,
+      "code": "E_FS_ATOMIC_FAIL"
+    },
+    "dismissible": true
+  },
+  {
+    "id": "75697216-0ab2-4d99-8157-0046c64f2f5e",
+    "userId": "ALL",
+    "type": "SUCCESS",
+    "title": "Automatic Repair Applied",
+    "message": "System applied SMART LOG ROTATION to Safety Test Server.",
+    "read": false,
+    "createdAt": 1775839915270,
+    "metadata": {
+      "serverId": "test-safety-1",
+      "actionType": "SMART_LOG_ROTATION",
+      "timestamp": 1775839915270,
+      "code": "E_FS_ATOMIC_FAIL"
+    },
+    "dismissible": true
+  }
+]

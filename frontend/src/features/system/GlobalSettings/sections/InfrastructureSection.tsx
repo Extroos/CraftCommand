@@ -35,7 +35,7 @@ export const InfrastructureSection: React.FC<InfrastructureSectionProps> = ({
                     </div>
                     <div>
                         <h3 className="text-sm font-bold tracking-tight text-foreground">Network Security</h3>
-                        <p className="text-[10px] font-medium text-muted-foreground">Configure secure access protocols (HTTPS).</p>
+                        <p className="text-[10px] font-medium text-muted-foreground">Set up HTTPS for your panel.</p>
                     </div>
                 </div>
 
@@ -145,6 +145,9 @@ export const InfrastructureSection: React.FC<InfrastructureSectionProps> = ({
                             <div className="font-bold text-[11px] flex items-center gap-2">
                                 SQLite Storage Database
                                 {settings.app.storageProvider === 'sqlite' && <Database size={12} className="text-emerald-500" />}
+                                <span className="ml-auto px-1.5 py-0.5 rounded-[4px] bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase tracking-widest border border-emerald-500/20">
+                                    Recommended for 1000+ Nodes
+                                </span>
                             </div>
                             <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight">
                                 Enable SQLite for better data integrity and crash resilience. Disabling switches back to standard JSON files.
@@ -190,7 +193,7 @@ export const InfrastructureSection: React.FC<InfrastructureSectionProps> = ({
                     </div>
                     <div>
                         <h3 className="text-sm font-bold tracking-tight text-foreground">Distributed Computing</h3>
-                        <p className="text-[10px] font-medium text-muted-foreground">Expand your cluster by enrolling remote nodes.</p>
+                        <p className="text-[10px] font-medium text-muted-foreground">Add remote machines to your setup.</p>
                     </div>
                 </div>
 

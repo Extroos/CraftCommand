@@ -10,7 +10,7 @@ import path from 'path';
 
 /**
  * Proactive Healing Actions
- * These are called by AutoHealingManager with a scoped FileSystemManager.
+ * These are called by AutomaticRepairService with a scoped FileSystemManager.
  */
 export const DiagnosisActions = {
     /**
@@ -19,6 +19,15 @@ export const DiagnosisActions = {
     agreeEula: async (fs: FileSystemManager) => {
         logger.info(`[DiagnosisAction] Automatically agreeing to EULA`);
         await fs.writeFile('eula.txt', 'eula=true');
+
+        // --- SMART HANDLING: APPEND FIX MARKER ---
+        // Instead of truncating, we append a marker so the scanner knows to ignore 
+        // older EULA errors while preserving the history for the user.
+        try {
+            if (await fs.exists('logs/latest.log')) {
+                await fs.appendFile('logs/latest.log', '\n[CraftCommand] [FIX] EULA Accepted. Previous eula errors are now stale.\n');
+            }
+        } catch (e) { /* ignore */ }
     },
 
     /**
@@ -51,6 +60,11 @@ export const DiagnosisActions = {
                 props = props.replace(/^server-port=.*$/m, `server-port=${newPort}`);
                 props = props.replace(/^query.port=.*$/m, `query.port=${newPort}`);
                 await fs.writeFile('server.properties', props);
+
+                // --- SMART HANDLING: FIX MARKER ---
+                if (await fs.exists('logs/latest.log')) {
+                    await fs.appendFile('logs/latest.log', `\n[CraftCommand] [FIX] Port changed to ${newPort}. Previous bind errors are now stale.\n`);
+                }
             } catch (e) {
                 // Ignore if props don't exist yet
             }
@@ -86,53 +100,95 @@ export const DiagnosisActions = {
     },
 
     /**
-     * Advanced: Deep-merges properties with sane defaults
+     * Sane default synchronization for server.properties
+     * v4.0: Sanitizes malformed entries that prevent startup while preserving valid data.
      */
-    repairProperties: async (fs: FileSystemManager, version: string) => {
-        logger.info(`[DiagnosisAction] Repairing server.properties...`);
+    repairProperties: async (fs: FileSystemManager, serverId?: string, extra?: { scale?: number, version?: string }) => {
+        logger.info(`[DiagnosisAction] Repairing and sanitizing server.properties...`);
         try {
-            let content = await fs.readFile('server.properties');
-            // Ensure core performance settings
-            if (!content.includes('network-compression-threshold')) {
-                content += '\nnetwork-compression-threshold=256';
+            if (await fs.exists('server.properties')) {
+                let content = await fs.readFile('server.properties');
+                
+                // 1. Remove obvious syntax garbage (binary symbols, illegal characters)
+                content = content.replace(/[^\x00-\x7F]/g, ''); 
+                
+                // 2. Intelligent Scaling (v2.5) — Reduction for performance
+                if (extra?.scale) {
+                    const scaleValue = (val: string) => Math.max(2, parseInt(val) + (extra.scale || 0)).toString();
+                    
+                    content = content.replace(/^view-distance=(\d+)$/m, (_, val) => `view-distance=${scaleValue(val)}`);
+                    content = content.replace(/^simulation-distance=(\d+)$/m, (_, val) => `simulation-distance=${scaleValue(val)}`);
+                    logger.info(`[DiagnosisAction] Scaled view/simulation distance by ${extra.scale}`);
+                }
+
+                // 3. Ensure core performance settings
+                if (!content.includes('network-compression-threshold')) {
+                    content += '\nnetwork-compression-threshold=256';
+                }
+                if (!content.includes('view-distance') && !extra?.scale) {
+                    const vd = (extra?.version && extra.version.includes('1.20')) ? '8' : '10';
+                    content += `\nview-distance=${vd}`;
+                }
+
+                // 4. Fix most common malformation: server-port containing non-digits
+                content = content.replace(/^server-port=.*\D.*$/m, 'server-port=25565');
+
+                await fs.writeFile('server.properties', content);
+                
+                // --- SMART HANDLING: FIX MARKER ---
+                try {
+                    if (await fs.exists('logs/latest.log')) {
+                        await fs.appendFile('logs/latest.log', '\n[CraftCommand] [FIX] server.properties repaired. Stale config errors should be ignored.\n');
+                    }
+                } catch (e) {}
+
+                logger.success(`[DiagnosisAction] server.properties updated.`);
+            } else {
+                // Create default properties if missing
+                await fs.writeFile('server.properties', 'online-mode=true\nserver-port=25565\nmax-players=20\nview-distance=10');
             }
-            if (!content.includes('view-distance')) {
-                content += '\nview-distance=10';
-            }
-            await fs.writeFile('server.properties', content);
-        } catch (e) {
-            // Create default properties if missing
-            await fs.writeFile('server.properties', 'online-mode=true\nserver-port=25565\nmax-players=20');
+        } catch (e: any) {
+            logger.error(`[DiagnosisAction] Properties repair failed: ${e.message}`);
         }
     },
 
     /**
-     * Advanced: Truncates massive logs and clears locks
+     * Deterministic Log Rotation & Lock Cleanup
+     * Rotates files based on size (100MB threshold) and clears persistent world locks.
      */
-    cleanupTelemetry: async (fs: FileSystemManager) => {
-        logger.info(`[DiagnosisAction] Cleaning up telemetry...`);
+    rotateLogsBySize: async (fs: FileSystemManager) => {
+        logger.info(`[DiagnosisAction] Executing deterministic log rotation...`);
+        const MAX_LOG_SIZE = 100 * 1024 * 1024; // 100MB
         
-        // Truncate latest.log if it exists
-        try {
-            await fs.writeFile('logs/latest.log', '--- Log truncated by Auto-Healing ---');
-        } catch (e) {}
-
-        // Clear archived logs if they exist
         try {
             if (await fs.exists('logs')) {
-                const files = await fs.listFiles('logs');
-                for (const file of files) {
-                    if (file.name.endsWith('.log.gz') || (file.name.endsWith('.log') && file.name !== 'latest.log')) {
-                        await fs.deletePath(path.join('logs', file.name));
+                const logFiles = await fs.listFiles('logs');
+                for (const file of logFiles) {
+                    // 1. Rotate massive active logs
+                    if (file.name === 'latest.log' && file.size > MAX_LOG_SIZE) {
+                        logger.warn(`[DiagnosisAction] latest.log exceeded 100MB. Tail-rotating...`);
+                        await DiagnosisActions.smartLogRotation({ id: 'active' } as any, fs);
+                    }
+                    
+                    // 2. Cleanup ancient archives (> 7 days or total > 2GB)
+                    if (file.name.endsWith('.log.gz')) {
+                        const stats = await fs.getStats(path.join('logs', file.name));
+                        const ageDays = (Date.now() - stats.mtimeMs) / (1000 * 60 * 60 * 24);
+                        if (ageDays > 7) {
+                            logger.info(`[DiagnosisAction] Pruning 7-day old log archive: ${file.name}`);
+                            await fs.deletePath(path.join('logs', file.name));
+                        }
                     }
                 }
             }
-        } catch (e) {}
+        } catch (e) {
+            logger.error(`[DiagnosisAction] Deterministic rotation failed: ${e}`);
+        }
 
-        // Remove lock files
+        // Remove world lock files if not running
         try {
             await fs.deletePath('session.lock');
-        } catch (e) {}
+        } catch (e) { /* ignore */ }
     },
 
     optimizeArguments: async (server: ServerConfig) => {
@@ -179,7 +235,7 @@ export const DiagnosisActions = {
                     latestTime = stats.mtimeMs;
                     latestFile = file;
                 }
-            } catch (e) {}
+            } catch (e) { logger.debug(`[DiagnosisAction] Could not stat plugin file ${file}: ${e}`); }
         }
 
         // Delete the others
@@ -425,6 +481,15 @@ export const DiagnosisActions = {
         logger.warn(`[DiagnosisAction] Resetting JVM heap settings for ${server.id}`);
         // Reset to 2GB which is safe for most systems and avoids the "Initial > Max" error
         serverRepository.update(server.id, { ram: 2 });
+
+        // --- SMART HANDLING: FIX MARKER ---
+        try {
+            const fs = require('fs-extra');
+            const logPath = path.join(server.workingDirectory, 'logs', 'latest.log');
+            if (await fs.pathExists(logPath)) {
+                await fs.appendFile(logPath, '\n[CraftCommand] [FIX] JVM Args reset. Stale heap errors should be ignored.\n');
+            }
+        } catch (e) {}
     },
 
     /**
@@ -481,27 +546,42 @@ export const DiagnosisActions = {
         
         logger.success(`[DiagnosisAction] Dependency installation complete: ${installed} installed, ${failed} failed.`);
     },
+    
+    /**
+     * Specialized Fixer for Mod/Plugin dependencies discovered during diagnosis
+     * v2.3: Supports deep verification and batch installation
+     */
+    fixModDependency: async (server: ServerConfig, dependencyNames: string) => {
+        logger.info(`[DiagnosisAction] Executing batch dependency fix for ${server.id}: ${dependencyNames}`);
+        const { DiagnosisActions } = Object.assign({}, exports); // Avoid circular binding issues
+        await DiagnosisActions.installDependency(server, dependencyNames);
+    },
 
     /**
      * Attempts to restore level.dat from level.dat_old backup
      */
     restoreLevelData: async (server: ServerConfig, fs: FileSystemManager) => {
         const { ConfigReader } = require('../../utils/ConfigReader');
-        const properties = await ConfigReader.readProperties(path.join(server.workingDirectory, 'server.properties'));
-        const levelName = properties['level-name'] || 'world';
+        let levelName = 'world';
+        try {
+            const properties = await ConfigReader.readProperties(path.join(server.workingDirectory, 'server.properties'));
+            levelName = properties['level-name'] || 'world';
+        } catch (e) { /* fallback to 'world' */ }
+
         const levelDat = path.join(levelName, 'level.dat');
         const levelDatOld = path.join(levelName, 'level.dat_old');
 
-        logger.warn(`[DiagnosisAction] Attempting level.dat shadow recovery for ${server.id}`);
+        logger.warn(`[DiagnosisAction] Attempting level.dat shadow recovery for ${server.id} in ${levelName}`);
         
         try {
             if (await fs.exists(levelDatOld)) {
                 // Keep the corrupted one just in case
                 if (await fs.exists(levelDat)) {
-                    await fs.move(levelDat, `${levelDat}.corrupted_${Date.now()}`);
+                    const backupName = `${levelDat}.corrupted_${Date.now()}`;
+                    await fs.move(levelDat, backupName);
                 }
                 await fs.copy(levelDatOld, levelDat);
-                logger.success(`[DiagnosisAction] Successfully restored level.dat from backup.`);
+                logger.success(`[DiagnosisAction] Successfully restored level.dat from level.dat_old.`);
             } else {
                 throw new Error('level.dat_old not found. Manual recovery required.');
             }
@@ -509,6 +589,16 @@ export const DiagnosisActions = {
             logger.error(`[DiagnosisAction] level.dat recovery failed: ${e.message}`);
             throw e;
         }
+    },
+
+    /**
+     * Triggers a re-installation of the server software to restore missing libraries/executables.
+     */
+    reinstallLoader: async (server: ServerConfig) => {
+        const { softwareManager } = require('../servers/SoftwareManager');
+        logger.warn(`[DiagnosisAction] Re-installing loader for ${server.software} (${server.version})...`);
+        await softwareManager.installSoftware(server.id, server.software, server.version, server.workingDirectory);
+        logger.success(`[DiagnosisAction] Software restoration triggered for ${server.id}.`);
     },
 
     /**
@@ -526,7 +616,7 @@ export const DiagnosisActions = {
             const props = await ConfigReader.readProperties(path.join(server.workingDirectory, 'server.properties'));
             const levelName = props['level-name'] || 'world';
             configPath = path.join(levelName, 'serverconfig', 'forge-server.toml');
-        } catch (e) {}
+        } catch (e) { /* server.properties may not exist yet for Forge config path detection */ }
 
         const legacyPath = 'config/forge.cfg';
 
@@ -548,6 +638,133 @@ export const DiagnosisActions = {
             }
         } catch (e: any) {
             logger.error(`[DiagnosisAction] Failed to update Forge config: ${e.message}`);
+        }
+    },
+    /**
+     * Clears the server-ip setting in server.properties to fix binding issues
+     */
+    fixIpBinding: async (server: ServerConfig, fs: FileSystemManager) => {
+        const configPath = 'server.properties';
+        if (!(await fs.exists(configPath))) return;
+
+        logger.info(`[DiagnosisAction] Clearing invalid IP binding for ${server.id}`);
+        try {
+            let content = await fs.readFile(configPath);
+            content = content.replace(/^server-ip=.*$/m, 'server-ip=');
+            await fs.writeFile(configPath, content);
+            logger.success(`[DiagnosisAction] Successfully cleared server-ip binding.`);
+        } catch (e: any) {
+            logger.error(`[DiagnosisAction] Failed to fix IP binding: ${e.message}`);
+            throw e;
+        }
+    },
+
+    /**
+     * Intelligent log truncation that keeps the last 500 lines
+     */
+    smartLogRotation: async (server: ServerConfig, fs: FileSystemManager) => {
+        const logPath = 'logs/latest.log';
+        if (!(await fs.exists(logPath))) return;
+
+        logger.info(`[DiagnosisAction] Performing smart log rotation for ${server.id}`);
+        try {
+            const content = await fs.readFile(logPath);
+            const lines = content.split('\n');
+            if (lines.length > 500) {
+                const head = `--- Log truncated by Smart Rotation (Original: ${lines.length} lines) ---\n`;
+                const tail = lines.slice(-500).join('\n');
+                await fs.writeFile(logPath, head + tail);
+                logger.success(`[DiagnosisAction] Log rotated successfully. Kept tail ${500} lines.`);
+            }
+        } catch (e: any) {
+            logger.error(`[DiagnosisAction] Smart rotation failed: ${e.message}`);
+        }
+    },
+
+    /**
+     * Massive Storage Cleanup: Deletes old logs, temp files, and massive dumps.
+     */
+    performStorageCleanup: async (server: ServerConfig, fs: FileSystemManager) => {
+        logger.warn(`[DiagnosisAction] Emergency storage cleanup initiated for ${server.id}`);
+        try {
+            // 1. Clear excessive logs
+            if (await fs.exists('logs')) {
+                const logs = await fs.listFiles('logs');
+                for (const log of logs) {
+                    if (log.name.endsWith('.gz') || log.name.endsWith('.log.1')) {
+                        await fs.deletePath(path.join('logs', log.name));
+                    }
+                }
+            }
+            // 2. Clear temp files and dumps
+            const junk = ['crash-reports', 'usercache.json', 'debug.log'];
+            for (const item of junk) {
+                if (await fs.exists(item)) await fs.deletePath(item);
+            }
+            logger.success(`[DiagnosisAction] Storage cleanup complete.`);
+        } catch (e: any) {
+            logger.error(`[DiagnosisAction] Cleanup failed: ${e.message}`);
+        }
+    },
+
+    /**
+     * DETERMINISTIC SAFE-GC ENGINE
+     * Triggers JVM Garbage Collection only when memory pressure warrants a sweep.
+     * Uses OS-level JCMD or Software-level Spark for high-precision cleanup.
+     */
+    performSafeGC: async (server: ServerConfig) => {
+        const software = (server.software || 'Paper').toLowerCase();
+        
+        // 1. Hardware Pressure Guard
+        // We only sweep if the JVM is utilizing > 85% of its allocated bucket
+        if (server.memory && server.ram) {
+            const usageMb = server.memory;
+            const limitMb = server.ram * 1024;
+            const usagePercent = (usageMb / limitMb) * 100;
+            
+            if (usagePercent < 85) {
+                logger.debug(`[DiagnosisAction] Safe-GC deferred: Memory usage healthy at ${Math.round(usagePercent)}%`);
+                return;
+            }
+        }
+
+        logger.info(`[DiagnosisAction] High memory pressure detected on ${server.name}. Triggering Deterministic GC...`);
+        
+        const { serverService } = require('../servers/ServerService');
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execAsync = promisify(exec);
+
+        // 2. Deterministic Sweep Priority
+        try {
+            // Priority 1: Software-aware Spark (The Gold Standard)
+            if (server.advancedFlags?.installSpark) {
+                await serverService.sendCommand(server.id, 'spark gc');
+                return;
+            }
+
+            // Priority 2: Native OS JCMD (Deterministic JVM trigger)
+            // Note: Requires the JDK to be in system PATH
+            const { processManager } = require('../processes/ProcessManager');
+            const stats = await processManager.getServerStats(server.id);
+            if (stats?.pid) {
+                try {
+                    await execAsync(`jcmd ${stats.pid} GC.run`);
+                    logger.success(`[DiagnosisAction] Native JVM GC triggered for PID ${stats.pid}`);
+                    return;
+                } catch (e) { /* jcmd might not be available, fall back to console */ }
+            }
+
+            // Priority 3: Software-specific console commands
+            if (software.includes('paper') || software.includes('spigot')) {
+                await serverService.sendCommand(server.id, 'gc');
+            } else if (software.includes('velocity')) {
+                await serverService.sendCommand(server.id, 'velocity memory');
+            } else {
+                await serverService.sendCommand(server.id, 'gc');
+            }
+        } catch (e: any) {
+            logger.error(`[DiagnosisAction] GC Sweep orchestrated failure: ${e.message}`);
         }
     }
 };

@@ -1,0 +1,51 @@
+# CraftCommand Panel — systemd Service Unit
+#
+# Installation:
+#   1. Copy this file to /etc/systemd/system/craftcommand-panel.service
+#   2. Edit the paths and user below to match your installation
+#   3. Run: sudo systemctl daemon-reload
+#   4. Run: sudo systemctl enable craftcommand-panel
+#   5. Run: sudo systemctl start craftcommand-panel
+#
+# Logs:
+#   sudo journalctl -u craftcommand-panel -f
+
+[Unit]
+Description=CraftCommand Panel (Web UI + Backend)
+Documentation=https://github.com/Extroos/Craft-Commands
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=craftcommand
+Group=craftcommand
+WorkingDirectory=/opt/craftcommand
+ExecStart=/usr/bin/node backend/dist/server.js
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# Environment
+Environment=NODE_ENV=production
+EnvironmentFile=-/opt/craftcommand/.env
+
+# Security Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/craftcommand/data /opt/craftcommand/minecraft_servers /opt/craftcommand/backups /opt/craftcommand/logs /opt/craftcommand/uploads
+PrivateTmp=true
+
+# Resource Limits
+LimitNOFILE=65535
+MemoryMax=2G
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=craftcommand-panel
+
+[Install]
+WantedBy=multi-user.target

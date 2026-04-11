@@ -27,6 +27,7 @@ export const VelocityNoBackendsRule: DiagnosisRule = {
                 title: 'No Backends Linked',
                 explanation: 'This Velocity proxy is running but has no backend servers linked. Players will not be able to connect to any game servers.',
                 recommendation: 'Go to the "Proxy Network" tab and link at least one backend server (e.g. Lobby).',
+                evidence: 'Links defined: 0',
                 timestamp: Date.now()
             };
         }
@@ -65,6 +66,7 @@ export const VelocityBackendOfflineRule: DiagnosisRule = {
                 title: 'Backend Servers Offline',
                 explanation: `The following linked backend servers are offline: ${offlineLinks.join(', ')}. Players trying to connect to these will be disconnected.`,
                 recommendation: 'Ensure your backend servers are started and healthy.',
+                evidence: `Offline: ${offlineLinks.join(', ')}`,
                 timestamp: Date.now()
             };
         }
@@ -102,8 +104,9 @@ export const VelocitySecretMismatchRule: DiagnosisRule = {
                     action: {
                         type: 'RESYNC_VELOCITY_SECRET',
                         payload: { serverId: server.id },
-                        autoHeal: true
+                        automaticRepair: true
                     },
+                    evidence: `Missing: ${secretPath}`,
                     timestamp: Date.now()
                 };
             }
@@ -120,8 +123,9 @@ export const VelocitySecretMismatchRule: DiagnosisRule = {
                     action: {
                         type: 'RESYNC_VELOCITY_SECRET',
                         payload: { serverId: server.id },
-                        autoHeal: true
+                        automaticRepair: true
                     },
+                    evidence: `Mismatch in: ${secretPath}`,
                     timestamp: Date.now()
                 };
             }
@@ -154,6 +158,37 @@ export const VelocityForwardingModeRule: DiagnosisRule = {
                 title: 'Incorrect Forwarding Config',
                 explanation: 'The proxy is configured for "modern" forwarding in the Panel, but velocity.toml is likely set to "none" or "legacy".',
                 recommendation: 'Ensure player-info-forwarding-mode is set to "modern" in velocity.toml.',
+                evidence: logs.find(l => /Forwarding secret is required/i.test(l))?.trim(),
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+/**
+ * Rule for detecting a hanging Velocity proxy (L7 health check failure).
+ */
+export const VelocityHangRule: DiagnosisRule = {
+    id: 'velocity_hang_detected',
+    name: 'Proxy Responsiveness Check',
+    description: 'Detects if the proxy is running but not responding to TCP connections (Ghost Hang).',
+    tier: 1,
+    defaultConfidence: 95,
+    triggers: [],
+    analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
+        if (server.software !== 'Velocity' || server.status !== ServerStatus.ONLINE) return null;
+
+        const { networkFabricService } = await import('../network/NetworkFabricService');
+        if (networkFabricService.getProxyHangStatus()) {
+            return {
+                id: `vel-hang-${server.id}-${Date.now()}`,
+                ruleId: 'velocity_hang_detected',
+                severity: 'CRITICAL',
+                title: 'Proxy Not Responding (L7 Hang)',
+                explanation: `The Velocity process is running, but the CraftCommand Watchdog detected that it is not accepting TCP connections on port ${server.port}. The proxy is likely "hanging" internally.`,
+                recommendation: 'Try restarting the proxy server. If this happens frequently, check for plugin-level deadlocks or insufficient RAM.',
+                evidence: `Watchdog Signal: L7_TIMEOUT on port ${server.port}`,
                 timestamp: Date.now()
             };
         }
@@ -165,5 +200,6 @@ export const VelocityRules = [
     VelocityNoBackendsRule,
     VelocityBackendOfflineRule,
     VelocitySecretMismatchRule,
-    VelocityForwardingModeRule
+    VelocityForwardingModeRule,
+    VelocityHangRule
 ];

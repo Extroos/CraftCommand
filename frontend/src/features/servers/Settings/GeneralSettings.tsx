@@ -73,7 +73,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                             </div>
                             <div>
                                 <h3 className="text-xs font-bold text-foreground/90">Proxy Configuration</h3>
-                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">Forwarding & Security Protocol</p>
+                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">Port & Network Settings</p>
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -431,7 +431,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                             <RotateCcw size={14} className="text-primary/70" />
                         </div>
                         <div>
-                            <h3 className="text-xs font-bold text-foreground/90">Autonomous Ops</h3>
+                            <h3 className="text-xs font-bold text-foreground/90">Automation</h3>
                             <p className="text-[10px] text-muted-foreground font-medium opacity-70">Background logic hooks</p>
                         </div>
                     </div>

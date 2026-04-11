@@ -1,0 +1,30 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "email": "admin@craftcommand.io",
+    "username": "Administrator",
+    "role": "OWNER",
+    "passwordHash": "$2b$10$g4uvjgpWUsnnLp/nW24IeOE8BSlU8Tdj5pw8aprLi4qt8mcmPKsG.",
+    "avatarUrl": "https://mc-heads.net/avatar/Administrator/64",
+    "preferences": {
+      "accentColor": "emerald",
+      "reducedMotion": false,
+      "visualQuality": false,
+      "backgrounds": {},
+      "notifications": {
+        "browser": true,
+        "sound": true,
+        "events": {
+          "onJoin": true,
+          "onCrash": true
+        }
+      },
+      "terminal": {
+        "fontSize": 13,
+        "fontFamily": "monospace"
+      }
+    },
+    "schemaVersion": 1,
+    "serverAcl": {}
+  }
+]

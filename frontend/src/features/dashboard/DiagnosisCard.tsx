@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { AlertCircle, Wrench, CheckCircle, Zap, Copy, Check, X, ShieldAlert, Terminal, Info, Activity, RotateCcw } from 'lucide-react';
+import { AlertCircle, Wrench, CheckCircle, Zap, Copy, Check, X, ShieldAlert, Terminal, Info, Activity, RotateCcw, ChevronDown, ChevronUp, Terminal as TermIcon, FileCode, CheckCircle2 } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import { API } from '@core/services/api';
 import { DiagnosisResult } from '@shared/types';
@@ -18,6 +18,8 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
     const [fixing, setFixing] = React.useState(false);
     const [fixed, setFixed] = React.useState(false);
     const [copied, setCopied] = React.useState(false);
+    const [showEvidence, setShowEvidence] = React.useState(false);
+    const [fixStep, setFixStep] = React.useState<'idle' | 'stopping' | 'applying' | 'verifying'>('idle');
     const { addToast } = useToast();
 
     if (!result) return null;
@@ -25,8 +27,17 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
     const handleAutoFix = async () => {
         if (!result.action) return;
         setFixing(true);
+        setFixStep('stopping');
         try {
+            // Simulated multi-step for user feedback
+            await new Promise(r => setTimeout(r, 600));
+            setFixStep('applying');
             await API.healServer(serverId, result.action.type, result.action.payload);
+            
+            await new Promise(r => setTimeout(r, 800));
+            setFixStep('verifying');
+            
+            await new Promise(r => setTimeout(r, 600));
             setFixed(true);
             setTimeout(() => {
                 onFix();
@@ -34,6 +45,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
         } catch (e) {
             console.error('Fix failed', e);
             setFixing(false);
+            setFixStep('idle');
             addToast('error', 'Fix Failed', e instanceof Error ? e.message : 'An unexpected error occurred.');
         }
     };
@@ -84,7 +96,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                     <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
                              <div className={`w-1.5 h-1.5 rounded-full ${isCritical ? 'bg-rose-500' : 'bg-amber-500'}`}></div>
-                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{result.severity} DIAGNOSIS ENGINE</span>
+                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{result.severity} Issue Detected</span>
                         </div>
                         {!fixing && (
                             <button onClick={onDismiss} className="text-muted-foreground/60 hover:text-foreground transition-colors p-1">
@@ -102,9 +114,9 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
 
                 {/* Content Section */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                    <motion.div variants={STAGGER_CONTAINER} initial="hidden" animate="show" className="space-y-6">
+                    <div className="space-y-6">
                         {/* Summary & Tags */}
-                        <motion.div variants={STAGGER_ITEM} className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             {result.isRootCause && (
                                 <div className="px-2 py-0.5 rounded border border-emerald-500/20 bg-emerald-500/5 text-emerald-500 text-[10px] font-bold uppercase tracking-tight">
                                     Root Cause
@@ -116,10 +128,10 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                             <div className="px-2 py-0.5 rounded border border-border bg-muted/30 text-muted-foreground text-[10px] font-bold uppercase tracking-tight">
                                 Detection #{result.id.split('-')[0].toUpperCase()}
                             </div>
-                        </motion.div>
+                        </div>
 
                         {/* Analysis */}
-                        <motion.div variants={STAGGER_ITEM} className="space-y-3">
+                        <div className="space-y-3">
                             <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-tighter flex items-center gap-2 h-4">
                                 <Activity size={12} className="opacity-70" />
                                 Incident Analysis
@@ -127,10 +139,10 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                             <div className="text-sm text-foreground/80 leading-relaxed font-semibold">
                                 {result.explanation}
                             </div>
-                        </motion.div>
+                        </div>
 
                         {/* Recommendation */}
-                        <motion.div variants={STAGGER_ITEM} className={`p-5 rounded-lg border ${accentBorder} ${accentBg} space-y-3`}>
+                        <div className={`p-5 rounded-lg border ${accentBorder} ${accentBg} space-y-3`}>
                             <label className={`text-[11px] font-bold ${accentColor} uppercase tracking-tighter flex items-center gap-2 h-4`}>
                                 <Wrench size={12} />
                                 Resolution Strategy
@@ -138,10 +150,10 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                             <div className="text-sm text-foreground font-bold tracking-tight">
                                 {result.recommendation}
                             </div>
-                        </motion.div>
+                        </div>
 
                         {/* Confidence Meter */}
-                        <motion.div variants={STAGGER_ITEM} className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex justify-between h-4">
                                     Confidence
@@ -151,7 +163,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                     <motion.div 
                                         initial={{ width: 0 }}
                                         animate={{ width: `${result.confidence}%` }}
-                                        transition={{ duration: 0.8, ease: "easeOut" }}
+                                        transition={{ duration: 0.6, ease: "easeOut" }}
                                         className={`h-full ${isCritical ? 'bg-rose-500' : 'bg-amber-500'}`}
                                     />
                                 </div>
@@ -162,11 +174,83 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                     {new Date(result.timestamp).toLocaleString()}
                                 </div>
                             </div>
-                        </motion.div>
+                        </div>
+
+                        {/* NEW: Technical Evidence Section */}
+                        {result.evidence && (
+                            <div className="space-y-2 pt-2">
+                                <button 
+                                    onClick={() => setShowEvidence(!showEvidence)}
+                                    className="flex items-center justify-between w-full text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest hover:text-foreground transition-colors"
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <TermIcon size={12} />
+                                        Technical Evidence
+                                    </span>
+                                    {showEvidence ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                                {showEvidence && (
+                                    <motion.div 
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        className="p-3 bg-black/40 border border-border/40 rounded font-mono text-[11px] text-rose-400 overflow-x-auto whitespace-pre-wrap leading-relaxed shadow-inner"
+                                    >
+                                        {result.evidence}
+                                    </motion.div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* NEW: Fix Breakdown (What will change) */}
+                        {result.action && !fixing && !fixed && (
+                            <div className="p-4 bg-muted/20 border border-border/40 rounded-lg space-y-3">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter flex items-center gap-2">
+                                    <FileCode size={12} />
+                                    Impact Analysis
+                                </label>
+                                <ul className="space-y-1.5">
+                                    <li className="text-[11px] text-foreground/70 flex items-center gap-2">
+                                        <div className="w-1 h-1 bg-primary rounded-full" />
+                                        <span>System will automatically apply the recommended patch: <strong>{result.action.type.toLowerCase().replace(/_/g, ' ')}</strong></span>
+                                    </li>
+                                    {result.action.automaticRepair && (
+                                        <li className="text-[10px] text-emerald-500/80 font-semibold italic">
+                                            * This repair is categorized as safe and non-destructive.
+                                        </li>
+                                    )}
+                                </ul>
+                            </div>
+                        )}
+
+                        {/* NEW: Fix Progress Stepper */}
+                        {fixing && !fixed && (
+                            <div className="p-4 bg-muted/20 border border-border/40 rounded-lg space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-primary animate-pulse">
+                                        Fix in Progress: {fixStep.charAt(0).toUpperCase() + fixStep.slice(1)}...
+                                    </span>
+                                    <span className="text-[10px] font-mono text-muted-foreground">{fixStep === 'stopping' ? '33%' : fixStep === 'applying' ? '66%' : '90%'}</span>
+                                </div>
+                                <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                                    <motion.div 
+                                        className="h-full bg-primary"
+                                        animate={{ 
+                                            width: fixStep === 'stopping' ? '33%' : fixStep === 'applying' ? '66%' : '95%' 
+                                        }}
+                                        transition={{ duration: 0.5 }}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                     <div className={`text-[9px] font-bold text-center uppercase ${fixStep === 'stopping' ? 'text-primary' : 'text-muted-foreground/40'}`}>1. Isolation</div>
+                                     <div className={`text-[9px] font-bold text-center uppercase ${fixStep === 'applying' ? 'text-primary' : 'text-muted-foreground/40'}`}>2. Patching</div>
+                                     <div className={`text-[9px] font-bold text-center uppercase ${fixStep === 'verifying' ? 'text-primary' : 'text-muted-foreground/40'}`}>3. Validation</div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Suppressed Issues */}
                         {result.suppressedBy && result.suppressedBy.length > 0 && (
-                            <motion.div variants={STAGGER_ITEM} className="space-y-2 pt-2">
+                            <div className="space-y-2 pt-2">
                                 <label className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em] h-3">Suppressed Signals</label>
                                 <div className="flex flex-wrap gap-1.5">
                                     {result.suppressedBy.map(sid => (
@@ -175,9 +259,9 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                         </span>
                                     ))}
                                 </div>
-                            </motion.div>
+                            </div>
                         )}
-                    </motion.div>
+                    </div>
                 </div>
 
                 {/* Footer Section */}

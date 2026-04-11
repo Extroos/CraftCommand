@@ -1,5 +1,6 @@
 
 import { Express } from 'express';
+import { logger } from '../utils/logger';
 import authRoutes from '../features/auth/auth.routes';
 import profileRoutes from '../features/auth/profiles.routes';
 import serverRoutes from '../features/servers/servers.routes';
@@ -22,33 +23,33 @@ import mapRoutes from '../features/servers/map.routes';
 
 
 export const setupRoutes = (app: Express) => {
-    console.log('[Routes] Registering /api/auth');
+    logger.info('[Routes] Registering /api/auth');
     app.use('/api/auth', authRoutes);
     app.use('/api/profiles', profileRoutes);
 
-    console.log('[Routes] Registering /api/servers');
+    logger.info('[Routes] Registering /api/servers');
     app.use('/api/servers', serverRoutes);
     app.use('/api/plugins', pluginRoutes);
 
-    console.log('[Routes] Registering /api/system');
+    logger.info('[Routes] Registering /api/system');
     app.use('/api/system/update', updateRoutes); // Register specific routes before generic /api/system
     app.use('/api/system', systemRoutes);
     app.use('/api/settings', settingsRoutes);
     app.use('/api/assets', assetsRoutes);
     app.use('/api/notifications', notificationRoutes);
 
-    console.log('[Routes] Registering /api/installer');
+    logger.info('[Routes] Registering /api/installer');
     app.use('/api/modpacks', modpackRoutes);
     app.use('/api/templates', templateRoutes);
     app.use('/api/import', importRoutes);
     app.use('/api/install', installRoutes);
 
-    console.log('[Routes] Registering /api/nodes');
+    logger.info('[Routes] Registering /api/nodes');
     app.use('/api/nodes', nodesRoutes);
     app.use('/api/network', networkRoutes);
     app.use('/api/crossplay', crossplayRoutes);
 
-    console.log('[Routes] Registering /api/webhooks');
+    logger.info('[Routes] Registering /api/webhooks');
     app.use('/api/webhooks', extensionsRoutes);
 
     // Map routes are nested under /api/servers/:id/map

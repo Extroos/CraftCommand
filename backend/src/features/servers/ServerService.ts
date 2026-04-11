@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import net from 'net';
-import { logger } from '../../utils/logger';
+import { logger, readLastLines } from '../../utils/logger';
 import { javaManager } from '../processes/JavaManager';
 import { processManager } from '../processes/ProcessManager';
 import { diagnosisService } from '../diagnosis/DiagnosisService';
@@ -12,7 +12,6 @@ import { startupManager } from './StartupManager';
 import { serverRepository } from '../../storage/ServerRepository';
 import { ServerConfig, ServerStatus } from '@shared/types';
 import { DATA_DIR, SERVERS_ROOT } from '../../constants';
-// uuid is available via Node's crypto or we can use a simpler ID for discovery
 import { randomUUID } from 'crypto';
 
 const operationLocks = new Set<string>();
@@ -32,7 +31,7 @@ const releaseLock = (serverId: string) => {
 };
 
 /**
- * Forcefully clears the diagnosis cache for a specific server (v1.12.7)
+ * Forcefully clears the diagnosis cache for a specific server.
  * Use this after applying a fix or before a critical state change.
  */
 export const invalidateDiagnosisCache = (serverId: string) => {
@@ -42,11 +41,10 @@ export const invalidateDiagnosisCache = (serverId: string) => {
 
 // Ensure initialization
 fs.ensureDirSync(DATA_DIR);
-// servers.json handled by Repository
 fs.ensureDirSync(SERVERS_ROOT);
 
 /**
- * Technical Validation Guard (v1.7.11)
+ * Technical Validation Guard
  */
 const validateUpdate = (updates: any) => {
     if (updates.port !== undefined && (updates.port < 1024 || updates.port > 65535)) {
@@ -75,33 +73,36 @@ export const saveServer = (server: ServerConfig) => {
 };
 
 import { installerService } from '../installer/InstallerService';
-
 import { SafeFileOperation } from '../../utils/fs';
 
 export const deleteServer = async (id: string) => {
     logger.info(`[ServerService] Deleting server ${id}...`);
 
-    // 0. Safety Guard (v1.7.11) - Prevent deletion of running servers
+    // Safety Guard: Prevent deletion of running servers
     if (processManager.isRunning(id)) {
         logger.warn(`[ServerService] Blocked deletion attempt for running server ${id}.`);
         throw new Error('You cannot delete a running server. Please stop it first.');
     }
 
-    // 1. Get Data for Cleanup
     const server = getServer(id);
     if (!server) {
         logger.warn(`[ServerService] Server ${id} not found in DB, but proceeding with cleanup.`);
     }
 
-    // 2. Remove from DB
     serverRepository.delete(id);
 
-    // 3. Delete Files (Safe)
     if (server && server.workingDirectory) {
         if (await fs.pathExists(server.workingDirectory)) {
+            let checks = 0;
+            while (processManager.isRunning(id) && checks < 10) {
+                await new Promise(r => setTimeout(r, 1000));
+                checks++;
+            }
+            if (!processManager.isRunning(id)) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+
             logger.info(`[ServerService] Removing directory: ${server.workingDirectory}`);
-            
-            // Use SafeFileOperation to handle Windows EBUSY/EPERM
             await SafeFileOperation.remove(server.workingDirectory);
         }
     }
@@ -109,10 +110,8 @@ export const deleteServer = async (id: string) => {
     logger.success(`[ServerService] Server ${id} deleted successfully.`);
 };
 
-// Maintain compatibility if something imports removeServer
 export const removeServer = deleteServer;
 
-// --- Server Cloning ---
 export const cloneServer = async (id: string, newName?: string): Promise<ServerConfig> => {
     const source = getServer(id);
     if (!source) throw new Error('Source server not found');
@@ -127,7 +126,6 @@ export const cloneServer = async (id: string, newName?: string): Promise<ServerC
 
     logger.info(`[Clone] Cloning server "${source.name}" (${id}) → ${cloneId}`);
 
-    // 1. Copy the entire working directory
     if (!source.workingDirectory || !(await fs.pathExists(source.workingDirectory))) {
         throw new Error('Source server directory not found');
     }
@@ -137,16 +135,14 @@ export const cloneServer = async (id: string, newName?: string): Promise<ServerC
         errorOnExist: true
     });
 
-    // 2. Find a unique port (original + 1, skip conflicts)
     const allServers = getServers();
     const usedPorts = new Set(allServers.map((s: any) => s.port));
     let clonePort = (source.port || 25565) + 1;
     while (usedPorts.has(clonePort) && clonePort < 65535) {
         clonePort++;
     }
-    if (clonePort >= 65535) clonePort = 25565; // Fallback
+    if (clonePort >= 65535) clonePort = 25565;
 
-    // 3. Build the clone config — strip runtime state
     const clone: ServerConfig = {
         ...source,
         id: cloneId,
@@ -159,14 +155,11 @@ export const cloneServer = async (id: string, newName?: string): Promise<ServerC
         linkedProxyId: undefined,
     };
 
-    // Remove fields that shouldn't carry over
     delete (clone as any).startTime;
     delete (clone as any).linkedProxyId;
 
-    // 4. Register in repository
     saveServer(clone);
 
-    // 5. Start file watcher for the clone
     try {
         const { fileWatcherService } = await import('../files/FileWatcherService');
         fileWatcherService.watchServer(cloneId, cloneDir);
@@ -177,12 +170,13 @@ export const cloneServer = async (id: string, newName?: string): Promise<ServerC
     logger.success(`[Clone] Server "${source.name}" cloned as "${clone.name}" (port ${clonePort})`);
     return clone;
 };
+
 /**
- * Bootstrap Discovery Service (v1.11.3)
+ * Directory Scanning
  * Scans SERVERS_ROOT and re-registers servers missing from metadata.
  */
 export const bootstrapDiscovery = async () => {
-    logger.info('[Discovery] Running server metadata discovery...');
+    logger.info('[Discovery] Running server directory scan...');
     try {
         await fs.ensureDir(SERVERS_ROOT);
         const entries = await fs.readdir(SERVERS_ROOT);
@@ -201,11 +195,9 @@ export const bootstrapDiscovery = async () => {
                 if (!existingPaths.has(resolvedPath)) {
                     logger.info(`[Discovery] Found unregistered server directory: ${entry}`);
                     
-                    // Basic heuristic: check for server.properties or world folders
                     const propsPath = path.join(fullPath, 'server.properties');
                     const isBedrock = await fs.pathExists(path.join(fullPath, 'bedrock_server.exe')) || await fs.pathExists(path.join(fullPath, 'bedrock_server'));
                     
-                    // Determine Software
                     let software = 'Vanilla';
                     if (isBedrock) software = 'Bedrock';
                     else if (await fs.pathExists(path.join(fullPath, 'libraries'))) software = 'Forge';
@@ -213,7 +205,6 @@ export const bootstrapDiscovery = async () => {
                     else if (await fs.pathExists(path.join(fullPath, 'paper.yml')) || await fs.pathExists(path.join(fullPath, 'config', 'paper-global.yml'))) software = 'Paper';
                     else if (await fs.pathExists(path.join(fullPath, 'purpur.yml')) || await fs.pathExists(path.join(fullPath, 'config', 'purpur-global.yml'))) software = 'Purpur';
 
-                    // Scan for port and MOTD in server.properties if available
                     let port = 25565;
                     let motd = 'A Minecraft Server';
                     
@@ -245,10 +236,10 @@ export const bootstrapDiscovery = async () => {
                         workingDirectory: resolvedPath,
                         executable: isBedrock ? (process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server') : 'server.jar',
                         ram: 4,
-                        motd, // Extracted from server.properties
-                        javaVersion: javaManager.getRecommendedJavaVersion('1.21.11'), // Use smart recommended default (v1.21.11 baseline for discovery)
+                        motd,
+                        javaVersion: javaManager.getRecommendedJavaVersion('1.21.1'),
                         executionEngine: 'default',
-                        executionCommand: '' // Will be generated by sanitizeServerConfig
+                        executionCommand: ''
                     };
 
                     serverRepository.create(newServer);
@@ -267,45 +258,46 @@ export const bootstrapDiscovery = async () => {
     }
 };
 
-bootstrapDiscovery(); // Auto-run on load
+const runBootstrap = async () => {
+    await bootstrapDiscovery();
+    try {
+        const { importService } = await import('../installer/ImportService');
+        await importService.cleanupTempDirectories();
+    } catch (e) {
+        logger.error(`[Bootstrap] Failed to run temp cleanup: ${e}`);
+    }
+};
+
+runBootstrap();
 
 export const updateServer = async (id: string, updates: any) => {
-    // Acquire lock to prevent concurrent updates
     acquireLock(id, 'UPDATE');
     
     try {
         const oldServer = serverRepository.findById(id);
-        
         if (!oldServer) throw new Error('Server not found');
         
         const newServer = { ...oldServer, executable: oldServer.executable || 'server.jar', ...updates };
 
-        // 0. Technical Validation
         validateUpdate(updates);
 
-        // --- SIDE EFFECTS ---
-        
-        // 1. Spark Install
         if (updates.advancedFlags?.installSpark && !oldServer.advancedFlags?.installSpark) {
-            console.log(`[Server:${id}] Installing Spark (Side Effect)`);
+            logger.info(`[Server:${id}] Installing Spark`);
             if (newServer.workingDirectory) {
-                    await installerService.installSpark(newServer.workingDirectory);
+                await installerService.installSpark(newServer.workingDirectory);
             }
         }
 
-        // 2. properties Sync (Online Mode, Port, Gameplay, etc.)
         if (newServer.workingDirectory) {
             try {
-                // Use the comprehensive ConfigService to sync all properties to disk
                 const { serverConfigService } = require('./ServerConfigService');
                 await serverConfigService.enforceConfig(newServer);
                 logger.info(`[ServerService] Synchronized server.properties for ${id}`);
             } catch (e) {
-                console.error(`[ServerService] Failed to synchronize server.properties: ${e}`);
+                logger.error(`[ServerService] Failed to synchronize server.properties: ${e}`);
             }
         }
 
-        // 3. Proxy Relationship Synchronization
         if (newServer.software === 'Velocity' && updates.network?.proxyConfig?.links) {
             const oldLinks = oldServer.network?.proxyConfig?.links || [];
             const newLinks = updates.network.proxyConfig.links;
@@ -313,7 +305,6 @@ export const updateServer = async (id: string, updates: any) => {
             const oldRelatedIds = new Set(oldLinks.map((l: any) => l.serverId));
             const newRelatedIds = new Set(newLinks.map((l: any) => l.serverId));
 
-            // Newly Linked: Servers in new but not in old
             for (const sid of [...newRelatedIds].filter(x => !oldRelatedIds.has(x))) {
                 const target = serverRepository.findById(sid as string);
                 if (target) {
@@ -322,7 +313,6 @@ export const updateServer = async (id: string, updates: any) => {
                 }
             }
 
-            // Unlinked: Servers in old but not in new
             for (const sid of [...oldRelatedIds].filter(x => !newRelatedIds.has(x))) {
                 const target = serverRepository.findById(sid as string);
                 if (target && target.linkedProxyId === id) {
@@ -339,10 +329,6 @@ export const updateServer = async (id: string, updates: any) => {
     }
 };
 
-/**
- * Reset any servers stuck in INSTALLING state to OFFLINE.
- * Called on backend startup for stabilization.
- */
 export const cleanupInstallState = () => {
     logger.info(`[ServerService] Running installation state cleanup...`);
     const servers = serverRepository.findAll();
@@ -363,29 +349,26 @@ export const startServer = async (id: string, force: boolean = false) => {
     if (!server) throw new Error('Server not found');
 
     if (processManager.isRunning(id) && !force) {
-        logger.info(`[ServerService:${id}] Start requested but server is already running. Returning success (idempotency).`);
+        logger.info(`[ServerService:${id}] Start requested but server is already running.`);
         return { success: true, alreadyRunning: true };
     }
 
-    // Clear stale diagnosis before boot to ensure fresh pre-flight checks
     invalidateDiagnosisCache(id);
     diagnosisService.clearResolved(id);
 
     acquireLock(id, 'START');
 
     try {
-        // 0. specialized Safety Guards (v1.10.1)
         if (server.software === 'Velocity') {
             const linkCount = server.network?.proxyConfig?.links?.length || 0;
             if (linkCount === 0) {
-                logger.error(`[Server:${id}] Blocked startup: 0 backend links configured.`);
-                throw new Error('Velocity requires at least one linked backend server to start correctly. Please add a server in the Proxy Network tab.');
+                logger.error(`[Server:${id}] Blocked startup: 0 backend links.`);
+                throw new Error('Velocity requires at least one linked backend server to start correctly.');
             }
         }
 
-        logger.info(`[ServerService] Orchestrating startup for ${server.name} via StartupManager...`);
+        logger.info(`[ServerService] Orchestrating startup for ${server.name}...`);
         
-        // Mark as started immediately to enable diagnosis for this boot attempt
         if (!server.hasStarted) {
             server.hasStarted = true;
             serverRepository.update(id, server);
@@ -408,13 +391,9 @@ export const stopServer = async (id: string, force: boolean = false) => {
     diagnosisService.clearResolved(id);
     if (!processManager.isRunning(id)) {
         logger.info(`[ServerService] Stop requested for server ${id} but it is not running.`);
-        
-        // --- STUCK STATUS RECOVERY ---
-        // If the process is dead but the status is NOT offline (e.g., CRASHED, STARTING),
-        // we force it to OFFLINE so the user can try starting it again.
         const server = getServer(id);
         if (server && server.status !== ServerStatus.OFFLINE) {
-            logger.info(`[ServerService] Forcing stuck server ${id} (${server.status}) to ${ServerStatus.OFFLINE}`);
+            logger.info(`[ServerService] Forcing stuck server ${id} (${server.status}) to OFFLINE`);
             serverRepository.update(id, { status: ServerStatus.OFFLINE });
             processManager.updateCachedStatus(id, { status: ServerStatus.OFFLINE, online: false });
         }
@@ -425,13 +404,52 @@ export const stopServer = async (id: string, force: boolean = false) => {
     try {
         await processManager.stopServer(id, force);
     } finally {
-        // Release slightly after to prevent spam-clicks during shutdown sequence
-        // but now we actually AWAIT the shutdown first, so this is much safer.
         setTimeout(() => releaseLock(id), 1000);
     }
 };
 
+export const restartServer = async (id: string) => {
+    logger.info(`[ServerService] Restarting server ${id}...`);
+    
+    const server = getServer(id);
+    if (!server) throw new Error('Server not found');
 
+    // 1. Stop the server
+    await stopServer(id, false);
+    
+    // 2. Wait for the STOP lock to release
+    await new Promise(r => setTimeout(r, 1100));
+
+    // 3. Port Release Verification Loop (Stops "Port in use" race conditions)
+    const port = server.port || 25565;
+    const isBedrock = server.software === 'Bedrock';
+    let portBusy = true;
+    let attempts = 0;
+    const maxPortWait = 10; // 5 seconds total
+
+    logger.debug(`[ServerService:${id}] Verifying port ${port} release...`);
+    
+    while (portBusy && attempts < maxPortWait) {
+        if (isBedrock) {
+            portBusy = await NetUtils.checkUDPPortBind(port);
+        } else {
+            portBusy = await NetUtils.checkPortBind(port);
+        }
+
+        if (portBusy) {
+            attempts++;
+            await new Promise(r => setTimeout(r, 500));
+        }
+    }
+
+    if (portBusy) {
+        logger.warn(`[ServerService:${id}] Port ${port} still busy after 5s. Proceeding with START (SafetyService will catch if critical).`);
+    } else {
+        logger.debug(`[ServerService:${id}] Port ${port} is clear.`);
+    }
+    
+    return startServer(id);
+};
 
 export const diagnoseServer = async (id: string, force = false) => {
     const server = getServer(id);
@@ -442,19 +460,15 @@ export const diagnoseServer = async (id: string, force = false) => {
     const statusChanged = !last || last.status !== server.status;
     const isErrorState = last?.results.some(r => r.severity === 'CRITICAL');
     
-    // Throttling Logic (v1.12.5)
-    // 1. Always scan if status changed (e.g. OFFLINE -> STARTING)
-    // 2. Always scan if forced
-    // 3. Scan every 1 minute if previously in error state (proactive recovery check)
-    // 4. Scan every 10 minutes if stable and healthy
-    const throttleTime = isErrorState ? 60000 : 600000;
+    // Phase 66: Reactive Throttling
+    // Critical issues refresh every 5s, normal states every 30s.
+    const throttleTime = isErrorState ? 5000 : 30000;
     const shouldSkip = !force && !statusChanged && last && (now - last.time < throttleTime);
 
     if (shouldSkip) {
         return last.results;
     }
 
-    // 1. Get Logs
     let recentLogs = processManager.getLogs(id) || []; 
     
     if (recentLogs.length === 0) {
@@ -464,8 +478,6 @@ export const diagnoseServer = async (id: string, force = false) => {
             
         if (await fs.pathExists(logPath)) {
             try {
-                const { LogUtils } = require('../../utils/LogUtils');
-                // Check if file is likely binary (first few bytes) before reading to avoid TS1490 error spam
                 const buffer = Buffer.alloc(4);
                 const fd = await fs.open(logPath, 'r');
                 await fs.read(fd, buffer, 0, 4, 0);
@@ -473,24 +485,19 @@ export const diagnoseServer = async (id: string, force = false) => {
                 
                 const isBinary = buffer.some(b => b === 0);
                 if (!isBinary) {
-                    recentLogs = await LogUtils.readLastLines(logPath, 500);
+                    recentLogs = await readLastLines(logPath, 500);
                 }
-            } catch (e) {
-                // Silent fail for binary/missing logs to prevent console spam
-            }
+            } catch (e) { logger.debug(`[ServerService:${id}] Could not read log file for diagnosis: ${e}`); }
         }
     }
 
-    const stats = await systemService.getSystemStats();
     const results = await diagnosisService.diagnose(server, recentLogs);
-
     lastDiagnosisResults.set(id, { results, time: now, status: server.status as ServerStatus });
     return results;
 };
 
-// --- Connectivity & Networking Extensions (Phase 108) ---
+// --- Connectivity & Networking ---
 
-/** Generates a random alphanumeric password of specified length */
 const generateRandomPassword = (length: number = 16) => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+';
     let pass = '';
@@ -500,12 +507,10 @@ const generateRandomPassword = (length: number = 16) => {
     return pass;
 };
 
-/** Finds the next available port starting from a base value */
 export const getNextAvailablePort = (startPort: number): number => {
     const servers = getServers();
     const usedPorts = new Set<number>();
     
-    // Collect all primary and additional ports
     servers.forEach(s => {
         if (s.port) usedPorts.add(Number(s.port));
         s.additionalPorts?.forEach(ap => usedPorts.add(Number(ap.port)));
@@ -518,7 +523,6 @@ export const getNextAvailablePort = (startPort: number): number => {
     return port;
 };
 
-/** Finds a random available port between 10000 and 30000 */
 const findAvailablePort = async (min = 10000, max = 30000): Promise<number> => {
     const servers = getServers();
     const usedPorts = new Set<number>();
@@ -542,7 +546,7 @@ export const resetSftpPassword = async (id: string) => {
     const newPass = generateRandomPassword();
     serverRepository.update(id, { sftpPassword: newPass });
     
-    logger.info(`[ServerService:${id}] SFTP Password has been reset.`);
+    logger.info(`[ServerService:${id}] SFTP Password reset.`);
     return { success: true };
 };
 
@@ -550,7 +554,6 @@ export const getServerPorts = (id: string) => {
     const server = getServer(id);
     if (!server) throw new Error('Server not found');
     
-    // Return primary port + additional ports as requested by Connectivity UI
     const primary: any = {
         id: 'primary',
         name: 'Primary Instance (Game)',
@@ -571,7 +574,7 @@ export const assignServerPort = async (id: string) => {
         id: randomUUID(),
         name: `Additional Node ${((server.additionalPorts?.length || 0) + 1)}`,
         port: port,
-        status: 'Listening', // Mocking active for now
+        status: 'Listening',
         isImmutable: false
     };
     

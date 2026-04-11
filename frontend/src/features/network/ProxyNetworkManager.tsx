@@ -127,7 +127,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
                     </div>
                     <div>
                         <div className="text-xl font-bold text-emerald-500/80 tracking-tight">ENCRYPTED</div>
-                        <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mt-1">Sync Protocol</div>
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mt-1">Sync Status</div>
                     </div>
                 </div>
             </div>
@@ -217,9 +217,9 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
                 <div className="flex-1 text-center md:text-left">
                     <div className="flex items-center gap-3 text-muted-foreground/30 mb-2 justify-center md:justify-start">
                         <LayoutGrid size={13} strokeWidth={1.5} />
-                        <span className="text-[9px] font-bold uppercase tracking-[0.3em]">Protocol Bridge</span>
+                        <span className="text-[9px] font-bold uppercase tracking-[0.3em]">Proxy</span>
                     </div>
-                    <h3 className="text-xl font-bold text-foreground tracking-tight">Multi-Version Architecture</h3>
+                    <h3 className="text-xl font-bold text-foreground tracking-tight">Multi-Version Support</h3>
                     <p className="text-[11px] text-muted-foreground/60 max-w-xl mt-2 leading-relaxed uppercase tracking-wider font-medium">
                         Authorize deployment of the <span className="text-foreground/60 font-bold">ViaVersion Suite</span>. 
                         Enables cross-version compatibility from 1.7 to latest.

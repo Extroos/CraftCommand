@@ -30,7 +30,7 @@ import { IntegrationsSection } from './sections/IntegrationsSection';
 // Existing Shared Components
 import NodesManager from '../../nodes/NodesManager';
 import AuditLog from '../../auth/AuditLog';
-import { SystemHealthMatrix } from '../SelfHealingAudit';
+import { SystemHealthMatrix } from '../RepairAudit';
 
 type SettingsTab = 'CONFIG' | 'AUDIT' | 'NODES' | 'INTEGRATIONS' | 'HEALTH';
 
@@ -133,7 +133,7 @@ const GlobalSettings: React.FC = () => {
                             className="flex items-center gap-2 bg-foreground text-background px-5 py-2.5 rounded border border-border font-extrabold text-[10px] uppercase tracking-widest hover:bg-foreground/90 transition-all disabled:opacity-50"
                         >
                             {saving ? <RefreshCcw size={14} className="animate-spin" /> : <Save size={14} />}
-                            {saving ? 'Synchronizing...' : 'Commit Changes'}
+                            {saving ? 'Saving...' : 'Save Changes'}
                         </motion.button>
                     )}
                     <button 
@@ -162,7 +162,7 @@ const GlobalSettings: React.FC = () => {
                             activeTab === 'NODES' ? 'bg-zinc-800 text-white border border-white/10' : 'text-muted-foreground hover:bg-secondary/50'
                         }`}
                     >
-                        <Layers size={14} /> CLUSTER NODES
+                        <Layers size={14} /> NODES
                     </button>
                 )}
                 <button

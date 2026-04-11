@@ -1,100 +1,99 @@
-# CraftCommand Architecture: Technical Deep-Dive
+# CraftCommand Architecture
 
-CraftCommand is engineered as a **Hybrid Orchestration Platform**, designed to bridge the gap between simple local launchers and enterprise-scale Minecraft infrastructures. This document details the core engines and data flows that power the platform.
+CraftCommand is a self-hosted Minecraft server management panel. This document details the core systems and data flows.
 
-## 1. The Core Philosophy: "Stateful Portability"
+## 1. Storage Model
 
-Unlike traditional panels that rely on centralized databases (MySQL/PostgreSQL), CraftCommand uses a **Hybrid Dual-Storage Model**.
+CraftCommand uses a **Hybrid Dual-Storage Model**:
 
-- **Solo Mode**: Uses atomic JSON storage for maximum portability. Move the folder, and the whole panel moves with you.
-- **Node Mode**: Leverages an embedded SQLite engine for high-concurrency permission checks and audit logging.
+- **Solo Mode**: Atomic JSON files for maximum portability. Move the folder, and the panel moves with it.
+- **Node Mode**: Embedded SQLite for high-concurrency permission checks and audit logging.
 
-## 2. Advanced System Engines
+## 2. Core Systems
 
-### A. Intelligent Process Management (`ProcessManager.ts`)
+### A. Process Management (`ProcessManager.ts`)
 
-The heartbeat of the platform. It handles the lifecycle of Minecraft instances through:
+Manages the lifecycle of Minecraft server processes across distributed nodes:
 
-- **Abstraction Layer**: Supports both `native` (Child_Process) and `containerized` (Docker) engines seamlessly.
-- **Ghost Protection**: Dynamically scans for "zombie" processes holding server ports and provides auto-cleanup logic.
-- **Standard Input Pipeline**: A buffered WebSocket stream ensures console inputs are delivered reliably even under heavy CPU load.
+- **Execution Engines**: Implements `IServerRunner` for `native` (Node.js `child_process`) and `containerized` (Docker Engine API) execution.
+- **Port Collision Detection**: Monitors local interface bindings and identifies PIDs occupying target server ports.
+- **Console I/O**: High-throughput Socket.IO pipe for buffered log streaming and command injection.
 
-### B. Heuristic Installation Pipeline (`InstallerService.ts`)
+### B. Server Installer (`InstallerService.ts`)
 
-Designed to solve the "Nesting Problem" common in community modpacks.
+Handles modpack and server jar installation:
 
-- **Deep ZIP Analysis**: Recursively scans archive structures to identify the true `root` of a server pack.
-- **Auto-Flattening**: Automatically standardizes directories (e.g., removing a wrapper `ServerPack_1.0/` folder) to prevent startup failures.
+- **ZIP Analysis**: Recursively scans archive structures to find the actual server root directory.
+- **Auto-Flattening**: Removes wrapper directories (e.g., `ServerPack_1.0/`) that cause startup failures.
 
-### C. "The Doctor" Diagnostic Engine (`DiagnosisService.ts`)
+### C. Crash Diagnosis (`DiagnosisService.ts`)
 
-A log-based pattern matching system.
+A log-based pattern matching system:
 
-- **Predictive Matching**: Analyzes crash logs using RegEx patterns to identify common failures (JVM OOM, Class Mismatches, EULA refusal).
-- **One-Click Remediation**: Suggests and executes fixes (e.g., updating Java version or Accepting EULA) directly from the telemetry data.
+- **Pattern Matching**: Analyzes crash logs using 40+ regex patterns to identify common failures (OOM, class conflicts, EULA refusal).
+- **Fix Suggestions**: Suggests and executes fixes (e.g., switching Java version, accepting EULA) from the diagnostic results.
 
-### D. Systems Integrity Engine (`UpdateService.ts`)
+### D. Update System (`UpdateService.ts`)
 
-Ensures the panel's own longevity and security through a production-grade update lifecycle.
+Handles panel self-updates with integrity checks:
 
-- **Cryptographic Assurance**: All updates must be signed with an Ed25519 private key. The backend verifies the `manifest.sig` against a local public key before any files are touched.
-- **Supply Chain Security**: SHA256 hashes for every file in the bundle are cross-referenced during the extraction phase to prevent binary tampering.
-- **Rollback Pathways**: The update applicator automatically preserves the previous version's state, allowing for one-click recovery if post-update health checks fail.
+- **Signature Verification**: Updates are signed with Ed25519. The backend verifies `manifest.sig` against a local public key.
+- **Hash Verification**: SHA256 hashes for every file in the bundle are checked during extraction.
+- **Rollback**: Preserves the previous version automatically, allowing recovery if post-update health checks fail.
 
-### E. Network Fabric Orchestration (`NetworkTemplateService.ts`)
+### E. Network Configuration (`NetworkTemplateService.ts`)
 
-A sophisticated layer that synchronizes connectivity across distributed clusters.
+Manages network settings across servers and distributed nodes:
 
-- **Forwarding Secret Automation**: Automatically manages and distributes modern/legacy forwarding secrets (and BungeeGuard tokens) to backend servers.
-- **Cross-Play Bridging**: Orchestrates UDP port allocation for Geyser/Floodgate, ensuring a unified entry point for Bedrock and Java clients.
-- **Cloudflare Lifecycle**: Managed provisioning of Cloudflare Tunnels for zero-config remote access without firewall exposure.
+- **Forwarding Secrets**: Manages and distributes modern/legacy forwarding secrets (and BungeeGuard tokens) to backend servers.
+- **Cross-Play Support**: Manages UDP port allocation for Geyser/Floodgate for Bedrock + Java client access.
+- **Cloudflare Tunnels**: Optional zero-config remote access without firewall changes.
 
-### F. Standardized API Layer (`ApiService.ts`)
+### F. API Layer (`ApiService.ts`)
 
-The frontend communicates through a unified `ApiService` that handles:
-- **Centralized Authentication**: Automatic injection of JWT `Authorization` headers.
-- **Uniform Error Handling**: Consistent parsing of backend error payloads (`ConflictError`, `ValidationError`).
-- **Standardized Request Lifecycle**: Simplified `get`, `post`, `patch`, `put`, and `delete` wrappers.
+The frontend communicates through a unified service that handles:
+- **Auth Headers**: Automatic JWT injection.
+- **Error Handling**: Consistent parsing of backend error payloads.
+- **Request Helpers**: Simplified `get`, `post`, `patch`, `put`, and `delete` wrappers.
 
-### G. Modpack Intelligence Engine (`ModpackService.ts`)
+### G. Mod & Plugin Filtering (`ModpackService.ts`)
 
-A sophisticated backend module for managing Minecraft modifications:
-- **Heuristic Compatibility Scanning**: Batch queries Modrinth API to identify and quarantine client-side only mods.
-- **Transitive Dependency Resolution**: Automatically identifies and installs missing dependencies from Modrinth.
-- **Jar-in-Jar (JiJ) Detection**: Scans embedded libraries to prevent duplicate installs.
-- **Triple-Layer Stabilization**: Combines API metadata with local `fabric.mod.json`/`mods.toml` parsing for 100% accuracy.
+Backend module for managing Java archive dependencies:
+- **Environment Filtering**: Queries the Modrinth API for side-specific tags (`client`, `server`, `unsupported`).
+- **Dependency Resolution**: Recursively fetches missing mod dependencies.
+- **Integrity Validation**: Cross-references API metadata with local `fabric.mod.json`/`mods.toml` parsing to resolve JAR conflicts.
 
-### H. Dynmap Orchestration
+### H. Dynmap Integration
 
-Embedded support for web-based Minecraft maps:
+Web-based Minecraft map support:
 - **Automated Installation**: One-click deployment of the Dynmap plugin.
-- **Port Orchestration**: Automatic reservation and mapping of the Dynmap web port.
-- **Render Control**: Trigger map updates or full renders directly from the dashboard.
+- **Port Management**: Automatic reservation and mapping of the Dynmap web port.
+- **Render Control**: Trigger map renders from the dashboard.
 
-### I. Server Cloning and Template Engine
+### I. Server Cloning
 
-- **Atomic Cloning**: Create bit-for-bit copies of existing servers via the `cloneServer` API.
-- **JSON Templates**: Deploy standardized server environments using pre-configured metadata.
-
----
-
-## 3. Communication & Telemetry Hierarchy
-
-1.  **Transport**: Socket.IO for binary-efficient real-time streaming.
-2.  **Telemetry**: High-fidelity OS monitoring (using `systeminformation`) provides sub-second CPU/RAM metrics to the frontend.
-3.  **State Sync**: Redux (on frontend) and the Repository Layer (on backend) maintain a synchronized view of server health across all connected clients.
-4.  **2FA Security Suite**: Full TOTP implementation with AES-256-CBC encrypted secrets and bcrypt-hashed backup codes.
+- **Full Cloning**: Create copies of existing servers via the `cloneServer` API.
+- **Templates**: Deploy standardized server environments using pre-configured metadata.
 
 ---
 
-## 4. Multi-Node distributed Model (v1.10+)
+## 3. Communication & Monitoring
 
-CraftCommand supports a **Primary/Worker** architecture.
+1.  **Transport**: Socket.IO for real-time streaming.
+2.  **System Monitoring**: OS-level CPU/RAM metrics (via `systeminformation`) streamed to the frontend.
+3.  **State Sync**: Repository layer on backend + React state on frontend maintain synchronized server health.
+4.  **2FA**: TOTP implementation with AES-256-CBC encrypted secrets and bcrypt-hashed backup codes.
 
-- **Primary Node**: Hosts the UI and global user database.
-- **Worker Nodes**: Lightweight agents that manage local server files and execute process commands.
-- **Bootstrap Enrollment**: New nodes are added via a secure ZIP package containing a pre-shared encrypted token for instant pairing.
-- **Compatibility Guardians**: (v1.11+) Nodes advertise their `agentVersion` during handshake. The Primary will prevent updates that would break communication with outdated worker nodes.
+---
+
+## 4. Distributed Architecture (Primary/Worker)
+
+CraftCommand utilizes a decentralized orchestration model:
+
+- **Primary Panel**: Manages the API gateway, global user database, and node registry.
+- **Node Agents**: Independent workers that handle local file I/O and process supervision.
+- **Handshake Protocol**: Enrollment uses time-limited JWTs for initial Ed25519 identity issuance.
+- **Compatibility Mapping**: Agents report `agentVersion` during heartbeat; the primary enforces protocol minimums to prevent architectural drift.
 
 ---
 

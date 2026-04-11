@@ -20,8 +20,75 @@ set "CGY=%E%[90m"
 set "CB=%E%[94m"
 set "BOLD=%E%[1m"
 
+:: --- ARGUMENT PARSING ---
+if "%~1"=="--join" goto :HANDLE_JOIN
+goto :MAIN_SETUP
+
+:HANDLE_JOIN
+set "PANEL_URL=%~2"
+set "JOIN_TOKEN=%~3"
+
+if "!PANEL_URL!"=="" goto :JOIN_ERROR
+if "!JOIN_TOKEN!"=="" goto :JOIN_ERROR
+
+echo.
+echo   %CC% ENROLLMENT %R% Initializing secure node join...
+
+:: Fetch config via PowerShell
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$url = '!PANEL_URL!/api/nodes/join-config/!JOIN_TOKEN!'; ^
+     try { ^
+        $r = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 10; ^
+        if ($r.error) { throw $r.error } ^
+        $r | ConvertTo-Json -Compress | Out-File -FilePath '%TEMP%\cc_join.json' -Encoding utf8; ^
+     } catch { ^
+        Write-Error $_; exit 1; ^
+     }"
+
+if !errorlevel! neq 0 (
+    echo   %CR% FAILED %R% Could not reach panel or token is invalid.
+    exit /b 1
+)
+
+:: Parse result
+for /f "usebackq tokens=*" %%a in ("%TEMP%\cc_join.json") do set "CONFIG_JSON=%%a"
+del "%TEMP%\cc_join.json" >nul 2>nul
+
+:: Extract fields (Powershell helper)
+for /f "usebackq tokens=*" %%a in (`powershell -NoProfile -Command "$j=Get-Content '%TEMP%\cc_join.json' -Raw | ConvertFrom-Json; $j.nodeId"`) do set "NODE_ID=%%a"
+for /f "usebackq tokens=*" %%a in (`powershell -NoProfile -Command "$j=Get-Content '%TEMP%\cc_join.json' -Raw | ConvertFrom-Json; $j.nodeSecret"`) do set "NODE_SEC=%%a"
+for /f "usebackq tokens=*" %%a in (`powershell -NoProfile -Command "$j=Get-Content '%TEMP%\cc_join.json' -Raw | ConvertFrom-Json; $j.panelUrl"`) do set "PANEL_URL_VAL=%%a"
+
+if "!NODE_ID!"=="" (
+    echo   %CR% FAILED %R% Enrollment data corrupted.
+    exit /b 1
+)
+
+:: Write .env
+if not exist "agent" mkdir "agent"
+echo PANEL_URL=!PANEL_URL_VAL!> "agent\.env"
+echo NODE_ID=!NODE_ID!>> "agent\.env"
+echo NODE_SECRET=!NODE_SEC!>> "agent\.env"
+
+echo   %CG% SUCCESS %R% Node enrolled: !NODE_ID!
+echo   %CGY% Starting agent... %R%
+
+cd agent
+if not exist "node_modules" call npm install
+if not exist "dist" call npm run build
+node dist/agent/src/index.js
+exit /b 0
+
+:JOIN_ERROR
+echo.
+echo   %CR%%BOLD% ERROR %R% Missing arguments for --join.
+echo          Usage: %~nx0 --join ^<PANEL_URL^> ^<TOKEN^>
+exit /b 1
+
+:MAIN_SETUP
+
 :: ============================================================================
-::  CRAFTCOMMAND — Enterprise Platform Launcher
+::  CRAFTCOMMAND — Platform Launcher
 :: ============================================================================
 
 :: --- DEPENDENCY VALIDATION ---
@@ -70,7 +137,7 @@ if not exist ".env" (
         exit /b 1
     )
     copy ".env.example" ".env" >nul
-    powershell -Command "$s=(-join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | %% {[char]$_})); (Get-Content .env) -replace 'JWT_SECRET=.*', ('JWT_SECRET=' + $s) | Set-Content .env"
+    powershell -Command "$s=(-join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | ForEach-Object {[char]$_})); (Get-Content .env) -replace 'JWT_SECRET=.*', ('JWT_SECRET=' + $s) | Set-Content .env"
 )
 
 :: --- UPDATE CHECK ---
@@ -107,21 +174,41 @@ echo   %CGY%New version detected on GitHub.%R%
 echo.
 
 if "!AUTO_UPDATE!"=="true" (
-    echo   %CY%Do you want to install this update? %CGY%(y/n)%R%
+    echo   %CY%Do you want to install this update? %CGY%^(y/n^)%R%
     set /p u_choice="  %CC%^> %R%"
     if /i "!u_choice!"=="y" (
         echo.
-        echo   %CG%Starting update process...%R%
-        node scripts/system-updater.cjs
-        if !errorlevel! equ 0 (
-            echo.
-            echo   %CG%%BOLD%+%R%  Update installed successfully.
-            echo   %CGY%    Please restart the launcher to apply changes.%R%
-            pause
-            exit
+        echo   %CG%Starting automated patching...%R%
+        
+        :: 1. Download & Prepare
+        node scripts/core/system-updater.cjs
+        
+        if exist "update-plan.json" (
+            :: 2. Apply (Atomic Swap)
+            powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\ops\apply_update.ps1"
+            
+            if !errorlevel! equ 0 (
+                echo.
+                echo   %CG%%BOLD%+%R%  Update applied successfully.
+                echo   %CY%[UPDATE] Syncing environment and dependencies...%R%
+                
+                :: 3. Post-Update Sync
+                call node scripts/core/sync-env.cjs
+                cd backend && call npm install && cd ..
+                
+                echo.
+                echo   %CG%%BOLD%SUCCESS!%R% System is now stable on version !REMOTE_VER!.
+                echo   %CGY%Configuration synchronized. Launching...%R%
+                timeout /t 3 >nul
+                goto MENU
+            ) else (
+                echo.
+                echo   %CR%%BOLD%X%R%  Update application failed. System reverted.
+                pause
+            )
         ) else (
             echo.
-            echo   %CR%%BOLD%X%R%  Update failed. See logs above.
+            echo   %CR%%BOLD%X%R%  Update staging failed. See logs above.
             pause
         )
     )
@@ -140,7 +227,7 @@ if not exist "backend\data\settings.json" goto SKIP_ASSET_SYNC
 <nul set /p "=%CGY%  Syncing assets... %R%"
 powershell -NoProfile -Command "$s = Get-Content 'backend\data\settings.json' -Raw | ConvertFrom-Json; if ($s.app.updateWeb -eq $true) { exit 1 } else { exit 0 }"
 if !errorlevel! equ 1 (
-    node scripts/update-web-cli.cjs
+    node scripts/core/update-web-cli.cjs
 ) else (
     echo %CGY%Skipped.%R%
 )
@@ -160,7 +247,7 @@ if exist "update-plan.json" (
     echo   %CY%[UPDATE] Pending update found!%R%
     echo   %CC%Executing update applicator...%R%
     
-    powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\apply_update.ps1"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\ops\apply_update.ps1"
     if !errorlevel! neq 0 (
         echo   %CR%[ERROR] Update failed! Check console.%R%
         pause
@@ -172,8 +259,8 @@ if exist "update-plan.json" (
 :: --- POST-UPDATE CLEANUP ---
 if exist "update_applied.flag" (
     echo.
-    echo   %CY%[UPDATE] Synchronizing system configuration...%R%
-    call node scripts/sync-env.cjs
+    echo   %CY%[UPDATE] Finalizing update...%R%
+    call node scripts/core/sync-env.cjs
     
     echo.
     echo   %CY%[UPDATE] Updating dependencies...%R%
@@ -189,7 +276,7 @@ if exist "update_applied.flag" (
     
     echo.
     echo   %CY%[UPDATE] Rebuilding frontend assets...%R%
-    call node scripts/update-web-cli.cjs --force
+    call node scripts/core/update-web-cli.cjs --force
     
     del "update_applied.flag"
     echo   %CG%[SUCCESS] System synchronized, dependencies updated, and assets rebuilt.%R%
@@ -197,14 +284,15 @@ if exist "update_applied.flag" (
 )
 
 
+:: --- UI HEADER: HERO CARD ---
 echo.
-echo  %CC%%BOLD%   ______             ______  ______                                          __ %R%
-echo  %CC%  ██████╗██████╗  █████╗ ███████╗████████╗ ██████╗ ██████╗ ███╗   ███╗███╗   ███╗ █████╗ ███╗   ██╗██████╗ %R%
-echo  %CC% ██╔════╝██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██╔════╝██╔═══██╗████╗ ████║████╗ ████║██╔══██╗████╗  ██║██╔══██╗%R%
-echo  %CC% ██║     ██████╔╝███████║█████╗     ██║   ██║     ██║   ██║██╔████╔██║██╔████╔██║███████║██╔██╗ ██║██║  ██║%R%
-echo  %CC% ██║     ██╔══██╗██╔══██║██╔══╝     ██║   ██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║██║╚██╗██║██║  ██║%R%
-echo  %CC% ╚██████╗██║  ██║██║  ██║██║        ██║   ╚██████╗╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║██║ ╚████║██████╔╝%R%
-echo  %CC%  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝ %R%
+echo  %CC%%BOLD%      __      __                 __      __ %R%
+echo  %CC% ██████╗██████╗  █████╗ ███████╗████████╗   ██████╗ ██████╗ ███╗   ███╗███╗   ███╗ █████╗ ███╗   ██╗██████╗ %R%
+echo  %CC% ██╔════╝██╔══██╗██╔══██╗██╔════╝╚══██╔══╝  ██╔════╝██╔═══██╗████╗ ████║████╗ ████║██╔══██╗████╗  ██║██╔══██╗%R%
+echo  %CC% ██║     ██████╔╝███████║█████╗     ██║     ██║     ██║   ██║██╔████╔██║██╔████╔██║███████║██╔██╗ ██║██║  ██║%R%
+echo  %CC% ██║     ██╔══██╗██╔══██║██╔══╝     ██║     ██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║██║╚██╗██║██║  ██║%R%
+echo  %CC% ╚██████╗██║  ██║██║  ██║██║        ██║     ╚██████╗╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║██║ ╚████║██████╔╝%R%
+echo  %CC%  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝        ╚═╝      ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝ %R%
 
 :: --- STATUS BAR ---
 set "LOCAL_IP=127.0.0.1"
@@ -213,16 +301,16 @@ for /f "tokens=4" %%a in ('route print ^| findstr 0.0.0.0 ^| findstr /V "0.0.0.0
 echo  %CGY%------------------------------------------------------------------------%R%
 echo   %BOLD%%CW%v!CC_VERSION!%R%  %CGY%:%R%  %CG%%BOLD%ONLINE%R%  %CGY%:%R%  %CGY%IPV4: %CB%!LOCAL_IP!%R%  %CGY%:%R%  %CGY%NODE: %CM%WDL-ADMIN-01%R%
 echo  %CGY%------------------------------------------------------------------------%R%
-echo  %CGY%[01]%R% %CG%%BOLD%LAUNCH PLATFORM%R%        %CGY%Boot (Backend ^& Frontend)%R%
+echo  %CGY%[01]%R% %CG%%BOLD%START PLATFORM%R%         %CGY%Launch Backend ^& Frontend%R%
 echo  %CGY%[02]%R% %CC%SECURITY: HTTPS%R%        %CGY%Caddy Automation / SSL%R%
 echo  %CGY%[03]%R% %CC%NETWORK: REMOTE%R%        %CGY%Tunnels ^& Mesh VPNs%R%
 echo.
-echo  %CGY%[04]%R% %CY%SYSTEM DIAGNOSTICS%R%     %CGY%Connectivity ^& Integrity%R%
+echo  %CGY%[04]%R% %CY%SYSTEM CHECK%R%           %CGY%Check health ^& files%R%
 echo  %CGY%[05]%R% %CY%SYSTEM MAINTENANCE%R%     %CGY%Environment Reconstruction%R%
 echo  %CGY%[06]%R% %CB%SYSTEM RECOVERY%R%        %CGY%Rollback from Snapshot%R%
 echo.
-echo  %CGY%[07]%R% %CM%NODE ORCHESTRATION%R%     %CGY%Distributed Node Agent%R%
-echo  %CGY%[08]%R% %CR%EMERGENCY: ISOLATE%R%     %CGY%Immediate Panic Kill%R%
+echo  %CGY%[07]%R% %CM%REMOTE NODE%R%           %CGY%Start Node Agent%R%
+echo  %CGY%[08]%R% %CR%STOP ALL%R%                %CGY%Emergency Shutdown%R%
 echo  %CGY%------------------------------------------------------------------------%R%
 echo   %BOLD%%CW%[00]%R% %CGY%POWER OFF%R%
 echo  %CGY%------------------------------------------------------------------------%R%
@@ -267,8 +355,8 @@ if %errorlevel% neq 0 (
         set "PATH=%CD%\.runtimes\node;%PATH%"
     ) else (
         echo.
-        echo   %CY%%BOLD%!%R%  Node.js not found. Bootstrapping portable runtime...
-        powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\bootstrap-runtime.ps1"
+        echo   %CY%%BOLD%!%R%  Node.js not found. Installing portable runtime...
+        powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\core\bootstrap-runtime.ps1"
         if !errorlevel! neq 0 (
             echo   %CR%Failed to download Node.js. Please install manually.%R%
             pause
@@ -490,9 +578,20 @@ echo.
 echo  %CY%%BOLD% STABILITY AUDIT%R%
 echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
-echo   Running diagnostics...
-echo.
-node -r ts-node/register -r tsconfig-paths/register scripts/user_verification_test.ts 2>nul || echo   %CR%ts-node not available. Run option [05] Maintenance first.%R%
+echo:: --- RUNTIME DISCOVERY ---
+set "NODE_BIN=node"
+where node >nul 2>nul
+if !errorlevel! neq 0 (
+    if exist ".runtimes\node\node.exe" set "NODE_BIN=%CD%\.runtimes\node\node.exe"
+)
+
+!NODE_BIN! -r ts-node/register -r tsconfig-paths/register scripts/tests/user_verification_test.ts 2>nul
+if !errorlevel! neq 0 (
+    echo.
+    echo   %CR%%BOLD% ERROR %R%  Stability Audit failed to launch.
+    echo   %CGY%         Missing dependencies or corrupted runtime.%R%
+    echo   %CC%         Fix: Run [05] SYSTEM MAINTENANCE first.%R%
+)
 echo.
 pause
 goto MENU
@@ -508,7 +607,7 @@ echo  %CGY%---------------------------------------------------------------------
 echo.
 echo   Searching for pre-update snapshots...
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\rollback.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\ops\rollback.ps1"
 echo.
 pause
 goto MENU
@@ -552,7 +651,7 @@ goto MENU
 :AGENT_START
 cls
 echo.
-echo  %CM%%BOLD% NODE AGENT%R%
+echo  %CM%%BOLD% REMOTE NODE AGENT%R%
 echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
 <nul set /p "=  Node ID:     "
@@ -567,7 +666,7 @@ echo   Initializing agent...
 
 cd agent
 if not exist "dist\agent\src\index.js" (
-    echo   [System] Building agent artifacts...
+    echo   [System] Preparing agent...
     if not exist "node_modules" call npm install >nul 2>nul
     call npm run build >nul 2>nul
 )

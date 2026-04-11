@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import path from 'path';
 import fs from 'fs-extra';
 import { SERVERS_ROOT } from '../../constants';
+import { logger } from '../../utils/logger';
 
 /**
  * FileWatcherService (Professional Scale)
@@ -21,7 +22,7 @@ export class FileWatcherService extends EventEmitter {
     private initRootWatcher() {
         if (this.rootWatcher) return;
 
-        console.log(`[FileWatcher] Initializing Single-Root Watcher for: ${SERVERS_ROOT}`);
+        logger.info(`[FileWatcher] Initializing Single-Root Watcher for: ${SERVERS_ROOT}`);
         
         fs.ensureDirSync(SERVERS_ROOT);
 
@@ -47,7 +48,7 @@ export class FileWatcherService extends EventEmitter {
             .on('unlinkDir', p => this.handleEvent('unlinkDir', p));
         
         this.rootWatcher.on('error', (err) => {
-            console.error(`[FileWatcher] Root watcher error:`, err);
+            logger.error(`[FileWatcher] Root watcher error: ${err}`);
         });
     }
 
@@ -87,7 +88,7 @@ export class FileWatcherService extends EventEmitter {
     }
 
     shutdown() {
-        console.log('[FileWatcher] Shutting down root watcher...');
+        logger.info('[FileWatcher] Shutting down root watcher...');
         this.rootWatcher?.close();
         this.rootWatcher = null;
         this.watchedServers.clear();

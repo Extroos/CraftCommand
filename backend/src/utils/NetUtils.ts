@@ -1,4 +1,5 @@
 import net from 'net';
+import https from 'https';
 import si from 'systeminformation';
 import { logger } from './logger';
 
@@ -77,7 +78,13 @@ export class NetUtils {
     static async killProcessOnPort(port: number): Promise<boolean> {
         try {
             const connections = await si.networkConnections();
-            const listener = connections.find(c => (c.localPort === port.toString()) && (c.state === 'LISTEN'));
+            const portStr = port.toString();
+            
+            // Search TCP LISTEN and UDP states
+            const listener = connections.find(c => 
+                c.localPort === portStr && 
+                (c.state === 'LISTEN' || c.protocol === 'udp' || c.state === 'UDP' || c.state === 'NONE')
+            );
             
             if (listener && listener.pid) {
                 // SAFETY CHECK: What is this process?
@@ -202,6 +209,34 @@ export class NetUtils {
             packet.writeBigInt64BE(BigInt(Math.floor(Math.random() * 1000000)), 25);
 
             client.send(packet, port, host);
+        });
+    }
+
+    /**
+     * Retrieves the public IP address of the host machine using a 3rd-party service.
+     */
+    static async getPublicIP(): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.ipify.org',
+                port: 443,
+                path: '/',
+                method: 'GET',
+                timeout: 5000
+            };
+
+            const req = https.request(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => resolve(data.trim()));
+            });
+
+            req.on('error', (e) => reject(e));
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Public IP check timed out'));
+            });
+            req.end();
         });
     }
 

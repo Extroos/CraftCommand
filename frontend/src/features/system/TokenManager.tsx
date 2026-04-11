@@ -142,7 +142,7 @@ export const TokenManager: React.FC = () => {
                 <div>
                     <h2 className="text-xl font-bold tracking-tight mb-1 flex items-center gap-2">
                         <Key size={20} className="text-foreground" />
-                        Infrastructure Access Tokens
+                        API Access Tokens
                     </h2>
                     <p className="text-xs text-muted-foreground font-medium">Issue and manage Personal Access Tokens (PATs) for programmatic API access.</p>
                 </div>

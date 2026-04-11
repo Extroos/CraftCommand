@@ -33,15 +33,20 @@ export class AuditService {
                 if (user) {
                     const event: ActivityEvent = {
                         id: `act-${entry.id}`,
-                        serverId: 'global',
+                        serverId: entry.metadata?.serverId || (entry.action.startsWith('SERVER_') ? entry.resourceId : 'global'),
                         userId: user.id,
                         username: user.username,
                         action: entry.action as any,
                         detail: this.formatActionDetail(entry),
-                        visibility: 'VIEWER',
+                        visibility: (entry.metadata?.visibility as any) || 'VIEWER',
                         timestamp: entry.timestamp
                     };
-                    io.to('server:global').emit('activity:new', event);
+                    
+                    // Emit via the central socket broadcaster to ensure history sync
+                    const { emitActivity } = require('../../sockets/index');
+                    if (emitActivity) {
+                        emitActivity(event);
+                    }
                 }
             }
         } catch (err) {
@@ -50,16 +55,21 @@ export class AuditService {
     }
 
     private formatActionDetail(log: AuditLog): string {
+        const meta = log.metadata || {};
+        const resId = log.resourceId ? `[${log.resourceId.split('-')[0]}]` : '';
+
         switch(log.action as string) {
-            case 'SERVER_START': return log.resourceId ? `Started server ${log.resourceId}` : 'Started a server';
-            case 'SERVER_STOP': return log.resourceId ? `Stopped server ${log.resourceId}` : 'Stopped a server';
-            case 'SERVER_RESTART': return log.resourceId ? `Restarted server ${log.resourceId}` : 'Restarted a server';
-            case 'FILE_EDITED': return log.resourceId ? `Edited file in ${log.resourceId}` : 'Edited a file';
-            case 'CONFIG_CHANGED': return 'Changed system configuration';
-            case 'USER_CREATED': return 'Created a new user';
-            case 'PLUGIN_INSTALLED': return log.resourceId ? `Installed plugin on ${log.resourceId}` : 'Installed plugin';
-            case 'BACKUP_CREATED': return log.resourceId ? `Created backup for ${log.resourceId}` : 'Created backup';
-            case 'COMMAND_SENT': return log.resourceId ? `Executed command on ${log.resourceId}` : 'Executed a command';
+            case 'SERVER_START': return `Initalizing node ${resId}`;
+            case 'SERVER_STOP': return `Terminating node ${resId}`;
+            case 'SERVER_RESTART': return `Rebooting node ${resId}`;
+            case 'FILE_EDITED': return `Modified ${meta.path || 'system file'} in ${resId}`;
+            case 'CONFIG_CHANGED': return `Updated ${meta.category || 'platform'} settings`;
+            case 'USER_CREATED': return `Provisioned new user account: ${meta.username || 'unknown'}`;
+            case 'USER_DELETED': return `Revoked access for user: ${meta.username || log.resourceId}`;
+            case 'USER_UPDATED': return `Modified profile for user: ${meta.username || log.resourceId}`;
+            case 'PLUGIN_INSTALLED': return `Injected plugin ${meta.pluginName || ''} into ${resId}`;
+            case 'BACKUP_CREATED': return `Generated system snapshot for ${resId}`;
+            case 'COMMAND_SENT': return `Dispatched command to ${resId}: "${meta.command || '...'}"`;
             default: return log.action.replace(/_/g, ' ').toLowerCase();
         }
     }

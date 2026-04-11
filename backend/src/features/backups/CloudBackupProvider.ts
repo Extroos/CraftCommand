@@ -24,7 +24,7 @@ export interface CloudUploadResult {
 export interface ICloudBackupProvider {
     type: string;
     name: string;
-    upload(localFilePath: string, remoteFileName: string, metadata: Record<string, any>): Promise<CloudUploadResult>;
+    upload(localFilePath: string, remoteFileName: string): Promise<CloudUploadResult>;
     testConnection(): Promise<{ success: boolean; message: string }>;
     listRemoteBackups(): Promise<Array<{ name: string; size: number; modified: string }>>;
     deleteRemote(remoteFileName: string): Promise<void>;
@@ -105,7 +105,6 @@ export class LocalCopyProvider implements ICloudBackupProvider {
 
 // --- S3-Compatible Provider ---
 // Works with AWS S3, MinIO, Backblaze B2, DigitalOcean Spaces, etc.
-// Uses the built-in Node.js https module for minimal dependency footprint.
 
 export class S3Provider implements ICloudBackupProvider {
     type = 's3';
@@ -140,58 +139,72 @@ export class S3Provider implements ICloudBackupProvider {
         const remotePath = `${this.prefix}${remoteFileName}`;
 
         try {
-            // S3 PUT via AWS SDK
-            // This implementation uses @aws-sdk/client-s3 for reliable cloud storage.
             const fileSize = (await fs.stat(localFilePath)).size;
-            
             logger.info(`[S3Provider] Upload queued: ${remotePath} (${(fileSize / 1024 / 1024).toFixed(1)}MB) → ${this.endpoint}/${this.bucket}`);
 
-            // Use @aws-sdk/client-s3
+            let S3Client, PutObjectCommand;
             try {
-                const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-                const client = new S3Client({
-                    endpoint: this.endpoint.startsWith('http') ? this.endpoint : `https://${this.endpoint}`,
-                    region: this.region,
-                    credentials: { accessKeyId: this.accessKey, secretAccessKey: this.secretKey },
-                    forcePathStyle: true
-                });
+                const sdk = require('@aws-sdk/client-s3');
+                S3Client = sdk.S3Client;
+                PutObjectCommand = sdk.PutObjectCommand;
+            } catch (e) {
+                throw new Error('DEPENDENCY_MISSING:@aws-sdk/client-s3');
+            }
 
-                const fileStream = fs.createReadStream(localFilePath);
-                await client.send(new PutObjectCommand({
-                    Bucket: this.bucket,
-                    Key: remotePath,
-                    Body: fileStream,
-                    ContentType: 'application/zip'
-                }));
+            const client = new S3Client({
+                endpoint: this.endpoint.startsWith('http') ? this.endpoint : `https://${this.endpoint}`,
+                region: this.region,
+                credentials: { accessKeyId: this.accessKey, secretAccessKey: this.secretKey },
+                forcePathStyle: true
+            });
 
-                logger.success(`[S3Provider] Uploaded ${remotePath} successfully.`);
+            // --- RETRY LOOP ---
+            let attempts = 0;
+            const maxAttempts = 3;
+            while (attempts < maxAttempts) {
+                try {
+                    const fileStream = fs.createReadStream(localFilePath);
+                    await client.send(new PutObjectCommand({
+                        Bucket: this.bucket,
+                        Key: remotePath,
+                        Body: fileStream,
+                        ContentType: 'application/zip'
+                    }));
+                    break;
+                } catch (uploadError: any) {
+                    attempts++;
+                    if (attempts >= maxAttempts) throw uploadError;
+                    const delay = Math.pow(2, attempts) * 1000 + (Math.random() * 1000);
+                    logger.warn(`[S3Provider] Upload failed. Retrying in ${Math.round(delay)}ms... (${attempts}/${maxAttempts})`);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+            }
+
+            logger.success(`[S3Provider] Uploaded ${remotePath} successfully.`);
+            return {
+                destination: this.name,
+                type: this.type,
+                success: true,
+                remotePath: `s3://${this.bucket}/${remotePath}`,
+                durationMs: Date.now() - start
+            };
+        } catch (error: any) {
+            if (error.message?.startsWith('DEPENDENCY_MISSING:')) {
+                const lib = error.message.split(':')[1];
+                logger.error(`[S3Provider] Missing dependency: ${lib}. Run 'npm install ${lib}' to enable S3 backups.`);
                 return {
                     destination: this.name,
                     type: this.type,
-                    success: true,
-                    remotePath: `s3://${this.bucket}/${remotePath}`,
+                    success: false,
+                    error: `Missing library: ${lib}`,
                     durationMs: Date.now() - start
                 };
-            } catch (sdkError: any) {
-                if (sdkError.code === 'MODULE_NOT_FOUND') {
-                    // Fallback for edge cases if somehow unlinked
-                    logger.warn(`[S3Provider] AWS SDK not found in runtime. Ensure @aws-sdk/client-s3 is installed.`);
-                    return {
-                        destination: this.name,
-                        type: this.type,
-                        success: false,
-                        error: 'S3 SDK required but not found in runtime.',
-                        durationMs: Date.now() - start
-                    };
-                }
-                throw sdkError;
             }
-        } catch (e: any) {
             return {
                 destination: this.name,
                 type: this.type,
                 success: false,
-                error: e.message,
+                error: error.message,
                 durationMs: Date.now() - start
             };
         }
@@ -199,63 +212,94 @@ export class S3Provider implements ICloudBackupProvider {
 
     async testConnection(): Promise<{ success: boolean; message: string }> {
         try {
-            const { S3Client, HeadBucketCommand } = require('@aws-sdk/client-s3');
+            let S3Client, HeadBucketCommand;
+            try {
+                const sdk = require('@aws-sdk/client-s3');
+                S3Client = sdk.S3Client;
+                HeadBucketCommand = sdk.HeadBucketCommand;
+            } catch (e) {
+                return { success: false, message: 'S3 SDK not installed. Run: npm install @aws-sdk/client-s3' };
+            }
+
             const client = new S3Client({
                 endpoint: this.endpoint.startsWith('http') ? this.endpoint : `https://${this.endpoint}`,
                 region: this.region,
                 credentials: { accessKeyId: this.accessKey, secretAccessKey: this.secretKey },
                 forcePathStyle: true
             });
+
             await client.send(new HeadBucketCommand({ Bucket: this.bucket }));
             return { success: true, message: `Connected to bucket "${this.bucket}" at ${this.endpoint}` };
         } catch (e: any) {
-            if (e.code === 'MODULE_NOT_FOUND') {
-                return { success: false, message: 'S3 SDK not installed. Run: npm install @aws-sdk/client-s3' };
-            }
             return { success: false, message: `S3 connection failed: ${e.message}` };
         }
     }
 
     async listRemoteBackups(): Promise<Array<{ name: string; size: number; modified: string }>> {
         try {
-            const { S3Client, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+            let S3Client, ListObjectsV2Command;
+            try {
+                const sdk = require('@aws-sdk/client-s3');
+                S3Client = sdk.S3Client;
+                ListObjectsV2Command = sdk.ListObjectsV2Command;
+            } catch (e) {
+                logger.error('[S3Provider] SDK not found for listing backups.');
+                return [];
+            }
+
             const client = new S3Client({
                 endpoint: this.endpoint.startsWith('http') ? this.endpoint : `https://${this.endpoint}`,
                 region: this.region,
                 credentials: { accessKeyId: this.accessKey, secretAccessKey: this.secretKey },
                 forcePathStyle: true
             });
+
             const response = await client.send(new ListObjectsV2Command({
                 Bucket: this.bucket,
                 Prefix: this.prefix
             }));
+
             return (response.Contents || []).map((obj: any) => ({
                 name: obj.Key.replace(this.prefix, ''),
-                size: obj.Size,
-                modified: obj.LastModified.toISOString()
+                size: obj.Size || 0,
+                modified: obj.LastModified ? obj.LastModified.toISOString() : new Date().toISOString()
             }));
-        } catch {
+        } catch (e: any) {
+            logger.error(`[S3Provider] Failed to list backups: ${e.message}`);
             return [];
         }
     }
 
     async deleteRemote(remoteFileName: string): Promise<void> {
-        const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-        const client = new S3Client({
-            endpoint: this.endpoint.startsWith('http') ? this.endpoint : `https://${this.endpoint}`,
-            region: this.region,
-            credentials: { accessKeyId: this.accessKey, secretAccessKey: this.secretKey },
-            forcePathStyle: true
-        });
-        await client.send(new DeleteObjectCommand({
-            Bucket: this.bucket,
-            Key: `${this.prefix}${remoteFileName}`
-        }));
+        try {
+            let S3Client, DeleteObjectCommand;
+            try {
+                const sdk = require('@aws-sdk/client-s3');
+                S3Client = sdk.S3Client;
+                DeleteObjectCommand = sdk.DeleteObjectCommand;
+            } catch (e) {
+                throw new Error('SDK_MISSING');
+            }
+
+            const client = new S3Client({
+                endpoint: this.endpoint.startsWith('http') ? this.endpoint : `https://${this.endpoint}`,
+                region: this.region,
+                credentials: { accessKeyId: this.accessKey, secretAccessKey: this.secretKey },
+                forcePathStyle: true
+            });
+
+            await client.send(new DeleteObjectCommand({
+                Bucket: this.bucket,
+                Key: `${this.prefix}${remoteFileName}`
+            }));
+        } catch (e: any) {
+            logger.error(`[S3Provider] Failed to delete remote file: ${e.message}`);
+            throw e;
+        }
     }
 }
 
 // --- SFTP Provider ---
-// Uses ssh2-sftp-client for remote server backups
 
 export class SFTPProvider implements ICloudBackupProvider {
     type = 'sftp';
@@ -301,12 +345,33 @@ export class SFTPProvider implements ICloudBackupProvider {
         const remoteFile = `${this.remotePath}/${remoteFileName}`;
 
         try {
-            const SFTPClient = require('ssh2-sftp-client');
+            let SFTPClient;
+            try {
+                SFTPClient = require('ssh2-sftp-client');
+            } catch (e) {
+                throw new Error('DEPENDENCY_MISSING:ssh2-sftp-client');
+            }
+
             const sftp = new SFTPClient();
-            await sftp.connect(this.getConnectionConfig());
-            await sftp.mkdir(this.remotePath, true);
-            await sftp.put(localFilePath, remoteFile);
-            await sftp.end();
+            
+            // --- RETRY LOOP ---
+            let attempts = 0;
+            const maxAttempts = 3;
+            while (attempts < maxAttempts) {
+                try {
+                    await sftp.connect(this.getConnectionConfig());
+                    await sftp.mkdir(this.remotePath, true);
+                    await sftp.put(localFilePath, remoteFile);
+                    await sftp.end();
+                    break;
+                } catch (connError: any) {
+                    attempts++;
+                    if (attempts >= maxAttempts) throw connError;
+                    const delay = Math.pow(2, attempts) * 1000 + (Math.random() * 1000);
+                    logger.warn(`[SFTPProvider] Transfer failed. Retrying in ${Math.round(delay)}ms... (${attempts}/${maxAttempts})`);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+            }
 
             return {
                 destination: this.name,
@@ -315,13 +380,15 @@ export class SFTPProvider implements ICloudBackupProvider {
                 remotePath: `sftp://${this.host}:${this.port}${remoteFile}`,
                 durationMs: Date.now() - start
             };
-        } catch (e: any) {
-            if (e.code === 'MODULE_NOT_FOUND') {
+        } catch (error: any) {
+            if (error.message?.startsWith('DEPENDENCY_MISSING:')) {
+                const lib = error.message.split(':')[1];
+                logger.error(`[SFTPProvider] Missing dependency: ${lib}. Run 'npm install ${lib}' to enable SFTP backups.`);
                 return {
                     destination: this.name,
                     type: this.type,
                     success: false,
-                    error: 'SFTP client not installed. Run: npm install ssh2-sftp-client',
+                    error: `Missing library: ${lib}`,
                     durationMs: Date.now() - start
                 };
             }
@@ -329,7 +396,7 @@ export class SFTPProvider implements ICloudBackupProvider {
                 destination: this.name,
                 type: this.type,
                 success: false,
-                error: e.message,
+                error: error.message,
                 durationMs: Date.now() - start
             };
         }
@@ -366,11 +433,16 @@ export class SFTPProvider implements ICloudBackupProvider {
     }
 
     async deleteRemote(remoteFileName: string): Promise<void> {
-        const SFTPClient = require('ssh2-sftp-client');
-        const sftp = new SFTPClient();
-        await sftp.connect(this.getConnectionConfig());
-        await sftp.delete(`${this.remotePath}/${remoteFileName}`);
-        await sftp.end();
+        try {
+            const SFTPClient = require('ssh2-sftp-client');
+            const sftp = new SFTPClient();
+            await sftp.connect(this.getConnectionConfig());
+            await sftp.delete(`${this.remotePath}/${remoteFileName}`);
+            await sftp.end();
+        } catch (e: any) {
+            logger.error(`[SFTPProvider] Failed to delete remote file: ${e.message}`);
+            throw e;
+        }
     }
 }
 

@@ -4,7 +4,7 @@ import { FormData, WizardStep } from './types';
 import { ServerTemplate, NodeInfo } from '@shared/types';
 import { useSystem } from '@features/system/context/SystemContext';
 import { useUser } from '@features/auth/context/UserContext';
-import { Check, ArrowRight, Globe, Link } from 'lucide-react';
+import { Check, ArrowRight, Globe, Zap, Info, Link } from 'lucide-react';
 import { synthesizeDefaultState } from './CreateServerUtils';
 
 interface WizardModeProps {
@@ -75,19 +75,19 @@ const WizardMode: React.FC<WizardModeProps> = ({
             exit={{ opacity: 0 }}
             className="max-w-4xl mx-auto"
         >
-            {/* Steps Indicator - Modern subtle design */}
-            <div className="flex justify-center mb-8 gap-3">
+            {/* Steps Indicator - Professional subtle design */}
+            <div className="flex justify-center mb-10 gap-4">
                 {['software', 'details', 'review'].map((s, i) => {
                     const steps = ['software', 'details', 'review'];
                     const currentIdx = steps.indexOf(step);
                     const stepIdx = steps.indexOf(s);
                     const isActive = currentIdx >= stepIdx;
                     return (
-                        <div key={s} className="flex flex-col items-center gap-1.5 w-24">
+                        <div key={s} className="flex flex-col items-center gap-2 w-28">
                             <div className={`h-1 w-full rounded-full transition-all duration-500 ${
-                                isActive ? 'bg-primary shadow-[0_0_8px_rgba(var(--primary-rgb),0.3)]' : 'bg-muted'
+                                isActive ? 'bg-primary' : 'bg-muted/30'
                             }`} />
-                            <span className={`text-[8px] font-black uppercase tracking-[0.2em] transition-colors duration-300 ${isActive ? 'text-foreground' : 'text-muted-foreground/40'}`}>
+                            <span className={`text-[9px] font-bold uppercase tracking-[0.15em] transition-colors duration-300 ${isActive ? 'text-foreground' : 'text-muted-foreground/30'}`}>
                                 {s}
                             </span>
                         </div>
@@ -104,15 +104,14 @@ const WizardMode: React.FC<WizardModeProps> = ({
                         animate={{ opacity: 1, y: 0 }}
                         className="space-y-6"
                     >
-                        <div className="text-center space-y-2">
-                            <h2 className="text-lg font-black text-white uppercase tracking-tight">Select Software</h2>
-                            <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest opacity-60">Provisioning Protocol</p>
+                        <div className="text-center space-y-1 mb-2">
+                            <h2 className="text-xl font-bold text-foreground tracking-tight">Provisioning Target</h2>
+                            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest opacity-50">Choose Deployment Environment</p>
                         </div>
 
                         {/* Software & Templates Grid */}
                         <div className="space-y-4">
-                            <h3 className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.2em] pl-1">Primary Selection</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                                 {/* Official Software Options (Direct Selection) */}
                                 {softwareOptions
                                     .filter(sw => !gameTemplates.some(t => t.type === sw.id)) // Deduplicate: Hide if template exists
@@ -122,38 +121,40 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                         onClick={() => {
                                             setFormData(prev => synthesizeDefaultState(sw.id, prev, bedrockVersions));
                                         }}
-                                        className={`group relative flex flex-col items-center p-4 gap-3 rounded-xl border transition-all duration-200 ${
+                                        className={`group relative flex flex-col items-start p-4 gap-4 rounded-xl border transition-all duration-200 ${
                                             (formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId
-                                            ? 'bg-primary/5 border-primary ring-1 ring-primary/20'
-                                            : 'bg-zinc-900/50 border-white/5 hover:border-white/10 hover:bg-zinc-900'
+                                            ? 'bg-primary/5 border-primary'
+                                            : 'bg-muted/20 border-border hover:border-muted-foreground/30 hover:bg-muted/30'
                                         }`}
                                     >
-                                        <div className="w-10 h-10 relative">
-                                            {typeof sw.icon === 'string' || React.isValidElement(sw.icon) ? (
-                                                <div className={`w-full h-full flex items-center justify-center ${(formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId ? 'text-primary' : 'text-zinc-500 opacity-60 group-hover:opacity-100'}`}>
-                                                    {sw.icon}
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="w-8 h-8">
+                                                {typeof sw.icon === 'string' || React.isValidElement(sw.icon) ? (
+                                                    <div className={`w-full h-full flex items-center justify-center ${(formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId ? 'text-primary' : 'text-muted-foreground opacity-50'}`}>
+                                                        {sw.icon}
+                                                    </div>
+                                                ) : (
+                                                    <img 
+                                                        src={getIconPath(sw.id)} 
+                                                        alt={sw.id}
+                                                        className={`w-full h-full object-contain transition-transform duration-300 ${(formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId ? 'scale-110' : 'group-hover:scale-105 opacity-80'}`}
+                                                    />
+                                                )}
+                                            </div>
+                                            {((formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId) && (
+                                                <div className="p-1 bg-primary rounded-full text-primary-foreground">
+                                                    <Check size={10} strokeWidth={4} />
                                                 </div>
-                                            ) : (
-                                                <img 
-                                                    src={getIconPath(sw.id)} 
-                                                    alt={sw.id}
-                                                    className={`w-full h-full object-contain relative z-10 transition-transform duration-300 ${(formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId ? 'scale-110' : 'group-hover:scale-105 opacity-60 group-hover:opacity-100'}`}
-                                                />
                                             )}
                                         </div>
-                                        <div className="text-center">
-                                            <div className={`font-bold text-xs leading-none transition-colors ${(formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId ? 'text-white' : 'text-zinc-500'}`}>
+                                        <div className="text-left">
+                                            <div className="font-bold text-[12px] leading-none text-foreground">
                                                 {sw.id === 'Paper' && (formData.software === 'Paper' || formData.software === 'Purpur') && formData.usePurpur ? 'Purpur' : sw.id}
                                             </div>
-                                            <div className="text-[9px] text-zinc-600 mt-1.5 font-mono">
-                                                {sw.id === 'Paper' && formData.usePurpur ? 'Optimize' : 'Platform'}
+                                            <div className="text-[9px] text-muted-foreground mt-2 font-bold uppercase tracking-wider opacity-60">
+                                                {sw.id === 'Paper' && formData.usePurpur ? 'Optimized Fork' : 'Primary Source'}
                                             </div>
                                         </div>
-                                        {((formData.software === sw.id || (sw.id === 'Paper' && formData.software === 'Purpur')) && !formData.templateId) && (
-                                            <div className="absolute top-2 right-2 text-primary">
-                                                <Check size={10} strokeWidth={4} />
-                                            </div>
-                                        )}
                                     </button>
                                 ))}
 
@@ -162,30 +163,34 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                     <button
                                         key={t.id}
                                         onClick={() => handleTemplateSelect(t)}
-                                        className={`group relative flex flex-col items-center p-4 gap-3 rounded-xl border transition-all duration-200 ${
+                                        className={`group relative flex flex-col items-start p-4 gap-4 rounded-xl border transition-all duration-200 ${
                                             formData.templateId === t.id
-                                            ? 'bg-primary/5 border-primary ring-1 ring-primary/20'
-                                            : 'bg-zinc-900/50 border-white/5 hover:border-white/10 hover:bg-zinc-900'
+                                            ? 'bg-primary/5 border-primary'
+                                            : 'bg-muted/20 border-border hover:border-muted-foreground/30 hover:bg-muted/30'
                                         }`}
                                     >
-                                        <div className="w-10 h-10 relative">
-                                            <img 
-                                                src={getIconPath(t.type)} 
-                                                alt={t.name}
-                                                className={`w-full h-full object-contain relative z-10 transition-transform duration-300 ${formData.templateId === t.id ? 'scale-110' : 'group-hover:scale-105 opacity-60 group-hover:opacity-100'}`}
-                                            />
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="w-8 h-8">
+                                                <img 
+                                                    src={getIconPath(t.type)} 
+                                                    alt={t.name}
+                                                    className={`w-full h-full object-contain transition-transform duration-300 ${formData.templateId === t.id ? 'scale-110' : 'group-hover:scale-105 opacity-80'}`}
+                                                />
+                                            </div>
+                                            {formData.templateId === t.id && (
+                                                <div className="p-1 bg-primary rounded-full text-primary-foreground">
+                                                    <Check size={10} strokeWidth={4} />
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="text-center">
-                                            <div className={`font-bold text-xs leading-none transition-colors ${formData.templateId === t.id ? 'text-white' : 'text-zinc-500'}`}>{t.name}</div>
-                                            <div className="text-[9px] text-zinc-600 mt-1.5 font-mono">
-                                                {t.version}
+                                        <div className="text-left">
+                                            <div className="font-bold text-[12px] leading-none text-foreground">{t.name}</div>
+                                            <div className="text-[9px] text-muted-foreground mt-2 font-medium flex items-center gap-2">
+                                                <span className="font-bold uppercase tracking-wider opacity-60">{t.version}</span>
+                                                <span className="w-1 h-1 bg-muted-foreground/20 rounded-full" />
+                                                <span className="font-mono text-[8px] opacity-40">{Math.ceil((t.recommendedRam || 4096)/1024)}GB</span>
                                             </div>
                                         </div>
-                                        {formData.templateId === t.id && (
-                                            <div className="absolute top-2 right-2 text-primary">
-                                                <Check size={10} strokeWidth={4} />
-                                            </div>
-                                        )}
                                     </button>
                                 ))}
                             </div>
@@ -254,18 +259,18 @@ const WizardMode: React.FC<WizardModeProps> = ({
                         )}
 
                         {/* Step Progression Button - Solid Design */}
-                        <div className="pt-8 flex flex-col items-center gap-4">
+                        <div className="pt-8 flex flex-col items-center gap-5">
                              <button
                                 onClick={() => setStep('details')}
                                 disabled={!formData.templateId && !formData.software}
-                                className="group flex items-center gap-3 px-12 py-4 bg-white text-black rounded-xl text-xs font-black uppercase tracking-[0.2em] hover:bg-zinc-200 disabled:opacity-10 transition-all shadow-xl"
+                                className="group flex items-center gap-3 px-14 py-3.5 bg-primary text-primary-foreground rounded-lg text-[10px] font-bold uppercase tracking-[0.2em] hover:opacity-90 disabled:opacity-20 transition-all shadow-lg"
                              >
-                                Next Step <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                Configure Parameters <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                              </button>
-                             <div className="flex items-center gap-4 opacity-20">
-                                <div className="h-px w-12 bg-white" />
-                                <span className="text-[9px] font-bold uppercase tracking-[0.3em]">Phase 01</span>
-                                <div className="h-px w-12 bg-white" />
+                             <div className="flex items-center gap-4 opacity-10">
+                                <div className="h-px w-8 bg-foreground" />
+                                <span className="text-[8px] font-bold uppercase tracking-[0.2em]">CraftCommand v4.0</span>
+                                <div className="h-px w-8 bg-foreground" />
                              </div>
                         </div>
 
@@ -278,12 +283,12 @@ const WizardMode: React.FC<WizardModeProps> = ({
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                     >
-                         <div className="text-center space-y-1 mb-6">
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold mb-2">
-                                {formData.software} {formData.version}
+                         <div className="text-center space-y-1 mb-8">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[9px] font-bold uppercase tracking-wider mb-2">
+                                {formData.usePurpur ? 'Purpur' : formData.software} Node • {formData.version}
                             </div>
-                            <h2 className="text-lg font-black text-white uppercase tracking-tight">Configuration</h2>
-                            <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest opacity-60">Hardware Allocation</p>
+                            <h2 className="text-xl font-bold text-foreground tracking-tight">Resource Allocation</h2>
+                            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest opacity-50">Hardware Provisioning</p>
                         </div>
                         
                         {/* Phase 4: Node Selection - Only if Distributed Nodes is Enabled */}
@@ -317,19 +322,19 @@ const WizardMode: React.FC<WizardModeProps> = ({
                         
                         {renderDetailsStep()}
 
-                        <div className="flex justify-between items-center pt-6 border-t border-[rgb(var(--color-border-subtle))] mt-6">
+                        <div className="flex justify-between items-center pt-8 border-t border-border mt-8">
                             <button 
                                 onClick={() => setStep('software')} 
-                                className="text-muted-foreground hover:text-white text-xs font-bold uppercase tracking-wider transition-colors"
+                                className="text-muted-foreground hover:text-foreground text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 ml-1"
                             >
-                                ← Choose Software
+                                <ArrowRight size={14} className="rotate-180" /> Change Software
                             </button>
                             <button 
                                 disabled={!formData.name}
                                 onClick={() => setStep('review')} 
-                                className="group flex items-center gap-2 px-6 py-3 bg-white text-black rounded-xl text-sm font-bold hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-white/20 transition-all"
+                                className="group flex items-center gap-3 px-8 py-3 bg-primary text-primary-foreground rounded-lg text-[10px] font-bold uppercase tracking-[0.1em] hover:opacity-90 disabled:opacity-20 transition-all shadow-md"
                             >
-                                Review Output <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                Finalize Provisioning <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                             </button>
                         </div>
                     </motion.div>

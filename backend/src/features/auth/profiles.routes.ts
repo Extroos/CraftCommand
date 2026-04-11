@@ -1,6 +1,7 @@
 import express from 'express';
 import { profileService } from './ProfileService';
 import { verifyToken } from '../../middleware/authMiddleware';
+import { logger } from '../../utils/logger';
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ router.get('/:id/export', verifyToken, async (req, res) => {
         
         res.json(profile);
     } catch (e: any) {
-        console.error('Profile export failed:', e);
+        logger.error(`Profile export failed: ${e}`);
         res.status(500).json({ error: e.message });
     }
 });

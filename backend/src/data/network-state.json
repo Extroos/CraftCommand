@@ -1,0 +1,21 @@
+{
+    "publicIp": {
+        "current": "41.250.187.75",
+        "lastKnown": null,
+        "lastChangedAt": 1775839848235,
+        "history": [
+            {
+                "ip": "41.250.187.75",
+                "timestamp": 1775839848235
+            }
+        ]
+    },
+    "ddns": {
+        "hostname": null,
+        "resolvedIp": null,
+        "isMatching": false,
+        "lastVerifiedAt": null
+    },
+    "serverDdns": {},
+    "reachability": []
+}

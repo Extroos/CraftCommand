@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { ServerConfig, ServerStatus, Player, Backup, ScheduleTask } from '@shared/types';
+import { ServerConfig, ServerStatus, Player, Backup, ScheduleTask, NodeStatus } from '@shared/types';
 import { API } from '../../core/services/api';
 import { socketService } from '../../core/services/socket';
 import { useUser } from '../../auth/context/UserContext';
+import { useSystem } from '@features/system/context/SystemContext';
 
 interface ServerStats {
     cpu: number;
@@ -33,6 +34,16 @@ interface ServerContextType {
     
     // Server Install Progress (Per Server)
     installProgress: Record<string, { message: string, percent: number }>;
+
+    // Viewport-Aware Polling
+    visibleServerIds: string[];
+    registerVisibleServers: (ids: string[]) => void;
+
+    // Background Tasks (Cluster-wide)
+    backgroundTasks: Record<string, { id: string, name: string, type: string, status: 'running' | 'complete' | 'failed', progress: number, message: string, serverId?: string, lastUpdated: number }>;
+    addBackgroundTask: (task: { id: string, name: string, type: string, status: 'running' | 'complete' | 'failed', progress: number, message: string, serverId?: string }) => void;
+    updateBackgroundTask: (id: string, updates: Partial<{ name: string, status: 'running' | 'complete' | 'failed', progress: number, message: string }>) => void;
+    removeBackgroundTask: (id: string) => void;
     
     loading: boolean;
     isLoading: boolean;
@@ -42,6 +53,7 @@ interface ServerContextType {
     refreshServerData: (serverId: string) => Promise<void>;
     updateServerConfig: (serverId: string, config: Partial<ServerConfig>) => void;
     updateServerStatus: (serverId: string, status: ServerStatus) => void;
+    getUnifiedStatus: (server: ServerConfig) => ServerStatus;
 }
 
 const ServerContext = createContext<ServerContextType | undefined>(undefined);
@@ -92,6 +104,112 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Java Download Status
     const [javaDownloadStatus, setJavaDownloadStatus] = useState<{ message: string, phase: string, percent?: number, serverId?: string } | null>(null);
+
+    // Viewport-Aware Polling State
+    const [visibleServerIds, setVisibleServerIds] = useState<string[]>([]);
+    const visibleServerIdsRef = React.useRef<string[]>([]);
+    
+    useEffect(() => {
+        serversRef.current = servers;
+    }, [servers]);
+
+    const registerVisibleServers = useCallback((ids: string[]) => {
+        setVisibleServerIds(ids);
+        visibleServerIdsRef.current = ids;
+    }, []);
+
+    // Global Background Tasks (Persisted)
+    const [backgroundTasks, setBackgroundTasks] = useState<Record<string, any>>(() => {
+        const saved = localStorage.getItem('cc_bg_tasks');
+        const tasks = saved ? JSON.parse(saved) : {};
+        
+        // Scrub stale tasks on mount: Any "running" task older than 5 mins is marked failed
+        const now = Date.now();
+        let changed = false;
+        Object.keys(tasks).forEach(id => {
+            const task = tasks[id];
+            if (task.status === 'running') {
+                const lastUpdate = task.lastUpdated || 0;
+                if (now - lastUpdate > 300000) { // 5 minutes
+                    tasks[id] = { 
+                        ...task, 
+                        status: 'failed', 
+                        message: 'Session timeout: The background operation state was lost.' 
+                    };
+                    changed = true;
+                }
+            }
+        });
+        return tasks;
+    });
+
+    // Sync tasks to localStorage
+    useEffect(() => {
+        localStorage.setItem('cc_bg_tasks', JSON.stringify(backgroundTasks));
+    }, [backgroundTasks]);
+
+    const { nodes } = useSystem();
+
+    const addBackgroundTask = useCallback((task: any) => {
+        setBackgroundTasks(prev => {
+            const newTask = { ...task, lastUpdated: Date.now() };
+            const newState = { ...prev, [task.id]: newTask };
+            
+            // Limit to last 50 tasks (FIFO)
+            const keys = Object.keys(newState);
+            if (keys.length > 50) {
+                const sortedKeys = keys.sort((a, b) => (newState[a].lastUpdated || 0) - (newState[b].lastUpdated || 0));
+                delete newState[sortedKeys[0]];
+            }
+            
+            return newState;
+        });
+    }, []);
+
+    const updateBackgroundTask = useCallback((id: string, updates: any) => {
+        setBackgroundTasks(prev => prev[id] ? ({ 
+            ...prev, 
+            [id]: { ...prev[id], ...updates, lastUpdated: Date.now() } 
+        }) : prev);
+    }, []);
+
+    const removeBackgroundTask = useCallback((id: string) => {
+        setBackgroundTasks(prev => {
+            const newState = { ...prev };
+            delete newState[id];
+            return newState;
+        });
+    }, []);
+
+    // Retention Policy: Cleanup effect
+    useEffect(() => {
+        const cleanup = () => {
+            const now = Date.now();
+            const MAX_AGE = 30 * 60 * 1000; // 30 minutes
+
+            setBackgroundTasks(prev => {
+                let changed = false;
+                const newState = { ...prev };
+
+                Object.keys(newState).forEach(id => {
+                    const task = newState[id];
+                    // Only purge finished tasks that are too old
+                    if (task.status !== 'running') {
+                        const age = now - (task.lastUpdated || 0);
+                        if (age > MAX_AGE) {
+                            delete newState[id];
+                            changed = true;
+                        }
+                    }
+                });
+
+                return changed ? newState : prev;
+            });
+        };
+
+        const interval = setInterval(cleanup, 60000); // Check every minute
+        return () => clearInterval(interval);
+    }, []);
 
     const refreshServers = useCallback(async (showSplash = false) => {
         if (showSplash) setIsLoading(true);
@@ -172,7 +290,14 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (currentServerRef.current?.id === serverId) {
             setCurrentServer(prev => prev ? { ...prev, status } : null);
         }
-    }, []);
+    }, [setCurrentServer, setServers]);
+
+    const getUnifiedStatus = useCallback((server: ServerConfig) => {
+        if (!server.nodeId) return server.status;
+        const node = nodes.find(n => n.id === server.nodeId);
+        if (node && node.status === NodeStatus.OFFLINE) return ServerStatus.NODE_UNREACHABLE;
+        return server.status;
+    }, [nodes]);
 
     // Initial Fetch & Auth-Sync
     useEffect(() => {
@@ -210,10 +335,28 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const pollStartTime = Date.now();
 
             // Optimization: Poll the CURRENT server every cycle, others every 5 cycles (10s)
-            const isFullPoll = currentPollId % 5 === 0;
-            const targetServers = currentServers.filter(s => 
-                isFullPoll || s.id === currentServerRef.current?.id || s.status !== ServerStatus.OFFLINE
-            );
+            // Phase 67: Viewport-Aware Polling (v1.14.0)
+            const isFullPoll = currentPollId % 15 === 0; // All servers every 30s
+            const isVisiblePoll = currentPollId % 2 === 0; // Visible servers every 4s (plus the current server every 2s)
+
+            const targetServers = currentServers.filter(s => {
+                const isCurrent = s.id === currentServerRef.current?.id;
+                const isVisible = visibleServerIdsRef.current.includes(s.id);
+                const isLive = s.status !== ServerStatus.OFFLINE;
+
+                // Priority:
+                // 1. Current server (Every cycle)
+                // 2. Visible servers (Every 2 cycles)
+                // 3. Live but non-visible servers (Every 5 cycles - existing logic replaced by isFullPoll)
+                // 4. Offline/Static servers (Only on full poll)
+                
+                if (isCurrent) return true;
+                if (isVisible && isVisiblePoll) return true;
+                if (isLive && isFullPoll) return true;
+                if (isFullPoll) return true;
+                
+                return false;
+            });
 
             const results = await Promise.allSettled(targetServers.map(async (server) => {
                 try {
@@ -266,8 +409,17 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             newStats.pid = procStats.pid || 0;
                         }
 
-                        if (JSON.stringify(current) === JSON.stringify(newStats)) return prev;
-                        return { ...prev, [server.id]: newStats };
+                        // Shallow equality check to avoid redundant re-renders
+                        const changed = 
+                            current.isRealOnline !== newStats.isRealOnline ||
+                            current.cpu !== newStats.cpu ||
+                            current.memory !== newStats.memory ||
+                            current.players !== newStats.players ||
+                            current.latency !== newStats.latency ||
+                            current.pid !== newStats.pid ||
+                            current.tps !== newStats.tps;
+
+                        return changed ? { ...prev, [server.id]: newStats } : prev;
                     });
 
                     // Phase 66: Remove optimistic promotion. 
@@ -366,17 +518,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
 
             if (phase === 'complete' || percent === 100) {
-                setTimeout(() => {
-                    setJavaDownloadStatus(null);
-                    if (serverId) {
-                        setInstallProgress(prev => {
-                            const newState = { ...prev };
-                            delete newState[serverId];
-                            return newState;
-                        });
-                    }
-                    refreshServers();
-                }, 3000);
+                // No more immediate removal - handled by retention policy or user
+                refreshServers();
             }
         };
 
@@ -407,16 +550,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 
                 // Clear Java status on completion or failure
                 if (phase === 'complete' || phase === 'failed' || percent === 100) {
-                    setTimeout(() => {
-                        setJavaDownloadStatus(null);
-                        if (serverId) {
-                            setInstallProgress(prev => {
-                                const newState = { ...prev };
-                                delete newState[serverId];
-                                return newState;
-                            });
-                        }
-                    }, 3000);
+                    // No more immediate removal - handled by retention policy or user
                 }
             }
         };
@@ -435,13 +569,69 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                  delete newState[data.serverId];
                  return newState;
              });
-             // Also clear global Java status if it matches this server or is global
              setJavaDownloadStatus(prev => {
                  if (!prev || !prev.serverId || prev.serverId === data.serverId) return null;
                  return prev;
              });
-             // Also refresh status immediately
              refreshServers();
+        };
+
+        const handleBackupProgress = (data: { serverId: string, percent: number, backupId: string }) => {
+            const taskId = `backup-${data.serverId}-${data.backupId}`;
+            const server = serversRef.current.find(s => s.id === data.serverId);
+            const taskName = `Backup: ${server?.name || data.serverId}`;
+
+            setBackgroundTasks(prev => {
+                // If the task doesn't exist (e.g., scheduled backup started on another tab/backend), auto-register it
+                if (!prev[taskId]) {
+                    return {
+                        ...prev,
+                        [taskId]: {
+                            id: taskId,
+                            name: taskName,
+                            type: 'backup',
+                            serverId: data.serverId,
+                            status: 'running',
+                            progress: data.percent,
+                            message: `Compressing archives (${data.percent}%)`,
+                            lastUpdated: Date.now()
+                        }
+                    };
+                }
+                // Else just update normally
+                return {
+                    ...prev,
+                    [taskId]: {
+                        ...prev[taskId],
+                        name: taskName,
+                        progress: data.percent,
+                        message: `Compressing archives (${data.percent}%)`,
+                        lastUpdated: Date.now()
+                    }
+                };
+            });
+        };
+        
+        const handleBackupStatus = (data: { message: string, serverId?: string, backupId?: string, status?: string }) => {
+            if (!data.serverId || !data.backupId) return;
+            const taskId = `backup-${data.serverId}-${data.backupId}`;
+            const server = serversRef.current.find(s => s.id === data.serverId);
+            const taskName = `Backup: ${server?.name || data.serverId}`;
+
+            if (data.status === 'complete') {
+                updateBackgroundTask(taskId, {
+                    name: taskName,
+                    status: 'complete',
+                    progress: 100,
+                    message: 'Backup completed successfully.'
+                });
+            } else if (data.status === 'failed') {
+                updateBackgroundTask(taskId, {
+                    name: taskName,
+                    status: 'failed',
+                    message: data.message || 'Backup failed.'
+                });
+            }
         };
 
         const handlePlayerJoin = (data: { serverId: string, name: string, onlinePlayers: number }) => {
@@ -492,6 +682,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const unsubInstallProgress = socketService.onInstallProgress(handleInstallProgress);
         const unsubInstallError = socketService.onInstallError(handleInstallError);
         const unsubInstallComplete = socketService.onInstallComplete(handleInstallComplete);
+        const unsubBackupProgress = socketService.onBackupProgress(handleBackupProgress);
+        const unsubBackupStatus = socketService.onBackupStatus(handleBackupStatus);
         const unsubPlayerJoin = socketService.onPlayerJoin(handlePlayerJoin);
         const unsubPlayerLeave = socketService.onPlayerLeave(handlePlayerLeave);
 
@@ -504,6 +696,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
              unsubInstallProgress();
              unsubInstallError();
              unsubInstallComplete();
+             unsubBackupProgress();
+             unsubBackupStatus();
              unsubPlayerJoin();
              unsubPlayerLeave();
         };
@@ -520,6 +714,12 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             logs,
             javaDownloadStatus,
             installProgress,
+            registerVisibleServers,
+            backgroundTasks,
+            getUnifiedStatus,
+            addBackgroundTask,
+            updateBackgroundTask,
+            removeBackgroundTask,
             isLoading,
             loading: isLoading, 
             setCurrentServer, 
@@ -527,7 +727,8 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             refreshServers,
             refreshServerData,
             updateServerConfig,
-            updateServerStatus
+            updateServerStatus,
+            visibleServerIds
         }}>
             {children}
         </ServerContext.Provider>

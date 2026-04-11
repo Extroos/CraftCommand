@@ -74,7 +74,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
     if (!stats) return <div className="p-8 text-center text-muted-foreground"><Loader2 className="animate-spin mx-auto mb-2" /> Loading stats...</div>;
 
     return (
-        <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
+        <div className="cc-card p-6 mb-6">
             <div className="flex items-center gap-3 mb-6">
                 <div className={`p-2 bg-rose-500/10 text-rose-500 rounded-md`}>
                     <Database size={20} />
@@ -153,7 +153,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
 
 const SystemUpdatePreferences = ({ theme, user, onUpdate }: any) => {
     return (
-        <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300 mt-6">
+        <div className="cc-card p-6 mt-6">
             <div className="flex items-center gap-3 mb-6">
                  <div className={`p-2 bg-blue-500/10 text-blue-500 rounded-md`}>
                     <RefreshCw size={20} />
@@ -541,7 +541,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             )}
 
                             {/* Password Change */}
-                            <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
+                            <div className="cc-card p-6">
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <Lock size={18} className={theme.text} /> Change Password
                                 </h2>
@@ -601,7 +601,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             </div>
 
                             {/* Avatar Settings */}
-                            <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
+                            <div className="cc-card p-6">
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <Disc size={18} className={theme.text} /> Profile Picture
                                 </h2>
@@ -645,7 +645,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                 </div>
                             </div>
                             {/* 2FA Security */}
-                            <div ref={securitySectionRef} className={`bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300 ${initialSection === '2FA' ? 'ring-2 ring-primary ring-offset-2' : ''}`}>
+                            <div ref={securitySectionRef} className={`cc-card p-6 ${initialSection === '2FA' ? 'ring-2 ring-primary ring-offset-2' : ''}`}>
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <ShieldCheck size={18} className={theme.text} /> Two-Factor Authentication
                                 </h2>
@@ -700,7 +700,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                             
                             {/* Theme Settings */}
-                            <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
+                            <div className="cc-card p-6">
                                 <div className="flex items-center gap-3 mb-6">
                                     <div className={`p-2 bg-primary/10 rounded-md ${theme.text}`}>
                                         <Palette size={20} />
@@ -819,7 +819,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
-                                        <label className="text-sm font-medium block mb-3 flex items-center gap-2">
+                                        <label className="text-sm font-medium mb-3 flex items-center gap-2">
                                             <Type size={16} /> Font Size
                                         </label>
                                         <input 

@@ -79,7 +79,7 @@ export const ResourceSettings: React.FC<ResourceSettingsProps> = ({ serverId }) 
                         </div>
                         <div>
                             <h3 className="text-sm font-bold text-foreground/90 uppercase tracking-tight">API Interface Integration</h3>
-                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">Server-specific authentication tokens for headless orchestration</p>
+                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">API tokens for this server</p>
                         </div>
                     </div>
 

@@ -4,6 +4,7 @@ import path from 'path';
 import { EventEmitter } from 'events';
 import { NetworkConfig } from '@shared/types/network';
 import axios from 'axios';
+import { networkConfigGenerator } from '../network/NetworkConfigGenerator';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
@@ -42,14 +43,28 @@ export interface SystemSettings {
             nodeHeartbeatThresholdMs?: number; // threshold in ms
             mirrorRemoteBackups?: boolean; // toggle for backup mirroring
         };
-        autoHealing?: boolean;
-        autoHealingV3?: {
+        automaticRepair?: boolean;
+        automaticRepairV3?: {
             driftDetectionEnabled: boolean;
             ioThrottlingThreshold: number; // 0-100 percentage
             healthSnapshotInterval: number; // minutes
         };
         security?: {
             forceAdmin2FA: boolean;
+        };
+        advancedNetworking?: {
+            edgeCaching: {
+                enabled: boolean;
+                cacheSizeMB: number;
+            };
+            trafficCompression: {
+                enabled: boolean;
+                level: number;
+            };
+            ddosShield: {
+                enabled: boolean;
+                burstThreshold: number; // requests per second
+            };
         };
     };
 }
@@ -63,26 +78,43 @@ class SystemSettingsService extends EventEmitter {
         this.settings = this.loadSettings();
         this.watchSettings();
         this.syncClockOffset().catch(err => {
-            console.error('[SystemSettingsService] Initial clock sync failed:', err.message);
+            const { logger } = require('../../utils/logger');
+            logger.error(`[SystemSettingsService] Initial clock sync failed: ${err.message}`);
         });
     }
 
     private watchSettings() {
         try {
+            // Watch settings.json
             fs.watch(SETTINGS_FILE, (eventType) => {
                 if (eventType === 'change') {
-                    console.log('[SystemSettingsService] Settings file changed, reloading...');
+                    const { logger } = require('../../utils/logger');
+                    logger.info('[SystemSettingsService] Settings file changed, reloading...');
                     try {
                         const newSettings = fs.readJSONSync(SETTINGS_FILE);
                         this.settings = { ...this.settings, ...newSettings };
-                        this.emit('updated', this.settings);
+                        this.emit('updated', this.getSettings());
                     } catch (e) {
-                         console.error('[SystemSettingsService] Failed to reload settings:', e);
+                         const { logger } = require('../../utils/logger');
+                         logger.error(`[SystemSettingsService] Failed to reload settings: ${e}`);
                     }
                 }
             });
+
+            // Watch version.json
+            const versionFile = path.join(process.cwd(), '../version.json');
+            if (fs.existsSync(versionFile)) {
+                fs.watch(versionFile, (eventType) => {
+                    if (eventType === 'change') {
+                        const { logger } = require('../../utils/logger');
+                        logger.info('[SystemSettingsService] Version file changed, notifying clients...');
+                        this.emit('updated', this.getSettings());
+                    }
+                });
+            }
         } catch (e) {
-            console.error('[SystemSettingsService] Failed to watch settings file:', e);
+            const { logger } = require('../../utils/logger');
+            logger.error(`[SystemSettingsService] Failed to watch system files: ${e}`);
         }
     }
 
@@ -113,14 +145,19 @@ class SystemSettingsService extends EventEmitter {
                             nodeHeartbeatThresholdMs: 60000, 
                             mirrorRemoteBackups: false 
                         },
-                        autoHealing: true,
-                        autoHealingV3: {
+                        automaticRepair: true,
+                        automaticRepairV3: {
                             driftDetectionEnabled: true,
                             ioThrottlingThreshold: 80,
                             healthSnapshotInterval: 5
                         },
                         security: {
                             forceAdmin2FA: false
+                        },
+                        advancedNetworking: {
+                            edgeCaching: { enabled: false, cacheSizeMB: 512 },
+                            trafficCompression: { enabled: true, level: 6 },
+                            ddosShield: { enabled: true, burstThreshold: 50 }
                         }
                     }
                 };
@@ -152,25 +189,35 @@ class SystemSettingsService extends EventEmitter {
                         loaded.app.distributedNodes.mirrorRemoteBackups = false;
                     }
                 }
-                if (loaded.app.autoHealing === undefined) {
-                    loaded.app.autoHealing = true;
+                if (loaded.app.automaticRepair === undefined) {
+                    loaded.app.automaticRepair = loaded.app.autoHealing ?? true;
+                    delete loaded.app.autoHealing;
                 }
-                if (loaded.app.autoHealingV3 === undefined) {
-                    loaded.app.autoHealingV3 = {
+                if (loaded.app.automaticRepairV3 === undefined) {
+                    loaded.app.automaticRepairV3 = loaded.app.autoHealingV3 ?? {
                         driftDetectionEnabled: true,
                         ioThrottlingThreshold: 80,
                         healthSnapshotInterval: 5
                     };
+                    delete loaded.app.autoHealingV3;
                 }
                 if (loaded.app.security === undefined) {
                     loaded.app.security = {
                         forceAdmin2FA: false
                     };
                 }
+                if (loaded.app.advancedNetworking === undefined) {
+                    loaded.app.advancedNetworking = {
+                        edgeCaching: { enabled: false, cacheSizeMB: 512 },
+                        trafficCompression: { enabled: true, level: 6 },
+                        ddosShield: { enabled: true, burstThreshold: 50 }
+                    };
+                }
             }
             return loaded;
         } catch (e) {
-            console.error('Failed to load settings.json, using defaults', e);
+            const { logger } = require('../../utils/logger');
+            logger.error(`Failed to load settings.json, using defaults: ${e}`);
             return {
                 discordBot: { enabled: false, token: '', clientId: '', guildId: '', commandRoles: [], notificationChannel: '', chatChannel: '' },
                 app: { theme: 'dark', autoUpdate: false, hostMode: true }
@@ -179,19 +226,21 @@ class SystemSettingsService extends EventEmitter {
     }
 
     getSettings(): any {
-        let version = '0.0.0';
+        let versionData = { version: '0.0.0', title: 'Unknown', codename: 'Unknown', notes: [] };
         try {
             const versionFile = path.join(process.cwd(), '../version.json');
             if (fs.existsSync(versionFile)) {
-                version = fs.readJSONSync(versionFile).version;
+                versionData = { ...versionData, ...fs.readJSONSync(versionFile) };
             }
         } catch (e) {
-            console.error('[SystemSettingsService] Failed to read version.json:', e);
+            const { logger } = require('../../utils/logger');
+            logger.error(`[SystemSettingsService] Failed to read version.json: ${e}`);
         }
 
         return {
             ...this.settings,
-            version
+            metadata: versionData,
+            version: versionData.version
         };
     }
 
@@ -220,16 +269,19 @@ class SystemSettingsService extends EventEmitter {
                 this.clockOffset = adjustedServerTime - localTime;
                 
                 if (Math.abs(this.clockOffset) > 5000) {
-                    console.log(`[SystemSettingsService] System clock drift detected: ${Math.round(this.clockOffset / 1000)}s offset applied.`);
+                    const { logger } = require('../../utils/logger');
+                    logger.info(`[SystemSettingsService] System clock drift detected: ${Math.round(this.clockOffset / 1000)}s offset applied.`);
                 }
             }
         } catch (e: any) {
-            console.warn('[SystemSettingsService] Failed to sync clock offset:', e.message);
+            const { logger } = require('../../utils/logger');
+            logger.warn(`[SystemSettingsService] Failed to sync clock offset: ${e.message}`);
         }
     }
 
     updateSettings(updates: any): SystemSettings {
-        console.log('[SystemSettingsService] Updating settings with:', JSON.stringify(updates, null, 2));
+        const { logger } = require('../../utils/logger');
+        logger.info(`[SystemSettingsService] Updating settings with: ${JSON.stringify(updates, null, 2)}`);
         if (updates.discordBot) {
             this.settings.discordBot = { ...this.settings.discordBot, ...updates.discordBot };
         }
@@ -244,18 +296,43 @@ class SystemSettingsService extends EventEmitter {
             }
         });
         
-        console.log('[SystemSettingsService] New settings state:', JSON.stringify(this.settings, null, 2));
+        logger.debug(`[SystemSettingsService] New settings state saved.`);
 
         try {
             const tempPath = `${SETTINGS_FILE}.tmp`;
             fs.writeJSONSync(tempPath, this.settings, { spaces: 4 });
             fs.moveSync(tempPath, SETTINGS_FILE, { overwrite: true });
-            this.emit('updated', this.settings);
+            
+            // Trigger Network Config Regeneration if relevant settings changed
+            if (updates.app?.advancedNetworking || updates.app?.https) {
+                this.regenerateNetworkConfigs();
+            }
+
+            this.emit('updated', this.getSettings());
         } catch (e) {
-            console.error('Failed to save settings.json', e);
-            try { if (fs.existsSync(`${SETTINGS_FILE}.tmp`)) fs.unlinkSync(`${SETTINGS_FILE}.tmp`); } catch (err) {}
+            logger.error(`Failed to save settings.json: ${e}`);
+            try { if (fs.existsSync(`${SETTINGS_FILE}.tmp`)) fs.unlinkSync(`${SETTINGS_FILE}.tmp`); } catch (err) { logger.debug(`[SystemSettingsService] Final cleanup failed: ${err}`); }
         }
         return this.settings;
+    }
+
+    private async regenerateNetworkConfigs() {
+        const { logger } = require('../../utils/logger');
+        const net = this.settings.app.advancedNetworking;
+        const https = this.settings.app.https;
+
+        if (net?.edgeCaching?.enabled || (https?.enabled && https?.mode === 'bridge')) {
+            logger.info('[SystemSettingsService] Regenerating NGINX Edge configs...');
+            await networkConfigGenerator.generateNginxConfig({
+                domain: https?.domain || 'localhost',
+                backendPort: 3000, // Backend API port
+                enableCache: net?.edgeCaching?.enabled || false,
+                cacheSizeMB: net?.edgeCaching?.cacheSizeMB || 512,
+                enableSSL: https?.enabled || false,
+                certPath: https?.certPath,
+                keyPath: https?.keyPath
+            });
+        }
     }
 
     updateDiscordConfig(config: Partial<SystemSettings['discordBot']>): SystemSettings {

@@ -14,9 +14,9 @@ import ActivityTimeline from './ActivityTimeline';
 type ListType = 'ONLINE' | 'ALL' | 'WHITELIST' | 'OPS' | 'BANNED' | 'IP_BANNED' | 'ACTIVITY';
 
 const getGridTemplate = (activeList: ListType) => {
-    if (activeList === 'IP_BANNED') return 'grid-cols-[1fr_140px]';
-    if (activeList === 'ONLINE' || activeList === 'ALL') return 'grid-cols-[2fr_1.5fr_1fr_1fr_140px]';
-    return 'grid-cols-[2fr_1.5fr_140px]';
+    if (activeList === 'IP_BANNED') return 'grid-cols-[1fr_140px_100px]';
+    if (activeList === 'ONLINE' || activeList === 'ALL') return 'grid-cols-[2fr_1.5fr_1fr_1fr_120px]';
+    return 'grid-cols-[2fr_1.5fr_120px]';
 };
 
 const PlayerSkeleton = ({ activeList }: { activeList: ListType }) => (
@@ -401,7 +401,7 @@ const PlayerManagerPro: React.FC<PlayerManagerProProps> = ({ serverId }) => {
                                                             e.preventDefault();
                                                             setContextMenu({ x: e.clientX, y: e.clientY, player });
                                                         }}
-                                                        className={`grid ${getGridTemplate(activeList)} gap-4 p-2.5 items-center border-b border-border/50 bg-muted/10 hover:bg-muted/30 transition-colors group relative`}
+                                                        className={`grid ${getGridTemplate(activeList)} gap-4 p-2.5 items-center border-b border-border/40 bg-card hover:bg-muted/30 transition-all duration-150 group relative overflow-hidden`}
                                                     >
                                                         {activeList !== 'IP_BANNED' && (
                                                             <div>
@@ -450,7 +450,7 @@ const PlayerManagerPro: React.FC<PlayerManagerProProps> = ({ serverId }) => {
                                                         
                                                         {(activeList === 'ONLINE' || activeList === 'ALL') && (
                                                             <div className="font-mono text-xs text-muted-foreground">
-                                                                <span className={`px-2 py-0.5 rounded flex items-center w-fit ${showIps ? 'bg-secondary' : 'blur-[4px] bg-secondary/50'}`}>
+                                                                <span className={`px-2 py-0.5 rounded border border-border/20 flex items-center w-fit tabular-nums ${showIps ? 'bg-secondary' : 'blur-[4px] bg-secondary/30'}`}>
                                                                     {maskIp(player.ip)}
                                                                 </span>
                                                             </div>

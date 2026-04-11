@@ -40,41 +40,29 @@ export class SafetyService {
             );
         }
 
-        // 2. Check EULA (if applicable)
-        // Only check if eula.txt exists or if we expect it (e.g. vanilla/paper)
-        // We can't strictly enforce it if it's not generated yet, but if it IS there and false, we block.
+        // 2. Check EULA (Definitive Physical Check)
         const eulaPath = path.join(server.workingDirectory, 'eula.txt');
-        if (fs.existsSync(eulaPath)) {
-            const eulaContent = await fs.readFile(eulaPath, 'utf8');
-            if (!eulaContent.includes('eula=true')) {
-                 throw new SafetyError(
-                    'EULA not accepted. You must agree to the Minecraft EULA to run this server.',
-                    'EULA_NOT_ACCEPTED',
-                    { path: eulaPath }
-                );
-            }
+        let isEulaPhysicallyAccepted = false;
+        
+        if (!fs.existsSync(eulaPath)) {
+            // v4.8: If no eula.txt exists, it's effectively NOT accepted because Minecraft will create one and stop.
+            throw new SafetyError(
+                'EULA Not Found. Server failed to start because the Minecraft EULA has not been accepted.',
+                'EULA_NOT_ACCEPTED',
+                { path: eulaPath }
+            );
         }
 
-        // 3. Port Availability
-        // MOVED TO STARTUP MANAGER: This allows "Adoption" of existing processes (e.g. zombies).
-        // Strict checking here prevents the self-healing logic from working.
-
-
-        // 4. Java Verification (Basic)
-        // We rely on the command generation to find Java, but we can check if the basic requirement is met?
-        // Actually ServerService handles "ensureJava", so we might skip strict Java path check here 
-        // unless we want to validate the "javaVersion" config matches an installed version.
-        // For now, let's assume ServerService's ensureJava is enough for synthesis, 
-        // but we could check if restricted RAM > System Free RAM?
+        const eulaContent = await fs.readFile(eulaPath, 'utf8');
+        isEulaPhysicallyAccepted = eulaContent.match(/^eula\s*=\s*true/m) !== null;
         
-        // 5. Memory Check (Optional but cool)
-        // const freeMem = os.freemem();
-        // const required = server.ram * 1024 * 1024 * 1024;
-        // if (freeMem < required) {
-        //    logger.warn(`[Safety] Low memory warning for ${server.name}`);
-        //    // We usually don't block on this generally as swap exists, but strict mode could.
-        // }
-
+        if (!isEulaPhysicallyAccepted) {
+            throw new SafetyError(
+                'EULA Not Accepted. Server failed to start because the Minecraft EULA has not been accepted.',
+                'EULA_NOT_ACCEPTED',
+                { path: eulaPath }
+            );
+        }
 
         // 3. Environment Integrity (Directory)
         if (!fs.existsSync(server.workingDirectory)) {
@@ -99,37 +87,53 @@ export class SafetyService {
                     { allocated: allocatedRAM, total: totalRAM }
                  );
             }
-            
-            if (allocatedRAM > availableRAM) {
-                logger.warn(`[Safety] WARNING: Allocating ${allocatedRAM}GB but only ${availableRAM.toFixed(1)}GB is free. Swapping may occur.`);
-            }
         } catch (e: any) {
-            // Ignore if SI fails, strict check only if safe
             if (e instanceof SafetyError) throw e;
         }
 
-        // 5. Proactive Diagnosis (NEW)
-        // If the server has existing logs, run a quick diagnosis to prevent starting a "known-to-be-broken" config
+        // 5. Proactive Diagnosis (v4.6 State-Aware Intelligence)
         try {
+            const { diagnosisService } = require('../diagnosis/DiagnosisService');
+            
             const logPath = path.join(server.workingDirectory, 'logs', 'latest.log');
-            if (fs.existsSync(logPath)) {
-                const { diagnosisService } = require('../diagnosis/DiagnosisService');
-                const logContent = await fs.readFile(logPath, 'utf8');
-                const logs = logContent.split('\n').slice(-300); // Last 300 lines are enough for structural issues
+            const recentLogs = fs.existsSync(logPath) 
+                ? (await fs.readFile(logPath, 'utf8')).split('\n').slice(-100)
+                : [];
                 
-                const diagnosis = await diagnosisService.diagnose(server, logs);
-                const criticalMismatches = diagnosis.filter(d => d.ruleId === 'incompatible_mods' && d.severity === 'CRITICAL');
-                
-                if (criticalMismatches.length > 0) {
-                    const mismatch = criticalMismatches[0];
-                    // WARN but don't block — the old logs may be stale after a fix was applied.
-                    // The server will fail on its own if mods are truly still incompatible.
-                    logger.warn(`[Safety] Previous crash detected incompatible mods for ${server.id}: ${mismatch.explanation}. Allowing startup attempt.`);
+            let diagnosis = await diagnosisService.diagnose(server, recentLogs);
+            
+            // --- OVERRIDE: Suppress stale EULA findings if physically accepted ---
+            if (isEulaPhysicallyAccepted) {
+                const countBefore = diagnosis.length;
+                diagnosis = diagnosis.filter(d => d.ruleId !== 'eula_not_accepted');
+                if (diagnosis.length < countBefore) {
+                    logger.info(`[Safety] Suppressed stale EULA detection for ${server.id} (Disk state is OK).`);
                 }
             }
+
+            // Critical Root Causes: If any Tier 1 issue is identified as a root cause, BLOCK boot.
+            const fatalRootCauses = diagnosis.filter(d => 
+                (d.isRootCause || d.severity === 'CRITICAL') && 
+                ['java_binary_missing', 'port_binding', 'eula_not_accepted', 'invalid_jvm_args'].includes(d.ruleId)
+            );
+
+            if (fatalRootCauses.length > 0) {
+                const fatal = fatalRootCauses[0];
+                throw new SafetyError(
+                    `Startup Blocked: ${fatal.title}. ${fatal.explanation}`,
+                    'FATAL_CONFIGURATION',
+                    { ruleId: fatal.ruleId, diagnosisId: fatal.id }
+                );
+            }
+
+            // Warnings only: If we have an incompatible mod or plugin, we WARN but don't block
+            const warnings = diagnosis.filter(d => d.ruleId === 'incompatible_mods' || d.ruleId === 'plugin_incompatible');
+            if (warnings.length > 0) {
+                logger.warn(`[Safety] Pre-flight warning for ${server.name}: ${warnings[0].explanation}`);
+            }
+
         } catch (diagErr: any) {
             if (diagErr instanceof SafetyError) throw diagErr;
-            // Ignore other diagnosis errors to not block startup if diagnosis fails
             logger.debug(`[Safety] Pre-flight diagnosis skipped: ${diagErr.message}`);
         }
 

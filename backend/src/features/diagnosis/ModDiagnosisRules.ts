@@ -1,5 +1,7 @@
 import { DiagnosisRule, ServerConfig, DiagnosisResult, SystemStats } from './types';
 import { CrashReport } from './CrashReportReader';
+import fs from 'fs-extra';
+import path from 'path';
 
 export const ModDependencyMappings: Record<string, string> = {
     'net.fabricmc.api': 'Fabric API',
@@ -35,16 +37,17 @@ export const ModDependencyMappings: Record<string, string> = {
     'com.github.almasb': 'FXGL',
     'com.github.benmanes.caffeine': 'Caffeine (core library)',
     'net.minecraftforge.fml': 'Forge Mod Loader',
-    'corgitaco.enhancedvisuals': 'Enhanced Visuals',
-    'invtweaks': 'Inventory Tweaks',
-    'com.teamresourceful.resourcefullib': 'Resourceful Lib',
-    'com.teamresourceful.resourcefulconfig': 'Resourceful Config',
-    'earth.terrarium.botarium': 'Botarium',
-    'earth.terrarium.ad_astra': 'Ad Astra',
-    'cn.mcmod.sakura': 'Sakura',
-    'com.github.crimson_shadow': 'Create Essentials',
-    'dev.latvian.mods.kubejs': 'KubeJS',
-    'dev.latvian.mods.rhino': 'Rhino (JS Engine)',
+    'com.pixelmonmod': 'Pixelmon',
+    'me.lucko.luckperms': 'LuckPerms',
+    'com.viaversion': 'ViaVersion',
+    'com.comphenix.protocol': 'ProtocolLib',
+    'de.tr7zw.nbtapi': 'NBTAPI',
+    'kotlin': 'Kotlin Standard Library',
+    'scala': 'Scala Standard Library',
+    'com.google.gson': 'GSON',
+    'vazkii.psi': 'Psi',
+    'com.github.mcjty.xnet': 'XNet',
+    'com.github.mcjty.lostcities': 'Lost Cities',
     'com.github.klikli_dev.occultism': 'Occultism',
     'com.github.klikli_dev.modonomicon': 'Modonomicon',
     'com.github.klikli_dev.theurgy': 'Theurgy'
@@ -65,11 +68,11 @@ export const ModrinthProjectMappings: Record<string, string> = {
 };
 
 export const IncompatibleModsRule: DiagnosisRule = {
-    id: 'incompatible_mods_v2',
-    name: 'Incompatible Mods (Advanced)',
-    description: 'Detects mod loader formatting exceptions and suggests solutions',
+    id: 'incompatible_mods',
+    name: 'Incompatible Mods',
+    description: 'Detects mod loader conflicts and suggestions',
     triggers: [
-        /Some of your mods are incompatible with the game or each other/i,
+        /Some of your mods are incompatible/i,
         /FormattedException/i,
         /Incompatible mods found/i,
         /fundamentally incompatible mods/i
@@ -79,7 +82,17 @@ export const IncompatibleModsRule: DiagnosisRule = {
     analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
         const fullLog = logs.join('\n');
         
-        if (/Some of your mods are incompatible with the game or each other!|Incompatible mods found!|fundamentally incompatible mods/i.test(fullLog)) {
+        // --- SMART HANDLING (v4.5) ---
+        // If we previously had incompatible mods, but the user deleted everything 
+        // in the mods folder (or used a fix), we ignore the log.
+        const modsDir = path.join(server.workingDirectory, 'mods');
+        if (await fs.pathExists(modsDir)) {
+            const files = await fs.readdir(modsDir);
+            if (files.filter(f => f.endsWith('.jar')).length === 0) return null;
+        }
+
+        if (/Some of your mods are incompatible!|Incompatible mods found!|fundamentally incompatible mods/i.test(fullLog)) {
+            // ... rest of logic remains but is now protected by the state check above ...
             const solutionBlockMatch = fullLog.match(/A potential solution has been determined(?:.*?)\n((?:\s*-\s*.*\n?)+)/i);
             const rawSolutions = solutionBlockMatch ? solutionBlockMatch[1] : '';
             
@@ -90,92 +103,63 @@ export const IncompatibleModsRule: DiagnosisRule = {
                 .map(l => l.replace(/^- /, '• '))
                 .join('\n');
                 
-            // Parse actions for EZ click fixes
             let action: any = undefined;
             const suggestMcUpgrade = rawSolutions.includes('replace [[minecraft') || rawSolutions.includes('add:minecraft');
             
             let customExplanation = suggestMcUpgrade 
-                ? `A mod mismatch was detected. You have installed a mod meant for a newer version of Minecraft.`
-                : `The mod loader found fundamentally incompatible mods.`;
+                ? `Installed mod requires a newer Minecraft version.`
+                : `Mod loader detected incompatible mods.`;
             
-            let customRecommendation = solutions ? `Automated solution mapping:\n${solutions}` : `Check your mods folder for Minecraft ${server.version} compatibility.`;
+            let customRecommendation = solutions ? `Suggested solutions:\n${solutions}` : `Ensure mods are compatible with Minecraft ${server.version}.`;
 
             if (suggestMcUpgrade) {
-                customRecommendation = `The mod loader suggests upgrading Minecraft, but this is usually not desired. You should find the version of your mod that matches Minecraft ${server.version}, or remove the mod causing the mismatch.`;
+                customRecommendation = `Mod loader suggests upgrading Minecraft. Match mod version to Minecraft ${server.version} instead.`;
             }
 
-            // STEP 1: Parse the SOLUTION section for "Install X" patterns
-            // These are the ACTUAL missing dependencies that need to be installed
             const installMatches = [...rawSolutions.matchAll(/- Install ([^,\n]+?)(?:,\s*version\s+([^\s]+)\s+or later)?\.?\s*$/gim)];
             const missingDeps: string[] = [];
             for (const m of installMatches) {
                 const depSlug = m[1].trim().toLowerCase();
-                if (depSlug !== 'java' && depSlug !== 'minecraft' && depSlug !== 'fabricloader' && depSlug !== 'forge') {
+                if (!['java', 'minecraft', 'fabricloader', 'forge'].includes(depSlug)) {
                     missingDeps.push(depSlug);
                 }
             }
 
-            // STEP 2: Parse the DETAILS section to understand WHICH mods need WHAT
-            // This is for the explanation only — NOT for choosing what to install/remove
             const detailsBlockMatch = fullLog.match(/More details:[\s\S]+/i);
             const requirerNames: string[] = [];
-            const requirerSlugs: string[] = [];
             if (detailsBlockMatch) {
-                const rawDetails = detailsBlockMatch[0];
-                const requirerRegex = /- Mod '([^']+)' \(([^)]+)\) .*? (?:requires|depends on) /ig;
-                let match;
-                while ((match = requirerRegex.exec(rawDetails)) !== null) {
-                    const slug = match[2];
-                    if (slug !== 'fabricloader' && slug !== 'minecraft' && slug !== 'java' && slug !== 'fabric-api' && slug !== 'quilt_loader' && slug !== 'forge') {
-                        if (!requirerNames.includes(match[1])) requirerNames.push(match[1]);
-                        if (!requirerSlugs.includes(slug)) requirerSlugs.push(slug);
-                    }
+                const extractRegex = /- Mod '([^']+)'/ig;
+                let m;
+                while ((m = extractRegex.exec(detailsBlockMatch[0])) !== null) {
+                    if (!requirerNames.includes(m[1])) requirerNames.push(m[1]);
                 }
             }
 
-            // STEP 3: Build the right action and explanation
             if (missingDeps.length > 0) {
-                // MISSING DEPENDENCIES — install them
                 const uniqueDeps = [...new Set(missingDeps)];
                 action = {
                     type: 'INSTALL_DEPENDENCY',
                     payload: { name: uniqueDeps.join(','), serverId: server.id },
-                    autoHeal: false
+                    automaticRepair: false
                 };
-                const modList = requirerNames.length > 0 ? requirerNames.join(', ') : 'One or more mods';
-                customExplanation = `${modList} requires missing dependencies: ${uniqueDeps.join(', ')}. The server cannot start until these are installed.`;
-                customRecommendation = `Click "Fix" to automatically install the missing dependencies (${uniqueDeps.join(', ')}) from Modrinth.`;
+                customExplanation = `${requirerNames.length > 0 ? requirerNames.join(', ') : 'One or more mods'} requires missing dependencies: ${uniqueDeps.join(', ')}.`;
+                customRecommendation = `Auto-install missing dependencies: ${uniqueDeps.join(', ')}.`;
             } else if (requirerNames.length > 0 && !suggestMcUpgrade) {
-                // Mods have version conflicts but no clear "Install X" solution
-                customExplanation = `The mod(s) '${requirerNames.join(', ')}' have dependency conflicts with Minecraft ${server.version}. Check that all mods are compatible with this Minecraft version.`;
-                customRecommendation = `You need to find versions of these mods that are compatible with Minecraft ${server.version}. Check Modrinth or CurseForge for updated versions.`;
+                customExplanation = `Mod(s) '${requirerNames.join(', ')}' have conflicts with Minecraft ${server.version}.`;
+                customRecommendation = `Use mod versions compatible with Minecraft ${server.version}.`;
             }
 
-            // STEP 4: Fallback — if the solution section has "Replace mod X"
-            if (!action) {
-                const replaceMatch = rawSolutions.match(/- Replace mod '([^']+)' \(([^)]+)\)/i);
-                if (replaceMatch) {
-                    const modSlug = replaceMatch[2];
-                    if (modSlug !== 'java' && modSlug !== 'minecraft' && modSlug !== 'fabricloader') {
-                        action = {
-                            type: 'INSTALL_DEPENDENCY',
-                            payload: { name: modSlug, serverId: server.id },
-                            autoHeal: false
-                        };
-                    }
-                }
-            }
-                
             return {
                 id: `incompatible-${server.id}-${Date.now()}`,
                 ruleId: 'incompatible_mods',
                 severity: 'CRITICAL',
-                title: 'Incompatible Mods Detected',
+                title: 'Incompatible Mods',
                 explanation: customExplanation,
                 recommendation: customRecommendation,
                 action: action,
+                evidence: logs.find(l => /incompatible|solution|details/i.test(l))?.trim() || fullLog.split('\n')[0],
                 timestamp: Date.now(),
-                isHealable: !!action
+                isRepairable: !!action
             };
         }
         return null;
@@ -183,9 +167,9 @@ export const IncompatibleModsRule: DiagnosisRule = {
 };
 
 export const ModDependencyRule: DiagnosisRule = {
-    id: 'mod_dependency_v2',
-    name: 'Critical Mod Dependency',
-    description: 'Checks for missing mod libraries using an expanded mapping',
+    id: 'mod_dependency',
+    name: 'Missing Mod Library',
+    description: 'Checks for missing dependencies or library mods',
     triggers: [
         /requires .* but none is available/i,
         /Missing dependencies/i,
@@ -197,7 +181,6 @@ export const ModDependencyRule: DiagnosisRule = {
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
         const content = crashReport?.content || logs.join('\n');
         
-        // 1. Precise Crash Report Mapping
         const missingClassMatch = content.match(/NoClassDefFoundError: ([\w\/\.]+)/);
         if (missingClassMatch) {
             const missingClass = missingClassMatch[1].replace(/\//g, '.');
@@ -215,19 +198,19 @@ export const ModDependencyRule: DiagnosisRule = {
                     ruleId: 'mod_dependency',
                     severity: 'CRITICAL',
                     title: `Missing Library: ${specificLib}`,
-                    explanation: `A mod requires '${specificLib}' to function, but the library is missing.`,
-                    recommendation: `Download and add ${specificLib} to your mods folder.`,
+                    explanation: `Mod requires '${specificLib}' to function, but the file is missing.`,
+                    recommendation: `Add '${specificLib}' to your mods folder.`,
                     action: {
                         type: 'INSTALL_DEPENDENCY',
                         payload: { name: specificLib, serverId: server.id },
-                        autoHeal: true
+                        automaticRepair: true
                     },
+                    evidence: (crashReport?.content || logs.join('\n')).match(/NoClassDefFoundError: [\w\/\.]+/)?.[0],
                     timestamp: Date.now()
                 };
             }
         }
 
-        // 2. Generic Log Matching
         const logMatch = content.match(/requires (['"\w\-\s\.]+?) but/is);
         if (logMatch) {
              const lib = logMatch[1].replace(/['"]/g, '').trim();
@@ -236,12 +219,164 @@ export const ModDependencyRule: DiagnosisRule = {
                 ruleId: 'mod_dependency',
                 severity: 'CRITICAL',
                 title: `Missing Mod: ${lib}`,
-                explanation: `Your mod loader explicitly requested '${lib}', but it is not installed.`,
-                recommendation: `Search Modrinth or CurseForge for '${lib}' and install it.`,
+                explanation: `Mod loader requested '${lib}', but it is not installed.`,
+                recommendation: `Install '${lib}' matching your game version.`,
+                evidence: logMatch[0].trim(),
                 timestamp: Date.now()
              };
         }
 
+        return null;
+    }
+};
+
+export const DuplicateModRule: DiagnosisRule = {
+    id: 'duplicate_mod',
+    name: 'Duplicate Mods detected',
+    description: 'Checks for duplicate mod entries',
+    triggers: [
+        /Duplicate mods found/i,
+        /Found a duplicate mod/i
+    ],
+    tier: 2,
+    defaultConfidence: 100,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const logLine = logs.find(l => /Duplicate mods found/i.test(l) || /Found a duplicate mod/i.test(l));
+        if (logLine) {
+             const modMatch = logLine.match(/Found a duplicate mod: (\S+)/i) || logLine.match(/Duplicate mods found: ([\w, ]+)/i);
+             const modName = modMatch ? modMatch[1] : 'Unknown mod';
+
+             return {
+                id: `dup-mod-${server.id}-${Date.now()}`,
+                ruleId: 'duplicate_mod',
+                severity: 'CRITICAL',
+                title: 'Duplicate Mod Found',
+                explanation: `Multiple versions of '${modName}' are installed.`,
+                recommendation: `Delete duplicate/older versions of '${modName}' from the mods folder.`,
+                evidence: logLine.trim(),
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+export const MixinConflictRule: DiagnosisRule = {
+    id: 'mixin_conflict',
+    name: 'Mixin Conflict',
+    description: 'Checks for Sponge/Mixin injection failures',
+    triggers: [
+        /Mixin apply failed/i,
+        /MixinTransformerError/i,
+        /Critical injection failure/i
+    ],
+    tier: 3,
+    defaultConfidence: 90,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        // --- SMART HANDLING: FIX MARKER BLINDNESS ---
+        // Mixin conflicts are hard to verify via FS. 
+        // If a [FIX] marker exists after the last Mixin error, we assume it's resolved.
+        const lastMixinIndex = logs.map(l => /Mixin apply failed|MixinTransformerError|Critical injection failure/i.test(l)).lastIndexOf(true);
+        const lastFixIndex = logs.map(l => l.includes('[CraftCommand] [FIX]')).lastIndexOf(true);
+        
+        if (lastFixIndex !== -1 && lastFixIndex > lastMixinIndex) {
+            return null; // A fix was applied AFTER the last mixin crash
+        }
+
+        const trigger = logs.find(l => /Mixin apply failed|MixinTransformerError|Critical injection failure/i.test(l));
+        if (trigger) {
+             const extraction = logs.find(l => /in mixin/i.test(l) || /from (?:mod )/i.test(l)) || trigger;
+             const targetMatch = extraction.match(/in mixin ([\w\.]+)/i) || extraction.match(/from (?:mod )?([\w\.]+)/i);
+             const target = targetMatch ? targetMatch[1] : 'an unknown mod';
+
+             return {
+                id: `mixin-${server.id}-${Date.now()}`,
+                ruleId: 'mixin_conflict',
+                severity: 'CRITICAL',
+                title: 'Mod Incompatibility (Mixin)',
+                explanation: `Mod '${target}' failed to inject code. Likely a conflict between two mods modifying the same game logic.`,
+                recommendation: `Remove '${target}' or check for a newer version.`,
+                evidence: trigger.trim(),
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+export const TickingEntityRule: DiagnosisRule = {
+    id: 'ticking_entity',
+    name: 'Ticking Entity Crash',
+    description: 'Checks for crashes caused by a specific entity',
+    triggers: [
+        /Ticking entity/i,
+        /Entity being ticked/i
+    ],
+    tier: 3,
+    defaultConfidence: 90,
+    analyze: async (server: ServerConfig, logs: string[]): Promise<DiagnosisResult | null> => {
+        const trigger = logs.find(l => /Ticking entity|Entity being ticked|Description: Ticking entity/i.test(l));
+        if (trigger) {
+             const entityLine = logs.find(l => /Entity Type: ([\w:]+)/i.test(l) || /Entity being ticked: ([\w:]+)/i.test(l)) || trigger;
+             const posLine = logs.find(l => /at (-?\d+\.?\d*),\s*(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/i.test(l)) || trigger;
+
+             const entityMatch = entityLine.match(/Entity Type: ([\w:]+)/i) || entityLine.match(/Entity being ticked: ([\w:]+)/i);
+             const posMatch = posLine.match(/at (-?\d+\.?\d*),\s*(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/i);
+             
+             const entityType = entityMatch ? entityMatch[1] : 'Unknown';
+             const position = posMatch ? ` at X:${posMatch[1]}, Y:${posMatch[2]}, Z:${posMatch[3]}` : '';
+
+             return {
+                id: `ticking-ent-${server.id}-${Date.now()}`,
+                ruleId: 'ticking_entity',
+                severity: 'CRITICAL',
+                title: `Ticking Entity Crash: ${entityType}`,
+                explanation: `Entity '${entityType}'${position} caused a server crash.`,
+                recommendation: `Use the Automated Fix to enable Entity Purging in Forge, or remove the entity manually.`,
+                action: {
+                    type: 'ENABLE_ENTITY_PURGE',
+                    payload: { serverId: server.id },
+                    automaticRepair: true
+                },
+                evidence: trigger.trim(),
+                timestamp: Date.now()
+            };
+        }
+        return null;
+    }
+};
+
+export const ForgeLibraryMissingRule: DiagnosisRule = {
+    id: 'forge_libraries_missing',
+    name: 'Missing Loader Libraries',
+    description: 'Checks if the libraries folder exists',
+    triggers: [
+        /Error: Could not find or load main class/i,
+        /NoClassDefFoundError: net\/minecraft/i
+    ],
+    tier: 2,
+    defaultConfidence: 95,
+    analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
+        const isModded = ['Forge', 'Fabric', 'NeoForge', 'Quilt'].includes(server.software);
+        if (!isModded || !server.workingDirectory || !server.hasStarted) return null;
+
+        const libsDir = path.join(server.workingDirectory, 'libraries');
+        if (!(await fs.pathExists(libsDir))) {
+            return {
+                id: `mod-libs-${server.id}-${Date.now()}`,
+                ruleId: 'forge_libraries_missing',
+                severity: 'CRITICAL',
+                title: 'Missing Loader Libraries',
+                explanation: 'The "libraries" directory is missing. modded servers require this to load.',
+                recommendation: 'Run the server installer (Forge/Fabric) again to regenerate the libraries.',
+                action: {
+                    type: 'REINSTALL_LOADER',
+                    payload: { serverId: server.id },
+                    automaticRepair: true
+                },
+                timestamp: Date.now()
+            };
+        }
         return null;
     }
 };
@@ -265,6 +400,13 @@ export const ClientOnlyModRule: DiagnosisRule = {
     analyze: async (server: ServerConfig, logs: string[], env: SystemStats, crashReport?: CrashReport): Promise<DiagnosisResult | null> => {
         const fullLog = crashReport ? crashReport.content : logs.join('\n');
         
+        // --- SMART HANDLING: FIX MARKER BLINDNESS ---
+        const lastClientErrorIndex = logs.map(l => /net\.minecraft\.client|environmental type SERVER/i.test(l)).lastIndexOf(true);
+        const lastFixIndex = logs.map(l => l.includes('[CraftCommand] [FIX]')).lastIndexOf(true);
+        if (lastFixIndex !== -1 && lastFixIndex > lastClientErrorIndex) {
+            return null;
+        }
+
         // Detect "Cannot load class X in environment type SERVER" (e.g. slyde, shader mods)
         const envTypeMatch = fullLog.match(/Cannot load class ([a-zA-Z0-9_.]+) in environment type SERVER/i);
         
@@ -275,62 +417,48 @@ export const ClientOnlyModRule: DiagnosisRule = {
         );
 
         if (isClientInServer) {
-            let culprit = "an unknown mod";
-            let culpritSlug = "";
+            let culprit = "unknown mod";
 
-            // 1. Extract from "Cannot load class io.gitlab.jfronny.slyde.Plugin in environment type SERVER"
             if (envTypeMatch) {
-                const className = envTypeMatch[1]; // e.g. "io.gitlab.jfronny.slyde.Plugin"
-                const parts = className.split('.');
-                // Find the mod name — typically the package after the domain (e.g. "slyde" from io.gitlab.jfronny.slyde.Plugin)
-                // Also check "provided by" to get the actual mod ID
+                const parts = envTypeMatch[1].split('.');
                 const providedByMatch = fullLog.match(/provided by '([^']+)'/);
                 if (providedByMatch) {
                     culprit = providedByMatch[1];
-                    culpritSlug = providedByMatch[1].toLowerCase().replace(/-/g, '');
                 } else if (parts.length >= 3) {
-                    // Use the 3rd-to-last part as the mod name (before the class name)
-                    culprit = parts[parts.length - 2]; // e.g. "slyde" from io.gitlab.jfronny.slyde.Plugin
-                    culpritSlug = culprit.toLowerCase();
+                    culprit = parts[parts.length - 2];
                 }
             }
 
-            // 2. Fallback: Check for Fabric "provided by" marker
-            if (culprit === "an unknown mod") {
-                const entrypointMatch = fullLog.match(/provided by '([^']+)' at '([^']+)'/);
-                if (entrypointMatch) {
-                    culprit = entrypointMatch[1];
-                    culpritSlug = entrypointMatch[1].toLowerCase();
+            if (culprit === "unknown mod") {
+                const entryMatch = fullLog.match(/provided by '([^']+)' at '([^']+)'/);
+                if (entryMatch) {
+                    culprit = entryMatch[1];
                 } else {
-                    // 3. Fallback to stack trace analysis
                     const modMatch = fullLog.match(/at ([a-zA-Z0-9_]+\.[a-zA-Z0-9_\.]+)\./);
                     if (modMatch && !modMatch[1].startsWith('net.minecraft')) {
                          const parts = modMatch[1].split('.');
                          culprit = parts.length > 1 ? parts[1] : parts[0]; 
-                         culpritSlug = culprit.toLowerCase();
                     }
                 }
             }
 
-            // Check for chain crash indicators (libjf → lithium MixinTargetAlreadyLoadedException)
             const hasChainCrash = /MixinTargetAlreadyLoadedException.*was loaded too early/i.test(fullLog);
             const chainMod = hasChainCrash ? fullLog.match(/from mod (\w+) target/)?.[1] : null;
             
-            let explanation = `The server crashed because the mod "${culprit}" is a client-only mod that cannot run on a dedicated server.`;
+            let explanation = `Mod '${culprit}' is client-only and cannot run on a server.`;
             if (hasChainCrash && chainMod) {
-                explanation += ` This caused a chain reaction crash — "${chainMod}" failed because "${culprit}" loaded classes too early (MixinTargetAlreadyLoadedException).`;
+                explanation += ` Caused chain failure in '${chainMod}'.`;
             }
 
             return {
                 id: `client-mod-${server.id}-${Date.now()}`,
                 ruleId: 'client_only_mod',
                 severity: 'CRITICAL',
-                title: 'Client-Only Mod Crash',
+                title: 'Client Mod on Server',
                 explanation,
-                recommendation: `The mod "${culprit}" is designed for the Minecraft client only (GUI, rendering, etc.) and cannot run on a server. You need to manually remove it from the mods/ folder. Client-only mods should only be installed on your personal Minecraft client, not the server.`,
-                action: undefined,
+                recommendation: `Remove '${culprit}' from your server's mods folder. Only install it on your personal client.`,
+                evidence: (crashReport?.content || logs.join('\n')).split('\n').find(l => /minecraft\.client|environmental type SERVER/i.test(l))?.trim(),
                 timestamp: Date.now(),
-                isHealable: false,
                 isRootCause: true
             };
         }
@@ -361,13 +489,78 @@ export const CorruptedModJarRule: DiagnosisRule = {
                 ruleId: 'corrupted_mod_jar',
                 severity: 'CRITICAL',
                 title: 'Corrupted Mod File',
-                explanation: `The server failed to read the mod file "${jarFile}" because it is corrupted or empty. This often happens if a download was interrupted or the server ran out of disk space while downloading.`,
-                recommendation: `The file "${jarFile}" in your mods folder is corrupted. Please delete it manually and re-download the mod.`,
-                action: undefined,
-                timestamp: Date.now(),
-                isHealable: false
+                explanation: `Mod file '${jarFile}' is corrupted or empty. Likely an interrupted download.`,
+                recommendation: `Delete '${jarFile}' and re-download. Check your disk space.`,
+                evidence: zipErrorMatch[0].trim(),
+                timestamp: Date.now()
              };
         }
+        return null;
+    }
+};
+
+
+export const ProactiveModIntegrityRule: DiagnosisRule = {
+    id: 'proactive_mod_integrity',
+    name: 'Proactive Mod Integrity Scan',
+    description: 'Scans the mods folder for client-side mods and corruption before startup.',
+    triggers: [], // Explicitly proactive
+    tier: 1,
+    defaultConfidence: 100,
+    analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
+        if (!server.workingDirectory) return null;
+        const modsDir = path.join(server.workingDirectory, 'mods');
+        
+        if (!(await fs.pathExists(modsDir))) return null;
+
+        try {
+            const files = await fs.readdir(modsDir);
+            const jars = files.filter(f => f.endsWith('.jar'));
+
+            for (const jar of jars) {
+                const jarPath = path.join(modsDir, jar);
+                const stats = await fs.stat(jarPath);
+
+                // 1. Detect Empty/Corrupt (Zero Byte)
+                if (stats.size === 0) {
+                    return {
+                        id: `proactive-corrupt-${server.id}-${jar}`,
+                        ruleId: 'corrupted_mod_jar',
+                        severity: 'CRITICAL',
+                        title: 'Empty Mod File Detected',
+                        explanation: `The mod file "${jar}" is 0 bytes. This will cause the server to crash during startup.`,
+                        recommendation: `Delete "${jar}" and re-download it.`,
+                        timestamp: Date.now(),
+                        isRepairable: false
+                    };
+                }
+
+                // 2. Client-Side Known Saboteurs (IRIS, Oculus, Sodium, Slyde, etc on Dedicated Server)
+                const clientOnlyKeywords = ['iris', 'oculus', 'sodium', 'slyde', 'rubidium', 'distantsnapshots', 'dynamiclights', 'itlt', 'customtitlescreen'];
+                const jarLower = jar.toLowerCase();
+                
+                if (clientOnlyKeywords.some(k => jarLower.includes(k))) {
+                    return {
+                        id: `proactive-client-${server.id}-${jar}`,
+                        ruleId: 'client_only_mod',
+                        severity: 'CRITICAL',
+                        title: 'Client Mod found',
+                        explanation: `Mod '${jar}' is client-side only.`,
+                        recommendation: `Remove '${jar}' before starting.`,
+                        timestamp: Date.now(),
+                        isRepairable: true,
+                        action: {
+                            type: 'UPDATE_CONFIG', 
+                            payload: { repairPermissions: true }, 
+                            automaticRepair: false
+                        }
+                    };
+                }
+            }
+        } catch (e) {
+            return null;
+        }
+
         return null;
     }
 };
@@ -375,6 +568,11 @@ export const CorruptedModJarRule: DiagnosisRule = {
 export const ModDiagnosisRules: DiagnosisRule[] = [
     IncompatibleModsRule,
     ModDependencyRule,
+    DuplicateModRule,
+    MixinConflictRule,
+    TickingEntityRule,
+    ForgeLibraryMissingRule,
     ClientOnlyModRule,
-    CorruptedModJarRule
+    CorruptedModJarRule,
+    ProactiveModIntegrityRule
 ];

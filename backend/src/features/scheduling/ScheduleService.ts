@@ -3,6 +3,7 @@ import { processManager } from '../processes/ProcessManager';
 import { backupService } from '../backups/BackupService';
 import { startServer } from '../servers/ServerService';
 import { auditService } from '../system/AuditService';
+import { logger } from '../../utils/logger';
 
 import { EventEmitter } from 'events';
 import {  ScheduleTask  } from '@shared/types';
@@ -150,15 +151,15 @@ export class ScheduleService extends EventEmitter {
             const serverCount = this.tasks.size;
             const taskCount = allTasks.length;
             if (taskCount > 0) {
-                console.log(`[ScheduleService] Pre-loaded ${taskCount} tasks across ${serverCount} servers.`);
+                logger.info(`[ScheduleService] Pre-loaded ${taskCount} tasks across ${serverCount} servers.`);
             }
         } catch (e) {
-            console.error('[ScheduleService] Failed to preload schedules:', e);
+            logger.error(`[ScheduleService] Failed to preload schedules: ${e}`);
         }
     }
 
     private startScheduler() {
-        console.log('[ScheduleService] Scheduler started (full 5-field cron).');
+        logger.info('[ScheduleService] Scheduler started (full 5-field cron).');
         // Check every minute
         this.timer = setInterval(() => this.checkSchedules(), 60 * 1000);
     }
@@ -174,7 +175,7 @@ export class ScheduleService extends EventEmitter {
                 if (task.runOnce && task.runAt) {
                     const runAt = new Date(task.runAt);
                     if (now >= runAt && (!task.lastRun || new Date(task.lastRun as string) < runAt)) {
-                        console.log(`[ScheduleService] Executing one-time task "${task.name}" for server ${serverId}`);
+                        logger.info(`[ScheduleService] Executing one-time task "${task.name}" for server ${serverId}`);
                         await this.executeTask(serverId, task);
                         task.lastRun = now.toISOString();
                         task.isActive = false; // Auto-disable after one-time execution
@@ -185,7 +186,7 @@ export class ScheduleService extends EventEmitter {
 
                 // Standard cron task
                 if (isDue(task.cron, now)) {
-                    console.log(`[ScheduleService] Executing task "${task.name}" for server ${serverId}`);
+                    logger.info(`[ScheduleService] Executing task "${task.name}" for server ${serverId}`);
                     await this.executeTask(serverId, task);
                     
                     // Update last run and next run
@@ -219,13 +220,13 @@ export class ScheduleService extends EventEmitter {
                 ? task.actions 
                 : [{ type: (task.command === 'backup' || task.command === 'restart') ? task.command : 'command', command: task.command } as any];
 
-            console.log(`[ScheduleService] Executing ${actions.length} actions for task "${task.name}"`);
+            logger.info(`[ScheduleService] Executing ${actions.length} actions for task "${task.name}"`);
 
             for (const action of actions) {
                 await this.executeSingleAction(serverId, task.name, action);
             }
         } catch (e: any) {
-            console.error(`[ScheduleService] Task "${task.name}" failed:`, e);
+            logger.error(`[ScheduleService] Task "${task.name}" failed: ${e}`);
             await this.logExecution(serverId, task.name, false, e.message || "Execution failed");
         }
     }
@@ -371,7 +372,7 @@ export class ScheduleService extends EventEmitter {
         const task = tasks.find(t => t.id === taskId);
         if (!task) throw new Error('Schedule task not found');
 
-        console.log(`[ScheduleService] Manual trigger: "${task.name}" for server ${serverId}`);
+        logger.info(`[ScheduleService] Manual trigger: "${task.name}" for server ${serverId}`);
         await this.executeTask(serverId, task);
         task.lastRun = new Date().toISOString();
         await this.saveSchedules(serverId, tasks);

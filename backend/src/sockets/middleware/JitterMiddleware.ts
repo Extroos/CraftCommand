@@ -2,9 +2,11 @@ import { Socket } from 'socket.io';
 import { logger } from '../../utils/logger';
 
 /**
+ * [!] INTERNAL TESTING ONLY
  * Jitter Middleware for Socket.IO
  * 
  * Introduces artificial latency to simulate real-world network conditions.
+ * Used exclusively for verifying platform resilience and UI degradation.
  * Only active if NODE_ENV is NOT production and SOCKET_JITTER_MS is set.
  */
 

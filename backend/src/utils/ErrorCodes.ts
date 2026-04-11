@@ -17,6 +17,7 @@ export enum ErrorCode {
     E_PROC_CRASHED = 'E_PROC_CRASHED',       // Unexpected exit
     E_PROC_TIMEOUT = 'E_PROC_TIMEOUT',       // Start/Stop took too long
     E_PROC_PORT_BUSY = 'E_PROC_PORT_BUSY',   // Address already in use
+    E_PROC_PREFLIGHT_FAIL = 'E_PROC_PREFLIGHT_FAIL', // Pre-flight guard blocked startup
 
     // ── Data & Filesystem ──
     E_FS_ATOMIC_FAIL = 'E_FS_ATOMIC_FAIL',   // Atomic swap failed

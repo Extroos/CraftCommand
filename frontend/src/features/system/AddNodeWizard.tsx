@@ -77,7 +77,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ isOpen, onClose, o
                             </div>
                             <div>
                                 <h3 className="text-xl font-bold text-foreground tracking-tight">Expand Infrastructure</h3>
-                                <p className="text-sm text-muted-foreground">Add a new execution node to your cluster.</p>
+                                <p className="text-sm text-muted-foreground">Add a new remote machine.</p>
                             </div>
                         </div>
                         <button onClick={onClose} className="p-2 rounded-full hover:bg-secondary text-muted-foreground transition-colors">
@@ -280,7 +280,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ isOpen, onClose, o
                                 <div className="space-y-2">
                                     <h4 className="text-3xl font-black text-foreground">Machine Linked!</h4>
                                     <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                                        <b>{name}</b> is now part of your cluster and ready for deployments.
+                                        <b>{name}</b> has been added and is ready to use.
                                     </p>
                                 </div>
 
@@ -288,7 +288,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ isOpen, onClose, o
                                     onClick={onClose}
                                     className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black shadow-xl shadow-emerald-500/20 hover:scale-[1.02] transition-all"
                                 >
-                                    CONTINUE TO CLUSTER
+                                    CONTINUE
                                 </button>
                             </div>
                         )}

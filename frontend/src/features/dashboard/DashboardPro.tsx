@@ -64,12 +64,9 @@ const RadialGauge: React.FC<{
             <svg width={size} height={viewH * (size / totalW)} viewBox={`0 0 ${totalW} ${viewH}`} overflow="visible">
                 <defs>
                     <linearGradient id={`rg-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor={lighter} />
+                        <stop offset="0%" stopColor={color} stopOpacity={0.5} />
                         <stop offset="100%" stopColor={color} />
                     </linearGradient>
-                    <filter id={`rg-glow-${id}`} x="-30%" y="-30%" width="160%" height="160%">
-                        <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor={color} floodOpacity="0.5" />
-                    </filter>
                 </defs>
                 {ticks}
                 {/* Background arc */}
@@ -81,7 +78,6 @@ const RadialGauge: React.FC<{
                     fill="none" stroke={`url(#rg-${id})`}
                     strokeWidth={sw} strokeLinecap="round"
                     strokeDasharray={circumference} strokeDashoffset={offset}
-                    filter={pct > 0 ? `url(#rg-glow-${id})` : undefined}
                     style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1)' }} />
                 {/* Needle — uses transform rotate for stable animation */}
                 <g style={{ transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)', transformOrigin: `${cx}px ${cy}px`, transform: `rotate(${needleDeg}deg)` }}>
@@ -154,7 +150,7 @@ const AreaSparkline: React.FC<{
             <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="none">
                 <defs>
                     <linearGradient id={`asg-${id}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+                        <stop offset="0%" stopColor={color} stopOpacity="0.1" />
                         <stop offset="100%" stopColor={color} stopOpacity="0" />
                     </linearGradient>
                 </defs>
@@ -173,7 +169,7 @@ const AreaSparkline: React.FC<{
             {/* Peak marker as HTML overlay (immune to SVG distortion) */}
             {showPeak && peakVal > 0 && (
                 <div className="absolute pointer-events-none" style={{ left: `${peakXPct}%`, top: `${peakYPct}%`, transform: 'translate(-50%, -50%)' }}>
-                    <div className="w-3 h-3 rounded-full flex items-center justify-center" style={{ backgroundColor: color, opacity: 0.25, boxShadow: `0 0 8px ${color}60` }}>
+                    <div className="w-3 h-3 rounded-full flex items-center justify-center" style={{ backgroundColor: color, opacity: 0.15 }}>
                     </div>
                     <div className="absolute inset-0 flex items-center justify-center">
                         <div className="w-1.5 h-1.5 rounded-full bg-white/80" />
@@ -202,9 +198,8 @@ const HeatBar: React.FC<{ value: number; max: number; height?: number }> = ({ va
                     <div key={i}
                         className="flex-1 rounded-[2px] transition-all duration-300"
                         style={{
-                            backgroundColor: isActive ? segColor : 'var(--foreground)',
-                            opacity: isActive ? 0.5 + (i / segments) * 0.5 : 0.04,
-                            boxShadow: isActive && i >= segments * 0.75 ? `0 0 6px ${segColor}40` : 'none',
+                            backgroundColor: isActive ? segColor : 'currentColor',
+                            opacity: isActive ? 0.4 : 0.05,
                         }}
                     />
                 );
@@ -219,7 +214,7 @@ const HeatBar: React.FC<{ value: number; max: number; height?: number }> = ({ va
 // MAIN COMPONENT: DashboardPro
 // ═══════════════════════════════════════════════════════════════
 const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
-    const { servers, stats: allStats, logs, players, updateServerStatus, javaDownloadStatus } = useServers();
+    const { servers, stats: allStats, logs, players, updateServerStatus, javaDownloadStatus, getUnifiedStatus, addBackgroundTask, updateBackgroundTask, removeBackgroundTask } = useServers();
     const { user } = useUser();
     usePermissions();
     useCollaboration();
@@ -227,9 +222,9 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
     const server = servers.find(s => s.id === serverId);
     const isJavaPlatform = server?.software && !['Bedrock', 'Velocity'].includes(server.software);
     const stats = allStats[serverId] || { cpu: 0, memory: 0, uptime: 0, latency: 0, players: 0, tps: "0.00", pid: 0 };
-    const status = server?.status || ServerStatus.OFFLINE;
+    const status = server ? getUnifiedStatus(server) : ServerStatus.OFFLINE;
 
-    // Uptime latch (v1.12.7)
+    // Uptime latch (v1.13.0)
     const lastValidUptime = useRef<number>(0);
     const isUptimeLive = [ServerStatus.ONLINE, ServerStatus.STARTING, ServerStatus.RESTARTING, ServerStatus.STOPPING].includes(status as ServerStatus);
     
@@ -253,7 +248,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
     const [tpsHistory, setTpsHistory] = useState<number[]>([]);
 
 
-    // Permissive metrics (v1.12.7): Show data if the server is in a "Live" state
+    // Permissive metrics (v1.13.0): Show data if the server is in a "Live" state
     const isLive = [
         ServerStatus.ONLINE, 
         ServerStatus.STARTING, 
@@ -322,12 +317,25 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
     // Power controls (identical to Dashboard.tsx)
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {
         setPendingAction(action);
+        const taskId = `${action}-${serverId}-${Date.now()}`;
+        
         try {
             if (action === 'start') {
                 try {
+                    addBackgroundTask({
+                        id: taskId,
+                        name: `Startup: ${server?.name || serverId}`,
+                        type: 'start',
+                        serverId,
+                        status: 'running',
+                        progress: 0,
+                        message: 'Initializing server startup...'
+                    });
                     updateServerStatus(serverId, ServerStatus.STARTING);
                     await API.startServer(serverId);
+                    updateBackgroundTask(taskId, { name: `Startup: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server started' });
                 } catch (e: any) {
+                    removeBackgroundTask(taskId);
                     if (e.message?.includes('already running')) return;
                     updateServerStatus(serverId, ServerStatus.OFFLINE);
                     // Proactive Search: Always run diagnosis scan if a power action fails
@@ -351,34 +359,72 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
     const handleGracefulStop = async () => {
         setPendingAction('stop');
         setShowGraceful(false);
+        const taskId = `stop-graceful-${serverId}-${Date.now()}`;
+        
         try {
+            addBackgroundTask({
+                id: taskId,
+                name: `Shutdown: ${server?.name || serverId}`,
+                type: 'stop',
+                serverId,
+                status: 'running',
+                progress: 0,
+                message: `Graceful shutdown initiated (${gracefulCountdown}s)...`
+            });
             updateServerStatus(serverId, ServerStatus.STOPPING);
             await API.gracefulStopServer(serverId, gracefulCountdown);
             addToast('info', 'Graceful Shutdown', `Broadcast sent. Stopping in ${gracefulCountdown}s.`);
+            updateBackgroundTask(taskId, { name: `Shutdown: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Shutdown signal sent' });
         } catch (e: any) {
             updateServerStatus(serverId, status);
+            removeBackgroundTask(taskId);
             addToast('error', 'Shutdown Failed', e.message);
         } finally { setPendingAction(null); }
     };
 
     const executePowerAction = async (action: 'stop' | 'restart') => {
         const prev = status;
+        const taskId = `${action}-${serverId}-${Date.now()}`;
+        
         try {
             if (action === 'stop') {
+                addBackgroundTask({
+                    id: taskId,
+                    name: `Shutdown: ${server?.name || serverId}`,
+                    type: 'stop',
+                    serverId,
+                    status: 'running',
+                    progress: 0,
+                    message: 'Sending termination signal...'
+                });
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 await API.stopServer(serverId);
                 updateServerStatus(serverId, ServerStatus.OFFLINE);
+                updateBackgroundTask(taskId, { name: `Shutdown: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server stopped' });
             } else if (action === 'restart') {
+                 addBackgroundTask({
+                    id: taskId,
+                    name: `Restart: ${server?.name || serverId}`,
+                    type: 'restart',
+                    serverId,
+                    status: 'running',
+                    progress: 0,
+                    message: 'Initiating server restart...'
+                 });
                  updateServerStatus(serverId, ServerStatus.STOPPING);
                  await API.stopServer(serverId);
                  
+                 updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, progress: 50, message: 'Waiting for process to exit...' });
+
                  // Phase 57: Robust Restart Sequence
                  let attempts = 0;
                  const checkAndStart = async () => {
                      const current = servers.find(s => s.id === serverId);
                      if (current?.status === ServerStatus.OFFLINE || attempts > 10) {
+                         updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, progress: 75, message: 'Relaunching server...' });
                          updateServerStatus(serverId, ServerStatus.STARTING);
                          await API.startServer(serverId);
+                         updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server restarted' });
                      } else {
                          attempts++;
                          setTimeout(checkAndStart, 500);
@@ -388,6 +434,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
             }
         } catch (e: any) {
             updateServerStatus(serverId, prev as ServerStatus);
+            removeBackgroundTask(taskId);
             addToast('error', 'Power Action Failed', e.message);
         } finally {
             setPowerConfirm({ action: 'stop', isOpen: false });
@@ -464,7 +511,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
             )}
 
             {/* ═══ SECTION 1: Command Strip ═══ */}
-            <div className={`cc-card ${user?.preferences.visualQuality ? 'glass-morphism glass-spotlight quality-entrance' : ''}`}>
+            <div className="cc-card bg-card border border-border shadow-sm">
                 <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-6">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4 min-w-0">
                         <div className="flex items-center gap-3">
@@ -473,7 +520,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                                 status === ServerStatus.OFFLINE ? 'bg-zinc-600' :
                                 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse'
                             }`} />
-                            <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight leading-none truncate ${user?.preferences.visualQuality ? 'bg-gradient-to-r from-foreground to-foreground/50 bg-clip-text text-transparent' : 'text-foreground'}`}>
+                            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight leading-none truncate text-foreground">
                                 {server.name}
                             </h1>
                         </div>
@@ -517,7 +564,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                     if (settings?.app?.https?.enabled) badges.push(<span key="https" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[8px] font-bold uppercase tracking-wider"><Lock size={9} /> HTTPS</span>);
                     if (settings?.app?.remoteAccess?.enabled) badges.push(<span key="remote" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[8px] font-bold uppercase tracking-wider"><Wifi size={9} /> {settings.app.remoteAccess.method?.toUpperCase() || 'REMOTE'}</span>);
                     if (settings?.app?.hostMode) badges.push(<span key="host" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[8px] font-bold uppercase tracking-wider"><Shield size={9} /> Host Mode</span>);
-                    if (settings?.app?.autoHealing) badges.push(<span key="heal" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/10 border border-green-500/20 text-green-400 text-[8px] font-bold uppercase tracking-wider"><Activity size={9} /> Auto-Heal</span>);
+                    if (settings?.app?.automaticRepair) badges.push(<span key="heal" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/10 border border-green-500/20 text-green-400 text-[8px] font-bold uppercase tracking-wider"><Activity size={9} /> Automatic Repair</span>);
                     if (settings?.app?.storageProvider === 'sqlite') badges.push(<span key="sqlite" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[8px] font-bold uppercase tracking-wider"><HardDrive size={9} /> SQLite</span>);
                     if (settings?.app?.distributedNodes?.enabled) badges.push(<span key="cluster" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[8px] font-bold uppercase tracking-wider"><Layers size={9} /> Cluster</span>);
                     if (badges.length === 0) return null;
@@ -534,14 +581,14 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
 
             {/* ═══ SECTION 2: Core Metrics — Responsive Grid ═══ */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1fr_1fr_1.5fr] gap-5">
-                <div className={`cc-card flex flex-col items-center py-8 transition-all duration-500 ${user?.preferences.visualQuality ? 'glass-morphism quality-entrance' : ''}`}>
+                <div className="cc-card flex flex-col items-center py-8 bg-card border border-border shadow-sm">
                     <RadialGauge value={displayCpu} max={100} label="CPU Load" unit="%" color={cpuColor} id="pro-cpu" size={240} icon={<Cpu size={11} className="text-muted-foreground/30" />} />
                 </div>
-                <div className={`cc-card flex flex-col items-center py-8 transition-all duration-500 ${user?.preferences.visualQuality ? 'glass-morphism quality-entrance' : ''}`} style={{ animationDelay: '60ms' }}>
+                <div className="cc-card flex flex-col items-center py-8 bg-card border border-border shadow-sm">
                     <RadialGauge value={displayMemory / 1024} max={server.ram || 1} label="Memory" unit={`${(displayMemory / 1024).toFixed(1)}G / ${server.ram}G`} color={memColor} id="pro-mem" size={240} icon={<HardDrive size={11} className="text-muted-foreground/30" />} />
                 </div>
                 {/* Process Vitals Panel */}
-                <div className={`cc-card ${user?.preferences.visualQuality ? 'glass-morphism quality-entrance' : ''}`} style={{ animationDelay: '120ms' }}>
+                <div className="cc-card bg-card border border-border shadow-sm">
                     <div className="flex items-center gap-2 mb-4 pb-3 border-b border-foreground/[0.04]">
                         <MonitorDot size={13} className="text-foreground/30" />
                         <span className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em]">Process Vitals</span>
@@ -582,7 +629,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
 
             {/* ═══ SECTION 3: Telemetry — Responsive Sparklines ═══ */}
             <div className={`grid gap-5 ${status === ServerStatus.ONLINE ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
-                <div className={`cc-card py-8 flex flex-col ${user?.preferences.visualQuality ? 'glass-morphism' : ''}`}>
+                <div className="cc-card py-8 flex flex-col bg-card border border-border shadow-sm">
                     <div className="flex justify-between items-start mb-6">
                         <div className="flex items-center gap-2"><Cpu size={13} className="text-foreground/40" /><span className="text-[11px] font-bold text-foreground tracking-widest">CPU</span></div>
                         <div className="text-right">
@@ -595,7 +642,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                         <AreaSparkline id="pro-cpu-spark" data={cpuHistory} color={displayCpu > 80 ? "#f43f5e" : "#3b82f6"} height={160} />
                     </div>
                 </div>
-                <div className={`cc-card py-8 flex flex-col ${user?.preferences.visualQuality ? 'glass-morphism' : ''}`}>
+                <div className="cc-card py-8 flex flex-col bg-card border border-border shadow-sm">
                     <div className="flex justify-between items-start mb-6">
                         <div className="flex items-center gap-2"><HardDrive size={13} className="text-foreground/40" /><span className="text-[11px] font-bold text-foreground tracking-widest">Memory</span></div>
                         <div className="text-right">
@@ -610,7 +657,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                 </div>
                 {/* TPS History — only shown when online */}
                 {status === ServerStatus.ONLINE && (
-                    <div className={`cc-card py-8 flex flex-col ${user?.preferences.visualQuality ? 'glass-morphism' : ''}`}>
+                    <div className="cc-card py-8 flex flex-col bg-card border border-border shadow-sm">
                         <div className="flex justify-between items-start mb-6">
                             <div className="space-y-1">
                                 <div className="flex items-center gap-2"><Activity size={13} className="text-foreground/40" /><span className="text-[11px] font-bold text-foreground tracking-widest">Tick Rate</span></div>
@@ -637,7 +684,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                 <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-transparent pointer-events-none opacity-50" />
                 <div className="flex items-center gap-3 shrink-0 relative">
                     <Terminal size={12} className="text-emerald-500/80" />
-                    <span className="text-[9px] font-mono text-emerald-500/50 uppercase tracking-[0.2em] font-black">SYSTEM_STDOUT</span>
+                    <span className="text-[9px] font-mono text-emerald-500/50 uppercase tracking-[0.2em] font-black">CONSOLE</span>
                 </div>
                 <div className="flex-1 truncate font-mono text-[11px] text-zinc-500 pt-0.5 relative">
                     {status === ServerStatus.ONLINE ? (
@@ -647,11 +694,11 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                             <span className="opacity-30 animate-pulse italic">Waiting for process stream...</span>
                         )
                     ) : (
-                        <span className="opacity-10 uppercase tracking-widest text-[9px]">Process Inactive // Connection Severed</span>
+                        <span className="opacity-10 uppercase tracking-widest text-[9px]">Server stopped</span>
                     )}
                 </div>
                 <div className="flex items-center gap-4 shrink-0 relative">
-                    <div className="text-[9px] font-mono text-white/20 uppercase tracking-widest">Live_v1.12.5</div>
+                    <div className="text-[9px] font-mono text-white/20 uppercase tracking-widest">Live_v1.13.0</div>
                     <div className="flex gap-1">
                         <div className="w-1 h-1 rounded-full bg-emerald-500/20" />
                         <div className="w-1 h-1 rounded-full bg-emerald-500/10" />
@@ -666,7 +713,7 @@ const DashboardPro: React.FC<DashboardProProps> = ({ serverId }) => {
                         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-card border border-border rounded-xl shadow-2xl p-8 max-w-md w-full text-center space-y-6">
                             <div className="flex justify-center"><AlertTriangle size={48} className="text-amber-500" /></div>
                             <div className="space-y-2">
-                                <h3 className="text-xl font-bold">Active Protocol Detected</h3>
+                                <h3 className="text-xl font-bold">Players Online</h3>
                                 <p className="text-sm text-muted-foreground">Players are currently connected. Forcing a {powerConfirm.action} may cause data loss.</p>
                             </div>
                             <div className="flex gap-4">

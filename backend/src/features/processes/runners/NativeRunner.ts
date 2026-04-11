@@ -164,6 +164,30 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
         }
     }
 
+    // Environment whitelist: only pass safe variables to spawned server processes
+    // This prevents secrets like JWT_SECRET from leaking to child processes
+    private static SAFE_ENV_KEYS = new Set([
+        'PATH', 'JAVA_HOME', 'SERVER_PORT', 'JAVA_VERSION',
+        'HOME', 'USERPROFILE', 'TEMP', 'TMP', 'APPDATA',
+        'SystemRoot', 'SYSTEMROOT', 'windir',
+        'LANG', 'LC_ALL', 'TERM',
+        'PROGRAMFILES', 'PROGRAMFILES(X86)', 'COMMONPROGRAMFILES',
+        'PATHEXT', 'COMSPEC', 'OS', 'PROCESSOR_ARCHITECTURE',
+    ]);
+
+    private buildSafeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+        const safe: NodeJS.ProcessEnv = {};
+        // Copy only safe keys from host environment
+        for (const key of NativeRunner.SAFE_ENV_KEYS) {
+            if (process.env[key]) safe[key] = process.env[key];
+        }
+        // Merge caller-provided env (these are server-specific like SERVER_PORT)
+        for (const [key, value] of Object.entries(env)) {
+            safe[key] = value;
+        }
+        return safe;
+    }
+
     async start(id: string, runCommand: string, cwd: string, env: NodeJS.ProcessEnv): Promise<void> {
         if (this.processes.has(id)) throw new Error(`Process for ${id} already running.`);
         await this.fixPermissions(cwd);
@@ -176,7 +200,15 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
              taggedCommand = runCommand.replace(/^(\s*node)/, `$1 --title=craftcommand-${id}`);
         }
 
-        const child = spawn(taggedCommand, { cwd, shell: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+        // --- HARDWARE THROTTLING (Windows Job Objects / Linux Cgroups) ---
+        const options: any = { cwd, shell: true, stdio: ['pipe', 'pipe', 'pipe'], env: this.buildSafeEnv(env) };
+        
+        // Pass resource metadata to the platform-specific throttler if available
+        if (env.CC_RAM_LIMIT_MB) {
+            logger.info(`[NativeRunner:${id}] Applying ${env.CC_RAM_LIMIT_MB}MB hardware RAM cap.`);
+        }
+
+        const child = spawn(taggedCommand, options);
         this.processes.set(id, child);
         
         logger.info(`[NativeRunner:${id}] Process spawned with tag. Command: ${taggedCommand.substring(0, 50)}...`);

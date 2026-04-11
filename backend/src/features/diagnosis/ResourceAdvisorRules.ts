@@ -51,7 +51,7 @@ export const RamRightSizingRule: DiagnosisRule = {
                 action: {
                     type: 'UPDATE_CONFIG',
                     payload: { ram: recommendedGb },
-                    autoHeal: false // Recommendations only, never auto-resize
+                    automaticRepair: false // Recommendations only, never auto-resize
                 },
                 timestamp: Date.now()
             };
@@ -79,7 +79,7 @@ export const RamRightSizingRule: DiagnosisRule = {
                 action: {
                     type: 'UPDATE_CONFIG',
                     payload: { ram: recommendedGb },
-                    autoHeal: false
+                    automaticRepair: false
                 },
                 timestamp: Date.now()
             };

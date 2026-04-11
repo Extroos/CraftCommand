@@ -230,11 +230,23 @@ export function setupAgentNamespace(io: Server): void {
         });
 
         // ── Heartbeat ──
-        socket.on('agent:heartbeat', (data: { health?: NodeHealth }) => {
+        socket.on('agent:heartbeat', (data: { health?: NodeHealth }, callback?: (ack: any) => void) => {
             try {
                 nodeRegistryService.heartbeat(nodeId, data.health);
+                
+                // Fulfill "Global IP Sync" claim: Provide the agent with the panel's current public IP
+                if (typeof callback === 'function') {
+                    callback({
+                        success: true,
+                        panelPublicIp: nodeRegistryService.getPanelPublicIp(),
+                        timestamp: Date.now()
+                    });
+                }
             } catch (e: any) {
                 logger.error(`[AgentHandler] Heartbeat processing error for node ${nodeId}: ${e.message}`);
+                if (typeof callback === 'function') {
+                    callback({ success: false, error: e.message });
+                }
             }
         });
 

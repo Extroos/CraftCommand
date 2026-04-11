@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import {  UserProfile, UserRole  } from '@shared/types';
-import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from '../../utils/errors';
+import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from '../../utils/AppError';
 import bcrypt from 'bcryptjs';
 import { auditService } from '../system/AuditService';
 import { systemSettingsService } from '../system/SystemSettingsService';
@@ -12,19 +12,13 @@ import { generateSecret, generateURI, verify } from 'otplib';
 import QRCode from 'qrcode';
 
 class AuthService {
-    private readonly JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+    private readonly JWT_SECRET = process.env.JWT_SECRET as string;
     private readonly ROLE_HIERARCHY = ROLE_HIERARCHY;
 
     constructor() {
         // --- PRODUCTION SECURITY GUARD: Phase 17 ---
         if (process.env.NODE_ENV === 'production') {
-            const devSecret = 'dev-secret-do-not-use-in-prod';
             const devKey = 'craftcommand-default-key-32-chars-!!';
-
-            if (!process.env.JWT_SECRET || process.env.JWT_SECRET === devSecret) {
-                console.error('\u001b[31m[CRITICAL SECURITY ERROR] JWT_SECRET is not set or using the development default in production!\u001b[0m');
-                process.exit(1);
-            }
 
             if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY === devKey) {
                 console.error('\u001b[31m[CRITICAL SECURITY ERROR] ENCRYPTION_KEY is not set or using the development default in production!\u001b[0m');
@@ -112,14 +106,14 @@ class AuthService {
         const secret = this.JWT_SECRET;
 
         if (user.twoFactorEnabled) {
-            // Return partial token for 2FA verification
-            const loginToken = jwt.sign({ id: user.id, email: user.email, partial: true }, secret, { expiresIn: '15m' });
+            // Return partial token for 2FA verification (Increased to 30m for v4.0 Resilience)
+            const loginToken = jwt.sign({ id: user.id, email: user.email, partial: true }, secret, { expiresIn: '30m' });
             return { user: safeUser as UserProfile, token: loginToken, twoFactorRequired: true };
         }
 
         // Create session
         const sessionId = crypto.randomUUID();
-        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        const expiresAt = Date.now() + 14 * 24 * 60 * 60 * 1000; // Increased to 14 days for stable persistence
         
         sessionRepository.create({
             id: sessionId,
@@ -137,7 +131,7 @@ class AuthService {
             email: user.email, 
             role: user.role,
             jti: sessionId 
-        }, secret, { expiresIn: '7d' });
+        }, secret, { expiresIn: '14d' });
         
         return { user: safeUser as UserProfile, token };
     }
@@ -288,14 +282,16 @@ class AuthService {
         
         // Fix: Auto-update avatar if Minecraft IGN changes
         if (finalUpdates.minecraftIgn) {
-             console.log(`[AuthService] Updating IGN for ${id} to ${finalUpdates.minecraftIgn}`);
+             const { logger } = require('../../utils/logger');
+             logger.info(`[AuthService] Updating IGN for ${id} to ${finalUpdates.minecraftIgn}`);
              finalUpdates.avatarUrl = `https://minotar.net/helm/${finalUpdates.minecraftIgn}/128.png`;
-             console.log(`[AuthService] New Avatar URL: ${finalUpdates.avatarUrl}`);
+             logger.info(`[AuthService] New Avatar URL: ${finalUpdates.avatarUrl}`);
         }
 
         const updated = userRepository.update(id, finalUpdates);
         if (!updated) {
-            console.error(`[AuthService] Failed to update user ${id}`);
+            const { logger: log } = require('../../utils/logger');
+            log.error(`[AuthService] Failed to update user ${id}`);
             throw new Error('User update failed');
         }
         

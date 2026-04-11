@@ -1,9 +1,8 @@
 
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
     Folder, File as FileIcon, FileCode, Archive, Home, ChevronRight, 
-    Download, Trash2, Save, X, 
+    Download, Trash2, Save, X, Pencil,
     UploadCloud, FolderPlus, FilePlus, Search, 
     CornerUpLeft, SortAsc, SortDesc, Loader2, Shield, Copy
 } from 'lucide-react';
@@ -12,27 +11,126 @@ import { useToast } from '../ui/Toast';
 import { useConfirm } from '../ui/hooks/useConfirm';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 
+import CodeMirror from '@uiw/react-codemirror';
+import { json } from '@codemirror/lang-json';
+import { yaml } from '@codemirror/lang-yaml';
+import { StreamLanguage } from '@codemirror/language';
+import { properties } from '@codemirror/legacy-modes/mode/properties';
+
 
 import { API } from '@core/services/api';
-import { useSystem } from '@features/system/context/SystemContext';
-import FileManagerPro from './FileManagerPro';
 import { useUser } from '@features/auth/context/UserContext';
 import { useCollaboration } from '@features/collaboration/context/CollaborationContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
 import AccessDenied from '@features/auth/components/AccessDenied';
 
+
 interface FileManagerProps {
     serverId: string;
 }
 
-const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
-    const { settings } = useSystem();
-    const isPro = settings?.app?.professionalMode;
-
-    if (isPro) {
-        return <FileManagerPro serverId={serverId} />;
+export const getFileIcon = (type: string) => {
+    switch (type) {
+        case 'folder': return <Folder className="text-blue-400 fill-blue-400/20" size={20} />;
+        case 'archive': return <Archive className="text-amber-500" size={20} />;
+        case 'config': return <FileCode className="text-emerald-400" size={20} />;
+        case 'code': return <FileCode className="text-blue-500" size={20} />;
+        default: return <FileIcon className="text-muted-foreground/60" size={20} />;
     }
+};
 
+export const getSmallFileIcon = (type: string) => {
+    switch (type) {
+        case 'folder': return <Folder className="text-blue-400 fill-blue-400/20" size={14} />;
+        case 'archive': return <Archive className="text-amber-500" size={14} />;
+        case 'config': return <FileCode className="text-emerald-400" size={14} />;
+        case 'code': return <FileCode className="text-blue-500" size={14} />;
+        default: return <FileIcon className="text-muted-foreground/60" size={14} />;
+    }
+};
+
+interface FileTreeNodeProps {
+    node: FileNode;
+    level: number;
+    treeCache: Record<string, FileNode[]>;
+    expandedFolders: Set<string>;
+    onToggle: (pathStr: string) => void;
+    onSelect: (node: FileNode) => void;
+    currentPath: string[];
+    editorFile: any;
+    presence: any;
+    serverId: string;
+    userId?: string;
+}
+
+const FileTreeNode: React.FC<FileTreeNodeProps> = ({ node, level, treeCache, expandedFolders, onToggle, onSelect, currentPath, editorFile, presence, serverId, userId }) => {
+    const isExpanded = expandedFolders.has(node.path);
+    const isSelected = currentPath.join('/') === node.path || editorFile?.node.path === node.path;
+    const children = treeCache[node.path];
+    
+    // Check for collaboration presence
+    const isCollabActive = !node.isDirectory && presence[serverId]?.some((p: any) => p.activeView === `files:${node.name}` && p.userId !== userId);
+
+    return (
+        <div className="w-full">
+            <div 
+                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors cursor-pointer group select-none hover:bg-muted/50 ${isSelected ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                style={{ paddingLeft: `${ Math.max(8, level * 16 + 8)}px` }}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (node.isDirectory) {
+                        onToggle(node.path);
+                        onSelect(node);
+                    } else {
+                        onSelect(node);
+                    }
+                }}
+            >
+                {node.isDirectory ? (
+                    <div className={`transition-transform duration-200 shrink-0 ${isExpanded ? 'rotate-90' : ''}`} onClick={(e) => { e.stopPropagation(); onToggle(node.path); }}>
+                        <ChevronRight size={14} className="opacity-60 group-hover:opacity-100 hover:text-primary transition-colors" />
+                    </div>
+                ) : (
+                    <div className="w-[14px] shrink-0" />
+                )}
+                
+                <div className={`shrink-0 opacity-80 group-hover:opacity-100 transition-opacity ${isSelected ? 'opacity-100' : ''}`}>
+                    {getSmallFileIcon(node.type)}
+                </div>
+                <span className={`text-xs truncate font-medium transition-colors ${node.type === 'folder' ? 'text-foreground/90' : ''} ${isSelected ? 'text-primary font-semibold' : ''}`} title={node.name}>
+                    {node.name}
+                </span>
+
+                {isCollabActive && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-auto shrink-0" title="Being edited by others" />
+                )}
+            </div>
+            
+            {isExpanded && children && (
+                <div className="flex flex-col mt-0.5">
+                    {children.map(child => (
+                        <FileTreeNode 
+                            key={child.id}
+                            node={child}
+                            level={level + 1}
+                            treeCache={treeCache}
+                            expandedFolders={expandedFolders}
+                            onToggle={onToggle}
+                            onSelect={onSelect}
+                            currentPath={currentPath}
+                            editorFile={editorFile}
+                            presence={presence}
+                            serverId={serverId}
+                            userId={userId}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     // State
     const [fileSystem, setFileSystem] = useState<FileNode[]>([]);
     const [currentPath, setCurrentPath] = useState<string[]>([]);
@@ -45,6 +143,8 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'size' | 'modified', direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
     const [isDragging, setIsDragging] = useState(false);
     const { updateActiveView, presence } = useCollaboration();
+    const [treeCache, setTreeCache] = useState<Record<string, FileNode[]>>({});
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['']));
     
     // Lifecycle Refs
     const mountedRef = useRef(true);
@@ -53,11 +153,12 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
     
     // Modals & Actions
-    const [editorFile, setEditorFile] = useState<{ node: FileNode, content: string, originalContent: string } | null>(null);
+    const [editorFile, setEditorFile] = useState<{ node: FileNode, content: string, originalContent?: string } | null>(null);
     const [uploadProgress, setUploadProgress] = useState<{ visible: boolean, progress: number, filename: string }>({ visible: false, progress: 0, filename: '' });
     const [newItemModal, setNewItemModal] = useState<{ type: 'file' | 'folder' | null, value: string }>({ type: null, value: '' });
     const [deletingItemIds, setDeletingItemIds] = useState<Set<string>>(new Set());
     const [extractingItemIds, setExtractingItemIds] = useState<Set<string>>(new Set());
+    const [renamingFile, setRenamingFile] = useState<{ id: string; name: string; path: string } | null>(null);
     const [searchResults, setSearchResults] = useState<any[] | null>(null);
     const [isSearchingServer, setIsSearchingServer] = useState(false);
     const [searchInContent, setSearchInContent] = useState(false);
@@ -70,32 +171,78 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
         };
     }, [serverId]);
 
+    const fetchNodes = async (pathStr: string): Promise<FileNode[]> => {
+        const fetchPath = pathStr === '' ? '.' : pathStr;
+        const files = await API.getFiles(serverId, fetchPath);
+        
+        return files.map((f: any) => {
+            const isConfig = f.name.endsWith('.json') || f.name.endsWith('.yml') || f.name.endsWith('.properties') || f.name.endsWith('.conf');
+            const isCode = f.name.endsWith('.js') || f.name.endsWith('.ts') || f.name.endsWith('.py') || f.name.endsWith('.sh');
+            
+            return {
+                id: f.path,
+                name: f.name,
+                type: f.isDirectory ? 'folder' : (f.name.endsWith('.jar') || f.name.endsWith('.zip') ? 'archive' : (isConfig ? 'config' : (isCode ? 'code' : 'file'))),
+                size: f.isDirectory ? '-' : (f.size > 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${(f.size / 1024).toFixed(1)} KB`),
+                modified: f.modified || 'Unknown', 
+                path: f.path,
+                isDirectory: f.isDirectory,
+                isProtected: f.isProtected || false,
+                children: f.isDirectory ? [] : undefined 
+            };
+        }).sort((a: FileNode, b: FileNode) => {
+            if (a.isDirectory && !b.isDirectory) return -1;
+            if (!a.isDirectory && b.isDirectory) return 1;
+            return a.name.localeCompare(b.name);
+        });
+    };
+
     const fetchFiles = async () => {
         if (!canRead) return;
         try {
-            const pathStr = currentPath.length > 0 ? currentPath.join('/') : '.';
-            const files = await API.getFiles(serverId, pathStr);
-            
-            // Transform API response to FileNode
-            const nodes: FileNode[] = files.map((f: any) => {
-                const isConfig = f.name.endsWith('.json') || f.name.endsWith('.yml') || f.name.endsWith('.properties') || f.name.endsWith('.conf');
-                const isCode = f.name.endsWith('.js') || f.name.endsWith('.ts') || f.name.endsWith('.py') || f.name.endsWith('.sh');
-                
-                return {
-                    id: f.path,
-                    name: f.name,
-                    type: f.isDirectory ? 'folder' : (f.name.endsWith('.jar') || f.name.endsWith('.zip') ? 'archive' : (isConfig ? 'config' : (isCode ? 'code' : 'file'))),
-                    size: f.isDirectory ? '-' : (f.size > 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${(f.size / 1024).toFixed(1)} KB`),
-                    modified: f.modified || 'Unknown', 
-                    path: f.path,
-                    isDirectory: f.isDirectory,
-                    isProtected: f.isProtected || false,
-                    children: f.isDirectory ? [] : undefined 
-                };
-            });
+            const pathStr = currentPath.length > 0 ? currentPath.join('/') : '';
+            const nodes = await fetchNodes(pathStr);
             setFileSystem(nodes);
+            setTreeCache(prev => ({ ...prev, [pathStr]: nodes }));
         } catch (e) {
+            console.error(e);
             addToast('error', 'File Error', 'Failed to load files.');
+        }
+    };
+
+    const handleTreeToggle = async (folderPath: string) => {
+        const newExpanded = new Set(expandedFolders);
+        if (newExpanded.has(folderPath)) {
+            newExpanded.delete(folderPath);
+            setExpandedFolders(newExpanded);
+        } else {
+            newExpanded.add(folderPath);
+            setExpandedFolders(newExpanded);
+            if (!treeCache[folderPath]) {
+                try {
+                    const nodes = await fetchNodes(folderPath);
+                    setTreeCache(prev => ({ ...prev, [folderPath]: nodes }));
+                } catch (e) {
+                    addToast('error', 'Fetch Error', `Failed to load folder contents.`);
+                }
+            }
+        }
+    };
+
+    const handleTreeSelect = async (node: FileNode) => {
+        if (node.isDirectory) {
+            const newPath = node.path ? node.path.split('/') : [];
+            setCurrentPath(newPath);
+            setSelectedIds(new Set());
+            setEditorFile(null);
+        } else {
+            try {
+                const content = await API.getFileContent(serverId, node.path);
+                setEditorFile({ node: node, content, originalContent: content });
+                updateActiveView(serverId, `files:${node.name}`);
+            } catch (e) {
+                addToast('error', 'Read Error', 'Could not read file content.');
+            }
         }
     };
 
@@ -151,7 +298,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [fileSystem, searchTerm, sortConfig, searchResults]);
+    }, [fileSystem, searchTerm, sortConfig, searchResults, deletingItemIds]);
 
     // Helpers (Removed legacy recursive helpers)
 
@@ -291,11 +438,29 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
         }
     };
 
+    const handleRename = async (file: { id: string; path: string; name: string }, newName: string) => {
+        if (!newName || newName === file.name) {
+            setRenamingFile(null);
+            return;
+        }
+        if (!canManage) {
+            addToast('error', 'Access Denied', 'You do not have permission to rename files.');
+            return;
+        }
+        try {
+            const parentDir = file.path.substring(0, file.path.lastIndexOf('/'));
+            const dest = parentDir ? `${parentDir}/${newName}` : newName;
+            await API.moveFile(serverId, file.path, dest);
+            addToast('success', 'Renamed', `${file.name} → ${newName}`);
+            setRenamingFile(null);
+            fetchFiles();
+        } catch (e: any) {
+            addToast('error', 'Rename Failed', e.message || 'Could not rename file.');
+        }
+    };
+
     const processUpload = async (file: File) => {
         if (!canManage) return;
-        const fileSize = file.size > 1024 * 1024 
-            ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` 
-            : `${(file.size / 1024).toFixed(1)} KB`;
 
         setUploadProgress({ visible: true, progress: 0, filename: file.name });
         
@@ -345,7 +510,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
         try {
             await API.saveFileContent(serverId, editorFile.node.path, editorFile.content);
             addToast('success', 'File Saved', editorFile.node.name);
-            setEditorFile({ ...editorFile, originalContent: editorFile.content }); // Update original after save
+            setEditorFile({ ...editorFile, originalContent: editorFile.content });
         } catch (e) {
             addToast('error', 'Save Failed', 'Failed to save file content.');
         }
@@ -368,16 +533,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
     };
 
 
-    // Icons
-    const getFileIcon = (type: string) => {
-        switch (type) {
-            case 'folder': return <Folder className="text-blue-400 fill-blue-400/20" size={20} />;
-            case 'archive': return <Archive className="text-amber-500" size={20} />;
-            case 'config': return <FileCode className="text-emerald-400" size={20} />;
-            case 'code': return <FileCode className="text-blue-500" size={20} />;
-            default: return <FileIcon className="text-muted-foreground/60" size={20} />;
-        }
-    };
+    // Icons now externalized
 
     return (
         <div 
@@ -480,203 +636,325 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                 </div>
             </div>
 
-            {/* File List */}
-            <div className="flex-1 border border-border overflow-hidden relative flex flex-col bg-card rounded-md shadow-sm">
-                <div className="overflow-auto flex-1">
-                    <table className="w-full text-sm text-left border-collapse">
-                        <thead className="bg-muted text-xs uppercase text-muted-foreground font-semibold sticky top-0 z-10 border-b border-border">
-                            <tr>
-                                <th className="px-4 py-3 w-10 border-b border-border">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={currentFiles.length > 0 && selectedIds.size === currentFiles.length}
-                                        onChange={handleSelectAll}
-                                        className="rounded border-border bg-secondary text-primary focus:ring-primary/50"
-                                    />
-                                </th>
-                                <th className="px-4 py-3 border-b border-border cursor-pointer hover:text-foreground transition-colors group" onClick={() => setSortConfig({ key: 'name', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
-                                    <div className="flex items-center gap-1">
-                                        Name {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <SortAsc size={12} /> : <SortDesc size={12} />)}
-                                    </div>
-                                </th>
-                                <th className="px-4 py-3 border-b border-border w-32 cursor-pointer hover:text-foreground transition-colors" onClick={() => setSortConfig({ key: 'size', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
-                                    <div className="flex items-center gap-1">
-                                        Size {sortConfig.key === 'size' && (sortConfig.direction === 'asc' ? <SortAsc size={12} /> : <SortDesc size={12} />)}
-                                    </div>
-                                </th>
-                                <th className="px-4 py-3 border-b border-border w-48 cursor-pointer hover:text-foreground transition-colors" onClick={() => setSortConfig({ key: 'modified', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
-                                    <div className="flex items-center gap-1">
-                                        Modified {sortConfig.key === 'modified' && (sortConfig.direction === 'asc' ? <SortAsc size={12} /> : <SortDesc size={12} />)}
-                                    </div>
-                                </th>
-                                <th className="px-4 py-3 border-b border-border w-16"></th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/50">
-                            {(currentPath.length > 0 || searchResults) && (
-                                <tr 
-                                    className="hover:bg-muted/40 transition-colors cursor-pointer group"
-                                    onClick={handleUp}
-                                >
-                                    <td className="px-4 py-3 text-center border-l-2 border-transparent">
-                                        <div className="w-4 h-4 rounded-full border border-muted-foreground/20 flex items-center justify-center group-hover:border-primary/40 transition-colors">
-                                            <CornerUpLeft size={10} className="text-muted-foreground/40 group-hover:text-primary transition-colors" />
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground/60 group-hover:text-primary transition-colors" colSpan={4}>.. (Back{searchResults ? ' to Folder' : ''})</td>
-                                </tr>
-                            )}
-                            
-                            {!canRead ? (
-                                <tr>
-                                    <td colSpan={5} className="py-20 text-center">
-                                        <AccessDenied 
-                                            title="File Access Restricted"
-                                            description="You do not have permission to view files on this server. Please contact your administrator for access."
-                                            showBackButton={false}
-                                        />
-                                    </td>
-                                </tr>
-                            ) : currentFiles.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="py-20 text-center text-muted-foreground">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <Folder className="h-10 w-10 opacity-20" />
-                                            <p>This folder is empty</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
+            <div className="flex-1 flex gap-4 overflow-hidden relative">
+                {/* Left Sidebar: File Tree */}
+                <div className="w-64 md:w-72 border border-border flex flex-col overflow-hidden bg-card rounded-md shadow-sm">
+                     <div className="p-3 border-b border-border bg-muted/20 font-semibold text-xs text-muted-foreground tracking-wider uppercase flex items-center justify-between">
+                         <span className="flex items-center gap-2"><Folder size={14} className="text-primary"/> Explorer</span>
+                     </div>
+                     <div className="flex-1 overflow-y-auto w-full p-1 space-y-0.5 custom-scrollbar">
+                          {treeCache['']?.length === 0 && (
+                                <div className="py-8 text-center text-muted-foreground/50 text-xs">Root is empty</div>
+                          )}
 
-                            {currentFiles.map((file) => {
-                                const isSelected = selectedIds.has(file.id);
-                                return (
-                                    <tr 
-                                        key={file.id} 
-                                        className={`group transition-all ${isSelected ? 'bg-primary/5 border-l-2 border-primary' : 'hover:bg-muted/30 border-l-2 border-transparent'}`}
-                                        onClick={(e) => {
-                                            if (e.metaKey || e.ctrlKey) {
-                                                handleSelect(file.id, true);
-                                            }
-                                        }}
-                                    >
-                                        <td className="px-4 py-3 text-center" onClick={(e) => { e.stopPropagation(); handleSelect(file.id, true); }}>
-                                            <input 
-                                                type="checkbox" 
-                                                checked={isSelected}
-                                                onChange={() => handleSelect(file.id, true)}
-                                                className="rounded-sm border-border bg-secondary text-primary focus:ring-primary/50"
-                                            />
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div 
-                                                className="flex items-center gap-3 cursor-pointer" 
-                                                onClick={async (e) => {
-                                                    e.stopPropagation();
-                                                    if (file.isDirectory) {
-                                                        handleNavigate(file.name);
-                                                    } else {
-                                                        try {
-                                                            const content = await API.getFileContent(serverId, file.path);
-                                                            setEditorFile({ node: file, content, originalContent: content });
-                                                            updateActiveView(serverId, `files:${file.name}`);
-                                                        } catch (e) {
-                                                            addToast('error', 'Read Error', 'Could not read file content.');
-                                                        }
-                                                    }
-                                                }}
-                                            >
-                                                {getFileIcon(file.type)}
-                                                  <span className={`font-medium transition-colors ${file.type === 'folder' ? 'text-foreground group-hover:text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
-                                                    {file.name}
-                                                </span>
-                                                {file.snippet && (
-                                                    <span className="text-[10px] text-muted-foreground/60 italic truncate max-w-xs ml-2">
-                                                        {file.snippet}
-                                                    </span>
-                                                )}
-                                                {/* Smart Collab: LIVE Badge */}
-                                                {!file.isDirectory && presence[serverId]?.some(p => p.activeView === `files:${file.name}` && p.userId !== user?.id) && (
-                                                    <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-[9px] font-bold text-emerald-500 animate-pulse border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
-                                                        <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                                                        LIVE
-                                                    </span>
-                                                )}
-                                                {extractingItemIds.has(file.path) && (
-                                                    <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-sm bg-blue-500/10 text-[9px] font-bold text-blue-500 animate-pulse border border-blue-500/20">
-                                                        <Loader2 size={10} className="animate-spin" />
-                                                        EXTRACTING
-                                                    </span>
-                                                )}
-                                                {file.isProtected && (
-                                                    <span title="System File" className="ml-2 flex items-center">
-                                                        <Shield size={12} className="text-emerald-500" />
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{file.size}</td>
-                                        <td className="px-4 py-3 text-muted-foreground text-xs">{file.modified}</td>
-                                        <td className="px-4 py-3 text-right">
-                                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDownload(file.path, file.name);
-                                                    }}
-                                                    className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Download"
-                                                >
-                                                    <Download size={14} />
-                                                </button>
-                                                {file.name.endsWith('.zip') && canManage && (
-                                                    <button 
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            const filePath = currentPath.length > 0 
-                                                                ? [...currentPath, file.name].join('/') 
-                                                                : file.name;
-                                                            handleExtract(filePath, file.name);
-                                                        }}
-                                                        className="p-1.5 rounded hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 transition-colors" 
-                                                        title="Extract ZIP"
-                                                    >
-                                                        <Archive size={14} />
-                                                    </button>
-                                                )}
-                                                {canManage && (
-                                                    <button 
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleDelete(new Set([file.id]));
-                                                        }}
-                                                        disabled={file.isProtected || deletingItemIds.has(file.id)}
-                                                        className={`p-1.5 rounded transition-colors ${file.isProtected ? 'text-muted-foreground/30 cursor-not-allowed' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'}`} title="Delete"
-                                                    >
-                                                        {deletingItemIds.has(file.id) ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                          {treeCache['']?.map((rootNode) => (
+                              <FileTreeNode 
+                                  key={rootNode.id}
+                                  node={rootNode}
+                                  level={0}
+                                  treeCache={treeCache}
+                                  expandedFolders={expandedFolders}
+                                  onToggle={handleTreeToggle}
+                                  onSelect={handleTreeSelect}
+                                  currentPath={currentPath}
+                                  editorFile={editorFile}
+                                  presence={presence}
+                                  serverId={serverId}
+                                  userId={user?.id}
+                              />
+                          ))}
+                     </div>
                 </div>
 
-                {/* Drag Overlay */}
-                {isDragging && (
-                    <div className="absolute inset-0 bg-background z-50 flex flex-col items-center justify-center border-2 border-dashed border-primary m-4 rounded-md animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
-                        <UploadCloud size={64} className="text-primary animate-bounce" />
-                        <h3 className="text-xl font-bold mt-4">Drop files to upload</h3>
-                        <p className="text-muted-foreground">Files will be added to /{currentPath.join('/')}</p>
-                    </div>
-                )}
+                {/* Right Pane: Editor OR Table View */}
+                <div className="flex-1 border border-border overflow-hidden relative flex flex-col bg-card rounded-md shadow-sm">
+                    {editorFile ? (
+                        <div className="flex flex-col h-full bg-[#0d0d0d] font-mono text-sm leading-6">
+                            <div className="flex items-center justify-between p-3 border-b border-border/40 bg-[#09090b]">
+                                <div className="flex items-center gap-3">
+                                    <FileCode size={18} className="text-emerald-400" />
+                                    <div>
+                                        <span className="font-mono font-medium text-foreground block text-sm">{editorFile.node.name}</span>
+                                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">/{currentPath.join('/')}/{editorFile.node.name}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {canManage && (
+                                        <button 
+                                            onClick={handleSaveFile}
+                                            className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-bold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/10"
+                                        >
+                                            <Save size={14} /> Save
+                                        </button>
+                                    )}
+                                    <button 
+                                        onClick={async () => {
+                                            if (editorFile && editorFile.content !== editorFile.originalContent) {
+                                                const discard = await requestConfirm({
+                                                    title: 'Unsaved Changes',
+                                                    description: `You have unsaved changes in ${editorFile.node.name}. Discard them?`,
+                                                    confirmText: 'Discard Changes',
+                                                    cancelText: 'Keep Editing'
+                                                });
+                                                if (!discard) return;
+                                            }
+                                            setEditorFile(null); 
+                                            updateActiveView(serverId, 'files');
+                                        }}
+                                        className="p-1.5 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-md transition-colors"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-hidden relative bg-[#09090b] fm-codemirror-wrapper">
+                                <CodeMirror
+                                    value={editorFile.content}
+                                    height="100%"
+                                    theme="dark"
+                                    className="absolute inset-0 w-full h-full text-sm font-mono"
+                                    extensions={
+                                        editorFile.node.name.toLowerCase().endsWith('.json') ? [json()] :
+                                        (editorFile.node.name.toLowerCase().endsWith('.yml') || editorFile.node.name.toLowerCase().endsWith('.yaml')) ? [yaml()] :
+                                        editorFile.node.name.toLowerCase().endsWith('.properties') ? [StreamLanguage.define(properties)] :
+                                        []
+                                    }
+                                    onChange={(val) => setEditorFile({ ...editorFile, content: val })}
+                                    spellCheck={false}
+                                    onKeyDown={(e) => {
+                                        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                                            e.preventDefault();
+                                            handleSaveFile();
+                                        }
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="overflow-auto flex-1">
+                                <table className="w-full text-sm text-left border-collapse">
+                                    <thead className="bg-muted text-xs uppercase text-muted-foreground font-semibold sticky top-0 z-10 border-b border-border">
+                                        <tr>
+                                            <th className="px-4 py-3 w-10 border-b border-border">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={currentFiles.length > 0 && selectedIds.size === currentFiles.length}
+                                                    onChange={handleSelectAll}
+                                                    className="rounded border-border bg-secondary text-primary focus:ring-primary/50"
+                                                />
+                                            </th>
+                                            <th className="px-4 py-3 border-b border-border cursor-pointer hover:text-foreground transition-colors group" onClick={() => setSortConfig({ key: 'name', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">
+                                                    Name {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <SortAsc size={12} /> : <SortDesc size={12} />)}
+                                                </div>
+                                            </th>
+                                            <th className="px-4 py-3 border-b border-border w-32 cursor-pointer hover:text-foreground transition-colors" onClick={() => setSortConfig({ key: 'size', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">
+                                                    Size {sortConfig.key === 'size' && (sortConfig.direction === 'asc' ? <SortAsc size={12} /> : <SortDesc size={12} />)}
+                                                </div>
+                                            </th>
+                                            <th className="px-4 py-3 border-b border-border w-48 cursor-pointer hover:text-foreground transition-colors" onClick={() => setSortConfig({ key: 'modified', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">
+                                                    Modified {sortConfig.key === 'modified' && (sortConfig.direction === 'asc' ? <SortAsc size={12} /> : <SortDesc size={12} />)}
+                                                </div>
+                                            </th>
+                                            <th className="px-4 py-3 border-b border-border w-16"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/50">
+                                        {(currentPath.length > 0 || searchResults) && (
+                                            <tr 
+                                                className="hover:bg-muted/40 transition-colors cursor-pointer group"
+                                                onClick={handleUp}
+                                            >
+                                                <td className="px-4 py-3 text-center border-l-2 border-transparent">
+                                                    <div className="w-4 h-4 rounded-full border border-muted-foreground/20 flex items-center justify-center group-hover:border-primary/40 transition-colors">
+                                                        <CornerUpLeft size={10} className="text-muted-foreground/40 group-hover:text-primary transition-colors" />
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 font-mono text-xs text-muted-foreground/60 group-hover:text-primary transition-colors" colSpan={4}>.. (Back{searchResults ? ' to Folder' : ''})</td>
+                                            </tr>
+                                        )}
+                                        
+                                        {!canRead ? (
+                                            <tr>
+                                                <td colSpan={5} className="py-20 text-center">
+                                                    <AccessDenied 
+                                                        title="File Access Restricted"
+                                                        description="You do not have permission to view files on this server. Please contact your administrator for access."
+                                                        showBackButton={false}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ) : currentFiles.length === 0 && (
+                                            <tr>
+                                                <td colSpan={5} className="py-20 text-center text-muted-foreground">
+                                                    <div className="flex flex-col items-center gap-2">
+                                                        <Folder className="h-10 w-10 opacity-20" />
+                                                        <p>This folder is empty</p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+
+                                        {currentFiles.map((file) => {
+                                            const isSelected = selectedIds.has(file.id);
+                                            return (
+                                                <tr 
+                                                    key={file.id} 
+                                                    className={`group transition-all ${isSelected ? 'bg-primary/5 border-l-2 border-primary' : 'hover:bg-muted/30 border-l-2 border-transparent'}`}
+                                                    onClick={(e) => {
+                                                        if (e.metaKey || e.ctrlKey) {
+                                                            handleSelect(file.id, true);
+                                                        }
+                                                    }}
+                                                >
+                                                    <td className="px-4 py-3 text-center" onClick={(e) => { e.stopPropagation(); handleSelect(file.id, true); }}>
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={isSelected}
+                                                            onChange={() => handleSelect(file.id, true)}
+                                                            className="rounded-sm border-border bg-secondary text-primary focus:ring-primary/50"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div 
+                                                            className="flex items-center gap-3 cursor-pointer" 
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                if (file.isDirectory) {
+                                                                    handleNavigate(file.name);
+                                                                } else {
+                                                                    try {
+                                                                        const content = await API.getFileContent(serverId, file.path);
+                                                                        setEditorFile({ node: file, content, originalContent: content });
+                                                                        updateActiveView(serverId, `files:${file.name}`);
+                                                                    } catch (e) {
+                                                                        addToast('error', 'Read Error', 'Could not read file content.');
+                                                                    }
+                                                                }
+                                                            }}
+                                                        >
+                                                            {getFileIcon(file.type)}
+                                                            {renamingFile?.id === file.id ? (
+                                                                <input
+                                                                    autoFocus
+                                                                    type="text"
+                                                                    defaultValue={renamingFile.name}
+                                                                    className="bg-secondary border border-primary/40 rounded-md px-2 py-0.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary min-w-[200px]"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    onKeyDown={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (e.key === 'Enter') handleRename(renamingFile, (e.target as HTMLInputElement).value);
+                                                                        if (e.key === 'Escape') setRenamingFile(null);
+                                                                    }}
+                                                                    onBlur={(e) => handleRename(renamingFile, e.target.value)}
+                                                                />
+                                                            ) : (
+                                                                <span className={`font-medium transition-colors ${file.type === 'folder' ? 'text-foreground group-hover:text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                                                                    {file.name}
+                                                                </span>
+                                                            )}
+                                                            {file.snippet && (
+                                                                <span className="text-[10px] text-muted-foreground/60 italic truncate max-w-xs ml-2">
+                                                                    {file.snippet}
+                                                                </span>
+                                                            )}
+                                                            {!file.isDirectory && presence[serverId]?.some(p => p.activeView === `files:${file.name}` && p.userId !== user?.id) && (
+                                                                <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-[9px] font-bold text-emerald-500 animate-pulse border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
+                                                                    <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                                                                    LIVE
+                                                                </span>
+                                                            )}
+                                                            {extractingItemIds.has(file.path) && (
+                                                                <span className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-sm bg-blue-500/10 text-[9px] font-bold text-blue-500 animate-pulse border border-blue-500/20">
+                                                                    <Loader2 size={10} className="animate-spin" />
+                                                                    EXTRACTING
+                                                                </span>
+                                                            )}
+                                                            {file.isProtected && (
+                                                                <span title="System File" className="ml-2 flex items-center">
+                                                                    <Shield size={12} className="text-emerald-500" />
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{file.size}</td>
+                                                    <td className="px-4 py-3 text-muted-foreground text-xs">{file.modified}</td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDownload(file.path, file.name);
+                                                            }}
+                                                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Download"
+                                                        >
+                                                            <Download size={14} />
+                                                        </button>
+                                                            {canManage && !file.isProtected && (
+                                                                <button 
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setRenamingFile({ id: file.id, name: file.name, path: file.path });
+                                                                    }}
+                                                                    className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Rename"
+                                                                >
+                                                                    <Pencil size={14} />
+                                                                </button>
+                                                            )}
+                                                            {file.name.endsWith('.zip') && canManage && (
+                                                                <button 
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const filePath = currentPath.length > 0 
+                                                                            ? [...currentPath, file.name].join('/') 
+                                                                            : file.name;
+                                                                        handleExtract(filePath, file.name);
+                                                                    }}
+                                                                    className="p-1.5 rounded-md hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 transition-colors" 
+                                                                    title="Extract ZIP"
+                                                                >
+                                                                    <Archive size={14} />
+                                                                </button>
+                                                            )}
+                                                            {canManage && (
+                                                                <button 
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDelete(new Set([file.id]));
+                                                                    }}
+                                                                    disabled={file.isProtected || deletingItemIds.has(file.id)}
+                                                                    className={`p-1.5 rounded-md transition-colors ${file.isProtected ? 'text-muted-foreground/30 cursor-not-allowed' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'}`} title="Delete"
+                                                                >
+                                                                    {deletingItemIds.has(file.id) ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {/* Drag Overlay */}
+                            {isDragging && (
+                                <div className="absolute inset-0 bg-background z-50 flex flex-col items-center justify-center border-2 border-dashed border-primary m-4 rounded-md animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
+                                    <UploadCloud size={64} className="text-primary animate-pulse" />
+                                    <h3 className="text-xl font-bold mt-4">Drop files to upload</h3>
+                                    <p className="text-muted-foreground">Files will be added to /{currentPath.join('/')}</p>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Bottom Actions Bar (Selection) */}
             {selectedIds.size > 0 && (
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-md shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-10 fade-in duration-300 z-40">
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-foreground text-background px-6 py-3 rounded-md shadow-lg flex items-center gap-6 animate-in slide-in-from-bottom-10 fade-in duration-300 z-40">
                     <span className="font-bold text-sm">{selectedIds.size} selected</span>
                     <div className="h-4 w-[1px] bg-background/20"></div>
                     <div className="flex gap-2">
@@ -710,7 +988,6 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                     const file = currentFiles.find(f => f.id === id);
                                     if (file && !file.isDirectory) {
                                         await API.downloadFile(serverId, file.path);
-                                        // Slight delay to prevent browser throttling
                                         await new Promise(r => setTimeout(r, 300));
                                     }
                                 }
@@ -736,73 +1013,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                 </div>
             )}
 
-            {/* Editor Modal */}
-            {editorFile && (
-                <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
-                    <div className="bg-[#0d0d0d] border border-border shadow-lg rounded-md w-full max-w-6xl h-[90vh] flex flex-col animate-in zoom-in-95 duration-200 ring-1 ring-border/50">
-                        <div className="flex items-center justify-between p-4 border-b border-border bg-[#09090b]">
-                            <div className="flex items-center gap-3">
-                                <FileCode size={20} className="text-emerald-400" />
-                                <div>
-                                    <span className="font-mono font-medium text-foreground block">{editorFile.node.name}</span>
-                                    <span className="text-xs text-muted-foreground flex items-center gap-1">/{currentPath.join('/')}/{editorFile.node.name}</span>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {canManage && (
-                                    <button 
-                                        onClick={handleSaveFile}
-                                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors shadow-lg shadow-primary/10"
-                                    >
-                                        <Save size={16} /> Save Content
-                                    </button>
-                                )}
-                                <button 
-                                    onClick={async () => {
-                                        if (editorFile && editorFile.content !== editorFile.originalContent) {
-                                            const discard = await requestConfirm({
-                                                title: 'Unsaved Changes',
-                                                description: `You have unsaved changes in ${editorFile.node.name}. Discard them?`,
-                                                confirmText: 'Discard Changes',
-                                                cancelText: 'Keep Editing'
-                                            });
-                                            if (!discard) return;
-                                        }
-                                        setEditorFile(null); updateActiveView(serverId, 'files');
-                                    }}
-                                    className="p-2 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-md transition-colors"
-                                >
-                                    <X size={20} />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="flex-1 flex overflow-hidden relative font-mono text-sm leading-6">
-                            {/* Line Numbers */}
-                            <div className="bg-[#09090b] text-muted-foreground/30 text-right pr-4 pt-4 select-none w-12 border-r border-border/50 shrink-0">
-                                {editorFile.content.split('\n').map((_, i) => (
-                                    <div key={i}>{i + 1}</div>
-                                ))}
-                            </div>
-                            <textarea
-                                value={editorFile.content}
-                                onChange={(e) => setEditorFile({ ...editorFile, content: e.target.value, originalContent: editorFile.originalContent })}
-                                className="flex-1 w-full bg-transparent text-zinc-300 p-4 focus:outline-none resize-none whitespace-pre"
-                                spellCheck={false}
-                                onKeyDown={(e) => {
-                                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                                        e.preventDefault();
-                                        handleSaveFile();
-                                    }
-                                }}
-                            />
-                        </div>
-                        <div className="p-2 bg-[#09090b] border-t border-border flex justify-between text-xs text-muted-foreground px-4">
-                             <span>UTF-8</span>
-                             <span>{editorFile.content.length} characters</span>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Editor is now inline in the right pane, not a modal */}
 
             {/* Upload Progress Toast */}
             {uploadProgress.visible && (

@@ -178,10 +178,10 @@ In the **Settings** tab, ensure **"Enable Aikar's Flags"** is checked. These are
         content: `
 # Discord Bot: Full Integration Guide
 
-Enable high-fidelity control of your infrastructure directly from your Discord server. Follow these steps to establish a professional persistent connection.
+Enable control of your server directly from your Discord server. Follow these steps to set up the connection.
 
 ## Step 1: Create a Discord Application
-To begin the handshake, you need an application profile on the Discord network.
+To begin, you need an application profile on the Discord Developer Portal.
 1.  Access the [Discord Developer Portal](https://discord.com/developers/applications).
 2.  Select **"New Application"** and define a name (e.g., "CraftCommand Bot").
 3.  On the left navigation sidebar, select the **"Bot"** section.
@@ -198,9 +198,9 @@ Copy the unique identifiers needed for CraftCommand to impersonate your bot.
 1.  **Bot Token:** In the **Bot** tab, click **"Reset Token"** (or "Copy") to generate your access key. **Keep this secret!**
 2.  **Client ID:** Navigate to the **"OAuth2"** tab and copy the unique **"Client ID"**.
 
-## Step 4: The Handshake (Making the Bot Online)
+## Step 4: Connecting the Bot
 Many users ask: *Do I need to keep the Discord app open?* 
-*   **The Answer:** No. The bot goes online when **CraftCommand** establishes a bridge to Discord using your secret token.
+*   **The Answer:** No. The bot goes online when **CraftCommand** connects to Discord using your token.
 *   **Action:** Open the **Integrations** tab in your Craft Commands dashboard. 
 *   **Paste:** Enter your **Token** and **Client ID** into the Bot Authentication card.
 *   **Update:** Click **"Update Bot Instance"**. The Craft Commands backend will now handle the lifecycle and connection automatically.
@@ -218,57 +218,57 @@ Before commands appear in your server, you must register them with the Discord A
 2.  Click the **"Sync Cmds"** button. 
 3.  **Global vs. Guild:** If you don't provide a **Guild ID**, command propagation is "Global" and can take up to an hour to appear. Providing your Server ID as the **Guild ID** triggers instant synchronization.
 
-## Step 7: Zero-Duplicate Architecture
-To prevent spam, CraftCommand uses a "Managed Listener" pattern:
-*   **Lifecycle Awareness:** Every time the bot reconnects, it purges all old event listeners. This ensures you never receive two "Server Started" messages for the same event.
+## Step 7: Reliability & Performance
+To prevent spam, CraftCommand uses efficient message handling:
+*   **Connection Stability:** Every time the bot reconnects, it refreshes its listeners. This ensures you never receive duplicate "Server Started" messages.
 *   **Debounced Player Events:** During mass joins (e.g., after a restart), the bot debounces notifications for 5 seconds to keep your channel clean.
-*   **Smart Triggers:** The bot is internally wired to the **Auto-Healing Service**, notifying you instantly if a recovery protocol is initiated.
+*   **Smart Triggers:** The bot is internally wired to the **Automatic Repair Service**, notifying you instantly if a recovery effort is started.
 
 ## FAQ
 *   **Q: Does it cost money?** No, creating and hosting a Discord bot via Craft Commands is completely free.
 *   **Q: Why doesn't it reply?** Ensure "Message Content Intent" is enabled in the portal and you have clicked **"Sync Cmds"**.
 `
     },
-    autohealing: {
-        title: "Auto-Healing & Recovery",
+    automaticRepair: {
+        title: "Automatic Repair",
         icon: <Zap size={18} />,
-        description: "How the autonomous stabilization engine works.",
+        description: "How the automatic repair engine works.",
         content: `
-# Auto-Healing: The Intelligence Engine
+# Automatic Repair: Keeping Servers Online
 
-CraftCommand features a proactive stabilization layer designed to handle crashes, hangs, and "zombie" processes without manual intervention.
+CraftCommand features a recovery layer designed to handle crashes, hangs, and "zombie" processes automatically.
 
-## 1. Pattern Recognition (Logs)
-The engine constantly monitors the STDOUT of your Minecraft servers. It looks for specific failure patterns:
+## 1. Monitoring Logs
+The system constantly monitors the terminal output of your Minecraft servers. It looks for specific failure patterns:
 *   **Out of Memory (OOM):** "java.lang.OutOfMemoryError"
 *   **Port Binding Issues:** "FAILED TO BIND TO PORT"
 *   **EULA Violations:** "Stopping server (Accept EULA)"
 *   **Corrupt JARs:** "Error: Unable to access jarfile"
 
-## 2. Advanced Health Checks (Socket Tests)
-Beyond just checking if the process is "running," the system performs **Deep Health Checks**:
+## 2. Health Checks (Socket Tests)
+Beyond just checking if the process is "running," the system performs **detailed health checks**:
 *   Every 60 seconds (configurable), the system attempts a low-level socket handshake with the server's port.
 *   If the process is running but the socket times out, the system marks the instance as **HUNG**.
 
-## 3. Automated Recovery Protocol
+## 3. Automated Recovery Process
 When a failure or "Hung" state is confirmed, the system triggers the following sequence:
 1.  **Diagnosis:** The system analyzes the last 1000 lines of logs to identify the "Rule ID" that triggered the failure.
 2.  **Stabilization:** If a known fix exists (e.g., auto-accepting EULA or clearing a ghost port), it is applied automatically.
 3.  **Restart:** The process is force-stopped and re-initialized using the original startup flags.
-4.  **Notification:** If integrated, a "Recovery Protocol Active" alert is sent to your Discord.
+4.  **Notification:** If enabled, a "Recovery Started" alert is sent to your Discord.
 
 ## 4. Loop Prevention
 To prevent "Restart Loops" (e.g., if a server is crashing due to a fatal bug in a mod), the system allows only **3 attempts per 10 minutes**. If stability is not reached, it halts and flags the server for manual intervention.
 `
     },
     backups: {
-        title: "Atomic Backups",
+        title: "Reliable Backups",
         icon: <Package size={18} />,
-        description: "Safe-mode snapshots and restoration architecture.",
+        description: "Failsafe snapshots and restoration.",
         content: `
-# Atomic Backups: Data Integrity First
+# Reliable Backups: Data Safety First
 
-The backup system in CraftCommand is designed for safety. We use an "Atomic" approach to ensure that a failed backup or restore never corrupts your server files.
+The backup system in CraftCommand is designed for safety. We use a failsafe approach to ensure that a failed backup or restore never corrupts your server files.
 
 ## 1. Safety Snapshots
 When you click **"Create Backup"**, the system:
@@ -276,8 +276,8 @@ When you click **"Create Backup"**, the system:
 *   Archives the server directory into a professional ZIP format.
 *   **Smart Inclusion:** Automatically skips unnecessary temporary files like \`session.lock\`, \`.lck\` files, and the \`logs/latest.log\` to save space.
 
-## 2. Atomic Restoration (The "Swap" Pattern)
-Restoring a backup is the most dangerous operation. CraftCommand handles it using a failsafe pattern:
+## 2. Failsafe Restoration
+Restoring a backup is the most critical operation. CraftCommand handles it using a reliable pattern:
 1.  **Preparation:** A temporary folder is created.
 2.  **Safety Buffer:** Your *current* live files are moved into this temporary buffer instead of being deleted.
 3.  **Extraction:** The backup is extracted into the now-empty server directory.
@@ -291,18 +291,18 @@ Save storage space by backing up only the terrain data.
 *   It also automatically grabs \`world_nether\` and \`world_the_end\` for Vanilla/Paper servers.
 *   This mode typically reduces backup size by **70-90%** if you have many mods.
 
-## 4. Manifest Tracking
-All backups are indexed in a \`manifest.json\`. If you move files manually via SFTP, the system "Discovers" them automatically on the next scan, recovering metadata like creation dates and file sizes.
+## 4. Automatic Discovery
+All backups are indexed automatically. If you move files manually via SFTP, the system detects them on the next scan, updating metadata like creation dates and file sizes.
 `
     },
     networking: {
-        title: "Network & Port Integrity",
+        title: "Network & Port Management",
         icon: <Cpu size={18} />,
-        description: "Ensuring port availability and internal routing.",
+        description: "Managing port availability and routing.",
         content: `
-# Networking & Port Integrity
+# Networking & Port Management
 
-Managing multiple Minecraft servers requires strict control over networking handles. CraftCommand includes a built-in **Port Protection Engine**.
+Managing multiple Minecraft servers requires control over ports. CraftCommand includes a built-in **Port Management Engine**.
 
 ## 1. Ghost Process Purging
 One of the most common server errors is \`FAILED TO BIND TO PORT\`. This happens when a previous instance didn't close properly and is still "holding" the port.
@@ -313,8 +313,8 @@ One of the most common server errors is \`FAILED TO BIND TO PORT\`. This happens
 *   The system tracks the port allocation for every server in your infrastructure.
 *   If you attempt to start two servers on port \`25565\`, the system will intercept the command and warn you before the process even attempts to boot.
 
-## 3. External Sync Loop
-Every 15 seconds, a "Sync Loop" runs to detect "Unmanaged" processes. 
+## 3. Background Sync
+Every 15 seconds, a sync loop runs to detect "unmanaged" processes. 
 *   If you start a server manually via a command line outside of CraftCommand, the panel will detect the port is bound and show a special **UNMANAGED** status on the dashboard.
 *   This allows you to see what's happening on your machine even if it wasn't started through the web interface.
 
@@ -324,13 +324,13 @@ Every 15 seconds, a "Sync Loop" runs to detect "Unmanaged" processes.
 `
     },
     schedules: {
-        title: "Scheduling Engine",
+        title: "Automation",
         icon: <Bot size={18} />,
-        description: "How automated tasks and Cron work.",
+        description: "Set up automated tasks and restarts.",
         content: `
-# Scheduling Engine (Automation)
+# Automation (Schedules)
 
-Automation is the heart of professional server management. Our engine uses a robust **Node-Cron** implementation to handle tasks with precision.
+Automation is key to professional server management. Our system uses a robust implementation to handle tasks with precision.
 
 ## 1. Precision Timing (Cron Syntax)
 We use standard Linux Cron syntax for maximum flexibility. 
@@ -354,16 +354,16 @@ You can create "Master Schedules" that target multiple servers at once, ensuring
 `
     },
     importing: {
-        title: "Smart Import System",
+        title: "Server Importer",
         icon: <Rocket size={18} />,
-        description: "How we analyze and normalize your existing servers.",
+        description: "Easily import your existing servers.",
         content: `
-# Smart Import System
+# Server Importer
 
 Bringing an existing server into CraftCommand is designed to be a "Zero-Config" experience. Our **ImportService** performs a deep heuristic analysis of your files.
 
-## 1. Fast ZIP Analysis (Handshake)
-When you upload a ZIP, we don't just dump the files.
+## 1. Quick ZIP Analysis
+When you upload a ZIP, we analyze the structure.
 *   **Archiver Stream:** We use \`adm-zip\` to peek inside the archive before extraction.
 *   **Nested Detection:** If your ZIP contains a folder which *itself* contains the server (e.g., \`my-server/server.jar\`), the system detects this "Improper Nesting" and automatically flattens it for you.
 
@@ -380,13 +380,13 @@ The service scans your files to determine your configuration:
 `
     },
     security: {
-        title: "Security & Audit",
+        title: "Logs & Audit",
         icon: <Info size={18} />,
-        description: "Infrastructure accountability and audit trails.",
+        description: "Detailed logs of all system events.",
         content: `
-# Security & Audit Architecture
+# Event Logging & Audits
 
-CraftCommand is built for accountability. Every action taken on the dashboard is tracked and verifiable.
+CraftCommand is built for transparency. Every action taken on the dashboard is logged and verifiable.
 
 ## 1. The Audit Trail
 The **AuditService** records a persistent log of every management event:
@@ -407,7 +407,7 @@ For maximum security, we recommend the **Docker Execution Engine**:
 ## 4. Multi-User Hierarchy
 *   **Administrator:** Full access to global settings and all server instances.
 *   **Operator:** Access to specific server consoles and file management.
-*   **Viewer:** Read-only access to status and telemetry.
+*   **Viewer:** View-only access to status.
 `
     },
     java: {
@@ -415,17 +415,17 @@ For maximum security, we recommend the **Docker Execution Engine**:
         icon: <Package size={18} />,
         description: "How we manage Runtimes and Versions.",
         content: `
-# Java Management & Runtimes
+# Java Version Management
 
-Minecraft's evolution requires different Java versions. CraftCommand takes the headache out of managing these dependencies through automated lifecycle management.
+Minecraft needs different Java versions to run. CraftCommand manages these dependencies automatically.
 
-## 1. Automated Runtimes (Portable Java)
-If you don't have the correct Java version installed globally, the **JavaManager** takes over:
+## 1. Automated Java Installation
+If you don't have the correct Java version, the system can handle it:
 *   **Adoptium Handshake:** We interface with the Adoptium Temurin API to fetch official, high-performance OpenJDK builds.
 *   **Portable Isolation:** Java is downloaded and extracted into the \`runtimes/\` directory. This means you can run Minecraft 1.8 (Java 8) and Minecraft 1.21 (Java 21) on the same machine without any global environment conflicts.
 
-## 2. Smart Version Mapping
-Selecting the wrong Java version causes a \`UnsupportedClassVersionError\`. CraftCommand includes a built-in mapping engine:
+## 2. Version Mapping
+Selecting the wrong Java version causes errors. CraftCommand handles the mapping:
 *   **Legacy (1.8 - 1.12):** Automatically maps to **Java 8**.
 *   **Transition (1.16):** Maps to **Java 11**.
 *   **Modern (1.17 - 1.20.4):** Maps to **Java 17**.
@@ -497,7 +497,7 @@ const Architect: React.FC = () => {
                             </div>
                         </div>
                         <p className="text-[11px] text-muted-foreground leading-relaxed font-medium">
-                            High-performance instances require <strong>NVMe storage</strong> and <strong>Aikar's Flags</strong> for optimal Garbage Collection cycles. 
+                            High-performance servers benefit from <strong>NVMe storage</strong> and <strong>Aikar's Flags</strong> for better performance. 
                         </p>
                         <div className="mt-4 pt-4 border-t border-border/50">
                             <div className="flex items-center justify-between">

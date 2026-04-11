@@ -1,35 +1,32 @@
-# Dynamic DNS (DDNS) Configuration
+# Dynamic DNS (DDNS) Synchronization
 
-Assigning a custom hostname to your Minecraft server provides a professional experience for your players and ensures your server remains reachable even if your residential Public IP changes.
+Synchronizes local public IP address changes with supported external DNS providers.
 
-## Features of the CraftCommand Networking Core
+## 1. Technical Architecture
 
-- **Provider Agility**: Direct support for DuckDNS, No-IP, Dynu, and manual HTTP-based updaters.
-- **Protocol Health Monitoring**: The panel performs silent background DNS lookups to verify that your domain matches your current public IP.
-- **Propagation Tracking**: Visual indicators show if your DNS changes are "Pending", "Propagating", or "Active" across global resolvers.
-- **Persistent Sync (v1.11+)**: If an update fails due to provider downtime, CraftCommand will periodically retry the sync until the record is successfully updated.
-- **Per-Server Isolation**: Assign unique subdomains to different server instances even if they run on the same machine.
+`NetworkService.ts` manages the detection and synchronization lifecycle:
 
-## Implementation Guide
+- **Public IP Detection**: Polls external sources (`api.ipify.org`, `icanhazip.com`, `ifconfig.me/ip`) to detect WAN IP drift.
+- **Synchronization Interval**: Configurable via `app.network.updateInterval` (default: 60 minutes).
+- **A-Record Verification**: Uses `dns.resolve4` to compare the FQDN against the current WAN IP, bypassing OS-level caches for accurate verification.
+- **Provider Support**: 
+  - **DuckDNS**: Automated updates via `www.duckdns.org/update?domains={domain}&token={token}&ip={ip}`.
+  - **Manual/Other**: Validated via resolution monitoring; updates must be handled by external clients.
 
-### 1. The Networking Wizard
+## 2. Operational Logic
 
-Most users should use the built-in wizard to avoid configuration errors:
+1. **Detection**: Every 60 minutes (or on startup), the service fetches the current public IP.
+2. **Comparison**: The system compares the result with the `lastKnown` IP in `data/network-state.json`.
+3. **Trigger**: If `currentIp !== lastKnown`, the system iterates through all servers with `updateEnabled: true`.
+4. **Execution**: Issues a GET request to the provider's API with the new IP address.
+5. **Confirmation**: Re-verifies resolution via `verifyDdns` after a 5s delay.
 
-1.  Connect to your server via the Dashboard.
-2.  Open **Settings** -> **Networking**.
-3.  Click **Domain Setup Wizard**.
-4.  Choose your provider and enter your token/credentials and desire prefix.
+## 3. Constraints
 
-### 2. Manual Configuration (Advanced)
-
-If you use a provider not listed in the wizard, you can manually enter your credentials in the Networking tab. Ensure you provide the full FQDN (e.g., `mc.myserver.com`).
-
-## Common Propagation Pitfalls
-
-- **TTL (Time to Live)**: Most free DDNS providers have a TTL of 60 seconds. However, local ISP DNS servers often cache records for much longer. If your IP changed but your hostname still points to the old IP, try changing your PC's DNS to `8.8.8.8` (Google) or `1.1.1.1` (Cloudflare).
-- **Double NAT**: If your hostname resolves to your router's public IP but you cannot connect, ensure the router is correctly forwarding traffic to the local IP of your server machine.
+- **Propagation Delay**: While free providers often use low TTL (60s), upstream ISP resolvers may cache records longer.
+- **State Persistence**: Network states are persisted atomically to `network-state.json.tmp` before being moved to the final path to prevent corruption.
+- **Inbound Access**: DDNS only handles name resolution; firewall ingress (port forwarding) must be configured on the local gateway.
 
 ---
 
-_Note: Assigning a DDNS hostname does not bypass port forwarding requirements. See [Remote Access Guide](REMOTE_ACCESS.md) for details._
+_For ingress security details, see [REMOTE_ACCESS.md](REMOTE_ACCESS.md)._

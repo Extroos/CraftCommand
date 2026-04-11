@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { notificationService } from './NotificationService';
 import { verifyToken } from '../../middleware/authMiddleware';
+import { logger } from '../../utils/logger';
 
 export const notificationRoutes = Router();
 
@@ -9,8 +10,8 @@ notificationRoutes.use(verifyToken);
 
 // Get all notifications for the current user
 notificationRoutes.get('/', (req, res) => {
-    const user = (req as any).user;
-    console.log(`[NotificationRoute] GET / called. req.user:`, user?.id || 'null/undefined');
+    const user = req.user;
+    logger.debug(`[NotificationRoute] GET / called. req.user: ${user?.id || 'null/undefined'}`);
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
     
     const limit = parseInt(req.query.limit as string) || 50;
@@ -22,7 +23,7 @@ notificationRoutes.get('/', (req, res) => {
 
 // Mark a single notification as read
 notificationRoutes.post('/:id/read', (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
     notificationService.markRead(req.params.id);
@@ -31,7 +32,7 @@ notificationRoutes.post('/:id/read', (req, res) => {
 
 // Mark all notifications as read
 notificationRoutes.post('/read-all', (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
     notificationService.markAllRead(user.id);
@@ -40,7 +41,7 @@ notificationRoutes.post('/read-all', (req, res) => {
 
 // Delete a notification
 notificationRoutes.delete('/:id', (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
     const success = notificationService.delete(req.params.id);
@@ -52,7 +53,7 @@ notificationRoutes.delete('/:id', (req, res) => {
 
 // DEV ONLY: Trigger a test notification
 notificationRoutes.post('/test', async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user;
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
     if (user.role !== 'OWNER' && user.role !== 'ADMIN') return res.status(403).json({ error: 'Forbidden' });
 

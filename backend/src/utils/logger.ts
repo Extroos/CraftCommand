@@ -101,3 +101,35 @@ class Logger {
 }
 
 export const logger = new Logger();
+
+/**
+ * Efficiently reads the last N lines of a file without loading the entire file into memory.
+ */
+export async function readLastLines(filePath: string, maxLines: number, encoding: BufferEncoding = 'utf8'): Promise<string[]> {
+    if (!await fs.pathExists(filePath)) return [];
+
+    const stat = await fs.stat(filePath);
+    const fileSize = stat.size;
+    
+    // If file is small (e.g. < 100KB), just read it all for simplicity
+    if (fileSize < 1024 * 100) {
+        const content = await fs.readFile(filePath, encoding);
+        const lines = content.split(/\r?\n/);
+        return lines.slice(-maxLines);
+    }
+
+    // For larger files, read the last 100KB chunk
+    const bufferSize = Math.min(1024 * 100, fileSize);
+    const buffer = Buffer.alloc(bufferSize);
+    const fd = await fs.open(filePath, 'r');
+    
+    try {
+        await fs.read(fd, buffer, 0, bufferSize, fileSize - bufferSize);
+        const content = buffer.toString(encoding);
+        const lines = content.split(/\r?\n/);
+        
+        return lines.slice(-maxLines);
+    } finally {
+        await fs.close(fd);
+    }
+}

@@ -197,7 +197,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
         setIsTesting(true);
         try {
             await API.testWebhook(webhookId);
-            addToast('success', 'Test Dispatched', 'Check your Discord channel for the payload.');
+            addToast('success', 'Test Sent', 'Check your Discord channel.');
         } catch (e: any) {
             addToast('error', 'Test Failed', e.message);
         } finally {
@@ -500,7 +500,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                             <div className="p-8 rounded-xl bg-black/5 border border-dashed border-border/40 flex flex-col items-center justify-center text-center">
                                 <Bot size={24} className="text-muted-foreground/20 mb-3" />
                                 <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
-                                    {botConfig.enabled ? 'Awaiting Handshake...' : 'System Instance Disabled'}
+                                    {botConfig.enabled ? 'Connecting...' : 'Bot Disabled'}
                                 </p>
                             </div>
                         )}
@@ -529,7 +529,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest flex justify-between">
                                 Security Token
-                                <span className="text-amber-500 lowercase font-bold opacity-70">Handshake Required</span>
+                                <span className="text-amber-500 lowercase font-bold opacity-70">Not Connected</span>
                             </label>
                             <div className="relative group/input">
                                 <input 
@@ -619,7 +619,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                         </div>
 
                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest block">Global Telemetry Channel</label>
+                            <label className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest block">Notification Channel</label>
                             <div className="relative flex items-center">
                                 <div className="absolute left-3 text-zinc-700 pointer-events-none">
                                     <Hash size={12} />
@@ -647,9 +647,9 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                     <div className="p-5 space-y-3">
                         {[
                             { cmd: '/list', desc: 'Queries all federated service instances.' },
-                            { cmd: '/start <id>', desc: 'Initiates remote boot sequence.' },
+                            { cmd: '/start <id>', desc: 'Starts the server.' },
                             { cmd: '/stop <id>', desc: 'Triggers controlled termination signal.' },
-                            { cmd: '/status <id>', desc: 'Streams real-time health telemetry.' },
+                            { cmd: '/status <id>', desc: 'Shows server status.' },
                         ].map(it => (
                             <div key={it.cmd} className="group transition-all p-2 rounded-lg hover:bg-black/10 border border-transparent hover:border-border/20">
                                 <div className="flex items-center justify-between mb-1">
@@ -662,7 +662,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ serverId }) => {
                     </div>
                 </div>
                     <div className="mt-6 pt-4 border-t border-border/20 flex items-center justify-between">
-                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Bot Capability Matrix</p>
+                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Bot Features</p>
                          <div className="flex gap-1.5">
                             <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                             <div className="w-1.5 h-1.5 rounded-full bg-primary/50" />

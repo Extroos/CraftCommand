@@ -256,7 +256,7 @@ const ImportServerModal: React.FC<ImportServerModalProps> = ({ onClose, onSucces
                                 </div>
                                 <div className="text-center">
                                     <h3 className="text-lg font-bold">Scanning Anatomy...</h3>
-                                    <p className="text-[11px] text-muted-foreground mt-2 font-mono uppercase tracking-[0.2em]">Inspecting Manifests & Binaries</p>
+                                    <p className="text-[11px] text-muted-foreground mt-2 font-mono uppercase tracking-[0.2em]">Scanning server files...</p>
                                 </div>
                                 <div className="w-full max-w-xs h-1 bg-secondary rounded-full overflow-hidden">
                                     <motion.div 
@@ -410,7 +410,7 @@ const ImportServerModal: React.FC<ImportServerModalProps> = ({ onClose, onSucces
                                     <div className="h-16 w-16 border-t-2 border-primary rounded-full animate-spin" />
                                 </div>
                                 <div className="text-center">
-                                    <h3 className="text-lg font-bold">Registering Protocol...</h3>
+                                    <h3 className="text-lg font-bold">Importing server...</h3>
                                     <p className="text-[10px] text-muted-foreground mt-2 font-mono uppercase tracking-[0.3em]">Writing configuration & zipping layers</p>
                                 </div>
                             </motion.div>

@@ -1,8 +1,9 @@
 
 import si from 'systeminformation';
 import fs from 'fs-extra';
+import { logger } from '../../utils/logger';
 
-export const getSystemStats = async () => {
+export const getSystemStats = async (targetPath?: string) => {
     try {
         const cpu = await si.currentLoad();
         const mem = await si.mem();
@@ -42,7 +43,7 @@ export const getSystemStats = async () => {
             }
         };
     } catch (e) {
-        console.error('Failed to get system stats', e);
+        logger.error(`Failed to get system stats: ${e}`);
         return null;
     }
 };

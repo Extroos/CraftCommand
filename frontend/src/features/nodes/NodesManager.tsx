@@ -227,7 +227,8 @@ const NodesManager: React.FC = () => {
 
     useEffect(() => {
         fetchNodes();
-        const interval = setInterval(fetchNodes, 15000);
+        // Shift heavy polling to WebSockets. Keep a 60s heartbeat just for sync fallback.
+        const interval = setInterval(fetchNodes, 60000);
         return () => clearInterval(interval);
     }, []); // Only mount
 
@@ -331,7 +332,7 @@ const NodesManager: React.FC = () => {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold text-white tracking-tight mb-1">Infrastructure</h2>
-                    <p className="text-white/40 text-sm">Manage distributed compute nodes and agents.</p>
+                    <p className="text-white/40 text-sm">Manage your remote nodes.</p>
                 </div>
                 <button
                     onClick={() => setShowWizard(true)}
@@ -393,7 +394,7 @@ const NodesManager: React.FC = () => {
                         </div>
                         <h3 className="text-white font-bold mb-2">No Remote Nodes</h3>
                         <p className="text-white/40 text-sm max-w-sm mx-auto mb-6">
-                            Expand your infrastructure by enrolling remote servers to distribute the workload.
+                            Add remote machines to run servers on.
                         </p>
                         <button
                             onClick={() => setShowWizard(true)}

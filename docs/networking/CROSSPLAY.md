@@ -1,26 +1,31 @@
-# Cross-Play Ecosystem (Java & Bedrock)
+# Cross-Platform Protocol Translation (Java & Bedrock)
 
-CraftCommand provides native orchestration for **Geyser** and **Floodgate**, allowing Minecraft Bedrock Edition players (Consoles, Mobile, Win10) to join your Java Edition servers seamlessly.
+Enables Bedrock Edition connectivity for Java servers via Geyser and Floodgate integration.
 
-## 1. Automatic Orchestration
+## 1. Technical Implementation
 
-When you enable Cross-Play in a server's settings:
+`CrossPlayService.ts` handles the multi-phase provisioning of the protocol translation layer:
 
-- **Geyser**: The backend automatically downloads and configures the Geyser plugin/standalone agent.
-- **UDP Port Management**: CraftCommand identifies an open UDP port and configures the listener automatically. In v1.12.5, this includes **Automated UDP Orchestration** which verifies firewall openness before completing the setup.
-- **Floodgate**: Modern authentication bridging is enabled by default, allowing Bedrock players to join without needing a separate Java account.
+- **Software Provisioning**: 
+  - **Geyser**: Provisioned via the Modrinth API (`GEYSER_SLUG`).
+  - **Floodgate**: Provisioned via the GeyserMC build server (`download.geysermc.org/v2/.../downloads/spigot`) or Modrinth for mod-based environments (Fabric/Forge).
+- **Network Validation**: 
+  - **UDP Probing**: Uses `NetUtils.checkUDPPortBind` (Node.js `dgram`) to verify the Bedrock port (default `19132`) is available before startup.
+  - **EADDRINUSE**: If the port is bound, the service warns the user to prevent gateway collisions.
+- **Topology Management**: 
+  - **Standalone**: Geyser and Floodgate are installed on the target server.
+  - **Velocity**: Geyser is installed on the Velocity proxy; Floodgate is synchronized across the proxy and backends for UUID consistency.
 
-## 2. Connectivity Pipeline
+## 2. Authentication Protocol
 
-1. **The Handshake**: A Bedrock client connects to your server via UDP.
-2. **Translation**: Geyser translates the Bedrock protocol into Java packets in real-time.
-3. **Authentication**: Floodgate provides a "Virtual UUID" to the Java server, representing the Bedrock player.
+- **Floodgate UUID Mapping**: Bedrock players are assigned virtual UUIDs based on their XUID, enabling persistent inventories and data on Java servers without a Mojang account.
+- **Auth Bridging**: The server `auth-type` is set to `floodgate`, allowing internal encryption handshakes between the Geyser proxy and the server software.
 
-## 3. Troubleshooting
+## 3. Operational Constraints
 
-- **UDP Firewall**: Ensure the Bedrock port (displayed in settings) is open on your router/firewall. Tunnels (like Cloudflare) may require specialized UDP configuration.
-- **Skin Sync**: Use the integrated Global Settings to manage Global Skins for Bedrock players via the skin-restorer integration.
+- **Port Forwarding**: Public UDP traffic must be routed to the Bedrock port. Tunnels require specialized UDP ingress configuration.
+- **Diagnostics**: Health checks use `RakNet UDP Unconnected Ping` to verify Bedrock-specific reachability.
 
 ---
 
-_See [Networking Overview](OVERVIEW.md) for more connectivity details._
+_For core networking details, refer to [OVERVIEW.md](OVERVIEW.md)._

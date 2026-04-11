@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import archiver from 'archiver';
 import extract from 'extract-zip';
+import AdmZip from 'adm-zip';
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
 import { logger } from '../../utils/logger';
@@ -26,6 +27,24 @@ export class BackupService extends EventEmitter {
         fs.ensureDirSync(this.backupsDir);
     }
 
+    // ZIP bomb protection: pre-scan archive before extraction
+    private validateArchive(archivePath: string, maxEntries: number = 50000, maxSizeBytes: number = 10 * 1024 * 1024 * 1024): void {
+        const zip = new AdmZip(archivePath);
+        const entries = zip.getEntries();
+        
+        if (entries.length > maxEntries) {
+            throw new Error(`Archive rejected: ${entries.length} entries exceeds safety limit of ${maxEntries}. Possible ZIP bomb.`);
+        }
+        
+        let totalUncompressed = 0;
+        for (const entry of entries) {
+            totalUncompressed += entry.header.size;
+            if (totalUncompressed > maxSizeBytes) {
+                throw new Error(`Archive rejected: uncompressed size exceeds ${Math.round(maxSizeBytes / (1024 * 1024 * 1024))}GB safety limit. Possible ZIP bomb.`);
+            }
+        }
+    }
+
     // --- Cloud Destination Management ---
 
     async getCloudDestinations(): Promise<CloudBackupDestination[]> {
@@ -40,7 +59,9 @@ export class BackupService extends EventEmitter {
     }
 
     async saveCloudDestinations(destinations: CloudBackupDestination[]): Promise<void> {
-        await fs.writeJSON(this.destinationsPath, destinations, { spaces: 2 });
+        const tempPath = `${this.destinationsPath}.tmp`;
+        await fs.writeJSON(tempPath, destinations, { spaces: 2 });
+        await fs.rename(tempPath, this.destinationsPath);
     }
 
     async addCloudDestination(destination: CloudBackupDestination): Promise<CloudBackupDestination[]> {
@@ -80,7 +101,7 @@ export class BackupService extends EventEmitter {
         for (const dest of enabled) {
             try {
                 const provider = createCloudProvider(dest);
-                const result = await provider.upload(localFilePath, remoteFileName, metadata);
+                const result = await provider.upload(localFilePath, remoteFileName);
                 results.push(result);
                 
                 if (result.success) {
@@ -120,7 +141,7 @@ export class BackupService extends EventEmitter {
         
             const outputPath = path.join(serverBackupsDir, filename);
 
-            this.emit('status', 'Creating backup archive...');
+            this.emit('status', { serverId, backupId, message: 'Creating backup archive...' });
 
             // Detect world folders before creating archive (if world-only mode)
             let worldFolders: string[] = [];
@@ -191,7 +212,7 @@ export class BackupService extends EventEmitter {
             const stats = await fs.stat(outputPath);
             
             // Calculate SHA-256 for integrity
-            this.emit('status', 'Calculating integrity hash...');
+            this.emit('status', { serverId, backupId, message: 'Calculating integrity hash...' });
             const sha256 = await calculateHash(outputPath);
             
             const backup: Backup = {
@@ -208,7 +229,7 @@ export class BackupService extends EventEmitter {
 
             // Cloud upload (non-blocking — local backup succeeds regardless)
             try {
-                this.emit('status', 'Uploading to cloud destinations...');
+                this.emit('status', { serverId, backupId, message: 'Uploading to cloud destinations...' });
                 const cloudResults = await this.uploadToCloud(
                     outputPath,
                     `${serverId}/${filename}`,
@@ -227,7 +248,7 @@ export class BackupService extends EventEmitter {
             // Auto-cleanup old backups (keep last 10)
             await this.cleanupOldBackups(serverId, 10);
 
-            this.emit('status', 'Backup created successfully');
+            this.emit('status', { serverId, backupId, status: 'complete', message: 'Backup created successfully' });
             return backup;
         } finally {
             this.activeBackups.delete(serverId);
@@ -341,7 +362,7 @@ export class BackupService extends EventEmitter {
 
         // 1. Verify Integrity
         if (backup.sha256) {
-            this.emit('status', 'Verifying backup integrity...');
+            this.emit('status', { serverId, backupId, message: 'Verifying backup integrity...' });
             const currentHash = await calculateHash(backupPath);
             if (currentHash !== backup.sha256) {
                 throw new Error('Backup integrity verification failed. Archive may be corrupted.');
@@ -349,7 +370,7 @@ export class BackupService extends EventEmitter {
             logger.success(`[BackupService] Integrity verified for ${backup.id}`);
         }
 
-        this.emit('status', 'Preparing for atomic restore...');
+        this.emit('status', { serverId, backupId, message: 'Preparing for atomic restore...' });
         const tempRestoreId = `.temp_pre_restore_${Date.now()}`;
         const tempRestorePath = path.join(serverBackupsDir, tempRestoreId);
         
@@ -374,7 +395,10 @@ export class BackupService extends EventEmitter {
                 }
             }
 
-            this.emit('status', 'Extracting backup...');
+            this.emit('status', { serverId, backupId, message: 'Extracting backup...' });
+            // Pre-scan archive for ZIP bomb before extraction
+            this.validateArchive(backupPath);
+            
             if (scope !== 'full') {
                 const extractTempId = `.temp_extract_${Date.now()}`;
                 const extractTempPath = path.join(serverBackupsDir, extractTempId);
@@ -396,10 +420,10 @@ export class BackupService extends EventEmitter {
                 await extract(backupPath, { dir: serverDir });
             }
 
-            this.emit('status', 'Restore complete');
+            this.emit('status', { serverId, backupId, status: 'complete', message: 'Restore complete' });
         } catch (e: any) {
             logger.error(`[BackupService] RESTORE FAILED for ${serverId}: ${e.message}`);
-            this.emit('status', `CRITICAL: Restore failed. Rolling back...`);
+            this.emit('status', { serverId, backupId, status: 'failed', message: `CRITICAL: Restore failed. Rolling back...` });
             
             try {
                 const items = await fs.readdir(serverDir);
@@ -449,7 +473,10 @@ export class BackupService extends EventEmitter {
     }
 
     private async saveManifest(serverId: string, backups: Backup[]): Promise<void> {
-        await fs.writeJSON(path.join(this.backupsDir, serverId, 'manifest.json'), { backups }, { spaces: 2 });
+        const manifestPath = path.join(this.backupsDir, serverId, 'manifest.json');
+        const tempPath = `${manifestPath}.tmp`;
+        await fs.writeJSON(tempPath, { backups }, { spaces: 2 });
+        await fs.rename(tempPath, manifestPath);
     }
 
     async toggleLock(serverId: string, backupId: string): Promise<boolean> {

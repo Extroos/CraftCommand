@@ -13,7 +13,8 @@ jest.mock('../runners/RunnerFactory', () => {
 
     return {
         runnerFactory: {
-            getRunner: jest.fn().mockReturnValue(runner)
+            getRunner: jest.fn().mockReturnValue(runner),
+            getAllRunners: jest.fn().mockReturnValue([])
         }
     };
 });
@@ -32,6 +33,14 @@ jest.mock('../../../utils/logger', () => ({
         warn: jest.fn(),
         error: jest.fn(),
         debug: jest.fn()
+    }
+}));
+
+jest.mock('../../diagnosis/AutomaticRepairService', () => ({
+    automaticRepairService: {
+        handleServerCrash: jest.fn(),
+        diagnoseAndFix: jest.fn(),
+        resetStabilityMarker: jest.fn()
     }
 }));
 
@@ -105,5 +114,28 @@ describe('ProcessManager', () => {
         runner.emit('close', { id: serverId, code: 0 });
         
         expect(processManager.isRunning(serverId)).toBe(false);
+    });
+
+    it('should force a SIGKILL if the server hangs and becomes a zombie', async () => {
+        jest.useFakeTimers();
+        const serverId = 'zombie-server';
+        
+        // Start it first
+        await processManager.startServer(serverId, 'java -jar server.jar', '/cwd', {});
+        expect(processManager.isRunning(serverId)).toBe(true);
+        
+        // Simulate successful boot to clear startup lock
+        runner.emit('log', { id: serverId, line: 'Done (', type: 'stdout' });
+
+        // Stop it normally
+        await processManager.stopServer(serverId, false);
+        expect(runner.stop).toHaveBeenCalledWith(serverId, false);
+        expect(runner.kill).not.toHaveBeenCalled();
+
+        // Fast-forward exactly 30000ms to trigger the zombie fallback
+        jest.advanceTimersByTime(30000);
+
+        expect(runner.kill).toHaveBeenCalledWith(serverId, 'SIGKILL');
+        jest.useRealTimers();
     });
 });

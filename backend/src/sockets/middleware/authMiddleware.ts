@@ -21,7 +21,7 @@ export const socketAuthMiddleware = async (socket: Socket, next: (err?: any) => 
     }
 
     try {
-        const secret = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-prod';
+        const secret = process.env.JWT_SECRET as string;
         const decoded = jwt.verify(token, secret) as any;
         
         // Use the centralized repository via the same logic ideally, but direct file read is okay for now if we don't assume dependency injection here.

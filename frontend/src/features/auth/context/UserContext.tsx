@@ -81,6 +81,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     if (e.response?.status === 401 && e.response?.data?.mfaRequired) {
                         setTwoFactorRequired(true);
                         setIsAuthenticated(false);
+                    } else if (e.message?.includes('429')) {
+                        // Rate limited — do not logout! 
+                        // Keep current state (likely authenticated) or just stay in loading.
+                        // We will just log it and potentially the next poll will succeed.
+                        console.warn("API Rate limited (429) during auth initialization.");
                     } else {
                         logout(); // Clear genuinely invalid token
                     }

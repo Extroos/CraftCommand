@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { Database, Plus, Trash2, Eye, Loader2, Info } from 'lucide-react';
+import { Database, Plus, Trash2, Eye, Loader2, Info, ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { STAGGER_ITEM } from '../../styles/motion';
 import { useToast } from '../ui/Toast';
@@ -67,13 +66,31 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                     <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">Managed SQL & NoSQL Provisioning</p>
                 </div>
                 {canManageDB && (
-                    <button 
-                        onClick={() => setShowCreateModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.2)]"
-                    >
-                        <Plus size={14} /> New Instance
-                    </button>
+                    <div className="flex items-center gap-2">
+                         <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                            <ShieldCheck size={12} className="text-amber-500" />
+                            <span className="text-[9px] font-black uppercase tracking-widest text-amber-500/80">Virtual Instance Mode Active</span>
+                        </div>
+                        <button 
+                            onClick={() => setShowCreateModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.2)]"
+                        >
+                            <Plus size={14} /> New Instance
+                        </button>
+                    </div>
                 )}
+            </div>
+
+            <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-3">
+                <Info size={16} className="text-primary mt-0.5 shrink-0" />
+                <div className="space-y-1">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Infrastructure Advisory</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed font-medium">
+                        Database instances are currently running in <span className="text-primary font-bold">Encapsulated Virtual Mode</span>. 
+                        Credentials generated are scientifically valid but isolation is managed by the internal CraftCommand sandbox. 
+                        Production-grade remote SQL cluster integration is available in the <span className="italic">Advanced Connectivity</span> module.
+                    </p>
+                </div>
             </div>
 
             <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">

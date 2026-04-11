@@ -904,111 +904,107 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
     );
 
     const renderVelocityDetails = () => (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-4">
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Proxy Name</label>
-                    <input 
-                        value={formData.name}
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                        className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-xs text-foreground font-medium"
-                        placeholder="Velocity-Bridge"
-                    />
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Proxy Name</label>
+                        <input 
+                            value={formData.name}
+                            onChange={e => setFormData({...formData, name: e.target.value})}
+                            className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-xs text-foreground font-medium"
+                            placeholder="Velocity-Bridge"
+                        />
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Velocity Version</label>
+                        <select 
+                            value={formData.version}
+                            onChange={e => handleVersionChange(e.target.value)}
+                            className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 outline-none text-xs text-foreground font-medium cursor-pointer appearance-none hover:bg-muted/60 transition-colors"
+                        >
+                            <option value="3.4.0-SNAPSHOT">3.4.0 (Latest)</option>
+                            <option value="3.3.0-SNAPSHOT">3.3.0 (LTS)</option>
+                            <option value="3.2.0-SNAPSHOT">3.2.0 (Legacy)</option>
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Network Port</label>
+                            <input 
+                                type="number"
+                                value={formData.port}
+                                onChange={e => setFormData({...formData, port: parseInt(e.target.value) || 0})}
+                                className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 text-xs text-foreground font-mono outline-none focus:border-primary/50"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Resources</label>
+                            <div className="flex items-center h-9 px-3 bg-muted/40 border border-border rounded-lg text-[10px] font-bold text-primary tracking-widest">
+                                {formData.ram}GB RAM
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Velocity Version</label>
-                    <select 
-                        value={formData.version}
-                        onChange={e => handleVersionChange(e.target.value)}
-                        className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 outline-none text-xs text-foreground font-medium cursor-pointer appearance-none hover:bg-muted/60 transition-colors"
-                    >
-                        <option value="3.4.0-SNAPSHOT">3.4.0 (Latest)</option>
-                        <option value="3.3.0-SNAPSHOT">3.3.0 (LTS)</option>
-                        <option value="3.2.0-SNAPSHOT">3.2.0 (Legacy)</option>
-                    </select>
-                </div>
-
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Forwarding Mode</label>
-                    <select 
-                        value={formData.forwardingMode}
-                        onChange={e => setFormData({...formData, forwardingMode: e.target.value as any})}
-                        className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 outline-none text-xs text-foreground font-medium cursor-pointer appearance-none hover:bg-muted/60 transition-colors"
-                    >
-                        <option value="modern">Modern (Recommended)</option>
-                        <option value="bungeeguard">BungeeGuard</option>
-                        <option value="legacy">Legacy (IP Forwarding)</option>
-                        <option value="none">None (Local Only)</option>
-                    </select>
-                    <p className="text-[10px] text-muted-foreground/60 leading-tight">
-                        {formData.forwardingMode === 'modern' ? 'Uses a shared secret for high security. Recommended for most users.' : 
-                         formData.forwardingMode === 'bungeeguard' ? 'Requires BungeeGuard plugin on backends.' :
-                         formData.forwardingMode === 'legacy' ? 'Vulnerable to IP spoofing if firewalls are misconfigured.' : 'No player information is forwarded.'}
-                    </p>
-                </div>
-
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Proxy Secret</label>
-                    <div className="relative">
-                        <input 
-                            value={formData.proxySecret}
-                            onChange={e => setFormData({...formData, proxySecret: e.target.value})}
-                            className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-xs text-foreground font-mono"
-                            placeholder="Auto-generated"
-                        />
-                        <button 
-                            type="button"
-                            onClick={() => setFormData({...formData, proxySecret: Math.random().toString(36).substring(2, 15)+Math.random().toString(36).substring(2, 15)})}
-                            className="absolute right-2 top-1.5 p-1 hover:bg-white/5 rounded text-primary transition-colors"
+                <div className="space-y-4">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Forwarding Mode</label>
+                        <select 
+                            value={formData.forwardingMode}
+                            onChange={e => setFormData({...formData, forwardingMode: e.target.value as any})}
+                            className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 outline-none text-xs text-foreground font-medium cursor-pointer appearance-none hover:bg-muted/60 transition-colors"
                         >
-                            <Zap size={14} />
-                        </button>
+                            <option value="modern">Modern (Recommended)</option>
+                            <option value="bungeeguard">BungeeGuard</option>
+                            <option value="legacy">Legacy (IP Forwarding)</option>
+                            <option value="none">None (Local Only)</option>
+                        </select>
                     </div>
-                </div>
-            </div>
 
-            <div className="space-y-4">
-                <div className="space-y-2 p-3 bg-input/50 border border-[rgb(var(--color-border-subtle))] rounded-lg">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex justify-between items-center">
-                        <span>Allocated Memory</span>
-                        <span className="text-primary font-mono text-xs">{formData.ram} GB</span>
-                    </label>
-                    <input 
-                        type="range" min="1" max="8" step="0.5"
-                        value={formData.ram}
-                        onChange={e => setFormData({...formData, ram: parseFloat(e.target.value)})}
-                        className="w-full h-1 bg-muted rounded-full appearance-none cursor-pointer accent-primary"
-                    />
-                    <div className="flex gap-2 text-[9px] text-muted-foreground/50 italic px-1">
-                        <Info size={10} className="shrink-0" />
-                        <span>Proxies require far less RAM than game servers. 1-2GB is usually sufficient for 500+ players.</span>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Proxy Secret</label>
+                        <div className="relative">
+                            <input 
+                                value={formData.proxySecret}
+                                onChange={e => setFormData({...formData, proxySecret: e.target.value})}
+                                className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-[10px] text-foreground font-mono"
+                                placeholder="Auto-generated"
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => setFormData({...formData, proxySecret: Math.random().toString(36).substring(2, 15)+Math.random().toString(36).substring(2, 15)})}
+                                className="absolute right-2 top-1.5 p-1 hover:bg-white/5 rounded text-primary transition-colors"
+                            >
+                                <Zap size={12} />
+                            </button>
+                        </div>
                     </div>
-                </div>
 
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Public Proxy Port</label>
-                    <div className="flex items-center bg-muted/40 border border-border rounded-lg overflow-hidden focus-within:border-primary/50 transition-all">
-                        <input 
-                            type="number"
-                            value={formData.port}
-                            onChange={e => setFormData({...formData, port: parseInt(e.target.value) || 0})}
-                            className="flex-1 min-w-0 bg-transparent px-3 py-1.5 text-xs text-foreground font-mono outline-none"
-                        />
-                    </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 border-dashed">
-                    <div className="flex gap-3">
-                        <MonitorPlay size={18} className="text-blue-400 shrink-0" />
-                        <div>
-                            <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-1">Network Awareness</h4>
-                            <p className="text-[10px] text-muted-foreground leading-relaxed">
-                                Velocity acts as the entry point. Once created, go to the <strong>Proxy Network</strong> tab to link your backend servers (Lobby, Survival, etc.) to this proxy.
+                    <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/10 border-dashed">
+                        <div className="flex gap-2">
+                            <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
+                            <p className="text-[9px] text-muted-foreground leading-relaxed uppercase font-medium tracking-tight">
+                                Entry point: Connect backends via the <strong className="text-blue-300">Proxy Network</strong> tab post-deployment.
                             </p>
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div className="space-y-2 p-4 bg-muted/10 border border-border rounded-xl">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex justify-between items-center mb-1">
+                    <span>Memory Allocation</span>
+                    <span className="text-primary font-mono text-xs">{formData.ram} GB</span>
+                </label>
+                <input 
+                    type="range" min="1" max="8" step="0.5"
+                    value={formData.ram}
+                    onChange={e => setFormData({...formData, ram: parseFloat(e.target.value)})}
+                    className="w-full h-1 bg-muted rounded-full appearance-none cursor-pointer accent-primary"
+                />
             </div>
         </div>
     );
@@ -1025,37 +1021,30 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                 </div>
 
                 <div className="flex items-center gap-3 mb-6 relative z-10">
-                    <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20">
+                    <div className="p-2 bg-primary/5 rounded-lg border border-primary/10">
                         <Terminal size={14} className="text-primary" />
                     </div>
-                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-foreground/70">Review & Deploy</h3>
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">Provisioning Logic</h3>
                 </div>
 
-                <div className="bg-muted/30 border border-border rounded-lg p-4 space-y-2 text-xs mb-5 relative z-10 font-mono">
-                    <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-widest">Instance</span>
-                        <span className="font-bold text-foreground">{formData.name}</span>
+                <div className="bg-muted/10 border border-border rounded-lg p-5 space-y-3 text-xs mb-6 relative z-10 font-mono">
+                    <div className="flex justify-between items-center opacity-80">
+                        <span className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em]">Instance_ID</span>
+                        <span className="font-bold text-foreground">{formData.name || 'UNNAMED_NODE'}</span>
                     </div>
-                    <div className="h-px bg-border/40" />
-                    <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-widest">Software</span>
+                    <div className="h-px bg-border/20" />
+                    <div className="flex justify-between items-center opacity-80">
+                        <span className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em]">Runtime</span>
                         <div className="flex items-center gap-2">
-                            <span className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest">
-                                {formData.templateId ? 'Template: ' : ''}
-                                {formData.usePurpur ? 'Purpur' : formData.software}
+                            <span className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-widest">
+                                {formData.usePurpur ? 'PURPUR' : formData.software} {formData.version}
                             </span>
-                            <span className="text-foreground font-bold">{formData.version}</span>
                         </div>
                     </div>
-                    <div className="h-px bg-border/40" />
-                    <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-widest">Resources</span>
-                        <span className="text-foreground font-bold">{formData.ram} GB RAM</span>
-                    </div>
-                     <div className="h-px bg-border/40" />
-                     <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-widest">Network</span>
-                        <span className="text-foreground font-bold">Port {formData.port}</span>
+                    <div className="h-px bg-border/20" />
+                    <div className="flex justify-between items-center opacity-80">
+                        <span className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em]">Allocations</span>
+                        <span className="text-foreground font-bold">{formData.ram}GB RAM / {formData.port} ETH</span>
                     </div>
                 </div>
 
@@ -1077,17 +1066,17 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                 <button 
                     onClick={handleDeploy}
                     disabled={!formData.eula || isDeploying}
-                    className="relative z-10 w-full mt-6 bg-primary text-primary-foreground h-12 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:opacity-90 disabled:opacity-10 transition-all shadow-sm"
+                    className="relative z-10 w-full mt-6 bg-primary text-primary-foreground h-11 rounded-lg font-bold text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:opacity-90 disabled:opacity-20 transition-all shadow-md active:scale-[0.98]"
                 >
                     {isDeploying ? (
                         <>
-                            <Loader2 className="animate-spin" size={14} />
-                            <span>Provisioning...</span>
+                            <Loader2 className="animate-spin" size={12} />
+                            <span>Synchronizing...</span>
                         </>
                     ) : ( 
                         <>
-                            <Zap size={14} />
-                            Deploy Instance
+                            <Zap size={12} />
+                            Commit Deployment
                         </>
                     )}
                 </button>
@@ -1107,68 +1096,46 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     animate={{ opacity: 1, y: 0 }}
                     className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pt-2"
                 >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4">
                         <button 
                             onClick={onBack} 
-                            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg border border-[rgb(var(--color-border-subtle))] transition-all"
+                            className="p-2.5 bg-muted/20 hover:bg-muted/40 rounded-lg border border-border transition-all group"
                         >
-                            <ArrowLeft size={16} className="text-[rgb(var(--color-fg-muted))]" />
+                            <ArrowLeft size={16} className="text-muted-foreground group-hover:text-foreground transition-colors" />
                         </button>
-                        <div>
-                                <h1 className="text-lg font-black tracking-tight text-foreground flex items-center gap-2 leading-none uppercase">
-                                    Deploy Node
+                        <div className="space-y-0.5">
+                                <h1 className="text-xl font-bold tracking-tight text-foreground uppercase leading-none">
+                                    Provision Node
                                 </h1>
-                                <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest mt-1.5 opacity-60">
-                                    {mode === 'wizard' ? 'Guided Deployment' : mode === 'pro' ? 'Manual Provisioning Protocol' : 'Network Bridge Setup'}
+                                <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-[0.2em] opacity-40">
+                                    Environment Management
                                 </p>
                         </div>
                     </div>
                     
-                    <div className="flex bg-muted/40 border border-border p-1 rounded-xl">
-                        <button 
-                            onClick={() => { 
-                                setCategory('GAME'); 
-                                setMode('wizard'); 
-                                setStep('software'); 
-                                if (formData.software === 'Velocity') {
-                                    setFormData(prev => synthesizeDefaultState('Paper', prev, bedrockVersions));
-                                }
-                            }}
-                            className={`px-5 py-1.5 rounded-lg text-[9px] font-black tracking-widest transition-all ${category === 'GAME' && mode === 'wizard' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
-                            WIZARD
-                        </button>
-                        <button 
-                            onClick={() => { 
-                                setCategory('GAME'); 
-                                setMode('pro'); 
-                                setStep('software'); 
-                                if (formData.software === 'Velocity') {
-                                    setFormData(prev => synthesizeDefaultState('Paper', prev, bedrockVersions));
-                                }
-                            }}
-                            className={`px-5 py-1.5 rounded-lg text-[9px] font-black tracking-widest transition-all ${category === 'GAME' && mode === 'pro' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
-                            PRO CONFIG
-                        </button>
-                        <button 
-                            onClick={() => { 
-                                setCategory('GAME'); 
-                                setMode('proxy'); 
-                                setStep('details'); 
-                                setFormData(p => ({ 
-                                    ...p, 
-                                    software: 'Velocity', 
-                                    version: '3.4.0-SNAPSHOT', 
-                                    ram: 1,
-                                    port: 25565,
-                                    name: 'Velocity-Bridge'
-                                })); 
-                            }}
-                            className={`px-5 py-1.5 rounded-lg text-[9px] font-black tracking-widest transition-all ${mode === 'proxy' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
-                            VELOCITY
-                        </button>
+                    <div className="flex bg-muted/20 border border-border p-1 rounded-xl">
+                        {[
+                            { id: 'wizard', label: 'Guided', step: 'software', category: 'GAME' },
+                            { id: 'pro', label: 'Technical', step: 'software', category: 'GAME' },
+                            { id: 'proxy', label: 'Network', step: 'details', category: 'GAME' }
+                        ].map((m) => (
+                            <button 
+                                key={m.id}
+                                onClick={() => { 
+                                    setCategory(m.category as any); 
+                                    setMode(m.id as any); 
+                                    setStep(m.step as any); 
+                                    if (m.id === 'proxy') {
+                                        setFormData(p => ({ ...p, software: 'Velocity', version: '3.4.0-SNAPSHOT', ram: 1, port: 25565, name: 'Velocity-Bridge' }));
+                                    } else if (formData.software === 'Velocity') {
+                                        setFormData(prev => synthesizeDefaultState('Paper', prev, bedrockVersions));
+                                    }
+                                }}
+                                className={`px-6 py-1.5 rounded-lg text-[10px] font-bold tracking-[0.1em] uppercase transition-all ${mode === m.id ? 'bg-primary text-primary-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                            >
+                                {m.label}
+                            </button>
+                        ))}
                     </div>
                 </motion.div>
 

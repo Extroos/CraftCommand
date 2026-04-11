@@ -58,7 +58,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
             { keywords: ['firewall', 'allowed ip', 'whitelist', 'ddos', 'protection', '2fa', 'op', 'ssl', 'tls', 'https', 'region lock', 'security', 'encryption', 'vault', 'privacy', 'audit', 'logs'] },
         ],
         'ADVANCED': [
-            { keywords: ['aikar', 'flags', 'spark', 'debug', 'gc', 'garbage collection', 'g1gc', 'zgc', 'shenandoah', 'socket buffer', 'compression', 'auto healing', 'health check', 'retry', 'thread priority', 'tick distance', 'content log', 'cross-play', 'geyser', 'bedrock', 'optimization', 'performance', 'jit', 'flags'] },
+            { keywords: ['aikar', 'flags', 'spark', 'debug', 'gc', 'garbage collection', 'g1gc', 'zgc', 'shenandoah', 'socket buffer', 'compression', 'automatic repair', 'health check', 'retry', 'thread priority', 'tick distance', 'content log', 'cross-play', 'geyser', 'bedrock', 'optimization', 'performance', 'jit', 'flags'] },
         ],
         'NETWORKING': [
             { keywords: ['network', 'port', 'firewall', 'dns', 'domain', 'ssl', 'certificate', 'proxy', 'reverse proxy', 'tunnel', 'cloudflare', 'ngrok', 'remote access', 'connectivity', 'wan', 'lan', 'port mapping', 'cname'] },
@@ -242,7 +242,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
             gcEngine: 'G1GC',
             socketBuffer: 32,
             compressionThreshold: 256,
-            autoHealing: true,
+            automaticRepair: true,
             healthCheckInterval: 30,
             retryPattern: '10s, 30s, 1m',
             threadPriority: 'normal',
@@ -309,7 +309,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                     gcEngine: currentServer.advancedFlags?.gcEngine || 'G1GC',
                     socketBuffer: currentServer.advancedFlags?.socketBuffer || 32,
                     compressionThreshold: currentServer.advancedFlags?.compressionThreshold || 256,
-                    autoHealing: currentServer.advancedFlags?.autoHealing !== undefined ? currentServer.advancedFlags?.autoHealing : true,
+                    automaticRepair: currentServer.advancedFlags?.automaticRepair !== undefined ? currentServer.advancedFlags?.automaticRepair : true,
                     healthCheckInterval: currentServer.advancedFlags?.healthCheckInterval || 30,
                     retryPattern: currentServer.advancedFlags?.retryPattern || '10s, 30s, 1m',
                     threadPriority: currentServer.advancedFlags?.threadPriority || 'normal',
@@ -433,11 +433,11 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
         }
 
         setIsUploadingIcon(true);
-        const optimizationToast = addToast('info', 'Stabilizing Icon', 'Optimizing photo for Minecraft compatibility...');
+        const optimizationToast = addToast('info', 'Processing Icon', 'Resizing image for Minecraft...');
         
         try {
             await API.uploadServerIcon(serverId, file);
-            addToast('success', 'Icon Optimized', 'Your server icon was successfully stabilized and updated.');
+            addToast('success', 'Icon Updated', 'Your server icon has been updated.');
             refreshServers(); // Reload to update iconUrl if stored, or just refresh context
         } catch (err: any) {
             addToast('error', 'Optimization Failed', err.message || 'Failed to process icon');
@@ -641,7 +641,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                 gcEngine: 'G1GC',
                 socketBuffer: 32,
                 compressionThreshold: 256,
-                autoHealing: true,
+                automaticRepair: true,
                 healthCheckInterval: 30,
                 retryPattern: '10s, 30s, 1m',
                 threadPriority: 'normal'
@@ -726,15 +726,15 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                 </div>
 
                 <div className="px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
-                    <nav className="flex items-center gap-1 bg-muted/10 p-0.5 rounded-md border border-border/40 overflow-x-auto scrollbar-none">
+                    <nav className="flex items-center gap-1 bg-black/10 p-1 rounded-lg border border-white/5 backdrop-blur-sm shadow-inner">
                         {(['GENERAL', 'SECURITY', 'ADVANCED', 'NETWORKING', 'CONNECTIVITY', 'RESOURCES', 'PROFILES'] as TabType[]).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
-                                className={`px-4 py-1.5 rounded-[4px] text-[10px] font-bold tracking-tight transition-all whitespace-nowrap ${
+                                className={`px-4 py-1.5 rounded-md text-[10px] font-bold tracking-tight transition-all duration-200 whitespace-nowrap ${
                                     activeTab === tab 
-                                    ? 'bg-primary text-primary-foreground shadow-sm' 
-                                    : 'text-muted-foreground/60 hover:text-foreground/80 hover:bg-muted/30'
+                                    ? 'bg-white/10 text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] backdrop-blur-md' 
+                                    : 'text-white/40 hover:text-white/80 hover:bg-white/5'
                                 }`}
                             >
                                 {tab === 'NETWORKING' ? 'Networking' : 
@@ -769,7 +769,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                     }
                                 }}
                                 placeholder="Search settings..."
-                                className="bg-background border border-border/50 rounded-md pl-7 pr-3 py-1.5 text-[10px] font-medium text-foreground placeholder:text-muted-foreground/40 focus:ring-1 focus:ring-primary/30 outline-none transition-all w-40 focus:w-52"
+                                className="bg-black/40 border border-white/10 rounded-lg pl-7 pr-3 py-1.5 text-[10px] font-medium text-white placeholder:text-white/20 focus:ring-1 focus:ring-white/30 outline-none transition-all w-40 focus:w-52 backdrop-blur-md"
                             />
                             {settingsSearch && searchMatchTab && (
                                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold text-primary uppercase tracking-wider">

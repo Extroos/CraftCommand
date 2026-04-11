@@ -13,7 +13,7 @@ router.get('/status', verifyToken, (req, res) => {
 // Check for updates (Manually)
 router.post('/check', verifyToken, requireRole(['OWNER']), async (req, res) => {
     try {
-        logger.info(`[API] Manual update check requested by ${(req as any).user?.username}`);
+        logger.info(`[API] Manual update check requested by ${req.user?.username}`);
         const result = await updateService.checkForUpdates(true);
         res.json(result);
     } catch (e: any) {
@@ -32,7 +32,7 @@ router.post('/download', verifyToken, requireRole(['OWNER']), async (req, res) =
             return res.status(409).json({ error: 'Update already in progress', status: currentStatus });
         }
 
-        logger.info(`[API] Update process started for v${version} by ${(req as any).user?.username}`);
+        logger.info(`[API] Update process started for v${version} by ${req.user?.username}`);
         
         // Start process in background
         updateService.resetStatus(); // Ensure we reset errors
@@ -48,7 +48,7 @@ router.post('/download', verifyToken, requireRole(['OWNER']), async (req, res) =
 
 // Restart Backend (Triggers Launcher Loop if update plan exists)
 router.post('/restart', verifyToken, requireRole(['OWNER']), (req, res) => {
-    logger.warn(`[API] Restart requested by ${(req as any).user?.username}`);
+    logger.warn(`[API] Restart requested by ${req.user?.username}`);
     res.json({ message: 'Server restarting...' });
     
     // Give time for response to flush
