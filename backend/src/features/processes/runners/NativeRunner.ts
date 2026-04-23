@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { IServerRunner, RunnerStats } from './IServerRunner';
 import si from 'systeminformation';
 import fs from 'fs-extra';
+import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
 import treeKill from 'tree-kill';
@@ -10,6 +11,8 @@ import { backupService } from '../../backups/BackupService';
 import { logger } from '../../../utils/logger';
 
 const execAsync = util.promisify(exec);
+
+import { javaManager } from '../../processes/JavaManager';
 
 /**
  * NativeRunner (Enterprise Scale)
@@ -158,9 +161,12 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
 
     private async fixPermissions(cwd: string) {
         if (process.platform === 'win32') {
-            try {
-                await execAsync(`icacls "${cwd}" /grant "%USERNAME%":F /T /C /Q`);
-            } catch (e) { /* Ignore */ }
+            return new Promise<void>((resolve) => {
+                // v1.14.2: Use spawn for security (array-based arguments bypass the shell)
+                const proc = spawn('icacls', [cwd, '/grant', '%USERNAME%:F', '/T', '/C', '/Q'], { shell: false });
+                proc.on('close', () => resolve());
+                proc.on('error', () => resolve()); // Non-fatal
+            });
         }
     }
 
@@ -173,9 +179,10 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
         'LANG', 'LC_ALL', 'TERM',
         'PROGRAMFILES', 'PROGRAMFILES(X86)', 'COMMONPROGRAMFILES',
         'PATHEXT', 'COMSPEC', 'OS', 'PROCESSOR_ARCHITECTURE',
+        'APPDATA', 'LOCALAPPDATA'
     ]);
 
-    private buildSafeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    private buildSafeEnv(env: NodeJS.ProcessEnv, runtimeEnv: any = {}): NodeJS.ProcessEnv {
         const safe: NodeJS.ProcessEnv = {};
         // Copy only safe keys from host environment
         for (const key of NativeRunner.SAFE_ENV_KEYS) {
@@ -185,33 +192,79 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
         for (const [key, value] of Object.entries(env)) {
             safe[key] = value;
         }
+        // Merge runtime overrides (JAVA_HOME, isolated PATH)
+        for (const [key, value] of Object.entries(runtimeEnv)) {
+            safe[key] = value as string;
+        }
         return safe;
+    }
+
+    private parseCommand(cmd: string): { executable: string; args: string[] } {
+        const parts: string[] = [];
+        const regex = /"([^"]*)"|'([^']*)'|(\S+)/g;
+        let match;
+        while ((match = regex.exec(cmd)) !== null) {
+            parts.push(match[1] || match[2] || match[3]);
+        }
+        
+        if (parts.length === 0) return { executable: '', args: [] };
+        const executable = parts[0];
+        const args = parts.slice(1);
+        return { executable, args };
     }
 
     async start(id: string, runCommand: string, cwd: string, env: NodeJS.ProcessEnv): Promise<void> {
         if (this.processes.has(id)) throw new Error(`Process for ${id} already running.`);
         await this.fixPermissions(cwd);
         
-        // --- PROCESS TAGGING (v1.12.10: For Heuristic Discovery) ---
-        let taggedCommand = runCommand;
-        if (runCommand.trim().startsWith('java')) {
-            taggedCommand = runCommand.replace(/^(\s*java)/, `$1 -Dcraftcommand.id=${id}`);
-        } else if (runCommand.trim().startsWith('node')) {
-             taggedCommand = runCommand.replace(/^(\s*node)/, `$1 --title=craftcommand-${id}`);
+        // --- PROCESS TAGGING (v1.12.11: Support quoted paths) ---
+        const { executable, args: originalArgs } = this.parseCommand(runCommand);
+        let finalArgs = [...originalArgs];
+        const exeLower = executable.toLowerCase();
+        
+        // --- PROCESS TAGGING (v1.12.11: Support orphan recovery) ---
+        if (exeLower.includes('java')) {
+            finalArgs.unshift(`-Dcraftcommand.id=${id}`);
+        } else if (exeLower.includes('node')) {
+             finalArgs.unshift(`--title=craftcommand-${id}`);
+        }
+
+        // --- RUNTIME PROVISIONING (v1.14.0: Zero-Config Java) ---
+        let runtimeEnv = {};
+        let finalExecutable = executable;
+
+        if (exeLower === 'java' || exeLower === 'java.exe' || exeLower.endsWith('/java')) {
+            const requestedVersion = env.JAVA_VERSION || '17';
+            try {
+                // v1.14.0: Use central JavaManager for status reporting and isolation
+                const result = await javaManager.ensureJava(requestedVersion, id);
+                runtimeEnv = result.env;
+                finalExecutable = result.path;
+            } catch (err) {
+                logger.warn(`[NativeRunner:${id}] Runtime provisioner failed. Falling back to system Java.`);
+            }
         }
 
         // --- HARDWARE THROTTLING (Windows Job Objects / Linux Cgroups) ---
-        const options: any = { cwd, shell: true, stdio: ['pipe', 'pipe', 'pipe'], env: this.buildSafeEnv(env) };
+        // Detached: env.CC_DETACHED determines if the process survives panel restart
+        const isDetached = env.CC_DETACHED !== 'false';
+        const options: any = { 
+            cwd, 
+            shell: false, 
+            detached: isDetached, 
+            windowsHide: true, 
+            stdio: ['pipe', 'pipe', 'pipe'], 
+            env: this.buildSafeEnv(env, runtimeEnv) 
+        };
         
-        // Pass resource metadata to the platform-specific throttler if available
-        if (env.CC_RAM_LIMIT_MB) {
-            logger.info(`[NativeRunner:${id}] Applying ${env.CC_RAM_LIMIT_MB}MB hardware RAM cap.`);
-        }
-
-        const child = spawn(taggedCommand, options);
+        const child = spawn(finalExecutable, finalArgs, options);
+        
+        // If detached, we must unref it to let the parent exit independently
+        if (isDetached) child.unref();
+        
         this.processes.set(id, child);
         
-        logger.info(`[NativeRunner:${id}] Process spawned with tag. Command: ${taggedCommand.substring(0, 50)}...`);
+        logger.info(`[NativeRunner:${id}] Process spawned. Executable: ${executable}...`);
 
         let stdoutBuffer = '', stderrBuffer = '';
         child.stdout?.on('data', (data) => {
@@ -232,16 +285,69 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
         });
     }
 
+    /**
+     * Re-attaches to existing processes after a backend restart.
+     * Uses heuristic tagging to find orphans.
+     */
+    async sync(): Promise<void> {
+        logger.info('[NativeRunner] Running process synchronization...');
+        await this.updateGlobalProcessCache();
+
+        const { getServers } = require('../../servers/ServerService');
+        const servers = getServers();
+
+        for (const server of servers) {
+            if (this.processes.has(server.id)) continue;
+
+            // Search for tagged process
+            for (const [pid, agg] of NativeRunner.serverResourceMap.entries()) {
+                const cmd = agg.commandLine.toLowerCase();
+                const identifiesAsThisServer = 
+                    cmd.includes(`-dcraftcommand.id=${server.id.toLowerCase()}`) || 
+                    cmd.includes(`--title=craftcommand-${server.id.toLowerCase()}`);
+
+                if (identifiesAsThisServer) {
+                    logger.info(`[NativeRunner:${server.id}] Recovery: Found orphaned process (PID: ${pid}). Re-binding...`);
+                    
+                    // Artificial "ghost" child process to satisfy the state map
+                    // We can't get real stdout/stderr pipes back, so management will rely on logs and RCON
+                    const ghostChild = { 
+                        pid, 
+                        kill: (sig: any) => treeKill(pid, sig || 'SIGKILL'),
+                        stdin: { write: () => false }, // Stdin is lost forever on restart
+                        stdout: { on: () => {} },
+                        stderr: { on: () => {} },
+                        on: () => {} 
+                    } as any;
+
+                    this.processes.set(server.id, ghostChild);
+                    this.emit('recovered', { id: server.id, pid });
+                    break;
+                }
+            }
+        }
+    }
+
     async stop(id: string, force: boolean = false): Promise<void> {
         const child = this.processes.get(id);
-        if (child && child.pid) {
-            if (force) {
-                treeKill(child.pid, 'SIGKILL', () => {});
-                this.processes.delete(id);
-            } else {
-                child.stdin?.write("stop\n");
-                setTimeout(() => { if (this.processes.has(id)) this.stop(id, true); }, 15000);
-            }
+        if (!child || !child.pid) return;
+
+        if (force) {
+            logger.info(`[NativeRunner:${id}] Force-killing process tree (PID: ${child.pid})...`);
+            treeKill(child.pid, 'SIGKILL', () => {});
+            this.processes.delete(id);
+        } else {
+            logger.info(`[NativeRunner:${id}] Requesting graceful stop...`);
+            // v2.0: Use sendCommand to leverage RCON fallback if stdin is dead
+            await this.sendCommand(id, "stop");
+            
+            // Still set a safety timeout for forced kill if it ignores the stop command
+            setTimeout(() => { 
+                if (this.processes.has(id)) {
+                    logger.warn(`[NativeRunner:${id}] Graceful stop timed out after 15s. Escalating to SIGKILL.`);
+                    this.stop(id, true); 
+                }
+            }, 15000);
         }
     }
 
@@ -252,7 +358,40 @@ export class NativeRunner extends EventEmitter implements IServerRunner {
 
     async sendCommand(id: string, command: string): Promise<void> {
         const proc = this.processes.get(id);
-        if (proc) proc.stdin?.write(command + "\n");
+        if (!proc) return;
+
+        // If stdin is writable (Managed Process), use it directly
+        if (proc.stdin && (proc.stdin as any).writable !== false) {
+             proc.stdin.write(command + "\n");
+             return;
+        }
+
+        // --- RCON FALLBACK (v2.0) ---
+        // If stdin is dead (Ghost), we must use RCON to control the process.
+        try {
+            const { getServer } = require('../../servers/ServerService');
+            const server = getServer(id);
+            if (!server || server.software === 'Bedrock') return;
+
+            const propsPath = path.join(server.workingDirectory, 'server.properties');
+            if (await fs.pathExists(propsPath)) {
+                const props = await require('../../../utils/ConfigReader').ConfigReader.readProperties(propsPath);
+                
+                const rconEnabled = props['enable-rcon'] === 'true';
+                const rconPort = parseInt(props['rcon.port'] || '25575');
+                const rconPass = props['rcon.password'];
+
+                if (rconEnabled && rconPass) {
+                    const { RconService } = require('../../../utils/RconService');
+                    await RconService.sendCommand('127.0.0.1', rconPort, rconPass, command);
+                    logger.debug(`[NativeRunner:${id}] Command sent via RCON fallback.`);
+                } else {
+                    logger.warn(`[NativeRunner:${id}] Stdin is dead and RCON is not configured. Command lost.`);
+                }
+            }
+        } catch (e) {
+            logger.error(`[NativeRunner:${id}] RCON fallback failed: ${e}`);
+        }
     }
 
     async getStats(id: string): Promise<RunnerStats> {

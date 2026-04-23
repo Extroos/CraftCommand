@@ -51,6 +51,20 @@ export const handleCommand = (socket: Socket, data: any) => {
         return;
     }
     
-    logger.info(`[Socket] Command for ${serverId}: ${data.command} [User: ${user.username}]`);
-    processManager.sendCommand(serverId, data.command);
+    let command = String(data.command || '').trim();
+    
+    // v4.6 Security Sanitization:
+    // 1. Length Limit (Prevent Buffer Overflows/DoS)
+    if (command.length > 512) {
+        command = command.substring(0, 512);
+        logger.warn(`[Socket] Command truncated for ${serverId} due to length limits.`);
+    }
+
+    // 2. Control Character Stripping (Prevent Terminal escapes)
+    command = command.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
+
+    if (command.length === 0) return;
+
+    logger.info(`[Socket] Command for ${serverId}: ${command} [User: ${user.username}]`);
+    processManager.sendCommand(serverId, command);
 };

@@ -51,4 +51,9 @@ export interface NetworkConfig {
         forwardingMode?: 'none' | 'legacy' | 'bungeeguard' | 'modern';
         secret?: string;
     };
+
+    // Public Access (Tunnels)
+    publicAccess?: 'none' | 'cloudflare' | 'playit';
+    tunnelToken?: string; // Cloudflare
+    playitSecret?: string; // Playit
 }

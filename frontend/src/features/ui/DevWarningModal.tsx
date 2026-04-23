@@ -42,7 +42,7 @@ export const DevWarningModal: React.FC<DevWarningModalProps> = ({ isOpen, onClos
                                     <AlertTriangle size={24} strokeWidth={1.5} />
                                 </div>
                                 <div className="space-y-3">
-                                    <h2 className="text-xl font-bold text-foreground tracking-tight">{metadata?.title || 'System Update Preview'}</h2>
+                                    <h2 className="text-xl font-bold text-foreground tracking-tight">{metadata?.title || 'v1.13.2 - State Architecture & Localization Mastery'}</h2>
                                     <p className="text-sm text-muted-foreground leading-relaxed">
                                         CraftCommand is a solo developer project currently in <span className="text-foreground font-semibold">active development</span>. While major features are functional, things may still break or change between updates as I work to stabilize the core.
                                     </p>
@@ -57,13 +57,18 @@ export const DevWarningModal: React.FC<DevWarningModalProps> = ({ isOpen, onClos
                                 <div className="flex items-center gap-2 px-1">
                                     <div className="h-px flex-1 bg-border/40" />
                                     <span className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.3em]">
-                                        Technical Milestones [v{(metadata?.version || version).slice(0, 4)}]
+                                        Technical Milestones [v{(metadata?.version || version).slice(0, 6)}]
                                     </span>
                                     <div className="h-px flex-1 bg-border/40" />
                                 </div>
                                 
                                 <div className="space-y-1.5 font-mono">
-                                    {(metadata?.notes || []).map((note, i) => (
+                                    {(metadata?.notes || [
+                                        'Implemented high-performance Zustand store with modular domain slicing.',
+                                        'Eliminated React Context re-render cascades across the entire platform.',
+                                        'Implemented Multi-Language support for 11 locales with 1:1 schema parity.',
+                                        'Hardened structural integrity of localization JSON files.'
+                                    ]).map((note, i) => (
                                         <div key={i} className="flex items-start gap-3 px-2 py-1 group transition-colors">
                                             <span className="text-primary/40 text-[10px] select-none mt-0.5"><ChevronRight size={12} /></span>
                                             <div className="flex gap-3 items-baseline">
@@ -71,7 +76,7 @@ export const DevWarningModal: React.FC<DevWarningModalProps> = ({ isOpen, onClos
                                             </div>
                                         </div>
                                     ))}
-                                    {(!metadata?.notes || metadata.notes.length === 0) && (
+                                    {(!metadata?.notes && !metadata) && (
                                         <div className="flex items-center justify-center py-4 border border-dashed border-border/20 rounded opacity-30">
                                             <span className="text-[10px] uppercase tracking-widest">Metadata Loading...</span>
                                         </div>

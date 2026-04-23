@@ -9,6 +9,7 @@ import CreateDatabaseModal from './components/CreateDatabaseModal';
 import DatabaseCredentialsModal from './components/DatabaseCredentialsModal';
 import { usePermissions } from '../auth/hooks/usePermissions';
 import { AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface DatabaseManagerProps {
@@ -16,6 +17,7 @@ interface DatabaseManagerProps {
 }
 
 export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) => {
+    const { t } = useTranslation();
     const { addToast } = useToast();
     const { isOpen: isConfirmOpen, config: confirmConfig, confirm, handleConfirm, handleCancel } = useConfirm();
     const { can } = usePermissions();
@@ -46,11 +48,11 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
     const handleCreateDb = async (data: { name: string; type: string; host: string }) => {
         try {
             const result = await API.createDatabase(serverId, data);
-            addToast('success', 'Database Online', `Instance ${data.name} has been provisioned.`);
+            addToast('success', t('database_manager.database_online'), t('database_manager.db_provisioned_desc', { name: data.name }));
             fetchDatabases();
             return result;
         } catch (e: any) {
-            addToast('error', 'Provisioning Failed', e.message || 'Failed to create database.');
+            addToast('error', t('database_manager.provisioning_failed'), e.message || t('database_manager.failed_create_db'));
             throw e;
         }
     };
@@ -61,21 +63,21 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                 <div>
                     <h2 className="text-lg font-black text-foreground uppercase tracking-tight flex items-center gap-2">
                         <Database className="text-primary" size={20} />
-                        Database Instances
+                        {t('database_manager.instances')}
                     </h2>
-                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">Managed SQL & NoSQL Provisioning</p>
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-1">{t('database_manager.managed_sql')}</p>
                 </div>
                 {canManageDB && (
                     <div className="flex items-center gap-2">
                          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md">
                             <ShieldCheck size={12} className="text-amber-500" />
-                            <span className="text-[9px] font-black uppercase tracking-widest text-amber-500/80">Virtual Instance Mode Active</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-amber-500/80">{t('database_manager.virtual_mode_active')}</span>
                         </div>
                         <button 
                             onClick={() => setShowCreateModal(true)}
                             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.2)]"
                         >
-                            <Plus size={14} /> New Instance
+                            <Plus size={14} /> {t('database_manager.new_instance')}
                         </button>
                     </div>
                 )}
@@ -84,12 +86,8 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
             <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-3">
                 <Info size={16} className="text-primary mt-0.5 shrink-0" />
                 <div className="space-y-1">
-                    <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Infrastructure Advisory</p>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed font-medium">
-                        Database instances are currently running in <span className="text-primary font-bold">Encapsulated Virtual Mode</span>. 
-                        Credentials generated are scientifically valid but isolation is managed by the internal CraftCommand sandbox. 
-                        Production-grade remote SQL cluster integration is available in the <span className="italic">Advanced Connectivity</span> module.
-                    </p>
+                    <p className="text-[11px] font-black uppercase tracking-wider text-foreground">{t('database_manager.infrastructure_advisory')}</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed font-medium" dangerouslySetInnerHTML={{ __html: t('database_manager.advisory_long_desc') }} />
                 </div>
             </div>
 
@@ -98,10 +96,10 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-muted/30 border-b border-border/40">
-                                <th className="px-4 py-2 text-[9px] font-black text-muted-foreground uppercase tracking-wider">Database</th>
-                                <th className="px-4 py-2 text-[9px] font-black text-muted-foreground uppercase tracking-wider">Host</th>
-                                <th className="px-4 py-2 text-[9px] font-black text-muted-foreground uppercase tracking-wider">User</th>
-                                <th className="px-4 py-2 text-[9px] font-black text-muted-foreground uppercase tracking-wider text-right">Actions</th>
+                                <th className="px-4 py-2 text-[9px] font-black text-muted-foreground uppercase tracking-wider">{t('database_manager.db_name')}</th>
+                                <th className="px-4 py-2 text-[9px] font-black text-muted-foreground uppercase tracking-wider">{t('database_manager.host')}</th>
+                                <th className="px-4 py-2 text-[9px] font-black text-muted-foreground uppercase tracking-wider">{t('database_manager.user')}</th>
+                                <th className="px-4 py-2 text-[9px] font-black text-muted-foreground uppercase tracking-wider text-right">{t('common.actions')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/20">
@@ -110,7 +108,7 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                                     <td colSpan={4} className="py-20 text-center">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground/40">
                                             <Loader2 size={24} className="animate-spin" />
-                                            <span className="text-[10px] font-black uppercase tracking-[0.2em]">Synchronizing...</span>
+                                            <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t('database_manager.synchronizing')}</span>
                                         </div>
                                     </td>
                                 </tr>
@@ -118,8 +116,8 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                                 <tr>
                                     <td colSpan={4} className="py-16 text-center">
                                         <Database size={32} className="mx-auto text-muted-foreground/10 mb-4" />
-                                        <p className="text-[11px] font-bold text-muted-foreground/40 uppercase tracking-widest">No Active Databases Found</p>
-                                        <p className="text-[9px] text-muted-foreground/20 mt-1 uppercase">Click "New Instance" to provision one</p>
+                                        <p className="text-[11px] font-bold text-muted-foreground/40 uppercase tracking-widest">{t('database_manager.no_active_databases')}</p>
+                                        <p className="text-[9px] text-muted-foreground/20 mt-1 uppercase">{t('database_manager.click_to_provision')}</p>
                                     </td>
                                 </tr>
                             ) : (
@@ -142,7 +140,7 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                                                  {canReadDB && (
                                                      <button 
                                                          onClick={() => setSelectedDbForCreds(db)}
-                                                         className="p-1.5 hover:text-primary transition-colors hover:bg-primary/10 rounded" title="View Connection Details"
+                                                         className="p-1.5 hover:text-primary transition-colors hover:bg-primary/10 rounded" title={t('database_manager.view_connection_details')}
                                                      >
                                                          <Eye size={12} />
                                                      </button>
@@ -151,23 +149,23 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                                                      <button 
                                                          onClick={async () => {
                                                              const res = await confirm({
-                                                                 title: 'Drop Database',
-                                                                 description: `Are you sure you want to permanently delete \`${db.name}\`? All data will be lost.`,
+                                                                 title: t('database_manager.drop_database_title'),
+                                                                 description: t('database_manager.drop_database_confirm', { name: db.name }),
                                                                  isDestructive: true
                                                              });
                                                              if (res) {
                                                                  try {
                                                                      await API.deleteDatabase(serverId, db.id);
-                                                                     addToast('warning', 'Database Purged', `Instance ${db.name} has been deleted.`);
+                                                                     addToast('warning', t('database_manager.database_purged'), t('database_manager.db_deleted_desc', { name: db.name }));
                                                                      fetchDatabases();
                                                                  } catch (e: any) {
-                                                                     const errorMsg = e.response?.data?.error || e.message || 'Failed to delete database.';
-                                                                     addToast('error', 'Action Failed', errorMsg);
+                                                                     const errorMsg = e.response?.data?.error || e.message || t('database_manager.failed_create_db');
+                                                                     addToast('error', t('common.action_failed'), errorMsg);
                                                                  }
                                                              }
                                                          }}
                                                          className="p-1.5 hover:text-rose-500 transition-colors hover:bg-rose-500/10 rounded" 
-                                                         title="Delete Instance"
+                                                         title={t('database_manager.delete_instance')}
                                                      >
                                                          <Trash2 size={12} />
                                                      </button>
@@ -182,7 +180,7 @@ export const DatabaseManager: React.FC<DatabaseManagerProps> = ({ serverId }) =>
                 </div>
                 <div className="px-4 py-3 bg-muted/10 border-t border-border/40 flex items-center gap-3">
                     <Info size={12} className="text-primary/60" />
-                    <p className="text-[9px] text-muted-foreground font-medium uppercase tracking-wider italic">Passwords are generated during provisioning and sent to the server console.</p>
+                    <p className="text-[9px] text-muted-foreground font-medium uppercase tracking-wider italic">{t('database_manager.passwords_note')}</p>
                 </div>
             </div>
 

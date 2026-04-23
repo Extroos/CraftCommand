@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { LogEntry, ServerStatus } from '@shared/types';
 import { Play, Pause, Trash2, ArrowRight, Power, Ban, RotateCcw, ArrowDown, Terminal as TerminalIcon, Wifi, Download, Search, Filter, FileText, Clock } from 'lucide-react';
 
@@ -33,6 +34,7 @@ interface ConsoleProps {
 
 import { useServers } from '@features/servers/context/ServerContext';
 const Console: React.FC<ConsoleProps> = ({ serverId }) => {
+    const { t } = useTranslation();
     const { servers, javaDownloadStatus, updateServerStatus, addBackgroundTask, updateBackgroundTask, removeBackgroundTask } = useServers();
     const server = servers.find(s => s.id === serverId);
     const status = server?.status || ServerStatus.OFFLINE;
@@ -315,7 +317,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        addToast('success', 'Logs Exported', 'A log file has been generated and downloaded.');
+        addToast('success', t('console.logs_exported'), t('console.logs_exported_desc'));
     };
 
     const handleDownloadServerLog = async () => {
@@ -452,7 +454,6 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
 
     const handlePower = async (action: 'start' | 'restart' | 'stop') => {
         const previousStatus = status;
-        const taskId = `${action}-${serverId}-${Date.now()}`;
         
         try {
             if (action === 'start') {
@@ -460,59 +461,28 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     addToast('error', 'Permissions', 'Insufficient permissions to start server');
                     return;
                 }
-                addBackgroundTask({
-                    id: taskId,
-                    name: `Startup: ${server?.name || serverId}`,
-                    type: 'start',
-                    serverId,
-                    status: 'running',
-                    progress: 0,
-                    message: 'Initializing server startup...'
-                });
                 updateServerStatus(serverId, ServerStatus.STARTING);
                 addToast('info', 'Console', 'Server starting...');
                 await API.startServer(serverId);
-                updateBackgroundTask(taskId, { name: `Startup: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server started' });
             } else if (action === 'stop') {
                 if (!canStop) {
                     addToast('error', 'Permissions', 'Insufficient permissions to stop server');
                     return;
                 }
                 setIsGracefulStopping(false);
-                addBackgroundTask({
-                    id: taskId,
-                    name: `Shutdown: ${server?.name || serverId}`,
-                    type: 'stop',
-                    serverId,
-                    status: 'running',
-                    progress: 0,
-                    message: 'Sending termination signal...'
-                });
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 addToast('warning', 'Console', 'Termination signal sent.');
                 await API.stopServer(serverId);
-                updateBackgroundTask(taskId, { name: `Shutdown: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server stopped' });
             } else if (action === 'restart') {
                 if (!canRestart) {
                     addToast('error', 'Permissions', 'Insufficient permissions to restart server');
                     return;
                 }
                 setIsGracefulStopping(false);
-                addBackgroundTask({
-                    id: taskId,
-                    name: `Restart: ${server?.name || serverId}`,
-                    type: 'restart',
-                    serverId,
-                    status: 'running',
-                    progress: 0,
-                    message: 'Initiating server restart...'
-                });
                 updateServerStatus(serverId, ServerStatus.STOPPING);
                 addToast('info', 'Console', 'Restarting process...');
                 await API.stopServer(serverId);
                 
-                updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, progress: 50, message: 'Waiting for process to exit...' });
-
                 // Wait for OFFLINE status via socket event
                 const maxWait = 15000;
                 await new Promise<void>((resolve) => {
@@ -529,14 +499,11 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     });
                 });
                 
-                updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, progress: 75, message: 'Relaunching server...' });
                 updateServerStatus(serverId, ServerStatus.STARTING);
                 await API.startServer(serverId);
-                updateBackgroundTask(taskId, { name: `Restart: ${server?.name || serverId}`, status: 'complete', progress: 100, message: 'Server restarted' });
             }
         } catch (e: any) {
             updateServerStatus(serverId, previousStatus as ServerStatus);
-            removeBackgroundTask(taskId);
             addToast('error', 'Power Action Failed', e.message);
         }
     };
@@ -559,7 +526,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h2 className="text-sm font-bold text-foreground">Terminal Access</h2>
+                            <h2 className="text-sm font-bold text-foreground">{t('console.terminal_access')}</h2>
                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
                                 status === ServerStatus.ONLINE ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
                                 status === ServerStatus.OFFLINE ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' :
@@ -587,7 +554,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                                 : 'text-muted-foreground opacity-50 cursor-not-allowed hover:bg-secondary'
                             }`}
                         >
-                            <Power size={14} /> <span className="hidden sm:inline">Start</span>
+                            <Power size={14} /> <span className="hidden sm:inline">{t('console.start')}</span>
                         </button>
                         <div className="w-[1px] h-4 bg-border mx-1"></div>
                         <button 
@@ -609,17 +576,17 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                                 ? 'text-amber-500 hover:bg-amber-500/10' 
                                 : 'text-muted-foreground opacity-30 cursor-not-allowed'
                             }`}
-                            title={isGracefulStopping ? "Cancel Graceful Shutdown" : "Graceful Shutdown (30s)"}
+                            title={isGracefulStopping ? t('console.cancel') + " Graceful Shutdown" : "Graceful Shutdown (30s)"}
                         >
                             {isGracefulStopping ? <RotateCcw size={14} className="animate-spin-slow" /> : <Power size={14} className="opacity-70" />}
-                            <span className="hidden sm:inline">{isGracefulStopping ? 'Cancel' : 'Graceful'}</span>
+                            <span className="hidden sm:inline">{isGracefulStopping ? t('console.cancel') : t('console.graceful')}</span>
                         </button>
                         <div className="w-[1px] h-4 bg-border mx-1"></div>
                         <button 
                             onClick={() => handlePower('stop')}
                             disabled={status === ServerStatus.OFFLINE || status === ServerStatus.STARTING || status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING || !canStop}
                             className={`p-2 rounded-md transition-all duration-200 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 disabled:cursor-not-allowed`}
-                            title={!canStop ? 'Insufficient Permissions' : (status === ServerStatus.STARTING ? "Startup Lock Active" : "Kill Process")}
+                            title={!canStop ? t('console.insufficient_permissions') : (status === ServerStatus.STARTING ? t('console.startup_lock') : t('console.kill_process'))}
                         >
                             <Ban size={14} />
                         </button>
@@ -632,8 +599,8 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         <button 
                             onClick={() => setIsPaused(!isPaused)}
                             className={`p-2 rounded-md border border-transparent hover:border-border transition-colors ${isPaused ? 'bg-amber-500/10 text-amber-500' : 'text-muted-foreground hover:bg-secondary'}`}
-                            title={isPaused ? "Resume Output" : "Pause Output"}
-                            aria-label={isPaused ? "Resume Output" : "Pause Output"}
+                            title={isPaused ? t('console.resume') : t('console.pause')}
+                            aria-label={isPaused ? t('console.resume') : t('console.pause')}
                         >
                             {isPaused ? <Play size={14} /> : <Pause size={14} />}
                         </button>
@@ -727,7 +694,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                             type="text"
                             value={logSearch}
                             onChange={(e) => setLogSearch(e.target.value)}
-                            placeholder="Search logs..."
+                            placeholder={t('console.search_logs')}
                             className="w-full bg-black/30 border border-border/50 rounded px-6 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/30"
                         />
                         {logSearch && (
@@ -761,7 +728,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                             onClick={scrollToBottom}
                             className={`sticky top-2 left-1/2 -translate-x-1/2 text-white px-4 py-2 rounded-full shadow-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 z-50 transition-colors ${theme.bg} border border-white/10`}
                         >
-                            <ArrowDown size={12} strokeWidth={3} /> Synchronize Stream
+                            <ArrowDown size={12} strokeWidth={3} /> {t('console.sync_stream')}
                         </motion.button>
                     )}
                 </AnimatePresence>
@@ -769,8 +736,8 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                 {visibleLogs.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground/30 select-none">
                         <TerminalIcon size={48} className="mb-4 opacity-20" />
-                        <p className="text-sm">Server is offline or log buffer is empty.</p>
-                        <p className="text-xs mt-1">Press 'Start' to launch the server.</p>
+                        <p className="text-sm">{t('console.empty_logs')}</p>
+                        <p className="text-xs mt-1">{t('console.press_start')}</p>
                     </div>
                 )}
                                 {visibleLogs.map((log) => (
@@ -798,7 +765,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                 
                 {logs.length > visibleLogs.length && (
                     <div className="text-center py-2 text-xs text-muted-foreground/40 italic">
-                        --- Older logs hidden for performance ---
+                        --- {t('console.older_logs')} ---
                     </div>
                 )}
                 
@@ -811,7 +778,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                 <>
                 {status === ServerStatus.ONLINE && (
                     <div className="flex items-center gap-1 mb-2 overflow-x-auto scrollbar-none">
-                        <span className="text-[8px] font-black text-muted-foreground/30 uppercase tracking-widest mr-1 shrink-0">Quick</span>
+                        <span className="text-[8px] font-black text-muted-foreground/30 uppercase tracking-widest mr-1 shrink-0">{t('console.quick')}</span>
                         {[
                             { cmd: 'save-all', label: 'Save' },
                             { cmd: 'list', label: 'Players' },
@@ -862,7 +829,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                         onKeyDown={handleKeyDown}
                         autoComplete="off"
                         spellCheck={false}
-                        placeholder={status === ServerStatus.ONLINE ? "Awaiting command... (Tab to complete, ↑↓ history)" : status === ServerStatus.STARTING ? "Node Initializing..." : "Node Offline."}
+                        placeholder={status === ServerStatus.ONLINE ? t('console.awaiting') : status === ServerStatus.STARTING ? t('console.initializing') : t('console.offline')}
                         disabled={status !== ServerStatus.ONLINE}
                         className="flex-1 bg-transparent border-none text-[13px] font-mono text-zinc-100 focus:outline-none placeholder:text-zinc-600 disabled:cursor-not-allowed"
                     />
@@ -878,7 +845,7 @@ const Console: React.FC<ConsoleProps> = ({ serverId }) => {
                 ) : (
                 <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground/50 bg-muted/10 rounded-lg border border-border/30">
                     <TerminalIcon size={12} />
-                    <span>Read-only console — your role ({user?.role}) does not allow sending commands.</span>
+                    <span>{t('console.read_only', { role: user?.role })}</span>
                 </div>
                 )}
             </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Package, Download, User, Loader2, ArrowRight, X, RefreshCw, Blocks, Box, AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { API } from '@core/services/api';
 
 interface Modpack {
@@ -46,6 +47,7 @@ const TYPE_OPTIONS = [
 ];
 
 const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftware }) => {
+    const { t } = useTranslation();
     // Auto-detect loader from server software
     const detectedLoader = serverSoftware ? (SOFTWARE_TO_LOADER[serverSoftware] || 'fabric') : 'fabric';
 
@@ -79,12 +81,12 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
             });
             const res = await fetch(`/api/modpacks/search?${params.toString()}`);
             if (!res.ok) {
-                throw new Error(`Search failed (${res.status})`);
+                throw new Error(t('modpack_browser.search_failed_msg'));
             }
             const data = await res.json();
             setPacks(Array.isArray(data) ? data : []);
         } catch (e: any) {
-            setError(e.message || 'Search failed. Check your connection and try again.');
+            setError(e.message || t('modpack_browser.search_failed_msg'));
             setPacks([]);
         } finally {
             setIsLoading(false);
@@ -108,7 +110,7 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
                 <Search className="absolute left-3 top-3 text-muted-foreground w-5 h-5" />
                 <input 
                     type="text" 
-                    placeholder="Search mods & modpacks (e.g. 'Sodium', 'Origins', 'Better Minecraft')..." 
+                    placeholder={t('modpack_browser.search_placeholder')} 
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     className="w-full bg-secondary/30 border border-border rounded-xl pl-10 pr-10 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
@@ -127,7 +129,7 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
             <div className="flex flex-wrap gap-4">
                 {/* Loader Toggle */}
                 <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mr-1">Loader</span>
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mr-1">{t('modpack_browser.loader')}</span>
                     {LOADER_OPTIONS.map(opt => (
                         <button
                             key={opt.value}
@@ -145,7 +147,7 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
 
                 {/* Type Toggle */}
                 <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mr-1">Type</span>
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mr-1">{t('modpack_browser.type')}</span>
                     {TYPE_OPTIONS.map(opt => (
                         <button
                             key={opt.value}
@@ -156,7 +158,7 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
                                     : 'bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground'
                             }`}
                         >
-                            {opt.label}
+                            {opt.value === 'all' ? t('modpack_browser.all') : opt.value === 'mod' ? t('modpack_browser.mods') : t('modpack_browser.modpacks')}
                         </button>
                     ))}
                 </div>
@@ -171,7 +173,7 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
                         onClick={search} 
                         className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/20 hover:bg-red-500/30 transition-colors"
                     >
-                        <RefreshCw size={12} /> Retry
+                        <RefreshCw size={12} /> {t('modpack_browser.retry')}
                     </button>
                 </div>
             )}
@@ -179,7 +181,7 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
             {/* Results Count */}
             {packs.length > 0 && (
                 <p className="text-xs text-muted-foreground">
-                    {packs.length} result{packs.length !== 1 ? 's' : ''}
+                    {packs.length === 1 ? t('modpack_browser.results_info', { count: packs.length }) : t('modpack_browser.results_info_plural', { count: packs.length })}
                 </p>
             )}
 
@@ -194,14 +196,14 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
                         <Package size={32} className="mx-auto mb-2 opacity-50" />
                         {debouncedQuery ? (
                             <>
-                                <p className="font-medium">No results found</p>
-                                <p className="text-xs mt-1">Try a different search term or switch the loader</p>
+                                <p className="font-medium">{t('modpack_browser.no_results')}</p>
+                                <p className="text-xs mt-1">{t('modpack_browser.try_different')}</p>
                             </>
                         ) : (
                             <>
-                                <p>Search for mods & modpacks to begin</p>
+                                <p>{t('modpack_browser.search_begin')}</p>
                                 <p className="text-xs mt-1 text-muted-foreground/60">
-                                    Try "Sodium", "Create", "Origins", or "Better Minecraft"
+                                    {t('modpack_browser.try_examples')}
                                 </p>
                             </>
                         )}
@@ -228,9 +230,9 @@ const ModpackBrowser: React.FC<ModpackBrowserProps> = ({ onSelect, serverSoftwar
                                             : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
                                     }`}>
                                         {pack.project_type === 'modpack' ? (
-                                            <span className="flex items-center gap-0.5"><Blocks size={8} /> Pack</span>
+                                            <span className="flex items-center gap-0.5"><Blocks size={8} /> {t('modpack_browser.pack')}</span>
                                         ) : (
-                                            <span className="flex items-center gap-0.5"><Box size={8} /> Mod</span>
+                                            <span className="flex items-center gap-0.5"><Box size={8} /> {t('modpack_browser.mod')}</span>
                                         )}
                                     </span>
                                     {pack.game_versions && pack.game_versions.length > 0 && (

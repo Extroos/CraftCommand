@@ -119,7 +119,7 @@ export const MaintenanceCard: React.FC<MaintenanceCardProps> = ({ settings, setS
                                         {/* Drift Detection */}
                                         <div className="flex items-center justify-between gap-4">
                                             <div>
-                                                <div className="text-[10px] font-bold">Sentinal Drift Detection</div>
+                                                <div className="text-[10px] font-bold">Sentinel Drift Detection</div>
                                                 <p className="text-[8px] text-muted-foreground leading-tight">Restart servers if state is ONLINE but process is missing.</p>
                                             </div>
                                             <button
@@ -138,48 +138,7 @@ export const MaintenanceCard: React.FC<MaintenanceCardProps> = ({ settings, setS
                                                     settings.app.automaticRepairV3?.driftDetectionEnabled ? 'translate-x-3' : 'translate-x-0'
                                                 }`} />
                                             </button>
-                                        </div>
-
-                                        {/* IO Throttling */}
-                                        <div className="flex items-center justify-between gap-4">
-                                            <div>
-                                                <div className="text-[10px] font-bold">IO Throttling Threshold (%)</div>
-                                                <p className="text-[8px] text-muted-foreground leading-tight">Pause repair if Disk IO exceeds this threshold.</p>
-                                            </div>
-                                            <input 
-                                                type="number"
-                                                className="w-16 h-7 rounded border border-border bg-background/50 px-1.5 text-[10px] outline-none"
-                                                value={settings.app.automaticRepairV3?.ioThrottlingThreshold || 80}
-                                                onChange={(e) => setSettings({
-                                                    ...settings,
-                                                    app: {
-                                                        ...settings.app,
-                                                        automaticRepairV3: { ...settings.app.automaticRepairV3, ioThrottlingThreshold: parseInt(e.target.value) || 80 }
-                                                    }
-                                                })}
-                                            />
-                                        </div>
-
-                                        {/* Snapshot Interval */}
-                                        <div className="flex items-center justify-between gap-4">
-                                            <div>
-                                                <div className="text-[10px] font-bold">Health Snapshot Interval (Min)</div>
-                                                <p className="text-[8px] text-muted-foreground leading-tight">Frequency of deep system integrity scans.</p>
-                                            </div>
-                                            <input 
-                                                type="number"
-                                                className="w-16 h-7 rounded border border-border bg-background/50 px-1.5 text-[10px] outline-none"
-                                                value={settings.app.automaticRepairV3?.healthSnapshotInterval || 5}
-                                                onChange={(e) => setSettings({
-                                                    ...settings,
-                                                    app: {
-                                                        ...settings.app,
-                                                        automaticRepairV3: { ...settings.app.automaticRepairV3, healthSnapshotInterval: parseInt(e.target.value) || 5 }
-                                                    }
-                                                })}
-                                            />
-                                        </div>
-                                    </motion.div>
+                                        </div>                                    </motion.div>
                                 )}
                             </AnimatePresence>
                         </div>
@@ -203,7 +162,7 @@ export const MaintenanceCard: React.FC<MaintenanceCardProps> = ({ settings, setS
                         <div className="space-y-1.5">
                             <h4 className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
                                 <div className="w-1 h-1 bg-primary rounded-full" />
-                                Autonomous Patching
+                                Automatic Updates
                             </h4>
                             <p className="text-[10px] text-muted-foreground leading-relaxed">
                                 When toggled, the system silently prepares updates in the background. Apply them instantly via the launcher with zero manual file handling.
@@ -212,10 +171,10 @@ export const MaintenanceCard: React.FC<MaintenanceCardProps> = ({ settings, setS
                         <div className="space-y-1.5">
                             <h4 className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
                                 <div className="w-1 h-1 bg-primary rounded-full" />
-                                Zero-Impact Policy
+                                Safe Updates
                             </h4>
                             <p className="text-[10px] text-muted-foreground leading-relaxed">
-                                Updates use an <b>Atomic Delta Overlay</b>. Your <code className="bg-primary/10 px-1 rounded">data/</code>, <code className="bg-primary/10 px-1 rounded">servers/</code>, and <code className="bg-primary/10 px-1 rounded">.env</code> are strictly isolated and never modified.
+                                Updates are non-destructive. Your <code className="bg-primary/10 px-1 rounded">data/</code>, <code className="bg-primary/10 px-1 rounded">servers/</code>, and <code className="bg-primary/10 px-1 rounded">.env</code> are never modified during an update.
                             </p>
                         </div>
                     </div>

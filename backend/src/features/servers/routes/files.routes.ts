@@ -251,11 +251,11 @@ router.get('/download', requirePermission('server.files.read'), async (req, res)
     if (!server) return res.status(404).json({ error: 'Server not found' });
     if (!relativePath) return res.status(400).json({ error: 'Path is required' });
 
+    // Use fsManager to safely resolve and assert the path is within bounds
+    const fsManager = new FileSystemManager(server.workingDirectory);
+
     try {
-        const filePath = path.join(server.workingDirectory, relativePath as string);
-        if (!filePath.startsWith(server.workingDirectory)) {
-             return res.status(403).json({ error: 'Access denied' });
-        }
+        const filePath = fsManager.getAbsolutePath(relativePath as string);
         
         if (await fs.pathExists(filePath)) {
              res.download(filePath);
@@ -279,16 +279,11 @@ router.post('/upload', requirePermission('server.files.write'), upload.single('f
     if (!server) return res.status(404).json({ error: 'Server not found' });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
+    const fsManager = new FileSystemManager(server.workingDirectory);
     try {
-        const rootDir = server.workingDirectory;
-        let targetDir = rootDir;
-        if (relativePath && typeof relativePath === 'string') {
-            const resolved = path.resolve(rootDir, relativePath);
-            if (!resolved.startsWith(rootDir)) {
-                return res.status(403).json({ error: 'Access denied: Path traversal detected' });
-            }
-            targetDir = resolved;
-        }
+        const targetDir = relativePath && typeof relativePath === 'string'
+            ? fsManager.getAbsolutePath(relativePath)
+            : server.workingDirectory;
 
         await fs.ensureDir(targetDir);
         const targetPath = path.join(targetDir, req.file.originalname);
@@ -313,15 +308,16 @@ router.post('/extract', requirePermission('server.files.write'), async (req, res
     if (!server) return res.status(404).json({ error: 'Server not found' });
     if (!filePath || !filePath.endsWith('.zip')) return res.status(400).json({ error: 'Invalid ZIP file' });
 
+    const fsManager = new FileSystemManager(server.workingDirectory);
     try {
         logger.info(`[Extract] Request for server ${id}, file: ${filePath}`);
-        const zipPath = path.join(server.workingDirectory, filePath);
+        const zipPath = fsManager.getAbsolutePath(filePath);
         
         if (!(await fs.pathExists(zipPath))) {
             return res.status(404).json({ error: 'ZIP file not found' });
         }
 
-        const tempDir = path.join(server.workingDirectory, `.temp_extract_${Date.now()}`);
+        const tempDir = fsManager.getAbsolutePath(`.temp_extract_${Date.now()}`);
         await fs.ensureDir(tempDir);
         
         const zip = new AdmZip(zipPath);

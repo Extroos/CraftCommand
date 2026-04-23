@@ -7,9 +7,11 @@ import { useToast } from '../ui/Toast';
 import { 
     User, Lock, Palette, Bell, Key, Eye, EyeOff, Save, Loader2, 
     Mail, Check, AlertTriangle, Code, RefreshCw, Copy, Gamepad2, Link,
-    Terminal, Monitor, BellRing, Type, Volume2, Disc, Camera, ShieldCheck, QrCode
+    Terminal, Monitor, BellRing, Type, Volume2, Disc, Camera, ShieldCheck, QrCode,
+    Languages, Info, Globe, ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { useUser } from '@features/auth/context/UserContext';
 import { API } from '@core/services/api';
 import { HardDrive, Trash2, Archive, Database, Image as ImageIcon } from 'lucide-react';
@@ -21,6 +23,7 @@ import { usePrompt } from '../ui/hooks/usePrompt';
 import { PromptDialog } from '../ui/PromptDialog';
 
 const SystemCacheManager = ({ theme }: { theme: any }) => {
+    const { t } = useTranslation();
     const { user } = useUser();
     const [stats, setStats] = useState<{ java: { size: number, count: number }, temp: { size: number, count: number } } | null>(null);
     const [loading, setLoading] = useState(false);
@@ -45,19 +48,19 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
 
     const handleClear = async (type: 'java' | 'temp') => {
         const isConfirmed = await requestConfirm({
-            title: `Clear ${type.toUpperCase()} Cache`,
-            description: `Are you sure you want to clear the ${type} cache? This may require re-downloading files on the next server start.`,
-            confirmText: 'Clear Cache',
-            cancelText: 'Cancel'
+            title: t('diagnosis.apply_fix'),
+            description: t('profile.clear_java_cache'),
+            confirmText: t('profile.clear_java_cache'),
+            cancelText: t('common.cancel')
         });
         if (!isConfirmed) return;
         setLoading(true);
         try {
             await API.clearSystemCache(type);
-            addToast('success', 'Cache Cleared', `Successfully cleared ${type} cache.`);
+            addToast('success', t('profile.updated_success'), t('profile.cache_cleared', { type }));
             fetchStats();
         } catch (e) {
-            addToast('error', 'Failed', 'Could not clear cache.');
+            addToast('error', t('dashboard.power_action_failed'), t('profile.cache_clear_failed'));
         } finally {
             setLoading(false);
         }
@@ -71,7 +74,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
-    if (!stats) return <div className="p-8 text-center text-muted-foreground"><Loader2 className="animate-spin mx-auto mb-2" /> Loading stats...</div>;
+    if (!stats) return <div className="p-8 text-center text-muted-foreground"><Loader2 className="animate-spin mx-auto mb-2" /> {t('common.loading_stats')}</div>;
 
     return (
         <div className="cc-card p-6 mb-6">
@@ -80,8 +83,8 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
                     <Database size={20} />
                 </div>
                 <div>
-                    <h2 className="text-lg font-bold">System Storage</h2>
-                    <p className="text-sm text-muted-foreground">Manage local cache and temporary files.</p>
+                    <h2 className="text-lg font-bold">{t('profile.storage_title')}</h2>
+                    <p className="text-sm text-muted-foreground">{t('profile.storage_desc')}</p>
                 </div>
             </div>
 
@@ -93,8 +96,8 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
                             <Archive size={20} className="text-muted-foreground" />
                         </div>
                         <div>
-                            <h4 className="text-sm font-medium">Java Runtime Cache</h4>
-                            <p className="text-xs text-muted-foreground">Downloaded JREs (Temurin 8/11/17/21)</p>
+                            <h4 className="text-sm font-medium">{t('profile.java_cache_title')}</h4>
+                            <p className="text-xs text-muted-foreground">{t('profile.java_cache_desc')}</p>
                         </div>
                     </div>
                     <div className="text-right flex items-center gap-4">
@@ -106,7 +109,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
                             onClick={() => handleClear('java')}
                             disabled={loading}
                             className="p-2 hover:bg-destructive/10 text-destructive rounded-md transition-colors border border-transparent hover:border-destructive/20"
-                            title="Clear Java Cache"
+                            title={t('profile.clear_java_cache')}
                         >
                             <Trash2 size={16} />
                         </button>
@@ -120,8 +123,8 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
                             <HardDrive size={20} className="text-muted-foreground" />
                         </div>
                         <div>
-                            <h4 className="text-sm font-medium">Temporary Uploads</h4>
-                            <p className="text-xs text-muted-foreground">Stale uploads and extraction buffers.</p>
+                            <h4 className="text-sm font-medium">{t('profile.temp_cache_title')}</h4>
+                            <p className="text-xs text-muted-foreground">{t('profile.temp_cache_desc')}</p>
                         </div>
                     </div>
                      <div className="text-right flex items-center gap-4">
@@ -133,7 +136,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
                             onClick={() => handleClear('temp')}
                             disabled={loading}
                             className="p-2 hover:bg-destructive/10 text-destructive rounded-md transition-colors border border-transparent hover:border-destructive/20"
-                            title="Clear Temp Files"
+                            title={t('profile.clear_temp_cache')}
                         >
                             <Trash2 size={16} />
                         </button>
@@ -152,6 +155,7 @@ const SystemCacheManager = ({ theme }: { theme: any }) => {
 };
 
 const SystemUpdatePreferences = ({ theme, user, onUpdate }: any) => {
+    const { t } = useTranslation();
     return (
         <div className="cc-card p-6 mt-6">
             <div className="flex items-center gap-3 mb-6">
@@ -159,14 +163,14 @@ const SystemUpdatePreferences = ({ theme, user, onUpdate }: any) => {
                     <RefreshCw size={20} />
                 </div>
                 <div>
-                    <h2 className="text-lg font-bold">Software Updates</h2>
-                    <p className="text-sm text-muted-foreground">Configure automatic update checks.</p>
+                    <h2 className="text-lg font-bold">{t('profile.updates_title')}</h2>
+                    <p className="text-sm text-muted-foreground">{t('profile.updates_desc')}</p>
                 </div>
             </div>
              <div className="flex items-center justify-between p-4 border border-border rounded-md">
                 <div>
-                     <h4 className="text-sm font-medium">Check for Updates</h4>
-                     <p className="text-xs text-muted-foreground">Automatically check for new versions on startup.</p>
+                     <h4 className="text-sm font-medium">{t('profile.check_updates_title')}</h4>
+                     <p className="text-xs text-muted-foreground">{t('profile.check_updates_desc')}</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                     <input 
@@ -188,6 +192,7 @@ interface UserProfileViewProps {
 }
 
 const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSectionHandled }) => {
+    const { t } = useTranslation();
     // Replace local state with global context state
     const { user, isLoading, updateUser, updatePreferences, theme } = useUser();
     const [activeTab, setActiveTab] = useState<'ACCOUNT' | 'PERSONALIZATION' | 'NOTIFICATIONS' | 'MINECRAFT' | 'API' | 'SYSTEM'>('ACCOUNT');
@@ -232,7 +237,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
         if (!file) return;
 
         if (file.size > 5 * 1024 * 1024) {
-            addToast('error', 'Too Large', 'Avatar must be smaller than 5MB.');
+            addToast('error', t('common.too_large'), t('profile.avatar_limit_msg'));
             return;
         }
 
@@ -241,9 +246,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
             const result = await API.uploadAvatar(file);
             await updateUser({ avatarUrl: result.url });
             setAvatarInput(result.url);
-            addToast('success', 'Profile Updated', 'Your profile picture has been changed.');
+            addToast('success', t('profile.updated_success'), t('profile.avatar_changed_msg'));
         } catch (err: any) {
-            addToast('error', 'Upload Failed', err.message || 'Could not upload avatar.');
+            addToast('error', t('common.upload_failed'), err.message || t('common.error_occurred'));
         } finally {
             setIsSaving(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -252,27 +257,27 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
 
     const handlePasswordChange = async () => {
         if (!passwords.current || !passwords.new || !passwords.confirm) {
-            addToast('error', 'Incomplete', 'Please fill in all password fields.');
+            addToast('error', t('common.incomplete'), t('profile.password_fields_msg'));
             return;
         }
 
         if (passwords.new !== passwords.confirm) {
-            addToast('error', 'Mismatch', 'New passwords do not match.');
+            addToast('error', t('common.mismatch'), t('profile.password_mismatch_msg'));
             return;
         }
 
         if (passwords.new.length < 8) {
-            addToast('error', 'Too Short', 'Password must be at least 8 characters.');
+            addToast('error', t('common.too_short'), t('profile.password_length_msg'));
             return;
         }
 
         setIsSaving(true);
         try {
             await API.changePassword(passwords.current, passwords.new);
-            addToast('success', 'Password Changed!', 'Your password has been updated.');
+            addToast('success', t('profile.password_changed_success'), t('profile.password_updated_msg'));
             setPasswords({ current: '', new: '', confirm: '' });
         } catch (e: any) {
-            addToast('error', 'Failed', e.message || 'Could not change password.');
+            addToast('error', t('dashboard.power_action_failed'), e.message || t('common.error_occurred'));
         } finally {
             setIsSaving(false);
         }
@@ -283,9 +288,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
         setIsSaving(true);
         try {
             await updateUser({ minecraftIgn: ignInput });
-            addToast('success', 'Account Linked', `Successfully linked to: ${ignInput}`);
+            addToast('success', t('profile.account_linked_success'), t('profile.account_linked_msg', { ign: ignInput }));
         } catch (e) {
-            addToast('error', 'Failed', 'Could not link account.');
+            addToast('error', t('dashboard.power_action_failed'), t('common.error_occurred'));
         } finally {
             setIsSaving(false);
         }
@@ -296,9 +301,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
         setIsSaving(true);
         try {
             await updateUser({ avatarUrl: avatarInput });
-            addToast('success', 'Avatar Updated', 'Your profile picture has been changed.');
+            addToast('success', t('profile.avatar_updated_success'), t('profile.avatar_changed_msg'));
         } catch (e) {
-            addToast('error', 'Failed', 'Could not update avatar.');
+            addToast('error', t('dashboard.power_action_failed'), t('common.error_occurred'));
         } finally {
             setIsSaving(false);
         }
@@ -306,7 +311,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
 
     const handleSyncMinecraftSkin = async () => {
         if (!user?.minecraftIgn) {
-            addToast('error', 'Not Linked', 'Please link your Minecraft account first.');
+            addToast('error', t('profile.not_linked'), t('profile.link_minecraft_first_msg'));
             return;
         }
         
@@ -319,16 +324,16 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                 const defaultAvatar = `https://mc-heads.net/avatar/${user.username}/64`;
                 await updateUser({ avatarUrl: defaultAvatar });
                 setAvatarInput(defaultAvatar);
-                addToast('info', 'Sync Disabled', 'Reverted to default system avatar.');
+                addToast('info', t('profile.sync_disabled'), t('profile.reverted_avatar_msg'));
             } else {
                 // Sync with high-quality face (helm included)
                 const helmUrl = `https://minotar.net/helm/${user.minecraftIgn}/128.png`;
                 await updateUser({ avatarUrl: helmUrl });
                 setAvatarInput(helmUrl);
-                addToast('success', 'Skin Synced', 'Dashboard avatar synced with Minecraft skin.');
+                addToast('success', t('profile.skin_synced_success'), t('profile.skin_synced_msg'));
             }
         } catch (e) {
-            addToast('error', 'Failed', 'Could not update sync state.');
+            addToast('error', t('dashboard.power_action_failed'), t('common.error_occurred'));
         } finally {
             setIsSaving(false);
         }
@@ -336,20 +341,20 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
 
     const handleDisable2FA = async () => {
         const password = await requestPrompt({
-            title: 'Disable 2FA',
-            description: 'Please enter your password to confirm identity.',
-            placeholder: 'Account Password',
+            title: t('profile.disable_2fa_title'),
+            description: t('profile.disable_2fa_step1_msg'),
+            placeholder: t('profile.account_password_placeholder'),
             type: 'password',
-            confirmText: 'Continue'
+            confirmText: t('common.continue')
         });
         if (!password) return;
         
         const code = await requestPrompt({
-            title: 'Disable 2FA',
-            description: 'Please enter your generated 2FA code or a recovery code.',
-            placeholder: '6-digit code',
+            title: t('profile.disable_2fa_title'),
+            description: t('profile.disable_2fa_step2_msg'),
+            placeholder: t('profile.2fa_code_placeholder'),
             type: 'text',
-            confirmText: 'Disable 2FA'
+            confirmText: t('profile.disable_2fa_btn')
         });
         if (!code) return;
 
@@ -357,9 +362,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
         try {
             await API.disable2FA(password, code);
             await updateUser({}); // Trigger refresh from memory or re-fetch
-            addToast('success', '2FA Disabled', 'Two-factor authentication has been removed.');
+            addToast('success', t('profile.2fa_disabled_success'), t('profile.2fa_disabled_msg'));
         } catch (err: any) {
-            addToast('error', 'Failed', err.message || 'Could not disable 2FA.');
+            addToast('error', t('dashboard.power_action_failed'), err.message || t('common.error_occurred'));
         } finally {
             setIsSaving(false);
         }
@@ -369,10 +374,10 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
 
     const handleGenerateKey = async () => {
         const isConfirmed = await requestConfirm({
-            title: 'Rotate Developer API Key',
-            description: 'Generating a new API Key will immediately invalidate the active session token. All external integrations (Discord bots, monitoring scripts) will require updating. Proceed?',
-            confirmText: 'Confirm Rotation',
-            cancelText: 'Cancel'
+            title: t('profile.rotate_api_key_title'),
+            description: t('profile.rotate_api_key_desc'),
+            confirmText: t('profile.confirm_rotation'),
+            cancelText: t('common.cancel')
         });
 
         if (isConfirmed) {
@@ -380,9 +385,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
             try {
                 const { apiKey } = await API.rotateApiKey();
                 await updateUser({ apiKey } as any);
-                addToast('success', 'Key Rotated', 'A new API identifier has been generated and provisioned.');
+                addToast('success', t('profile.key_rotated_success'), t('profile.key_rotated_msg'));
             } catch (err: any) {
-                addToast('error', 'Rotation Failed', err.message || 'Internal security module returned a conflict.');
+                addToast('error', t('profile.key_rotation_failed'), err.message || t('common.error_occurred'));
             } finally {
                 setIsSaving(false);
             }
@@ -395,14 +400,14 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
         // Quality Mode Boost: Initialize default backgrounds if first time
         if (key === 'visualQuality' && value === true) {
             updatePreferences({ visualQuality: true, reducedMotion: false }); // Force Reduced Motion OFF
-            addToast('success', 'Quality Mode Enabled', 'Visual effects are now active! Reduced Motion has been disabled for full visual fidelity.');
+            addToast('success', t('profile.quality_mode_enabled_success'), t('profile.quality_mode_enabled_msg'));
             return;
         }
 
         // Reduced Motion Boost: Kill Quality Mode
         if (key === 'reducedMotion' && value === true) {
             updatePreferences({ reducedMotion: true, visualQuality: false }); // Force Quality Mode OFF
-            addToast('info', 'Performance Mode Active', 'Animations and glass effects are now disabled. Quality Mode has been turned off.');
+            addToast('info', t('profile.performance_mode_active'), t('profile.performance_mode_msg'));
             return;
         }
 
@@ -421,7 +426,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                 <div className="flex items-center justify-center py-20">
                     <div className="text-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                        <p className="text-muted-foreground">Loading profile...</p>
+                        <p className="text-muted-foreground">{t('profile.loading_profile')}</p>
                     </div>
                 </div>
             </div>
@@ -434,8 +439,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
             <div className="max-w-5xl mx-auto py-8">
                 <div className="flex items-center justify-center py-20">
                     <div className="text-center">
-                        <p className="text-rose-500 font-semibold mb-2">Authentication Required</p>
-                        <p className="text-muted-foreground text-sm">Please log in to view your profile.</p>
+                        <p className="text-rose-500 font-semibold mb-2">{t('common.auth_required')}</p>
+                        <p className="text-muted-foreground text-sm">{t('profile.login_to_view_msg')}</p>
                     </div>
                 </div>
             </div>
@@ -469,7 +474,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             ) : (
                                 <>
                                     <Camera size={24} />
-                                    <span className="text-[8px] font-bold uppercase mt-1 tracking-widest text-white/80">Update</span>
+                                    <span className="text-[8px] font-bold uppercase mt-1 tracking-widest text-white/80">{t('common.update')}</span>
                                 </>
                             )}
                         </button>
@@ -484,7 +489,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                     />
                     {user.minecraftIgn && (
                         <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 text-foreground text-[10px] font-bold px-2 py-0.5 rounded-full border border-background shadow-sm whitespace-nowrap ${theme.bg}`}>
-                            LINKED
+                            {t('profile.linked')}
                         </div>
                     )}
                 </div>
@@ -501,12 +506,12 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
             {/* Navigation Tabs */}
             <div className="flex border-b border-border mb-8 overflow-x-auto no-scrollbar">
                 {[
-                    { id: 'ACCOUNT', label: 'Account', icon: <Lock size={16} /> },
-                    { id: 'PERSONALIZATION', label: 'Personalization', icon: <Palette size={16} /> },
-                    { id: 'NOTIFICATIONS', label: 'Notifications', icon: <Bell size={16} /> },
-                    { id: 'MINECRAFT', label: 'Minecraft', icon: <Gamepad2 size={16} /> },
-                    { id: 'API', label: 'Developer', icon: <Code size={16} /> },
-                    { id: 'SYSTEM', label: 'System', icon: <HardDrive size={16} /> }
+                    { id: 'ACCOUNT', label: t('profile.tab_account'), icon: <Lock size={16} /> },
+                    { id: 'PERSONALIZATION', label: t('profile.tab_personalization'), icon: <Palette size={16} /> },
+                    { id: 'NOTIFICATIONS', label: t('profile.tab_notifications'), icon: <Bell size={16} /> },
+                    { id: 'MINECRAFT', label: t('profile.tab_minecraft'), icon: <Gamepad2 size={16} /> },
+                    { id: 'API', label: t('profile.tab_developer'), icon: <Code size={16} /> },
+                    { id: 'SYSTEM', label: t('profile.tab_system'), icon: <HardDrive size={16} /> }
                 ].map((tab) => (
                     <button 
                         key={tab.id}
@@ -532,9 +537,9 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                 <div className="bg-amber-500/10 border border-amber-500/20 rounded-md p-4 flex gap-3 items-start">
                                     <AlertTriangle className="text-amber-500 shrink-0" size={20} />
                                     <div>
-                                        <h3 className="font-bold text-amber-700 dark:text-amber-500 text-sm">Action Required</h3>
+                                        <h3 className="font-bold text-amber-700 dark:text-amber-500 text-sm">{t('common.action_required')}</h3>
                                         <p className="text-xs text-amber-800 dark:text-amber-200/70 mt-1">
-                                            You are using the default administrator account. Please change your password to secure your local dashboard.
+                                            {t('profile.default_admin_warning')}
                                         </p>
                                     </div>
                                 </div>
@@ -543,11 +548,11 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             {/* Password Change */}
                             <div className="cc-card p-6">
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                    <Lock size={18} className={theme.text} /> Change Password
+                                    <Lock size={18} className={theme.text} /> {t('profile.change_password_title')}
                                 </h2>
                                 <div className="space-y-4 max-w-md">
                                     <div>
-                                        <label className="text-xs font-medium text-muted-foreground uppercase">Current Password</label>
+                                        <label className="text-xs font-medium text-muted-foreground uppercase">{t('profile.current_password_label')}</label>
                                         <div className="relative mt-1">
                                             <input 
                                                 type={showPassword ? 'text' : 'password'}
@@ -559,7 +564,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-xs font-medium text-muted-foreground uppercase">New Password</label>
+                                            <label className="text-xs font-medium text-muted-foreground uppercase">{t('profile.new_password_label')}</label>
                                             <input 
                                                 type={showPassword ? 'text' : 'password'}
                                                 value={passwords.new}
@@ -568,7 +573,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-medium text-muted-foreground uppercase">Confirm</label>
+                                            <label className="text-xs font-medium text-muted-foreground uppercase">{t('profile.confirm_password_label')}</label>
                                             <input 
                                                 type={showPassword ? 'text' : 'password'}
                                                 value={passwords.confirm}
@@ -585,7 +590,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5"
                                         >
                                             {showPassword ? <EyeOff size={14} /> : <Eye size={14} />} 
-                                            {showPassword ? 'Hide Characters' : 'Show Characters'}
+                                            {showPassword ? t('profile.hide_password') : t('profile.show_password')}
                                         </button>
                                         
                                         <button 
@@ -594,7 +599,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             className="bg-foreground text-background px-4 py-2 rounded-md text-sm font-medium hover:bg-foreground/90 transition-colors flex items-center gap-2"
                                         >
                                             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                            Update Password
+                                            {t('profile.update_password_btn')}
                                         </button>
                                     </div>
                                 </div>
@@ -603,7 +608,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             {/* Avatar Settings */}
                             <div className="cc-card p-6">
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                    <Disc size={18} className={theme.text} /> Profile Picture
+                                    <Disc size={18} className={theme.text} /> {t('profile.avatar_title')}
                                 </h2>
                                 <div className="space-y-4 max-w-md">
                                     <div className="flex items-center gap-4 mb-4">
@@ -615,13 +620,13 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             )}
                                         </div>
                                         <div>
-                                            <p className="text-sm font-medium">Avatar Preview</p>
-                                            <p className="text-xs text-muted-foreground">This is how you appear to others.</p>
+                                            <p className="text-sm font-medium">{t('profile.avatar_preview')}</p>
+                                            <p className="text-xs text-muted-foreground">{t('profile.avatar_preview_desc')}</p>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="text-xs font-medium text-muted-foreground uppercase">Image URL (HTTPS)</label>
+                                        <label className="text-xs font-medium text-muted-foreground uppercase">{t('profile.avatar_url_label')}</label>
                                         <div className="flex gap-2 mt-1.5">
                                             <input 
                                                 type="text" 
@@ -639,7 +644,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             </button>
                                         </div>
                                         <p className="text-[10px] text-muted-foreground mt-2 italic">
-                                            Supports Gravatar, Discord, or any direct image link.
+                                            {t('profile.avatar_url_hint')}
                                         </p>
                                     </div>
                                 </div>
@@ -647,7 +652,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                             {/* 2FA Security */}
                             <div ref={securitySectionRef} className={`cc-card p-6 ${initialSection === '2FA' ? 'ring-2 ring-primary ring-offset-2' : ''}`}>
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                    <ShieldCheck size={18} className={theme.text} /> Two-Factor Authentication
+                                    <ShieldCheck size={18} className={theme.text} /> {t('profile.2fa_title')}
                                 </h2>
                                 
                                 <div className="flex items-start gap-6">
@@ -656,19 +661,19 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                     </div>
                                     
                                     <div className="flex-1 space-y-4">
-                                        <div>
+                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <h3 className="font-bold text-sm">
-                                                    Status: {user.twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                                                    {t('profile.2fa_status', { status: user.twoFactorEnabled ? t('common.enabled') : t('common.disabled') })}
                                                 </h3>
                                                 {user.twoFactorEnabled && (
-                                                    <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Secure</span>
+                                                    <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">{t('common.secure')}</span>
                                                 )}
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                                                 {user.twoFactorEnabled 
-                                                    ? 'Your account is protected with an additional layer of security. An authenticator code is required for every login.'
-                                                    : 'Protect your account from unauthorized access by requiring a second verification step during login.'}
+                                                    ? t('profile.2fa_desc_enabled')
+                                                    : t('profile.2fa_desc_disabled')}
                                             </p>
                                         </div>
 
@@ -678,14 +683,14 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                     onClick={handleDisable2FA}
                                                     className="text-xs font-bold uppercase tracking-widest text-rose-500 hover:text-rose-400 transition-colors py-2"
                                                 >
-                                                    Disable 2FA
+                                                    {t('profile.disable_2fa_btn')}
                                                 </button>
                                             ) : (
                                                 <button 
                                                     onClick={() => setShow2FAWizard(true)}
                                                     className={`px-4 py-2 text-xs font-bold rounded-md border border-border transition-all shadow-sm ${theme.bg} text-foreground hover:scale-105 active:scale-95 flex items-center gap-2`}
                                                 >
-                                                    <QrCode size={14} /> Enable 2FA
+                                                    <QrCode size={14} /> {t('profile.enable_2fa_btn')}
                                                 </button>
                                             )}
                                         </div>
@@ -706,11 +711,11 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         <Palette size={20} />
                                     </div>
                                     <div className="flex-1">
-                                        <h2 className="text-lg font-bold">Theme & Appearance</h2>
-                                        <p className="text-sm text-muted-foreground">Customize your dashboard experience.</p>
+                                        <h2 className="text-lg font-bold">{t('profile.appearance_title')}</h2>
+                                        <p className="text-sm text-muted-foreground">{t('profile.appearance_desc')}</p>
                                         {!user.preferences.visualQuality && (
                                             <p className="text-[10px] text-amber-500 font-medium mt-1 animate-pulse">
-                                                Tip: Enable Quality Mode below to unlock custom backgrounds.
+                                                {t('profile.quality_mode_tip')}
                                             </p>
                                         )}
                                     </div>
@@ -719,7 +724,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             if (user.preferences.visualQuality) {
                                                 setShowBackgroundModal(true);
                                             } else {
-                                                addToast('info', 'Quality Mode Required', 'Enable Quality Mode below to unlock background customization.');
+                                                addToast('info', t('profile.quality_mode_required'), t('profile.quality_mode_req_msg'));
                                             }
                                         }}
                                         className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md border border-border transition-all shadow-sm ${
@@ -729,13 +734,13 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         }`}
                                     >
                                         <ImageIcon size={14} /> 
-                                        {user.preferences.visualQuality ? 'Manage Backgrounds' : 'Unlock Backgrounds'}
+                                        {user.preferences.visualQuality ? t('profile.manage_backgrounds') : t('profile.unlock_backgrounds')}
                                     </button>
                                 </div>
 
                                 <div className="space-y-6">
                                     <div>
-                                        <label className="text-sm font-medium block mb-3">Accent Color</label>
+                                        <label className="text-sm font-medium block mb-3">{t('profile.accent_color_label')}</label>
                                         <div className="flex gap-3">
                                             {(['emerald', 'blue', 'violet', 'amber', 'rose'] as AccentColor[]).map((color) => (
                                                 <button
@@ -760,8 +765,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                 <Monitor size={18} />
                                             </div>
                                             <div className="flex flex-col justify-center">
-                                                <h3 className="text-sm font-medium">Reduced Motion</h3>
-                                                <p className="text-xs text-muted-foreground">Disable heavy animations for better performance.</p>
+                                                <h3 className="text-sm font-medium">{t('profile.reduced_motion_title')}</h3>
+                                                <p className="text-xs text-muted-foreground">{t('profile.reduced_motion_desc')}</p>
                                             </div>
                                         </div>
                                         <label className={`relative inline-flex items-center ${user.preferences.visualQuality ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
@@ -783,12 +788,12 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             </div>
                                             <div className="flex flex-col justify-center">
                                                 <h3 className="text-sm font-medium flex items-center gap-2">
-                                                    Quality Mode
+                                                    {t('profile.quality_mode_title')}
                                                     <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20 font-bold uppercase tracking-wider">
-                                                        Beta
+                                                        {t('common.beta')}
                                                     </span>
                                                 </h3>
-                                                <p className="text-xs text-muted-foreground">Enable enhanced visual fidelity and high-end effects.</p>
+                                                <p className="text-xs text-muted-foreground">{t('profile.quality_mode_desc')}</p>
                                             </div>
                                         </div>
                                         <label className={`relative inline-flex items-center ${user.preferences.reducedMotion ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
@@ -805,6 +810,53 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                 </div>
                             </div>
 
+                            {/* Language & Region */}
+                            <div className="cc-card p-6">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 bg-secondary text-muted-foreground rounded-md`}>
+                                            <Languages size={20} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-bold">{t('profile.system_language')}</h2>
+                                            <p className="text-sm text-muted-foreground">{t('profile.choose_language')}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col items-end gap-2">
+                                        <div className="relative group/select w-full md:w-3/5">
+                                            <select 
+                                                value={user.preferences.language || 'en'}
+                                                onChange={(e) => {
+                                                    handlePreferenceUpdate('language', 'language', e.target.value);
+                                                    addToast('success', t('profile.lang_saved'), t('profile.lang_updated'));
+                                                }}
+                                                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-all hover:border-primary/40 cursor-pointer"
+                                            >
+                                                <option value="en">{t('common.english')}</option>
+                                                <option value="es">{t('common.spanish')} (60%)</option>
+                                                <option value="fr">{t('common.french')} (60%)</option>
+                                                <option value="de">{t('common.german')} (60%)</option>
+                                                <option value="it">{t('common.italian')} (60%)</option>
+                                                <option value="ja">{t('common.japanese')} (60%)</option>
+                                                <option value="ko">{t('common.korean')} (60%)</option>
+                                                <option value="pl">{t('common.polish')} (60%)</option>
+                                                <option value="pt">{t('common.portuguese')} (60%)</option>
+                                                <option value="ru">{t('common.russian')} (60%)</option>
+                                                <option value="zh">{t('common.chinese')} (60%)</option>
+                                            </select>
+                                            <div className="absolute right-3 top-2.5 pointer-events-none text-muted-foreground/50">
+                                                <ChevronDown size={14} />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-500/80 uppercase tracking-tight">
+                                            <Info size={12} />
+                                            {t('profile.dev_note')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Terminal Customization */}
                             <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
                                 <div className="flex items-center gap-3 mb-6">
@@ -812,15 +864,15 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         <Terminal size={20} />
                                     </div>
                                     <div>
-                                        <h2 className="text-lg font-bold">Console Settings</h2>
-                                        <p className="text-sm text-muted-foreground">Adjust readability for server logs.</p>
+                                        <h2 className="text-lg font-bold">{t('profile.terminal_title')}</h2>
+                                        <p className="text-sm text-muted-foreground">{t('profile.terminal_desc')}</p>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
                                         <label className="text-sm font-medium mb-3 flex items-center gap-2">
-                                            <Type size={16} /> Font Size
+                                            <Type size={16} /> {t('profile.font_size_label')}
                                         </label>
                                         <input 
                                             type="range" 
@@ -837,8 +889,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                     </div>
                                     
                                     <div className={`bg-black p-3 rounded-md border border-[rgb(var(--color-border-default))] font-mono text-muted-foreground overflow-hidden h-24 flex flex-col justify-end`} style={{ fontSize: `${user.preferences.terminal.fontSize}px` }}>
-                                        <div className="opacity-50">[12:00:01] INFO: Loading libraries...</div>
-                                        <div>[12:00:02] INFO: Done! For help, type "help"</div>
+                                        <div className="opacity-50">{t('profile.terminal_preview_line1')}</div>
+                                        <div>{t('profile.terminal_preview_line2')}</div>
                                         <div className={`mt-1 ${theme.text}`}>{'>'} _</div>
                                     </div>
                                 </div>
@@ -855,16 +907,16 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         <BellRing size={20} />
                                     </div>
                                     <div>
-                                        <h2 className="text-lg font-bold">Local Alerts</h2>
-                                        <p className="text-sm text-muted-foreground">Browser-based notifications for server events.</p>
+                                        <h2 className="text-lg font-bold">{t('profile.local_alerts_title')}</h2>
+                                        <p className="text-sm text-muted-foreground">{t('profile.local_alerts_desc')}</p>
                                     </div>
                                 </div>
 
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between p-4 border border-border rounded-md">
                                         <div>
-                                            <h4 className="text-sm font-medium">Browser Push Notifications</h4>
-                                            <p className="text-xs text-muted-foreground">Receive popups when the tab is in the background.</p>
+                                            <h4 className="text-sm font-medium">{t('profile.browser_notif_title')}</h4>
+                                            <p className="text-xs text-muted-foreground">{t('profile.browser_notif_desc')}</p>
                                         </div>
                                         <label className="relative inline-flex items-center cursor-pointer">
                                             <input 
@@ -881,8 +933,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                         <div className="flex items-center gap-3">
                                             <Volume2 className="text-muted-foreground" size={20} />
                                             <div>
-                                                <h4 className="text-sm font-medium">Sound Effects</h4>
-                                                <p className="text-xs text-muted-foreground">Play a sound when urgent events occur.</p>
+                                                <h4 className="text-sm font-medium">{t('profile.sound_notif_title')}</h4>
+                                                <p className="text-xs text-muted-foreground">{t('profile.sound_notif_desc')}</p>
                                             </div>
                                         </div>
                                         <label className="relative inline-flex items-center cursor-pointer">
@@ -917,22 +969,22 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                             <User size={48} className="text-muted-foreground opacity-20" />
                                         )}
                                         <div className="absolute bottom-0 inset-x-0 bg-black/60 py-1 text-center text-[10px] font-mono text-muted-foreground">
-                                            PREVIEW
+                                            {t('common.preview')}
                                         </div>
                                     </div>
 
                                     <div className="flex-1">
-                                        <h2 className="text-lg font-bold mb-2">Link Account</h2>
+                                        <h2 className="text-lg font-bold mb-2">{t('profile.minecraft_link_title')}</h2>
                                         <p className="text-sm text-muted-foreground mb-4">
-                                            Connect your Minecraft account to automatically sync permissions and enable profile customization.
+                                            {t('profile.minecraft_link_desc')}
                                         </p>
 
                                         <div className="max-w-xs">
-                                            <label className="text-xs font-medium text-muted-foreground uppercase">Java Username (IGN)</label>
+                                            <label className="text-xs font-medium text-muted-foreground uppercase">{t('profile.minecraft_ign_label')}</label>
                                             <div className="flex gap-2 mt-1.5">
                                                 <input 
                                                     type="text" 
-                                                    placeholder="Steve"
+                                                    placeholder={t('profile.minecraft_ign_placeholder')}
                                                     value={ignInput}
                                                     onChange={(e) => setIgnInput(e.target.value)}
                                                     className="flex-1 bg-secondary border border-border text-foreground placeholder:text-muted-foreground rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -946,16 +998,16 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                 </button>
                                             </div>
                                             <p className="text-[10px] text-muted-foreground mt-2">
-                                                We verify ownership by checking official Mojang records.
+                                                {t('profile.minecraft_link_hint')}
                                             </p>
                                         </div>
 
                                         <div className="mt-8 border-t border-border pt-4">
-                                            <h3 className="text-sm font-semibold mb-3">Sync Settings</h3>
+                                            <h3 className="text-sm font-semibold mb-3">{t('profile.sync_settings_title')}</h3>
                                             <div className="space-y-3">
                                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                                     <Check size={16} className={theme.text} />
-                                                    <span>Automatically OP me on my servers</span>
+                                                    <span>{t('profile.auto_op_label')}</span>
                                                 </div>
                                                 <button 
                                                     onClick={handleSyncMinecraftSkin}
@@ -965,7 +1017,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                                     <div className={`w-4 h-4 rounded border border-border flex items-center justify-center transition-colors ${user.avatarUrl?.includes('mc-heads.net') ? theme.bg + ' border-transparent' : 'bg-transparent'}`}>
                                                         {user.avatarUrl?.includes('mc-heads.net') && <Check size={12} className="text-white" />}
                                                     </div>
-                                                    <span>Use my skin as my dashboard avatar</span>
+                                                    <span>{t('profile.sync_skin_label')}</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -980,15 +1032,15 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                              <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300">
                                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                    <Key size={18} className={theme.text} /> API Access
+                                    <Key size={18} className={theme.text} /> {t('profile.api_title')}
                                 </h2>
                                 <p className="text-sm text-muted-foreground mb-6">
-                                    Use this key to authenticate with the CraftCommand REST API for CI/CD pipelines or external monitoring scripts.
+                                    {t('profile.api_desc')}
                                 </p>
 
                                 <div className="bg-background border border-border rounded-md p-4 flex items-center justify-between gap-4 mb-4">
                                     <code className={`font-mono text-sm break-all ${theme.text}`}>
-                                        {user.apiKey || 'No API Key Generated'}
+                                        {user.apiKey || t('profile.no_api_key')}
                                     </code>
                                     <button 
                                         onClick={() => {
@@ -1008,17 +1060,17 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                                     onClick={handleGenerateKey}
                                     className="bg-secondary text-foreground border border-border px-4 py-2 rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors flex items-center gap-2"
                                 >
-                                    <RefreshCw size={14} /> {user.apiKey ? 'Rotate Secret Key' : 'Generate Key'}
+                                    <RefreshCw size={14} /> {user.apiKey ? t('profile.rotate_key_btn') : t('profile.generate_key_btn')}
                                 </button>
                             </div>
 
                              <div className="bg-blue-500/5 border border-blue-500/20 rounded-md p-6">
-                                <h3 className="font-semibold text-blue-500 text-sm mb-2">Developer Documentation</h3>
+                                <h3 className="font-semibold text-blue-500 text-sm mb-2">{t('profile.docs_title')}</h3>
                                 <p className="text-xs text-blue-400/70 mb-4">
-                                    Learn how to use the API to start servers, read logs, and manage files programmatically.
+                                    {t('profile.docs_desc')}
                                 </p>
                                 <button className="text-xs text-blue-400 font-medium hover:underline flex items-center gap-1">
-                                    View Docs <Code size={12} />
+                                    {t('profile.view_docs_btn')} <Code size={12} />
                                 </button>
                             </div>
                         </motion.div>
@@ -1036,45 +1088,45 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                 {/* Right Sidebar (Summary) */}
                 <div className="md:col-span-1 space-y-6">
                     <div className="bg-card border border-border p-6 rounded-md shadow-sm transition-all duration-300 sticky top-24">
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Profile Strength</h3>
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">{t('profile.strength_title')}</h3>
                         
                         <div className="space-y-4">
                              <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-sm">
                                     <Mail size={16} className={theme.text} />
-                                    Email Verified
+                                    {t('profile.email_verified')}
                                 </div>
                                 <Check size={16} className={theme.text} />
                             </div>
                              <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-sm">
                                     <Lock size={16} className={user.email === 'admin@craftcommand.io' ? "text-amber-500" : theme.text} />
-                                    Password Strength
+                                    {t('profile.password_strength')}
                                 </div>
                                 <span className={`text-xs font-medium ${user.email === 'admin@craftcommand.io' ? "text-amber-500" : theme.text}`}>
-                                    {user.email === 'admin@craftcommand.io' ? 'Weak' : 'Strong'}
+                                    {user.email === 'admin@craftcommand.io' ? t('profile.strength_weak') : t('profile.strength_strong')}
                                 </span>
                             </div>
                         </div>
 
                         <div className="mt-8 pt-6 border-t border-border">
-                             <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Preferences</h3>
+                             <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">{t('profile.preferences_summary_title')}</h3>
                              <div className="space-y-3">
                                  <div className="flex justify-between items-center text-sm">
-                                     <span>Theme</span>
+                                     <span>{t('profile.theme_label')}</span>
                                      <div className="flex items-center gap-2">
                                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: user.preferences.accentColor === 'emerald' ? '#10b981' : user.preferences.accentColor === 'blue' ? '#3b82f6' : user.preferences.accentColor === 'violet' ? '#8b5cf6' : user.preferences.accentColor === 'rose' ? '#f43f5e' : '#f59e0b' }}></div>
                                         <span className="capitalize text-xs text-muted-foreground">{user.preferences.accentColor}</span>
                                      </div>
                                  </div>
                                  <div className="flex justify-between items-center text-sm">
-                                     <span>Browser Alerts</span>
+                                     <span>{t('profile.browser_alerts_label')}</span>
                                      <span className={`text-xs ${user.preferences.notifications.browser ? theme.text : 'text-muted-foreground'}`}>
-                                        {user.preferences.notifications.browser ? 'On' : 'Off'}
+                                        {user.preferences.notifications.browser ? t('common.on') : t('common.off')}
                                      </span>
                                  </div>
                                  <div className="flex justify-between items-center text-sm">
-                                     <span>Console Font</span>
+                                     <span>{t('profile.console_font_label')}</span>
                                      <span className="text-xs text-muted-foreground font-mono">{user.preferences.terminal.fontSize}px</span>
                                  </div>
                              </div>
@@ -1092,7 +1144,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ initialSection, onSec
                         onSave={(newBackgrounds) => {
                             updatePreferences({ backgrounds: newBackgrounds });
                             setShowBackgroundModal(false);
-                            addToast('success', 'Backgrounds Updated', 'Your custom backgrounds have been applied.');
+                            addToast('success', t('profile.backgrounds_updated_success'), t('profile.backgrounds_updated_msg'));
                         }}
                     />
                 )}

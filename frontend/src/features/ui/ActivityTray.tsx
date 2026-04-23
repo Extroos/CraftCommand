@@ -110,7 +110,17 @@ const ActivityTray: React.FC<ActivityTrayProps> = ({ isOpen, onClose }) => {
                                                 <div className="space-y-3">
                                                     <div className="px-1 flex items-center justify-between">
                                                         <h3 className="text-[10px] font-black text-muted-foreground/50 uppercase tracking-[0.15em]">Active Tasks</h3>
-                                                        <span className="text-[9px] font-mono text-primary animate-pulse">{activeTasks.length + activeInstalls.length}</span>
+                                                        <div className="flex items-center gap-3">
+                                                            {activeTasks.length > 0 && (
+                                                                <button 
+                                                                    onClick={() => activeTasks.forEach(t => removeBackgroundTask(t.id))}
+                                                                    className="text-[8px] font-bold text-primary/30 hover:text-primary transition-colors uppercase tracking-wider"
+                                                                >
+                                                                    Dismiss All
+                                                                </button>
+                                                            )}
+                                                            <span className="text-[9px] font-mono text-primary animate-pulse">{activeTasks.length + activeInstalls.length}</span>
+                                                        </div>
                                                     </div>
                                                     
                                                     <div className="space-y-2">
@@ -141,6 +151,11 @@ const ActivityTray: React.FC<ActivityTrayProps> = ({ isOpen, onClose }) => {
                                                                 <div className="h-1 bg-muted rounded-full overflow-hidden">
                                                                     <motion.div initial={{ width: 0 }} animate={{ width: `${task.progress}%` }} className="h-full bg-primary shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)]" />
                                                                 </div>
+                                                                {task.message && (
+                                                                    <p className="text-[9px] text-muted-foreground/60 uppercase font-black tracking-wider truncate pt-1">
+                                                                        {task.message}
+                                                                    </p>
+                                                                )}
                                                             </div>
                                                         ))}
                                                     </div>

@@ -1,14 +1,20 @@
-# Docker Deployment & Containerization
+# Docker Deployment
 
-Reference for containerized deployment of the Primary Panel and isolated server runners.
+How to run CraftCommand and its server instances inside Docker containers.
 
-## 1. Deployment Specification
+## Quick Start
 
-CraftCommand implements two containerization layers:
-- **Panel Ingress**: The core process (backend/frontend) running within a managed container.
-- **Isolated Runners**: Docker-based server engines that spawn child containers for specific Minecraft instances.
+```bash
+cd Craft-Commands
+docker-compose up -d
+```
 
-### Panel Launch Execution
+This starts three containers: the frontend (port 3000), the backend (port 3001), and a local agent.
+
+## Running the Panel Standalone
+
+If you prefer a single container without docker-compose:
+
 ```bash
 docker run -d \
   --name craft-command \
@@ -20,27 +26,27 @@ docker run -d \
   extroos/craft-command:latest
 ```
 
-## 2. Persistence & Volumes
+## Volumes
 
-| Container Path | Purpose | Content Type |
-| :--- | :--- | :--- |
-| `/app/backend/data` | Configuration Root | Users, Settings, SQLite/JSON DB |
-| `/app/minecraft_servers` | Working Directory | Server binaries, logs, worlds |
-| `/var/run/docker.sock` | Socket Ingress | Required for nested runner spawning |
+| Container Path | What It Stores | Why It Matters |
+|---|---|---|
+| `/app/backend/data` | Users, settings, JSON/SQLite database | Persists your panel configuration across container recreations |
+| `/app/minecraft_servers` | Server JARs, world files, configs | Persists your actual Minecraft server data |
+| `/var/run/docker.sock` | Docker socket (host mount) | Required if you want CraftCommand to create isolated containers per Minecraft server |
 
-## 3. Network Configuration
+## Network Modes
 
-- **Bridge Mode**: Default isolation; requires manual port mapping (`-p`).
-- **Host Mode**: Unrestricted networking via `--network host`; direct port binding to host interfaces.
+- **Bridge (default)**: Each container gets its own network. You must map ports with `-p`. Recommended for most setups.
+- **Host (`--network host`)**: Container shares the host's network directly. Simpler port management but no network isolation.
 
-## 4. Resource Constraints
+## Resource Limits
 
-Resource limits are injected via the Docker Engine API during container creation:
-- **CPU Isolation**: Implemented via `NanoCPUs` (10^9 units per CPU).
-- **Memory Caps**: Hardware hard-caps enforced via the `Memory` constraint.
+When CraftCommand creates Docker containers for individual Minecraft servers, it applies the resource limits you set in the panel UI:
+- **CPU**: Set via Docker's `NanoCPUs` parameter (e.g., 2 CPUs = `2000000000`)
+- **Memory**: Hard cap via Docker's `Memory` parameter (e.g., `4g` for 4 GB)
 
-## 5. Diagnostic Requirements
+## Requirements for JVM Monitoring
 
-For successful JVM monitoring and GC triggers within a containerized environment:
-- **Capabilities**: The container must have `--cap-add=SYS_PTRACE` to access the JVM PID namespace.
-- **Log Buffering**: Server `stdout` is buffered to the server working directory to enable panel-level log analysis.
+If you want the panel to read JVM metrics (GC pauses, heap usage) from containerized Minecraft servers:
+- Add `--cap-add=SYS_PTRACE` to the Minecraft container so the panel can access the JVM process
+- Server console output (`stdout`) is buffered to the server's working directory for log analysis

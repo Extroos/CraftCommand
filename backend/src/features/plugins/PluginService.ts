@@ -7,6 +7,8 @@ import { installerService } from '../installer/InstallerService';
 import { serverRepository } from '../../storage/ServerRepository';
 import { pluginRepository } from '../../storage/PluginRepository';
 import { logger } from '../../utils/logger';
+import { SafeFileOperation } from '../../utils/fs';
+import { processManager } from '../processes/ProcessManager';
 import AdmZip from 'adm-zip';
 
 export class PluginService {
@@ -61,6 +63,11 @@ export class PluginService {
             throw new Error(`${server.software} servers do not support plugins.`);
         }
 
+        // --- LIFECYCLE GUARD (v1.13.2) ---
+        if (server.status === ServerStatus.STARTING || server.status === ServerStatus.INSTALLING || processManager.isRunning(serverId)) {
+            throw new Error(`Cannot install plugins while the server is ${server.status}. Please stop it first.`);
+        }
+
         // Validate working directory
         if (!server.workingDirectory || !(await fs.pathExists(server.workingDirectory))) {
             throw new Error('Server directory does not exist. Please install or configure the server first.');
@@ -97,7 +104,12 @@ export class PluginService {
         const targetDir = path.join(server.workingDirectory, getTargetDir(server.software));
         await fs.ensureDir(targetDir);
 
-        const destPath = path.join(targetDir, downloadInfo.fileName);
+        // Security: Sanitize filename to prevent traversal
+        const safeFileName = path.basename(downloadInfo.fileName).replace(/[\\/:*?"<>|]/g, '_');
+        const destPath = path.join(targetDir, safeFileName);
+        
+        // Defense-in-depth: Validate path
+        SafeFileOperation.validatePath(destPath);
 
         // --- Conflict Management (Hardening) ---
         if (await fs.pathExists(destPath)) {
@@ -176,11 +188,7 @@ export class PluginService {
         }
 
 
-        if (server.status === ServerStatus.ONLINE || server.status === ServerStatus.STARTING) {
-            logger.info(`[PluginService] Plugin ${plugin.name} installed while server is ${server.status}. It will load on the next restart.`);
-        } else {
-            logger.info(`[PluginService] Plugin ${plugin.name} installed for server ${serverId}. Restart required.`);
-        }
+        logger.info(`[PluginService] Plugin ${plugin.name} installed for server ${serverId}. Restart required.`);
         
         return plugin;
     }
@@ -227,6 +235,11 @@ export class PluginService {
         const plugin = pluginRepository.findById(pluginId);
         if (!plugin || plugin.serverId !== serverId) {
             throw new Error('Plugin not found on this server');
+        }
+
+        // --- LIFECYCLE GUARD (v1.13.2) ---
+        if (server.status === ServerStatus.STARTING || processManager.isRunning(serverId)) {
+            throw new Error(`Cannot toggle plugins while the server is ${server.status}.`);
         }
 
         const targetDir = path.join(server.workingDirectory, getTargetDir(server.software));

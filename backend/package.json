@@ -1,6 +1,6 @@
 {
   "name": "craftcommand-backend",
-  "version": "1.13.0",
+  "version": "1.13.2",
   "license": "AGPL-3.0-only",
   "author": "Extroos",
   "description": "Backend service for CraftCommand",
@@ -10,14 +10,11 @@
     "dev": "nodemon -r tsconfig-paths/register src/server.ts",
     "test": "jest",
     "lint": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc && tsc-alias",
+    "start:prod": "node dist/backend/src/server.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1016.0",
-    "@types/adm-zip": "^0.5.7",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/qrcode": "^1.5.6",
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
     "axios": "^1.6.7",
@@ -25,7 +22,6 @@
     "better-sqlite3": "^12.6.2",
     "chalk": "4.1.2",
     "chokidar": "^3.6.0",
-    "client-only": "^0.0.1",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "cross-spawn": "^7.0.3",
@@ -47,10 +43,16 @@
     "socket.io": "^4.7.4",
     "ssh2-sftp-client": "^12.1.1",
     "systeminformation": "^5.21.22",
-    "tree-kill": "^1.2.2"
+    "tree-kill": "^1.2.2",
+    "tsc-alias": "^1.8.8",
+    "tsconfig-paths": "^4.2.0",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
     "@types/archiver": "^7.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.17",
     "@types/cross-spawn": "^6.0.6",
@@ -61,12 +63,13 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^20.11.17",
+    "@types/qrcode": "^1.5.6",
     "@types/sharp": "^0.31.1",
+    "@types/yaml": "^1.9.7",
     "jest": "^30.3.0",
     "nodemon": "^3.0.3",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.3.3"
   }
 }

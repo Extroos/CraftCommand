@@ -108,24 +108,20 @@ class LocalAgentManager {
         scriptArgs.push('--node-id', 'local');
         scriptArgs.push('--secret', secret);
 
-        // Spawn
+        // Spawn as a true background daemon
         this.agentProcess = spawn(cmd, scriptArgs, {
             cwd: agentDir,
-            shell: true,
-            stdio: 'pipe', 
+            shell: false, 
+            detached: true,
+            windowsHide: true, 
+            stdio: 'ignore', // Decouple from Panel pipes to prevent EPIPE on Panel exit
             env: { ...process.env, FORCE_COLOR: '1' }
         });
 
-        this.agentProcess.stdout?.on('data', (d) => {
-            const line = d.toString().trim();
-            // Filter noise
-            if (line && !line.includes('debugger')) logger.debug(`[LocalAgent] ${line}`);
-        });
-
-        this.agentProcess.stderr?.on('data', (d) => {
-            const line = d.toString().trim();
-            if (line) logger.warn(`[LocalAgent] ${line}`);
-        });
+        // Fully unref the process so the Panel doesn't wait for it on exit
+        if (this.agentProcess) {
+            this.agentProcess.unref();
+        }
 
         this.agentProcess.on('close', (code) => {
             this.agentProcess = null;

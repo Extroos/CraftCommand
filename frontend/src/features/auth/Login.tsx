@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Command, Mail, Lock, ArrowRight, Loader2, Info, Globe, Check } from 'lucide-react';
-import pkg from '../../../../package.json';
+import pkg from '../../../package.json';
 
 import { useToast } from '../ui/Toast';
 import { useUser } from '@features/auth/context/UserContext';

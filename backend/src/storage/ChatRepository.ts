@@ -58,6 +58,18 @@ class ChatRepository implements StorageProvider<ChatMessage> {
             this.saveAll(updated);
         }
     }
+
+    /**
+     * Completely removes all chat history for a server.
+     * Use this when a server is DELETED.
+     */
+    public deleteForServer(serverId: string): void {
+        const all = this.findAll();
+        const filtered = all.filter(m => m.serverId !== serverId);
+        if (filtered.length !== all.length) {
+            this.saveAll(filtered);
+        }
+    }
 }
 
 export const chatRepository = new ChatRepository();

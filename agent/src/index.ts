@@ -21,8 +21,10 @@
  *   - Panel URL validation
  */
 
+import 'dotenv/config';
 import { io, Socket } from 'socket.io-client';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, exec, ChildProcess } from 'child_process';
+import { promisify } from 'util';
 import si from 'systeminformation';
 import { Command } from 'commander';
 import os from 'os';
@@ -31,6 +33,25 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { getCapabilities } from './capabilities';
 import { BackupService } from './BackupService';
+import treeKill from 'tree-kill';
+
+// ──────────────────────────────────────────────
+// Types & State
+// ──────────────────────────────────────────────
+
+interface NodeSettings {
+    dockerEnabled: boolean;
+    baseServersPath: string;
+}
+
+let nodeSettings: NodeSettings = {
+    dockerEnabled: false,
+    baseServersPath: ''
+};
+
+// Check for Host Servers Dir (from env) - Critical for Docker volume mapping in D-in-D
+const HOST_SERVERS_DIR = process.env.HOST_SERVERS_DIR || '';
+const isInsideContainer = fs.existsSync('/.dockerenv') || !!process.env.DOCKER_CONTAINER;
 
 // ──────────────────────────────────────────────
 // Constants
@@ -55,8 +76,8 @@ const program = new Command();
 program
     .name('craftcommand-agent')
     .description('CraftCommand Node Agent — Remote server execution daemon')
-    .requiredOption('--panel-url <url>', 'URL of the CraftCommand panel (e.g., http://192.168.1.10:3001)')
-    .requiredOption('--node-id <id>', 'UUID of this node (from the panel enrollment)')
+    .option('--panel-url <url>', 'URL of the CraftCommand panel (e.g., http://192.168.1.10:3001)')
+    .option('--node-id <id>', 'UUID of this node (from the panel enrollment)')
     .option('--secret <token>', 'Shared secret for authentication (Phase 2)')
     .option('--heartbeat-interval <ms>', 'Heartbeat interval in milliseconds', '15000')
     .option('--servers-dir <path>', 'Root directory for server working directories', './servers')
@@ -64,9 +85,11 @@ program
     .parse(process.argv);
 
 const opts = program.opts();
-const PANEL_URL: string = opts.panelUrl;
-const NODE_ID: string = opts.nodeId;
-const SECRET: string = opts.secret || '';
+
+const PANEL_URL: string = opts.panelUrl || process.env.PANEL_URL || 'http://localhost:3001';
+const NODE_ID: string = opts.nodeId || process.env.AGENT_NODE_ID || '';
+const SECRET: string = opts.secret || process.env.AGENT_NODE_SECRET || '';
+
 const HEARTBEAT_MS: number = parseInt(opts.heartbeatInterval, 10) || 15000;
 const SERVERS_DIR: string = path.resolve(opts.serversDir || './servers');
 const MAX_SERVERS: number = parseInt(opts.maxServers, 10) || 10;
@@ -130,6 +153,7 @@ interface ManagedServer {
 }
 
 const managedServers: Map<string, ManagedServer> = new Map();
+const dockerContainers: Map<string, string> = new Map(); // serverId -> containerName
 
 // ── Backup Service (Phase 11) ──
 const backupService = new BackupService(SERVERS_DIR);
@@ -179,24 +203,75 @@ function bufferLog(managed: ManagedServer, line: string, type: 'stdout' | 'stder
     }
 }
 
-// ── Env Whitelist (#9) ──
-
-function buildSafeEnv(incoming: Record<string, string>): NodeJS.ProcessEnv {
+function buildSafeEnv(userEnv: Record<string, string>): NodeJS.ProcessEnv {
     const safe: NodeJS.ProcessEnv = {};
-
-    // Copy only safe keys from the host environment
-    for (const key of SAFE_ENV_KEYS) {
-        if (process.env[key]) safe[key] = process.env[key];
-    }
-
-    // Merge only safe keys from the panel's env
-    for (const [key, value] of Object.entries(incoming)) {
-        if (SAFE_ENV_KEYS.has(key) && typeof value === 'string') {
-            safe[key] = value;
+    
+    // 1. Inherit whitelisted global env vars
+    for (const key of Object.keys(process.env)) {
+        if (SAFE_ENV_KEYS.has(key)) {
+            safe[key] = process.env[key];
         }
     }
-
+    
+    // 2. Add user-provided env vars
+    for (const key of Object.keys(userEnv)) {
+        safe[key] = userEnv[key];
+    }
+    
     return safe;
+}
+
+/**
+ * Translates a container-internal path to the host machine path.
+ * Used for Docker volume mounting when the agent itself is containerized.
+ */
+function translateToHostPath(internalPath: string): string {
+    const absInternal = path.resolve(internalPath).replace(/\\/g, '/');
+
+    if (!HOST_SERVERS_DIR) {
+        // If we are NOT in a container, the internal path IS the host path (Windows/Linux native)
+        if (!isInsideContainer) {
+            return absInternal;
+        }
+
+        // Only warn once per session to avoid spam
+        if (!(global as any)._hostPathWarned) {
+            warn('[Docker] HOST_SERVERS_DIR is not set and agent appears to be containerized. Volume mounts might fail.');
+            (global as any)._hostPathWarned = true;
+        }
+        return absInternal; 
+    }
+    
+    const absServersDir = path.resolve(SERVERS_DIR).replace(/\\/g, '/');
+    
+    if (absInternal.startsWith(absServersDir)) {
+        const relative = path.relative(absServersDir, absInternal).replace(/\\/g, '/');
+        // Standardize host path format
+        const baseHost = HOST_SERVERS_DIR.replace(/\\/g, '/').replace(/\/$/, '');
+        const hostPath = `${baseHost}/${relative}`;
+        return hostPath;
+    }
+    
+    return absInternal;
+}
+
+/**
+ * Robustly parses a command string into an executable and an arguments array.
+ * Handles quoted paths and spaces.
+ * Example: '"C:\Program Files\Java.exe" -Xmx4G' -> ['C:\Program Files\Java.exe', '-Xmx4G']
+ */
+function parseCommand(cmd: string): { executable: string; args: string[] } {
+    const parts: string[] = [];
+    const regex = /"([^"]*)"|'([^']*)'|(\S+)/g;
+    let match;
+    while ((match = regex.exec(cmd)) !== null) {
+        parts.push(match[1] || match[2] || match[3]);
+    }
+    
+    if (parts.length === 0) return { executable: '', args: [] };
+    const executable = parts[0];
+    const args = parts.slice(1);
+    return { executable, args };
 }
 
 // ── Input Validation (#2) ──
@@ -246,6 +321,11 @@ function startLocalServer(
         );
     }
 
+    const engine = env.executionEngine || 'native';
+    if (engine === 'docker') {
+        return startLocalServerDocker(serverId, runCommand, cwd, env, socket);
+    }
+
     // Ensure working directory exists
     const serverDir = cwd || path.join(SERVERS_DIR, serverId);
     if (!fs.existsSync(serverDir)) {
@@ -256,13 +336,19 @@ function startLocalServer(
     log(`  Working directory: ${serverDir}`);
 
     const safeEnv = buildSafeEnv(env);
+    const { executable, args } = parseCommand(runCommand);
 
-    const child = spawn(runCommand, {
+    const child = spawn(executable, args, {
         cwd: serverDir,
-        shell: true,
+        shell: false, // Force shell: false to strictly respect windowsHide on Windows
+        detached: true,
+        windowsHide: true, // Prevent console window spam on Windows
         stdio: ['pipe', 'pipe', 'pipe'],
         env: safeEnv
     });
+
+    // If detached, we must unref to allow independent lifecycle
+    child.unref();
 
     const managed: ManagedServer = {
         process: child,
@@ -336,6 +422,94 @@ function startLocalServer(
 }
 
 /**
+ * Launches a server using Docker.
+ */
+async function startLocalServerDocker(
+    serverId: string,
+    runCommand: string,
+    cwd: string,
+    env: any,
+    socket: Socket
+): Promise<void> {
+    const containerName = `craftcommand-server-${serverId}`;
+    const serverDir = cwd || path.join(SERVERS_DIR, serverId);
+    
+    if (!fs.existsSync(serverDir)) {
+        fs.mkdirSync(serverDir, { recursive: true });
+    }
+
+    const image = env.dockerImage || 'eclipse-temurin:17-jre';
+    const port = env.SERVER_PORT || '25565';
+    const ram = env.SERVER_RAM || '2';
+    const cpus = env.DOCKER_CPUS || '0';
+    
+    log(`Starting Docker container "${containerName}" — Image: ${image}`);
+    
+    // Path Translation for Host volume mapping
+    const hostDataPath = translateToHostPath(serverDir);
+    log(`  Volume mapping: ${serverDir} -> ${hostDataPath} (Host)`);
+
+    // Clean up previous container
+    const execAsync = promisify(exec);
+    try {
+        await execAsync(`docker rm -f ${containerName}`);
+    } catch { /* expected */ }
+
+    // Build Docker Run Command
+    let dockerCmd = `docker run --name ${containerName} -v "${hostDataPath}":/data -w /data -p ${port}:${port} -i`;
+    
+    if (parseFloat(ram) > 0) dockerCmd += ` --memory ${ram}g`;
+    if (parseFloat(cpus) > 0) dockerCmd += ` --cpus ${cpus}`;
+    
+    // Protocol Detection (UDP for Bedrock)
+    if (env.SERVER_SOFTWARE === 'Bedrock') {
+        dockerCmd = dockerCmd.replace(`-p ${port}:${port}`, `-p ${port}:${port}/udp`);
+    }
+
+    dockerCmd += ` ${image} ${runCommand}`;
+
+    const child = spawn(dockerCmd, {
+        shell: true,
+        stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    const managed: ManagedServer = {
+        process: child,
+        serverId,
+        startTime: Date.now(),
+        logBuffer: [],
+        flushTimer: null,
+        MAX_LOG_BUFFER: 1000
+    };
+
+    managedServers.set(serverId, managed);
+    dockerContainers.set(serverId, containerName);
+
+    // Stdout/Stderr/Close logic
+    child.stdout?.on('data', (data: Buffer) => {
+        const lines = data.toString().split('\n').filter(l => l.trim());
+        for (const line of lines) bufferLog(managed, line, 'stdout', socket);
+    });
+
+    child.stderr?.on('data', (data: Buffer) => {
+        const lines = data.toString().split('\n').filter(l => l.trim());
+        for (const line of lines) bufferLog(managed, line, 'stderr', socket);
+    });
+
+    child.on('close', (code: number | null) => {
+        log(`Docker container for "${serverId}" exited with code ${code}`);
+        if (managed.flushTimer) {
+            clearTimeout(managed.flushTimer);
+            managed.flushTimer = null;
+        }
+        flushLogBuffer(managed, socket);
+        managedServers.delete(serverId);
+        dockerContainers.delete(serverId);
+        socket.emit('agent:close', { serverId, code: code ?? -1 });
+    });
+}
+
+/**
  * Adopts an existing process (Zombie Recovery).
  * We can't perfectly re-attach to stdout/stderr of an existing PID in Node easily
  * without complex OS-level wrappers, but we can at least track its life and kill it.
@@ -397,6 +571,27 @@ async function scanAndAdoptZombies(socket: Socket): Promise<void> {
     log('Scanning for servers to adopt...');
     const items = fs.readdirSync(SERVERS_DIR);
 
+    // 1. Adopt Docker containers
+    try {
+        const execAsync = promisify(exec);
+        
+        const { stdout } = await execAsync('docker ps --filter "name=craftcommand-server-" --format "{{.ID}},{{.Names}}"');
+        const lines = stdout.split('\n').filter((l: string) => l.trim() !== '');
+        
+        for (const line of lines) {
+            let [containerId, name] = line.split(',');
+            name = name.replace(/^\//, '');
+            const serverId = name.replace('craftcommand-server-', '');
+            
+            if (serverId && !dockerContainers.has(serverId)) {
+                log(`Adopted existing Docker container ${name} for server ${serverId}`);
+                dockerContainers.set(serverId, name);
+                // In a real implementation, we would also re-attach log followers here
+            }
+        }
+    } catch { /* Docker may not be installed or supported */ }
+
+    // 2. Adopt local processes
     for (const serverId of items) {
         const serverDir = path.join(SERVERS_DIR, serverId);
         const pidFile = path.join(serverDir, 'server.pid');
@@ -427,6 +622,14 @@ async function scanAndAdoptZombies(socket: Socket): Promise<void> {
 }
 
 function stopLocalServer(serverId: string, force: boolean = false): void {
+    const containerName = dockerContainers.get(serverId);
+    if (containerName) {
+        log(`Stopping Docker container "${containerName}" (force=${force})`);
+        if (force) exec(`docker kill ${containerName}`);
+        else exec(`docker stop -t 30 ${containerName}`);
+        return;
+    }
+
     const managed = managedServers.get(serverId);
     if (!managed) {
         warn(`Cannot stop server "${serverId}" — not running on this node.`);
@@ -436,16 +639,24 @@ function stopLocalServer(serverId: string, force: boolean = false): void {
     log(`Stopping server "${serverId}" (force=${force})`);
 
     if (force) {
-        managed.process.kill('SIGKILL');
+        if (managed.process.pid) {
+            treeKill(managed.process.pid, 'SIGKILL');
+        } else {
+            managed.process.kill('SIGKILL');
+        }
     } else {
         // Graceful: send "stop" command to stdin (Minecraft convention)
         managed.process.stdin?.write('stop\n');
 
-        // Force kill after 30s if still running
+        // Phase 1.14: Force kill after 30s if still running
+        const pid = managed.process.pid;
         setTimeout(() => {
             if (managedServers.has(serverId)) {
                 warn(`Server "${serverId}" did not stop gracefully — force killing.`);
-                try { managed.process.kill('SIGKILL'); } catch { /* process may already be dead */ }
+                try { 
+                    if (pid) treeKill(pid, 'SIGKILL');
+                    else managed.process.kill('SIGKILL');
+                } catch { /* process may already be dead */ }
             }
         }, 30000);
     }
@@ -460,7 +671,11 @@ function killLocalServer(serverId: string, signal: NodeJS.Signals = 'SIGKILL'): 
 
     log(`Sending signal ${signal} to server "${serverId}"`);
     try {
-        managed.process.kill(signal);
+        if (managed.process.pid) {
+            treeKill(managed.process.pid, signal);
+        } else {
+            managed.process.kill(signal);
+        }
     } catch (e) {
         warn(`Failed to send signal ${signal} to "${serverId}": ${e}`);
     }
@@ -468,13 +683,21 @@ function killLocalServer(serverId: string, signal: NodeJS.Signals = 'SIGKILL'): 
 
 function sendCommandToServer(serverId: string, command: string): void {
     const managed = managedServers.get(serverId);
-    if (!managed) {
+    if (!managed && !dockerContainers.has(serverId)) {
         throw new Error(`Server "${serverId}" is not running on this node.`);
     }
     if (!command || typeof command !== 'string') {
         throw new Error('Command must be a non-empty string.');
     }
-    managed.process.stdin?.write(command + '\n');
+
+    const containerName = dockerContainers.get(serverId);
+    if (containerName) {
+        const safeCommand = command.replace(/["\\$`!]/g, '');
+        exec(`echo "${safeCommand}" | docker exec -i ${containerName} sh -c "cat >> /proc/1/fd/0"`);
+        return;
+    }
+
+    managed?.process.stdin?.write(command + '\n');
 }
 
 // ──────────────────────────────────────────────
@@ -510,6 +733,24 @@ async function getSystemSnapshot(): Promise<any> {
 }
 
 async function collectServerStats(serverId: string): Promise<{ cpu: number; memory: number; pid?: number }> {
+    const containerName = dockerContainers.get(serverId);
+    if (containerName) {
+        try {
+            const execAsync = promisify(exec);
+            const { stdout } = await execAsync(`docker stats ${containerName} --no-stream --format "{{.CPUPerc}},{{.MemUsage}}"`);
+            if (stdout && stdout.includes(',')) {
+                const [cpuStr, memStr] = stdout.split(',');
+                const cpu = parseFloat(cpuStr.replace(/[^0-9.]/g, '')) || 0;
+                const memPart = memStr.split('/')[0].trim().toLowerCase();
+                let memory = parseFloat(memPart.replace(/[^0-9.]/g, '')) || 0;
+                if (memPart.includes('g')) memory *= 1024;
+                else if (memPart.includes('k')) memory /= 1024;
+                return { cpu, memory };
+            }
+        } catch { /* ignore */ }
+        return { cpu: 0, memory: 0 };
+    }
+
     const managed = managedServers.get(serverId);
     if (!managed || !managed.process.pid) return { cpu: 0, memory: 0 };
 
@@ -780,6 +1021,12 @@ function connect(): void {
             error(`Failed to apply fix for ${capability}: ${err.message}`);
             if (ack) ack({ error: err.message });
         }
+    });
+
+    // ── Settings Sync ──
+    socket.on('agent:settings-sync', (data: NodeSettings) => {
+        log(`[Settings] Syncing global config: dockerEnabled=${data.dockerEnabled}, baseServersPath=${data.baseServersPath}`);
+        nodeSettings = data;
     });
 
     socket.on('agent:start', async (data: any, ack: (response: any) => void) => {

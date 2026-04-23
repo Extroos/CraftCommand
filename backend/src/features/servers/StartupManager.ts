@@ -19,8 +19,9 @@ import { WEB_ROOT } from '../../constants';
 import { proxyService } from '../network/ProxyService';
 import { serverConfigService } from './ServerConfigService';
 import { SafeFileOperation } from '../../utils/fs';
-import { AppError } from '../../utils/AppError';
 import { preFlightService } from './PreFlightService';
+import { networkService } from '../network/NetworkService';
+import { AppError } from '../../utils/AppError';
 
 export class StartupManager {
 
@@ -109,6 +110,9 @@ export class StartupManager {
 
             const { cmd, cwd, env } = await this.buildStartCommand(server, javaPath, engine);
             
+            // 4.5 Networking Sidecars (Cloudflare/Playit)
+            await networkService.onServerStart(id);
+
             // 5. Launch
             let dockerImage = server.dockerImage;
             const autoImage = javaManager.getDockerImageForJava(server.javaVersion);
@@ -128,7 +132,8 @@ export class StartupManager {
                 SERVER_RAM: server.ram,
                 SERVER_SOFTWARE: server.software,
                 DOCKER_CPUS: server.advancedFlags?.dockerCpus || '0.000',
-                EXTRA_PORTS: server.advancedFlags?.extraPorts || ''
+                EXTRA_PORTS: server.advancedFlags?.extraPorts || '',
+                CC_DETACHED: engine === 'native' ? 'false' : 'true'
             }).catch(async e => {
                 logger.error(`[StartupManager:${id}] Background process startup failed unconditionally: ${e.message}`);
                 
@@ -469,6 +474,22 @@ export class StartupManager {
             const propsPath = path.join(server.workingDirectory, 'server.properties');
             if (await fs.pathExists(propsPath)) {
                  let content = await fs.readFile(propsPath, 'utf8');
+
+                // 1.5 RCON ENFORCEMENT (v2.0: For Runner Decoupling)
+                if (software !== 'bedrock' && software !== 'velocity') {
+                    const rconPort = 25575 + (server.port % 100); // Try to offset slightly from main port
+                    const rconPass = server.rconPassword || `CC_${Math.random().toString(36).substring(2, 10)}`;
+                    
+                    if (!content.match(/^enable-rcon\s*=/m)) {
+                        content += `\nenable-rcon=true\nrcon.port=${rconPort}\nrcon.password=${rconPass}`;
+                    } else {
+                        content = content.replace(/^enable-rcon\s*=.*$/m, 'enable-rcon=true');
+                        if (!content.match(/^rcon\.password\s*=/m)) {
+                            content += `\nrcon.password=${rconPass}`;
+                        }
+                    }
+                    logger.debug(`[StartupManager:${server.id}] RCON backing enabled (Port: ${rconPort}).`);
+                }
 
                 // 2. NETWORK COMPRESSION THRESHOLD SYNC
                 if (server.advancedFlags?.compressionThreshold !== undefined) {

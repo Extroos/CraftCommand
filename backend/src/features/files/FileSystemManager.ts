@@ -11,7 +11,7 @@ export class FileSystemManager {
         fs.ensureDirSync(this.basePath);
     }
 
-    private resolvePath(relativePath: string): string {
+    public getAbsolutePath(relativePath: string): string {
         const unsafePath = path.resolve(this.basePath, relativePath);
         // Ensure strictly within base path, preventing prefix attacks (e.g. /data vs /data2)
         if (unsafePath !== this.basePath && !unsafePath.startsWith(this.basePath + path.sep)) {
@@ -21,7 +21,7 @@ export class FileSystemManager {
     }
 
     async listFiles(dirPath: string) {
-        const fullPath = this.resolvePath(dirPath);
+        const fullPath = this.getAbsolutePath(dirPath);
         const entries = await fs.readdir(fullPath, { withFileTypes: true });
         
         const results = await Promise.all(entries.map(async (entry) => {
@@ -45,11 +45,11 @@ export class FileSystemManager {
     }
 
     async readFile(filePath: string): Promise<string> {
-        return fs.readFile(this.resolvePath(filePath), 'utf-8');
+        return fs.readFile(this.getAbsolutePath(filePath), 'utf-8');
     }
 
     async writeFile(filePath: string, content: string): Promise<void> {
-        const fullPath = this.resolvePath(filePath);
+        const fullPath = this.getAbsolutePath(filePath);
         const tempPath = `${fullPath}.tmp`;
         await fs.ensureDir(path.dirname(fullPath));
         await fs.writeFile(tempPath, content);
@@ -57,22 +57,22 @@ export class FileSystemManager {
     }
 
     async appendFile(filePath: string, content: string): Promise<void> {
-        const fullPath = this.resolvePath(filePath);
+        const fullPath = this.getAbsolutePath(filePath);
         await fs.ensureDir(path.dirname(fullPath));
         await fs.appendFile(fullPath, content);
     }
     
     async createDirectory(dirPath: string): Promise<void> {
-        await fs.ensureDir(this.resolvePath(dirPath));
+        await fs.ensureDir(this.getAbsolutePath(dirPath));
     }
     
     async deletePath(pathToDelete: string): Promise<void> {
-        await fs.remove(this.resolvePath(pathToDelete));
+        await fs.remove(this.getAbsolutePath(pathToDelete));
     }
 
     async move(source: string, dest: string): Promise<void> {
-        const srcPath = this.resolvePath(source);
-        const destPath = this.resolvePath(dest);
+        const srcPath = this.getAbsolutePath(source);
+        const destPath = this.getAbsolutePath(dest);
 
         if (srcPath === destPath) throw new Error('Source and destination cannot be the same.');
         if (!(await fs.pathExists(srcPath))) throw new Error('Source file not found.');
@@ -83,8 +83,8 @@ export class FileSystemManager {
     }
 
     async copy(source: string, dest: string): Promise<void> {
-        const srcPath = this.resolvePath(source);
-        const destPath = this.resolvePath(dest);
+        const srcPath = this.getAbsolutePath(source);
+        const destPath = this.getAbsolutePath(dest);
         
         if (srcPath === destPath) {
              const ext = path.extname(srcPath);
@@ -104,7 +104,7 @@ export class FileSystemManager {
     async compress(paths: string[], archiveName: string): Promise<void> {
         return new Promise((resolve, reject) => {
             const archiver = require('archiver');
-            const destPath = this.resolvePath(archiveName);
+            const destPath = this.getAbsolutePath(archiveName);
             const output = fs.createWriteStream(destPath);
             const archive = archiver('zip', { zlib: { level: 9 } });
 
@@ -114,7 +114,7 @@ export class FileSystemManager {
             archive.pipe(output);
 
             for (const p of paths) {
-                 const fullPath = this.resolvePath(p);
+                 const fullPath = this.getAbsolutePath(p);
                  const stats = fs.statSync(fullPath);
                  if (stats.isDirectory()) {
                      archive.directory(fullPath, path.basename(fullPath));
@@ -128,11 +128,11 @@ export class FileSystemManager {
     }
 
     async getStats(relativePath: string): Promise<fs.Stats> {
-        return fs.stat(this.resolvePath(relativePath));
+        return fs.stat(this.getAbsolutePath(relativePath));
     }
 
     async exists(relativePath: string): Promise<boolean> {
-        return fs.pathExists(this.resolvePath(relativePath));
+        return fs.pathExists(this.getAbsolutePath(relativePath));
     }
 
     async searchFiles(query: string, dirPath: string = '.', maxResults: number = 100, searchContent: boolean = false): Promise<Array<{
@@ -150,7 +150,7 @@ export class FileSystemManager {
             if (results.length >= maxResults) return;
 
             try {
-                const fullPath = this.resolvePath(currentDir);
+                const fullPath = this.getAbsolutePath(currentDir);
                 const entries = await fs.readdir(fullPath, { withFileTypes: true });
 
                 for (const entry of entries) {

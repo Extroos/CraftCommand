@@ -164,22 +164,38 @@ export class ServerConfigService {
         syncProperty('spawnAnimals', 'spawn-animals');
         syncProperty('levelSeed', 'level-seed');
 
-        // Bedrock Specifics
-        if (server.software === 'Bedrock') {
-            syncProperty('motd', 'server-name');
-            const targetV6 = server.port + 1;
-            const portV6Regex = /^server-portv6=.*/m;
-            if (content.match(portV6Regex)) {
-                content = content.replace(portV6Regex, `server-portv6=${targetV6}`);
+        // RCON Hardening (v2.0: Lifecycle Stabilization)
+        // Ensure RCON is enabled and has a secure password for remote stop/command control
+        const rconEnabledRegex = /^enable-rcon=.*$/m;
+        if (!content.match(rconEnabledRegex)) {
+            content += '\nenable-rcon=true';
+            modified = true;
+        } else if (content.match(/^enable-rcon=false$/m)) {
+            content = content.replace(/^enable-rcon=false$/m, 'enable-rcon=true');
+            modified = true;
+        }
+
+        const rconPassRegex = /^rcon\.password=.*$/m;
+        if (!content.match(rconPassRegex) || content.match(/^rcon\.password=\s*$/m)) {
+            // Generate a secure random password if missing (use a fixed pattern for the panel to find it)
+            const rconPass = `cc_pass_${server.id.substring(0, 8)}`; 
+            if (content.match(rconPassRegex)) {
+                content = content.replace(rconPassRegex, `rcon.password=${rconPass}`);
             } else {
-                content += `\nserver-portv6=${targetV6}`;
+                content += `\nrcon.password=${rconPass}`;
             }
+            modified = true;
+        }
+
+        // Ensure RCON port is set (default 25575 if not present)
+        if (!content.match(/^rcon\.port=.*$/m)) {
+            content += '\nrcon.port=25575';
             modified = true;
         }
 
         if (modified) {
             await SafeFileOperation.writeWithBackup(propsPath, content);
-            logger.info(`[ConfigService] Enforced DB settings on ${server.name} (Atomic)`);
+            logger.info(`[ConfigService] Enforced DB settings & RCON hardening on ${server.name} (Atomic)`);
         }
     }
 

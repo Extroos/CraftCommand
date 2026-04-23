@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Check, Box, Layers, Loader2, Zap, Package, Sparkles, MonitorPlay, Info, Settings2, Activity, Terminal, AlertTriangle, Search, Plus, Minus, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API } from '@core/services/api';
@@ -11,7 +12,7 @@ import ModpackBrowser from '../ModpackBrowser';
 
 // Sub-components
 import WizardMode from './WizardMode';
-import ProConfig from './ProConfig';
+import AdvancedConfig from './AdvancedConfig';
 
 import { getErrorHelp } from '@core/settings/ErrorHelpMap';
 import { CreateMode, FormData, WizardStep, CreateServerProps, ServerCategory } from './types';
@@ -21,6 +22,7 @@ import { usePermissions } from '@features/auth/hooks/usePermissions';
 import AccessDenied from '@features/auth/components/AccessDenied';
 
 const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
+    const { t } = useTranslation();
     const { refreshServers } = useServers();
     const { settings } = useSystem();
     const { user } = useUser();
@@ -244,7 +246,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
         if (!formData.name || !formData.eula) return;
         
         if (!canCreate) {
-            addToast('error', 'Access Denied', 'You do not have permission to create servers.');
+            addToast('error', t('deploy_failed'), t('permission_denied_desc'));
             return;
         }
 
@@ -321,7 +323,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     switch (formData.software) {
                         case 'Paper': 
                         case 'Purpur':
-                            await API.installServer(server.id, formData.usePurpur ? 'purpur' : 'paper', installOpts); 
+                            await API.installServer(server.id, formData.software.toLowerCase() as any, installOpts); 
                             break;
                         case 'Vanilla': await API.installServer(server.id, 'vanilla', installOpts); break;
                         case 'Fabric': await API.installServer(server.id, 'fabric', installOpts); break;
@@ -358,13 +360,13 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
             const msg = e.response?.data?.error || e.message || 'Unknown error';
             
             if (msg.includes('DNS Resolution failed')) {
-                addToast('error', 'Deployment Failed', `DNS Issues Detected. TIP: Check your internet connection or manually upload the bedrock_server binary via the Files tab after creation if automatic download persists.`);
+                addToast('error', t('deploy_failed'), t('dns_issue'));
             } else {
                 const help = getErrorHelp(e.code);
                 if (help) {
                     addToast('error', help.title, `${help.description}. See: ${help.docsUrl || 'Wiki'}`);
                 } else {
-                    addToast('error', 'Deployment failed', msg);
+                    addToast('error', t('deploy_failed'), msg);
                 }
             }
         }
@@ -375,21 +377,21 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
     if (!canCreate) {
         return (
             <AccessDenied 
-                title="Server Provisioning Restricted"
-                description="You do not have the required permissions to create new server instances. Please contact the system owner for elevation."
+                title={t('provisioning_restricted')}
+                description={t('permission_denied_desc')}
                 onBack={onBack}
             />
         );
     }
 
     const softwareOptions = [
-        { id: 'Paper', icon: <img src="/software-icons/paper.png" className="w-10 h-10 object-contain" alt="Paper" />, desc: 'High performance for plugins.' },
-        { id: 'NeoForge', icon: <img src="/software-icons/neoforge.png" className="w-10 h-10 object-contain" alt="NeoForge" />, desc: 'The future of modding.' },
-        { id: 'Forge', icon: <img src="/software-icons/forge.png" className="w-10 h-10 object-contain" alt="Forge" />, desc: 'Classic mod loader.' },
-        { id: 'Fabric', icon: <img src="/software-icons/fabric-minecraft.png" className="w-10 h-10 object-contain" alt="Fabric" />, desc: 'Lightweight & fast.' },
-        { id: 'Modpack', icon: <img src="/software-icons/modapack.png" className="w-10 h-10 object-contain" alt="Modpack" />, desc: 'CurseForge & Modrinth.' },
-        { id: 'Vanilla', icon: <img src="/software-icons/vanilla.png" className="w-10 h-10 object-contain" alt="Vanilla" />, desc: 'Official Mojang server.' },
-        { id: 'Bedrock', icon: <img src="/software-icons/bedrock.png" className="w-10 h-10 object-contain" alt="Bedrock" />, desc: 'Bedrock Dedicated Server.' },
+        { id: 'Paper', icon: <img src="/software-icons/paper.png" className="w-10 h-10 object-contain" alt="Paper" />, desc: t('paper_desc') },
+        { id: 'NeoForge', icon: <img src="/software-icons/neoforge.png" className="w-10 h-10 object-contain" alt="NeoForge" />, desc: t('neoforge_desc') },
+        { id: 'Forge', icon: <img src="/software-icons/forge.png" className="w-10 h-10 object-contain" alt="Forge" />, desc: t('forge_desc') },
+        { id: 'Fabric', icon: <img src="/software-icons/fabric-minecraft.png" className="w-10 h-10 object-contain" alt="Fabric" />, desc: t('fabric_desc') },
+        { id: 'Modpack', icon: <img src="/software-icons/modapack.png" className="w-10 h-10 object-contain" alt="Modpack" />, desc: t('modpack_desc') },
+        { id: 'Vanilla', icon: <img src="/software-icons/vanilla.png" className="w-10 h-10 object-contain" alt="Vanilla" />, desc: t('vanilla_desc') },
+        { id: 'Bedrock', icon: <img src="/software-icons/bedrock.png" className="w-10 h-10 object-contain" alt="Bedrock" />, desc: t('bedrock_desc') },
     ];
     // ...
 
@@ -404,7 +406,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                 <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20">
                     <Layers size={14} className="text-primary" />
                 </div>
-                <h2 className="text-[10px] font-bold uppercase tracking-widest text-foreground/70">Select Template</h2>
+                <h2 className="text-[10px] font-bold uppercase tracking-widest text-foreground/70">{t('select_template')}</h2>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -433,7 +435,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                     {sw.id === 'Paper' && formData.usePurpur ? 'Purpur' : sw.id}
                                 </div>
                                 <div className="text-[9px] text-muted-foreground leading-none mt-0.5 opacity-60 uppercase tracking-widest">
-                                    {sw.id === 'Paper' && formData.usePurpur ? 'Optimize Fork' : 'Instance'}
+                                    {sw.id === 'Paper' && formData.usePurpur ? t('optimized_fork') : t('instance')}
                                 </div>
                             </div>
                         </div>
@@ -459,8 +461,8 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                     <img src="/software-icons/purpur.png" className="w-6 h-6 object-contain" alt="Purpur" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xs font-bold text-foreground">Use Purpur Fork</h3>
-                                    <p className="text-[9px] text-muted-foreground font-medium uppercase tracking-widest">High-performance fork.</p>
+                                    <h3 className="text-xs font-bold text-foreground">{t('create_server.use_purpur')}</h3>
+                                    <p className="text-[9px] text-muted-foreground font-medium uppercase tracking-widest">{t('create_server.purpur_desc')}</p>
                                 </div>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer">
@@ -495,7 +497,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     <div className="p-1.5 bg-blue-500/10 rounded-md border border-blue-500/20">
                         <Settings2 size={14} className="text-blue-500" />
                     </div>
-                    <h2 className="text-[10px] font-bold uppercase tracking-widest text-foreground/70">Instance Configuration</h2>
+                    <h2 className="text-[10px] font-bold uppercase tracking-widest text-foreground/70">{t('create_server.params')}</h2>
                     </>
                 )}
             </div>
@@ -506,18 +508,18 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-4">
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Server Name</label>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('create_server.name')}</label>
                             <div className="relative">
                                 <input 
                                     value={formData.name}
                                     onChange={e => setFormData({...formData, name: e.target.value})}
                                     className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-xs text-foreground font-medium transition-all"
-                                    placeholder="Alpha-01"
+                                    placeholder={t('create_server.name_placeholder')}
                                 />
                             </div>
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Software Version</label>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 block">{t('create_server.software_version')}</label>
                             
                             {capabilities.softwareCategory !== 'BEDROCK' && (
                                 <div className="flex flex-col gap-2 px-1 mb-2">
@@ -525,7 +527,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                         <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" size={12} />
                                         <input 
                                             type="text"
-                                            placeholder="Search versions (e.g. 1.8.9)"
+                                            placeholder={t('create_server.search_versions')}
                                             value={versionSearch}
                                             onChange={e => setVersionSearch(e.target.value)}
                                             className="w-full bg-zinc-900/50 border border-border/50 rounded-md py-1.5 pl-7 pr-2 text-[10px] outline-none focus:border-primary/50 text-foreground"
@@ -537,14 +539,14 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                                 <input type="checkbox" className="sr-only peer" checked={showSnapshots} onChange={e => setShowSnapshots(e.target.checked)} />
                                                 <div className="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
                                             </label>
-                                            <span className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-widest">Snapshots</span>
+                                            <span className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-widest">{t('create_server.snapshots')}</span>
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                             <label className="relative inline-flex items-center cursor-pointer scale-75 origin-left">
                                                 <input type="checkbox" className="sr-only peer" checked={showClassic} onChange={e => setShowClassic(e.target.checked)} />
                                                 <div className="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
                                             </label>
-                                            <span className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-widest">Classic</span>
+                                            <span className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-widest">{t('create_server.classic')}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -556,28 +558,28 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 outline-none text-xs text-foreground font-medium cursor-pointer appearance-none hover:bg-muted/60 transition-colors"
                             >
                                 {javaVersions.releases.length === 0 && capabilities.softwareCategory !== 'BEDROCK' ? (
-                                    <option>Loading Minecraft versions...</option>
+                                    <option>{t('loading_versions')}</option>
                                 ) : (
                                     <>
                                         {capabilities.softwareCategory === 'BEDROCK' ? (
-                                            <optgroup label="Bedrock Stable">
+                                            <optgroup label={t('bedrock_stable')}>
                                                 {bedrockVersions.versions.map(v => (
-                                                    <option key={v} value={v}>{v} {v === bedrockVersions.latest ? '(Latest)' : ''}</option>
+                                                    <option key={v} value={v}>{v} {v === bedrockVersions.latest ? `(${t('common.latest') || 'Latest'})` : ''}</option>
                                                 ))}
                                             </optgroup>
                                         ) : (
                                             <>
                                                 {/* Primary Filtered Groups */}
                                                 {modernReleases.length > 0 && (
-                                                    <optgroup label="Modern (1.20+)">
+                                                    <optgroup label={t('create_server.modern')}>
                                                         {modernReleases.map(v => (
-                                                            <option key={v} value={v}>{v} {v === javaVersions.latest ? '(Latest)' : ''}</option>
+                                                            <option key={v} value={v}>{v} {v === javaVersions.latest ? `(${t('common.latest')})` : ''}</option>
                                                         ))}
                                                     </optgroup>
                                                 )}
                                                 
                                                 {legacyReleases.length > 0 && (
-                                                    <optgroup label="Legacy (<1.20)">
+                                                    <optgroup label={t('create_server.legacy')}>
                                                         {legacyReleases.map(v => (
                                                             <option key={v} value={v}>{v}</option>
                                                         ))}
@@ -586,7 +588,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
 
                                                 {/* Fallback if filtering logic (X.Y.Z) failed but we have data */}
                                                 {modernReleases.length === 0 && legacyReleases.length === 0 && javaVersions.releases.length > 0 && (
-                                                    <optgroup label="All Releases">
+                                                    <optgroup label={t('all_releases')}>
                                                         {filterVersions(javaVersions.releases).map(v => (
                                                             <option key={v} value={v}>{v}</option>
                                                         ))}
@@ -595,7 +597,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
 
                                                 {/* Snapshots & Classic Expansion */}
                                                 {(showSnapshots || versionSearch) && snapshotsList.length > 0 && (
-                                                    <optgroup label="Snapshots">
+                                                    <optgroup label={t('create_server.snapshots')}>
                                                         {snapshotsList.map(v => (
                                                             <option key={v} value={v}>{v}</option>
                                                         ))}
@@ -605,14 +607,14 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                                 {(showClassic || versionSearch) && (
                                                     <>
                                                         {betaList.length > 0 && (
-                                                            <optgroup label="Beta (Classic)">
+                                                            <optgroup label={`${t('create_server.beta_label')} (${t('create_server.classic')})`}>
                                                                 {betaList.map(v => (
                                                                     <option key={v} value={v}>{v}</option>
                                                                 ))}
                                                             </optgroup>
                                                         )}
                                                         {alphaList.length > 0 && (
-                                                            <optgroup label="Alpha (Classic)">
+                                                            <optgroup label={`${t('create_server.alpha_label')} (${t('create_server.classic')})`}>
                                                                 {alphaList.map(v => (
                                                                     <option key={v} value={v}>{v}</option>
                                                                 ))}
@@ -629,8 +631,8 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 <div className="mt-2 flex items-start gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[10px] text-blue-300 leading-relaxed font-medium">
                                     <Info size={14} className="shrink-0 text-blue-400 mt-0.5" />
                                     <div>
-                                        <span className="font-bold text-blue-200 uppercase tracking-tight">Version Status: Very Recent</span>
-                                        <p className="opacity-80">Minecraft {formData.version} was just released. {formData.software} builds might not be available yet. If installation fails, try <strong>Vanilla</strong> or a slightly older version.</p>
+                                        <span className="font-bold text-blue-200 uppercase tracking-tight">{t('create_server.recent_status')}</span>
+                                        <p className="opacity-80">{t('create_server.recent_desc', { version: formData.version, software: formData.software })}</p>
                                     </div>
                                 </div>
                             )}
@@ -640,23 +642,23 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                          {capabilities.supportsJava && (
                           <div className="space-y-1.5 mt-4">
                              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex justify-between">
-                                 <span>Java Runtime</span>
-                                 {showJavaWarning && <span className="text-amber-500 flex items-center gap-1"><AlertTriangle size={10} /> Not Recommended</span>}
+                                 <span>{t('create_server.java_runtime')}</span>
+                                 {showJavaWarning && <span className="text-amber-500 flex items-center gap-1"><AlertTriangle size={10} /> {t('create_server.not_recommended')}</span>}
                              </label>
                              <select 
                                  value={formData.javaVersion}
                                  onChange={e => setFormData({...formData, javaVersion: e.target.value as any})}
                                  className={`w-full bg-muted/40 border rounded-lg py-2 px-3 outline-none text-xs font-medium cursor-pointer appearance-none transition-colors ${showJavaWarning ? 'border-amber-500/50 text-amber-200' : 'border-border text-foreground'}`}
                              >
-                                 <option value="Java 21">Java 21 (Recommended for 1.21+)</option>
-                                 <option value="Java 17">Java 17 (Recommended for 1.17-1.20)</option>
+                                 <option value="Java 21">{t('java_21_rec')}</option>
+                                 <option value="Java 17">{t('java_17_rec')}</option>
                                  <option value="Java 11">Java 11</option>
-                                 <option value="Java 8">Java 8 (Legacy)</option>
-                                 <option value="Do Not Override">Do Not Override (Environment Default)</option>
+                                 <option value="Java 8">{t('java_8_legacy')}</option>
+                                 <option value="Do Not Override">{t('no_override')}</option>
                              </select>
                              {showJavaWarning && (
                                  <p className="text-[10px] text-amber-500/80 leading-tight">
-                                     Warning: Minecraft {formData.version} usually requires {recommendedJava}.
+                                     {t('java_warning', { version: formData.version, recommendedJava })}
                                  </p>
                              )}
                           </div>
@@ -664,7 +666,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
 
                          <div className="grid grid-cols-2 gap-3 mt-4">
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Service Port</label>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('create_server.port')}</label>
                                  <div className="flex items-center bg-muted/40 border border-border rounded-lg overflow-hidden focus-within:border-primary/50 transition-all">
                                     <input 
                                         type="number"
@@ -692,13 +694,13 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 {portConflictServer && (
                                     <div className="mt-1 flex items-start gap-1.5 p-2 rounded-md bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400 font-bold uppercase tracking-tight">
                                         <AlertTriangle size={12} className="shrink-0 pt-0.5" />
-                                        <span>Warning: Port {formData.port} is already reserved for "{portConflictServer.name}" ({portConflictServer.status}).</span>
+                                        <span>{t('create_server.port_conflict', { port: formData.port, name: portConflictServer.name, status: portConflictServer.status })}</span>
                                     </div>
                                 )}
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Max Players</label>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('create_server.max_players')}</label>
                                  <div className="flex items-center bg-muted/40 border border-border rounded-lg overflow-hidden focus-within:border-primary/50 transition-all">
                                     <input 
                                         type="number"
@@ -733,7 +735,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground hover:text-white transition-colors uppercase tracking-widest"
                              >
                                 <Settings2 size={12} />
-                                {showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options'}
+                                {showAdvanced ? t('create_server.hide_advanced') : t('create_server.show_advanced')}
                              </button>
                         </div>
                         
@@ -747,7 +749,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 >
                                     {/* Folder Name */}
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Server Folder Name (Optional)</label>
+                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('create_server.folder_name')}</label>
                                          <div className="relative">
                                             <input 
                                                 value={formData.folderName || ''}
@@ -756,7 +758,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                                     setFormData({...formData, folderName: val});
                                                 }}
                                                 className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-xs text-foreground font-medium font-mono"
-                                                placeholder="Auto-generated"
+                                                placeholder={t('create_server.auto_generated')}
                                             />
                                             <div className="text-[9px] text-muted-foreground mt-1 font-mono break-all opacity-60">
                                                 Path: .../backend/minecraft_servers/{formData.folderName || `local-TIMESTAMP`}
@@ -767,15 +769,15 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                     {/* Loader Build (Forge/NeoForge Only) */}
                                     {(formData.software === 'Forge' || formData.software === 'NeoForge') && (
                                         <div className="space-y-1.5">
-                                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Loader Build ID</label>
+                                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('create_server.loader_id')}</label>
                                              <input 
                                                 value={formData.loaderBuild || ''}
                                                 onChange={e => setFormData({...formData, loaderBuild: e.target.value})}
                                                 className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-xs text-foreground font-medium"
-                                                placeholder="Latest (Default)"
+                                                placeholder={t('create_server.latest_default')}
                                             />
                                             <p className="text-[9px] text-amber-500/80 leading-tight flex items-center gap-1">
-                                                <AlertTriangle size={10} /> Advanced: Only set this if you need a specific build.
+                                                <AlertTriangle size={10} /> {t('create_server.build_warning')}
                                             </p>
                                         </div>
                                     )}
@@ -788,8 +790,8 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     <div className="space-y-4">
                         <div className="space-y-2 p-3 bg-input/50 border border-[rgb(var(--color-border-subtle))] rounded-lg">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex justify-between items-center">
-                                    <span>Memory</span>
-                                    <span className="text-primary font-mono text-xs">{formData.ram} GB</span>
+                                    <span>{t('create_server.memory')}</span>
+                                    <span className="text-primary font-mono text-xs">{t('create_server.ram_short', { ram: formData.ram })}</span>
                                 </label>
                                  <input 
                                 type="range" min="2" max="16" step="1"
@@ -798,9 +800,9 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 className="w-full h-1 bg-muted rounded-full appearance-none cursor-pointer accent-primary"
                             />
                                 <div className="flex gap-2 text-[9px] text-muted-foreground/50 italic px-1">
-                                <Info size={10} className="shrink-0" />
-                                <span>Recommended: {capabilities.softwareCategory === 'BEDROCK' ? '1GB+' : (formData.software.match(/Forge|Modpack/) ? '4GB+' : '2GB+')}</span>
-                            </div>
+                                    <Info size={10} className="shrink-0" />
+                                    <span>{t('create_server.recommended_ram', { size: capabilities.softwareCategory === 'BEDROCK' ? '1GB+' : (formData.software.match(/Forge|Modpack/) ? '4GB+' : '2GB+') })}</span>
+                                </div>
                         </div>
 
                         {/* Forge Modpack Upload - Visible for both Template and Manual Forge */}
@@ -808,7 +810,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 <div className="p-3 border border-dashed border-border rounded-xl bg-muted/20">
                                     <label className="flex items-center gap-2 cursor-pointer select-none">
                                         <input type="checkbox" className="w-3 h-3 rounded bg-black accent-primary" checked={useModpack} onChange={() => setUseModpack(!useModpack)} />
-                                        <span className="text-xs font-medium text-[rgb(var(--color-fg-muted))]">Custom Upload (.zip)</span>
+                                        <span className="text-xs font-medium text-[rgb(var(--color-fg-muted))]">{t('create_server.custom_upload')}</span>
                                     </label>
                                     <AnimatePresence>
                                         {useModpack && (
@@ -856,17 +858,17 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         <div className="p-1.5 bg-white/5 rounded-md text-muted-foreground">
                             <Activity size={14} />
                         </div>
-                        <div>
-                            <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">CPU Priority</h3>
-                            <p className="text-[9px] text-muted-foreground font-medium hidden sm:block">Allocates processor cycles relative to system tasks.</p>
-                        </div>
+                            <div>
+                                <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">{t('create_server.cpu_priority')}</h3>
+                                <p className="text-[9px] text-muted-foreground font-medium hidden sm:block">{t('create_server.cpu_priority_desc')}</p>
+                            </div>
                     </div>
 
                     <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
                         {[
-                            { id: 'normal', label: 'Normal', icon: <Box size={10} /> },
-                            { id: 'high', label: 'High', icon: <Zap size={10} /> },
-                            { id: 'realtime', label: 'Realtime', icon: <AlertTriangle size={10} /> }
+                            { id: 'normal', label: t('create_server.priority_normal'), icon: <Box size={10} /> },
+                            { id: 'high', label: t('create_server.priority_high'), icon: <Zap size={10} /> },
+                            { id: 'realtime', label: t('create_server.priority_realtime'), icon: <AlertTriangle size={10} /> }
                         ].map((p) => (
                             <button
                                 key={p.id}
@@ -895,7 +897,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     <div className="flex items-start gap-2 p-3 bg-red-500/5 border border-red-500/10 rounded-lg text-red-500/90 animate-in fade-in slide-in-from-top-1">
                         <AlertTriangle size={12} className="mt-0.5 shrink-0" />
                         <p className="text-[10px] leading-relaxed">
-                            <strong className="font-bold">Caution:</strong> Realtime priority forces the OS to process server tasks before <em>anything</em> else, including mouse input and system stability tasks. Only use on dedicated hardware.
+                            {t('create_server.realtime_warning')}
                         </p>
                     </div>
                 )}
@@ -908,31 +910,31 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Proxy Name</label>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('create_server.name')}</label>
                         <input 
                             value={formData.name}
                             onChange={e => setFormData({...formData, name: e.target.value})}
                             className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-xs text-foreground font-medium"
-                            placeholder="Velocity-Bridge"
+                            placeholder={t('create_server.name_placeholder')}
                         />
                     </div>
                     
                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Velocity Version</label>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('create_server.software_version')}</label>
                         <select 
                             value={formData.version}
                             onChange={e => handleVersionChange(e.target.value)}
                             className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 outline-none text-xs text-foreground font-medium cursor-pointer appearance-none hover:bg-muted/60 transition-colors"
                         >
-                            <option value="3.4.0-SNAPSHOT">3.4.0 (Latest)</option>
+                            <option value="3.4.0-SNAPSHOT">3.4.0 ({t('common.latest')})</option>
                             <option value="3.3.0-SNAPSHOT">3.3.0 (LTS)</option>
-                            <option value="3.2.0-SNAPSHOT">3.2.0 (Legacy)</option>
+                            <option value="3.2.0-SNAPSHOT">3.2.0 ({t('create_server.legacy')})</option>
                         </select>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Network Port</label>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('create_server.port')}</label>
                             <input 
                                 type="number"
                                 value={formData.port}
@@ -941,9 +943,9 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Resources</label>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('create_server.resource_allocation')}</label>
                             <div className="flex items-center h-9 px-3 bg-muted/40 border border-border rounded-lg text-[10px] font-bold text-primary tracking-widest">
-                                {formData.ram}GB RAM
+                                {t('create_server.gb_ram', { ram: formData.ram })}
                             </div>
                         </div>
                     </div>
@@ -951,27 +953,27 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                 
                 <div className="space-y-4">
                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Forwarding Mode</label>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('create_server.forwarding_mode')}</label>
                         <select 
                             value={formData.forwardingMode}
                             onChange={e => setFormData({...formData, forwardingMode: e.target.value as any})}
                             className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 outline-none text-xs text-foreground font-medium cursor-pointer appearance-none hover:bg-muted/60 transition-colors"
                         >
-                            <option value="modern">Modern (Recommended)</option>
+                            <option value="modern">{t('create_server.modern')} ({t('common.recommended')})</option>
                             <option value="bungeeguard">BungeeGuard</option>
-                            <option value="legacy">Legacy (IP Forwarding)</option>
-                            <option value="none">None (Local Only)</option>
+                            <option value="legacy">{t('create_server.legacy')} (IP Forwarding)</option>
+                            <option value="none">{t('common.none')} ({t('create_server.local_node')})</option>
                         </select>
                     </div>
 
                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Proxy Secret</label>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('create_server.proxy_secret')}</label>
                         <div className="relative">
                             <input 
                                 value={formData.proxySecret}
                                 onChange={e => setFormData({...formData, proxySecret: e.target.value})}
                                 className="w-full bg-muted/40 border border-border rounded-lg py-2 px-3 focus:border-primary/50 outline-none text-[10px] text-foreground font-mono"
-                                placeholder="Auto-generated"
+                                placeholder={t('create_server.auto_generated')}
                             />
                             <button 
                                 type="button"
@@ -987,7 +989,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         <div className="flex gap-2">
                             <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
                             <p className="text-[9px] text-muted-foreground leading-relaxed uppercase font-medium tracking-tight">
-                                Entry point: Connect backends via the <strong className="text-blue-300">Proxy Network</strong> tab post-deployment.
+                                {t('create_server.entry_point_notice')}
                             </p>
                         </div>
                     </div>
@@ -996,8 +998,8 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
 
             <div className="space-y-2 p-4 bg-muted/10 border border-border rounded-xl">
                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex justify-between items-center mb-1">
-                    <span>Memory Allocation</span>
-                    <span className="text-primary font-mono text-xs">{formData.ram} GB</span>
+                    <span>{t('create_server.memory')}</span>
+                    <span className="text-primary font-mono text-xs">{t('create_server.ram_short', { ram: formData.ram })}</span>
                 </label>
                 <input 
                     type="range" min="1" max="8" step="0.5"
@@ -1024,27 +1026,27 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     <div className="p-2 bg-primary/5 rounded-lg border border-primary/10">
                         <Terminal size={14} className="text-primary" />
                     </div>
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">Provisioning Logic</h3>
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">{t('create_server.validation')}</h3>
                 </div>
 
                 <div className="bg-muted/10 border border-border rounded-lg p-5 space-y-3 text-xs mb-6 relative z-10 font-mono">
                     <div className="flex justify-between items-center opacity-80">
-                        <span className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em]">Instance_ID</span>
+                        <span className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em]">{t('create_server.instance_id')}</span>
                         <span className="font-bold text-foreground">{formData.name || 'UNNAMED_NODE'}</span>
                     </div>
                     <div className="h-px bg-border/20" />
                     <div className="flex justify-between items-center opacity-80">
-                        <span className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em]">Runtime</span>
+                        <span className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em]">{t('create_server.runtime')}</span>
                         <div className="flex items-center gap-2">
                             <span className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-widest">
-                                {formData.usePurpur ? 'PURPUR' : formData.software} {formData.version}
+                                {t('create_server.software_version_template', { software: formData.software.toUpperCase(), version: formData.version })}
                             </span>
                         </div>
                     </div>
                     <div className="h-px bg-border/20" />
                     <div className="flex justify-between items-center opacity-80">
-                        <span className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em]">Allocations</span>
-                        <span className="text-foreground font-bold">{formData.ram}GB RAM / {formData.port} ETH</span>
+                        <span className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em]">{t('create_server.allocations')}</span>
+                        <span className="text-foreground font-bold">{t('gb_ram', { ram: formData.ram })} / {formData.port} {t('create_server.port_label')}</span>
                     </div>
                 </div>
 
@@ -1056,9 +1058,9 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         {formData.eula && <Check size={10} className="text-black" strokeWidth={4} />}
                     </div>
                     <div>
-                        <div className="text-[11px] font-bold text-foreground mb-1 uppercase tracking-widest">Accept Legal Agreement</div>
+                        <div className="text-[11px] font-bold text-foreground mb-1 uppercase tracking-widest">{t('create_server.ready')}</div>
                         <div className="text-[9px] text-muted-foreground leading-relaxed uppercase tracking-widest font-medium opacity-60">
-                            I verify that I have read and agree to the {capabilities.softwareCategory === 'BEDROCK' ? 'Minecraft Bedrock' : 'Mojang'} EULA and Terms.
+                            {t('create_server.summary')}
                         </div>
                     </div>
                 </div>
@@ -1071,12 +1073,12 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                     {isDeploying ? (
                         <>
                             <Loader2 className="animate-spin" size={12} />
-                            <span>Synchronizing...</span>
+                            <span>{t('create_server.deploying')}</span>
                         </>
                     ) : ( 
                         <>
                             <Zap size={12} />
-                            Commit Deployment
+                            {t('create_server.finalize')}
                         </>
                     )}
                 </button>
@@ -1105,19 +1107,19 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                         </button>
                         <div className="space-y-0.5">
                                 <h1 className="text-xl font-bold tracking-tight text-foreground uppercase leading-none">
-                                    Provision Node
+                                    {t('create_server.provisioning_target')}
                                 </h1>
                                 <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-[0.2em] opacity-40">
-                                    Environment Management
+                                    {t('create_server.choose_env')}
                                 </p>
                         </div>
                     </div>
                     
                     <div className="flex bg-muted/20 border border-border p-1 rounded-xl">
                         {[
-                            { id: 'wizard', label: 'Guided', step: 'software', category: 'GAME' },
-                            { id: 'pro', label: 'Technical', step: 'software', category: 'GAME' },
-                            { id: 'proxy', label: 'Network', step: 'details', category: 'GAME' }
+                            { id: 'wizard', label: t('create_server.mode_guided'), step: 'software', category: 'GAME' },
+                            { id: 'pro', label: t('create_server.mode_technical'), step: 'software', category: 'GAME' },
+                            { id: 'proxy', label: t('create_server.mode_network'), step: 'details', category: 'GAME' }
                         ].map((m) => (
                             <button 
                                 key={m.id}
@@ -1157,7 +1159,7 @@ const CreateServer: React.FC<CreateServerProps> = ({ onBack, onDeploy }) => {
                                 bedrockVersions={bedrockVersions}
                             />
                         ) : mode === 'pro' ? (
-                            <ProConfig 
+                            <AdvancedConfig 
                                 formData={formData}
                                 setFormData={setFormData}
                                 handleDeploy={handleDeploy}

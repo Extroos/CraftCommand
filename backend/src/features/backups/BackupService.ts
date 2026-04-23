@@ -8,6 +8,9 @@ import crypto from 'crypto';
 import { logger } from '../../utils/logger';
 import { CloudBackupDestination, CloudUploadResult, createCloudProvider } from './CloudBackupProvider';
 import { detectWorldFolders, calculateHash, SharedBackup, BACKUP_EXCLUDES } from '@shared/utils/BackupUtils';
+import { ServerStatus } from '@shared/types';
+import { processManager } from '../processes/ProcessManager';
+import { SafeFileOperation } from '../../utils/fs';
 
 export interface Backup extends SharedBackup {
     locked?: boolean;
@@ -18,6 +21,7 @@ export interface Backup extends SharedBackup {
 export class BackupService extends EventEmitter {
     private backupsDir: string;
     private activeBackups: Set<string> = new Set();
+    private activeSessions: Map<string, { backupId: string, cancelled: boolean }> = new Map();
     private destinationsPath: string;
 
     constructor() {
@@ -59,9 +63,8 @@ export class BackupService extends EventEmitter {
     }
 
     async saveCloudDestinations(destinations: CloudBackupDestination[]): Promise<void> {
-        const tempPath = `${this.destinationsPath}.tmp`;
-        await fs.writeJSON(tempPath, destinations, { spaces: 2 });
-        await fs.rename(tempPath, this.destinationsPath);
+        // v1.13.2: Use SafeFileOperation for atomic, retry-capable write (Windows stability)
+        await SafeFileOperation.writeFile(this.destinationsPath, JSON.stringify(destinations, null, 2));
     }
 
     async addCloudDestination(destination: CloudBackupDestination): Promise<CloudBackupDestination[]> {
@@ -129,12 +132,21 @@ export class BackupService extends EventEmitter {
             throw new Error('A backup operation is already in progress for this server.');
         }
 
+        // --- LIFECYCLE GUARD (v1.13.2) ---
+        const { serverRepository } = require('../../storage/ServerRepository');
+        const server = serverRepository.findById(serverId);
+        if (server && (server.status === ServerStatus.INSTALLING || server.status === ServerStatus.STARTING)) {
+            throw new Error(`Cannot create backup: Server is currently ${server.status}.`);
+        }
+
         const timestamp = Date.now();
         const backupId = `backup-${timestamp}-${Math.random().toString(36).substring(7)}`;
         const filename = `${backupId}.zip`;
         const serverBackupsDir = path.join(this.backupsDir, serverId);
         
         this.activeBackups.add(serverId);
+        const session = { backupId, cancelled: false };
+        this.activeSessions.set(serverId, session);
 
         try {
             await fs.ensureDir(serverBackupsDir);
@@ -161,6 +173,7 @@ export class BackupService extends EventEmitter {
             let success = false;
 
             while (attempts < maxAttempts && !success) {
+                if (session.cancelled) throw new Error('Backup cancelled');
                 try {
                     attempts++;
                     await new Promise<void>((resolve, reject) => {
@@ -177,13 +190,29 @@ export class BackupService extends EventEmitter {
                         });
 
                         archive.on('error', (err) => {
-                            logger.error(`[BackupService] Archive Error (Attempt ${attempts}): ${err.message}`);
-                            reject(err);
+                            if (session.cancelled) {
+                                archive.destroy();
+                                resolve();
+                            } else {
+                                logger.error(`[BackupService] Archive Error (Attempt ${attempts}): ${err.message}`);
+                                reject(err);
+                            }
                         });
 
                         archive.on('progress', (data) => {
-                            const percent = Math.round((data.entries.processed / data.entries.total) * 100);
-                            this.emit('progress', { serverId, percent, backupId });
+                            if (session.cancelled) {
+                                archive.destroy();
+                                return;
+                            }
+                            // v1.13.2: Cap ZIP progress at 98% to leave visual room for finalization/hashing
+                            const rawPercent = (data.entries.processed / data.entries.total) * 100;
+                            const percent = Math.min(98, Math.round(rawPercent));
+                            this.emit('progress', { 
+                                serverId, 
+                                percent, 
+                                backupId, 
+                                message: `Compressing archives (${percent}%)` 
+                            });
                         });
 
                         archive.pipe(output);
@@ -209,12 +238,22 @@ export class BackupService extends EventEmitter {
                 }
             }
 
+            // ZIP is finished - force 100% since local file is ready
+            this.emit('progress', { serverId, percent: 100, backupId, message: 'Archive compression complete.' });
+
+            if (session.cancelled) throw new Error('Backup cancelled');
+
             const stats = await fs.stat(outputPath);
             
             // Calculate SHA-256 for integrity
-            this.emit('status', { serverId, backupId, message: 'Calculating integrity hash...' });
+            const hashMsg = `Calculating integrity hash for ${Math.round(stats.size / 1024 / 1024)}MB...`;
+            this.emit('status', { serverId, backupId, message: hashMsg });
+            this.emit('progress', { serverId, percent: 100, backupId, message: hashMsg });
+            
             const sha256 = await calculateHash(outputPath);
             
+            if (session.cancelled) throw new Error('Backup cancelled');
+
             const backup: Backup = {
                 id: backupId,
                 serverId,
@@ -229,7 +268,11 @@ export class BackupService extends EventEmitter {
 
             // Cloud upload (non-blocking — local backup succeeds regardless)
             try {
-                this.emit('status', { serverId, backupId, message: 'Uploading to cloud destinations...' });
+                if (session.cancelled) throw new Error('Backup cancelled');
+                const cloudMsg = 'Uploading to cloud destinations...';
+                this.emit('status', { serverId, backupId, message: cloudMsg });
+                this.emit('progress', { serverId, percent: 100, backupId, message: cloudMsg });
+                
                 const cloudResults = await this.uploadToCloud(
                     outputPath,
                     `${serverId}/${filename}`,
@@ -250,8 +293,33 @@ export class BackupService extends EventEmitter {
 
             this.emit('status', { serverId, backupId, status: 'complete', message: 'Backup created successfully' });
             return backup;
+        } catch (e: any) {
+            this.emit('status', { 
+                serverId, 
+                backupId, 
+                status: 'failed', 
+                message: session.cancelled ? 'Operation cancelled (Server Deleted)' : `Backup failed: ${e.message}` 
+            });
+            throw e;
         } finally {
             this.activeBackups.delete(serverId);
+            this.activeSessions.delete(serverId);
+        }
+    }
+
+    /** Cancel any active backups for a specific server (e.g. before deletion) */
+    async cancelActiveBackups(serverId: string) {
+        const session = this.activeSessions.get(serverId);
+        if (session) {
+            logger.info(`[BackupService] Aborting active backup session for ${serverId}`);
+            session.cancelled = true;
+            // The next progress event or loop iteration will catch this and exit
+            this.emit('status', { 
+                serverId, 
+                backupId: session.backupId, 
+                status: 'failed', 
+                message: 'Operation cancelled (Server Deleted)' 
+            });
         }
     }
 
@@ -268,10 +336,18 @@ export class BackupService extends EventEmitter {
         }
 
         const mirrorDir = path.join(this.backupsDir, 'mirrors', nodeId, serverId);
+        // Security: Ensure mirrored path is valid before ensuring dir
+        SafeFileOperation.validatePath(mirrorDir);
+        
         await fs.ensureDir(mirrorDir);
         
-        const filename = `${backupId}.zip`;
+        // Security: Strip traversal payloads and enforce boundary
+        const safeBackupId = path.basename(backupId).replace(/[\\/:*?"<>|]/g, '_');
+        const filename = `${safeBackupId}.zip`;
         const filePath = path.join(mirrorDir, filename);
+        
+        SafeFileOperation.validatePath(filePath);
+        
         const out = fs.createWriteStream(filePath);
         
         logger.info(`[BackupService] Receiving mirrored backup ${backupId} for server ${serverId} from node ${nodeId}...`);
@@ -360,6 +436,17 @@ export class BackupService extends EventEmitter {
         const backupPath = path.join(serverBackupsDir, backup.filename);
         if (!(await fs.pathExists(backupPath))) throw new Error('Backup file not found');
 
+        // --- LIFECYCLE GUARD (v1.13.2) ---
+        // Block restore if server is online or starting
+        if (processManager.isRunning(serverId)) {
+             throw new Error('Cannot restore backup while the server is running. Please stop it first.');
+        }
+        const { serverRepository } = require('../../storage/ServerRepository');
+        const server = serverRepository.findById(serverId);
+        if (server && (server.status === ServerStatus.STARTING || server.status === ServerStatus.INSTALLING)) {
+             throw new Error(`Cannot restore backup while server is ${server.status}.`);
+        }
+
         // 1. Verify Integrity
         if (backup.sha256) {
             this.emit('status', { serverId, backupId, message: 'Verifying backup integrity...' });
@@ -426,12 +513,20 @@ export class BackupService extends EventEmitter {
             this.emit('status', { serverId, backupId, status: 'failed', message: `CRITICAL: Restore failed. Rolling back...` });
             
             try {
-                const items = await fs.readdir(serverDir);
-                for (const item of items) await fs.remove(path.join(serverDir, item));
+                if (scope === 'full') {
+                    const items = await fs.readdir(serverDir);
+                    for (const item of items) {
+                        const fullItemPath = path.resolve(serverDir, item);
+                        const relativeToBackups = path.relative(this.backupsDir, fullItemPath);
+                        if (!relativeToBackups.startsWith('..') && !path.isAbsolute(relativeToBackups)) continue;
+                        
+                        await fs.remove(fullItemPath);
+                    }
+                }
                 
                 const tempItems = await fs.readdir(tempRestorePath);
                 for (const item of tempItems) {
-                    await fs.move(path.join(tempRestorePath, item), path.join(serverDir, item));
+                    await fs.move(path.join(tempRestorePath, item), path.join(serverDir, item), { overwrite: true });
                 }
             } catch (error: any) {
                 throw new Error(`CATASTROPHIC FAILURE: Rollback failed. Files in ${tempRestorePath}. Error: ${error.message}`);
@@ -509,11 +604,16 @@ export class BackupService extends EventEmitter {
 
     private async cleanupOldBackups(serverId: string, keepCount: number): Promise<void> {
         const backups = await this.listBackups(serverId);
-        const candidates = backups.filter(b => !b.locked);
-        if (candidates.length <= keepCount) return;
+        if (backups.length <= keepCount) return;
 
-        const latest = candidates.slice(0, keepCount);
-        const older = candidates.slice(keepCount);
+        const lockedCount = backups.filter(b => b.locked).length;
+        const unlockedKeepCount = Math.max(0, keepCount - lockedCount);
+
+        const candidates = backups.filter(b => !b.locked);
+        if (candidates.length <= unlockedKeepCount) return;
+
+        const latest = candidates.slice(0, unlockedKeepCount);
+        const older = candidates.slice(unlockedKeepCount);
         const toKeep = new Set(latest.map(b => b.id));
         
         older.forEach(backup => {

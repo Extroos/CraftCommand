@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserProfile, AccentColor } from '@shared/types';
+import { useStore } from '@/store';
 import { API } from '../../core/services/api';
+import i18n from '../../core/i18n';
 
 interface ThemeClasses {
     text: string;
@@ -45,252 +47,53 @@ const UserContext = createContext<UserContextType | undefined>({
 });
 
 export const useUser = () => {
-    const context = useContext(UserContext);
-    if (!context) throw new Error('useUser must be used within UserProvider');
-    return context;
+    const store = useStore();
+    return {
+        user: store.user,
+        token: store.token,
+        isAuthenticated: store.isAuthenticated,
+        isLoading: store.authLoading,
+        theme: store.getThemeClasses(),
+        login: store.login,
+        logout: store.logout,
+        updatePreferences: store.updatePreferences,
+        updateUser: store.updateUser,
+        refreshUser: store.refreshUser,
+        verify2FA: store.verify2FA,
+        twoFactorRequired: store.twoFactorRequired,
+        guestPrefs: store.guestPrefs
+    };
 };
 
 export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    // Attempt to load token from localStorage
-    const [token, setToken] = useState<string | null>(localStorage.getItem('cc_token'));
-    const [user, setUser] = useState<UserProfile | null>(null);
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [twoFactorRequired, setTwoFactorRequired] = useState<boolean>(false);
-
-    // Guest Preference State (Pre-authentication)
-    const [guestPrefs, setGuestPrefs] = useState({
-        reducedMotion: localStorage.getItem('cc_reducedMotion') === 'true',
-        visualQuality: localStorage.getItem('cc_visualQuality') !== 'false' // Default to true
-    });
-
-    // Initial Load / Token Verification
-    useEffect(() => {
-        const initAuth = async () => {
-            if (token && !twoFactorRequired) {
-                try {
-                    const u = await API.getCurrentUser();
-                    setUser(u);
-                    setIsAuthenticated(true);
-                    socketService.connect(); // Connect Socket
-                } catch (e: any) {
-                    console.error("Auth Token Verification failed:", e);
-                    
-                    // If backend says 2FA required (401 with mfaRequired), DON'T logout.
-                    // Instead, set twoFactorRequired to true so UI knows where to go.
-                    if (e.response?.status === 401 && e.response?.data?.mfaRequired) {
-                        setTwoFactorRequired(true);
-                        setIsAuthenticated(false);
-                    } else if (e.message?.includes('429')) {
-                        // Rate limited — do not logout! 
-                        // Keep current state (likely authenticated) or just stay in loading.
-                        // We will just log it and potentially the next poll will succeed.
-                        console.warn("API Rate limited (429) during auth initialization.");
-                    } else {
-                        logout(); // Clear genuinely invalid token
-                    }
-                }
-            } else if (!token) {
-                setIsAuthenticated(false);
-            }
-            setIsLoading(false);
-        };
-        initAuth();
-    }, [token, twoFactorRequired]);
-
-    // Multi-tab Sync
-    useEffect(() => {
-        const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === 'cc_token') {
-                if (!e.newValue) {
-                    // Logout triggered in another tab
-                    setToken(null);
-                    setUser(null);
-                    setIsAuthenticated(false);
-                    socketService.disconnect();
-                } else if (e.newValue !== token) {
-                    // Login triggered in another tab
-                    setToken(e.newValue);
-                    // trigger re-auth verification via main useEffect
-                }
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
-    }, [token]);
-
-    const login = async (email: string, pass: string): Promise<'success' | '2fa' | 'failed' | 'rate-limited'> => {
-        try {
-            const data = await API.login(email, pass);
-            if (data.twoFactorRequired) {
-                setToken(data.token); // This is a partial token
-                setTwoFactorRequired(true);
-                return '2fa'; // Not fully authenticated yet
-            }
-            if (data.token) {
-                localStorage.setItem('cc_token', data.token);
-                setToken(data.token);
-                setUser(data.user);
-                setIsAuthenticated(true);
-                setTwoFactorRequired(false);
-                socketService.connect();
-                return 'success';
-            }
-            return 'failed';
-        } catch (e: any) {
-            console.error("Login failed:", e);
-            if (e.status === 429) return 'rate-limited';
-            return 'failed';
-        }
-    };
-
-    const logout = () => {
-        localStorage.removeItem('cc_token');
-        setToken(null);
-        setUser(null);
-        setIsAuthenticated(false);
-        setTwoFactorRequired(false);
-        socketService.disconnect();
-        window.dispatchEvent(new Event('cc_logout'));
-    };
-
-    const updatePreferences = (newPrefs: Partial<UserProfile['preferences']>) => {
-        if (!user) return;
-        
-        const updated = {
-            ...user.preferences,
-            ...newPrefs,
-            notifications: { ...user.preferences.notifications, ...newPrefs.notifications },
-            terminal: { ...user.preferences.terminal, ...newPrefs.terminal }
-        };
-
-        // Optimistic update
-        setUser({ ...user, preferences: updated });
-
-        // Sync
-        API.updateUser({ preferences: updated }).catch(() => {
-            // Silent — preference sync failure is non-critical
-        });
-
-        // Update local guest cache as well for logout persistence
-        if (newPrefs.reducedMotion !== undefined) {
-            localStorage.setItem('cc_reducedMotion', String(newPrefs.reducedMotion));
-            setGuestPrefs(prev => ({ ...prev, reducedMotion: newPrefs.reducedMotion! }));
-        }
-        if (newPrefs.visualQuality !== undefined) {
-            localStorage.setItem('cc_visualQuality', String(newPrefs.visualQuality));
-            setGuestPrefs(prev => ({ ...prev, visualQuality: newPrefs.visualQuality! }));
-        }
-    };
-
-    const updateUser = async (updates: Partial<UserProfile>) => {
-        if (!user || !token) return;
-
-        // Optimistic update
-        const previousUser = { ...user };
-        setUser({ ...user, ...updates });
-
-        try {
-            const updated = await API.updateUser(updates);
-            setUser(updated); // Final sync
-        } catch (e) {
-            console.error("Failed to update user:", e);
-            setUser(previousUser); // Rollback
-            throw e;
-        }
-    };
-
-    const verify2FA = async (code: string, isRecovery: boolean = false) => {
-        if (!token) return false;
-        try {
-            const data = await API.verify2FA(code, token, isRecovery);
-            if (data.success && data.token) {
-                localStorage.setItem('cc_token', data.token);
-                setToken(data.token);
-                setUser(data.user!);
-                setIsAuthenticated(true);
-                setTwoFactorRequired(false);
-                socketService.connect();
-                return true;
-            }
-            return false;
-        } catch (e) {
-            console.error("2FA Verification failed:", e);
-            return false;
-        }
-    };
-
-    const refreshUser = async () => {
-        if (!token) return;
-        try {
-            const u = await API.getCurrentUser();
-            setUser(u);
-        } catch (e) {
-            console.error("Refresh failed:", e);
-        }
-    };
-
-    // Theming Helpers
-    const getThemeClasses = (color: AccentColor): ThemeClasses => {
-        const map: Record<AccentColor, ThemeClasses> = {
-            emerald: { text: 'text-emerald-500', bg: 'bg-emerald-500', border: 'border-emerald-500', ring: 'ring-emerald-500', softBg: 'bg-emerald-500/10' },
-            blue: { text: 'text-blue-500', bg: 'bg-blue-500', border: 'border-blue-500', ring: 'ring-blue-500', softBg: 'bg-blue-500/10' },
-            violet: { text: 'text-violet-500', bg: 'bg-violet-500', border: 'border-violet-500', ring: 'ring-violet-500', softBg: 'bg-violet-500/10' },
-            amber: { text: 'text-amber-500', bg: 'bg-amber-500', border: 'border-amber-500', ring: 'ring-amber-500', softBg: 'bg-amber-500/10' },
-            rose: { text: 'text-rose-500', bg: 'bg-rose-500', border: 'border-rose-500', ring: 'ring-rose-500', softBg: 'bg-rose-500/10' },
-        };
-        return map[color] || map.emerald;
-    };
-
-    const theme = user ? getThemeClasses(user.preferences.accentColor as AccentColor) : getThemeClasses('emerald');
-
-    // Reduced Motion
-    useEffect(() => {
-        const enabled = user ? user.preferences.reducedMotion : guestPrefs.reducedMotion;
-        if (enabled) {
-            document.body.classList.add('reduce-motion');
-        } else {
-            document.body.classList.remove('reduce-motion');
-        }
-    }, [user?.preferences?.reducedMotion, guestPrefs.reducedMotion]);
+    const store = useStore();
     
-    // Quality Mode
     useEffect(() => {
-        const enabled = user ? user.preferences.visualQuality : guestPrefs.visualQuality;
-        if (enabled) {
-            document.body.classList.add('visual-quality-high');
-        } else {
-            document.body.classList.remove('visual-quality-high');
-        }
-    }, [user?.preferences?.visualQuality, guestPrefs.visualQuality]);
+        store.initAuth();
+    }, []);
 
-    // Persistence: Cache backgrounds for pre-login experience
     useEffect(() => {
-        if (user?.preferences?.backgrounds) {
-            localStorage.setItem('cc_backgrounds', JSON.stringify(user.preferences.backgrounds));
+        const enabled = store.user ? store.user.preferences.reducedMotion : store.guestPrefs.reducedMotion;
+        if (enabled) document.body.classList.add('reduce-motion');
+        else document.body.classList.remove('reduce-motion');
+    }, [store.user?.preferences?.reducedMotion, store.guestPrefs.reducedMotion]);
+    
+    useEffect(() => {
+        const enabled = store.user ? store.user.preferences.visualQuality : store.guestPrefs.visualQuality;
+        if (enabled) document.body.classList.add('visual-quality-high');
+        else document.body.classList.remove('visual-quality-high');
+    }, [store.user?.preferences?.visualQuality, store.guestPrefs.visualQuality]);
+    
+    // Sync System Language with i18next engine
+    useEffect(() => {
+        if (store.user?.preferences?.language) {
+            i18n.changeLanguage(store.user.preferences.language);
         }
-    }, [user?.preferences?.backgrounds]);
-
-    const value: UserContextType = {
-        user,
-        token,
-        isAuthenticated,
-        isLoading,
-        theme,
-        login,
-        logout,
-        updatePreferences,
-        updateUser,
-        refreshUser,
-        verify2FA,
-        twoFactorRequired,
-        guestPrefs
-    };
+    }, [store.user?.preferences?.language]);
 
     return (
-        <UserContext.Provider value={value}>
-            {isLoading ? (
+        <>
+            {store.authLoading ? (
                 <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500 font-mono">
                     <div className="flex flex-col items-center gap-4">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
@@ -298,6 +101,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     </div>
                 </div>
             ) : children}
-        </UserContext.Provider>
+        </>
     );
 };

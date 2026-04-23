@@ -3,11 +3,21 @@ import path from 'path';
 import net from 'net';
 import { logger, readLastLines } from '../../utils/logger';
 import { javaManager } from '../processes/JavaManager';
+import { systemSettingsService } from '../system/SystemSettingsService';
 import { processManager } from '../processes/ProcessManager';
 import { diagnosisService } from '../diagnosis/DiagnosisService';
 import { safetyService } from '../system/SafetyService';
 import { systemService } from '../system/SystemService';
 import { startupManager } from './StartupManager';
+import { NetUtils } from '../../utils/NetUtils';
+import { statsRingBuffer } from '../diagnosis/StatsRingBuffer';
+import { automaticRepairService } from '../diagnosis/AutomaticRepairService';
+import { backupService } from '../backups/BackupService';
+import { fileWatcherService } from '../files/FileWatcherService';
+import { presenceTracker } from '../../sockets/PresenceTracker';
+import { lockingService } from '../../sockets/LockingService';
+import { chatRepository } from '../../storage/ChatRepository';
+import { activityRepository } from '../../storage/ActivityRepository';
 
 import { serverRepository } from '../../storage/ServerRepository';
 import { ServerConfig, ServerStatus } from '@shared/types';
@@ -77,37 +87,103 @@ import { SafeFileOperation } from '../../utils/fs';
 
 export const deleteServer = async (id: string) => {
     logger.info(`[ServerService] Deleting server ${id}...`);
+    acquireLock(id, 'DELETE');
 
-    // Safety Guard: Prevent deletion of running servers
-    if (processManager.isRunning(id)) {
-        logger.warn(`[ServerService] Blocked deletion attempt for running server ${id}.`);
-        throw new Error('You cannot delete a running server. Please stop it first.');
-    }
-
-    const server = getServer(id);
-    if (!server) {
-        logger.warn(`[ServerService] Server ${id} not found in DB, but proceeding with cleanup.`);
-    }
-
-    serverRepository.delete(id);
-
-    if (server && server.workingDirectory) {
-        if (await fs.pathExists(server.workingDirectory)) {
-            let checks = 0;
-            while (processManager.isRunning(id) && checks < 10) {
-                await new Promise(r => setTimeout(r, 1000));
-                checks++;
-            }
-            if (!processManager.isRunning(id)) {
-                await new Promise(r => setTimeout(r, 2000));
-            }
-
-            logger.info(`[ServerService] Removing directory: ${server.workingDirectory}`);
-            await SafeFileOperation.remove(server.workingDirectory);
+    try {
+        // Safety Guard: Prevent deletion of running servers
+        if (processManager.isRunning(id)) {
+            logger.warn(`[ServerService] Blocked deletion attempt for running server ${id}.`);
+            throw new Error('You cannot delete a running server. Please stop it first.');
         }
+
+        const server = getServer(id);
+        if (!server) {
+            logger.warn(`[ServerService] Server ${id} not found in DB, but proceeding with cleanup.`);
+        }
+
+        serverRepository.delete(id);
+
+        if (server && server.workingDirectory) {
+            if (await fs.pathExists(server.workingDirectory)) {
+                let checks = 0;
+                while (processManager.isRunning(id) && checks < 10) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    checks++;
+                }
+                if (!processManager.isRunning(id)) {
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+
+                logger.info(`[ServerService] Removing directory: ${server.workingDirectory}`);
+                await SafeFileOperation.remove(server.workingDirectory);
+            }
+        }
+
+        // Comprehensive Cleanup (State & Memory)
+        await purgeServerState(id);
+        
+        logger.success(`[ServerService] Server ${id} deleted successfully.`);
+    } finally {
+        releaseLock(id);
     }
+};
+
+/**
+ * Deep Purge of server existence across all services.
+ * Ensures no memory leaks or orphaned files remain.
+ */
+export const purgeServerState = async (id: string) => {
+    logger.info(`[ServerService] Orchestrating deep purge for server ${id}...`);
     
-    logger.success(`[ServerService] Server ${id} deleted successfully.`);
+    // 1. Process & Memory Cleanup
+    processManager.cleanupServer(id);
+    
+    // 2. Diagnosis & Stats Cleanup
+    invalidateDiagnosisCache(id);
+    diagnosisService.clearResolved(id);
+    statsRingBuffer.clear(id);
+    
+    // 3. Automation Cleanup
+    automaticRepairService.clear(id);
+    
+    // 4. Resource Cleanup (Watchers & Locks)
+    fileWatcherService.unwatchServer(id);
+    lockingService.releaseAllForServer(id);
+    
+    // 5. Physical Backup Purge
+    try {
+        await backupService.cancelActiveBackups(id);
+        await backupService.clearAllBackups(id);
+        logger.info(`[ServerService] Purged all backup archives and cancelled active tasks for ${id}.`);
+    } catch (e: any) {
+        logger.warn(`[ServerService] Failed to purge backups for ${id}: ${e.message}`);
+    }
+
+    // 6. Collaboration Cleanup (Presence & History)
+    presenceTracker.clear(id);
+    chatRepository.deleteForServer(id);
+    activityRepository.deleteForServer(id);
+
+    // --- LAYER 3: DEEP ARCHITECTURAL PURGE (v1.14.0) ---
+
+    // 7. Scheduling & Task History
+    const { scheduleService } = require('../scheduling/ScheduleService');
+    await scheduleService.clear(id);
+
+    // 8. Proxy Fabric (Ghost Links)
+    const { proxyService } = require('../network/ProxyService');
+    await proxyService.unlinkAll(id);
+
+    // 9. Installer Temporary State
+    const { installerService } = require('../installer/InstallerService');
+    const server = getServer(id) || { workingDirectory: '' };
+    await installerService.purgeTempState(id, server.workingDirectory);
+
+    // 10. OS Host Firewall Rules
+    const { networkFabricService } = require('../network/NetworkFabricService');
+    await networkFabricService.clearRulesForServer(id);
+
+    logger.success(`[ServerService:${id}] Server state cleanup complete. No ghost state remains.`);
 };
 
 export const removeServer = deleteServer;
@@ -135,13 +211,8 @@ export const cloneServer = async (id: string, newName?: string): Promise<ServerC
         errorOnExist: true
     });
 
-    const allServers = getServers();
-    const usedPorts = new Set(allServers.map((s: any) => s.port));
-    let clonePort = (source.port || 25565) + 1;
-    while (usedPorts.has(clonePort) && clonePort < 65535) {
-        clonePort++;
-    }
-    if (clonePort >= 65535) clonePort = 25565;
+    // Use the shared port finder to avoid collisions and handle overflow safely
+    const clonePort = getNextAvailablePort((source.port || 25565) + 1);
 
     const clone: ServerConfig = {
         ...source,
@@ -237,8 +308,8 @@ export const bootstrapDiscovery = async () => {
                         executable: isBedrock ? (process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server') : 'server.jar',
                         ram: 4,
                         motd,
-                        javaVersion: javaManager.getRecommendedJavaVersion('1.21.1'),
-                        executionEngine: 'default',
+                        javaVersion: javaManager.getRecommendedJavaVersion('1.21.11'),
+                        executionEngine: systemSettingsService.getSettings()?.app?.defaultExecutionEngine || 'native',
                         executionCommand: ''
                     };
 
@@ -277,7 +348,19 @@ export const updateServer = async (id: string, updates: any) => {
         const oldServer = serverRepository.findById(id);
         if (!oldServer) throw new Error('Server not found');
         
-        const newServer = { ...oldServer, executable: oldServer.executable || 'server.jar', ...updates };
+        // --- DEEP MERGE LOGIC (Phase 66) ---
+        // Ensure nested objects like 'network' are merged rather than overwritten
+        const newNetwork = updates.network ? { 
+            ...(oldServer.network || {}), 
+            ...updates.network 
+        } : oldServer.network;
+
+        const newServer = { 
+            ...oldServer, 
+            ...updates,
+            executable: updates.executable || oldServer.executable || 'server.jar',
+            network: newNetwork
+        };
 
         validateUpdate(updates);
 
@@ -322,7 +405,8 @@ export const updateServer = async (id: string, updates: any) => {
             }
         }
 
-        serverRepository.update(id, { ...updates, executable: newServer.executable });
+        // --- PERSISTENCE (Final state) ---
+        serverRepository.update(id, newServer);
         return newServer;
     } finally {
         releaseLock(id);
@@ -368,9 +452,17 @@ export const startServer = async (id: string, force: boolean = false) => {
         }
 
         logger.info(`[ServerService] Orchestrating startup for ${server.name}...`);
+
+        // --- Phase 68: Zero-Conflict Startup (PortShield) ---
+        // Ensure the port is actually free before we try to bind a new process.
+        // This clears any "Zombies" left behind by previous crashes.
+        if (server.port) {
+            await NetUtils.killProcessOnPort(server.port);
+        }
         
         if (!server.hasStarted) {
             server.hasStarted = true;
+            server.status = ServerStatus.STARTING; // v4.6: Atomic status sync to prevent diagnosis race
             serverRepository.update(id, server);
         }
 
@@ -417,8 +509,13 @@ export const restartServer = async (id: string) => {
     // 1. Stop the server
     await stopServer(id, false);
     
-    // 2. Wait for the STOP lock to release
-    await new Promise(r => setTimeout(r, 1100));
+    // 2. Wait for the STOP lock to release (polls instead of fixed delay for reliability under load)
+    const maxLockWait = 30; // 15 seconds max
+    let lockAttempts = 0;
+    while (operationLocks.has(id) && lockAttempts < maxLockWait) {
+        await new Promise(r => setTimeout(r, 500));
+        lockAttempts++;
+    }
 
     // 3. Port Release Verification Loop (Stops "Port in use" race conditions)
     const port = server.port || 25565;
@@ -517,8 +614,15 @@ export const getNextAvailablePort = (startPort: number): number => {
     });
 
     let port = startPort;
-    while (usedPorts.has(port)) {
+    while (usedPorts.has(port) && port < 65535) {
         port++;
+    }
+    // If we overflowed, wrap around and search from the beginning
+    if (port >= 65535) {
+        port = 25565;
+        while (usedPorts.has(port) && port < startPort) {
+            port++;
+        }
     }
     return port;
 };

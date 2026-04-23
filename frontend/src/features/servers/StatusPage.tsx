@@ -183,7 +183,7 @@ const StatusPage: React.FC<StatusPageProps> = ({ onNavigateLogin }) => {
                     <div className="flex items-center gap-3">
                         <img src="/website-icon.png" className="w-8 h-8 object-contain" alt="CC" />
                         <span className="font-bold text-sm uppercase tracking-[0.1em]">
-                            System Status <span className="text-muted-foreground/40 ml-2 font-medium normal-case tracking-normal">CraftCommand Cloud</span>
+                            System Status <span className="text-muted-foreground/40 ml-2 font-medium normal-case tracking-normal">CraftCommand</span>
                         </span>
                     </div>
                     <div className="flex items-center gap-6">
@@ -249,8 +249,8 @@ const StatusPage: React.FC<StatusPageProps> = ({ onNavigateLogin }) => {
 
                 {/* ═══ SERVICES PULSE ═══ */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-                    <ServicePulse name="Compute Engine" status={stats.computeStatus} icon={<Cpu size={14} />} />
-                    <ServicePulse name="Network Fabric" status={stats.networkStatus} icon={<Network size={14} />} />
+                    <ServicePulse name="Process Health" status={stats.computeStatus} icon={<Cpu size={14} />} />
+                    <ServicePulse name="Network Status" status={stats.networkStatus} icon={<Network size={14} />} />
                     <ServicePulse name="API & Panel" status="operational" icon={<Zap size={14} />} />
                     <ServicePulse name="File Systems" status="operational" icon={<Database size={14} />} />
                 </div>
@@ -260,10 +260,10 @@ const StatusPage: React.FC<StatusPageProps> = ({ onNavigateLogin }) => {
                     <div className="flex items-center justify-between border-b border-border pb-4">
                         <div className="flex items-center gap-3">
                             <Server size={16} className="text-muted-foreground/40" />
-                            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-foreground/60">Registered Clusters</h2>
+                            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-foreground/60">Registered Nodes</h2>
                         </div>
                         <div className="text-[9px] font-mono font-bold text-muted-foreground/20 uppercase tracking-widest">
-                            {nodes.length} UNITS REPORTING
+                            {nodes.length} nodes
                         </div>
                     </div>
 
@@ -290,17 +290,13 @@ const StatusPage: React.FC<StatusPageProps> = ({ onNavigateLogin }) => {
                 {/* ═══ SYSTEM REPORT BANNER ═══ */}
                 <div className={`mt-20 p-8 rounded-2xl border border-border flex flex-col md:flex-row items-center justify-between gap-12 group ${isPro ? 'glass-morphism' : 'bg-card'}`}>
                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-[10px] font-black text-primary uppercase tracking-[0.3em]">System Stability</div>
-                        <h3 className="text-2xl font-bold tracking-tight">Enterprise Redundancy.</h3>
+                        <div className="flex items-center gap-2 text-[10px] font-black text-primary uppercase tracking-[0.3em]">Crash Recovery</div>
+                        <h3 className="text-2xl font-bold tracking-tight">Automatic Recovery</h3>
                         <p className="text-muted-foreground/50 text-sm max-w-md leading-relaxed">
-                            Every node in our network is monitored by secondary heartbeat agents. If a primary service fails, traffic is automatically rerouted to stable clusters.
+                            Crashed servers are automatically diagnosed and restarted. After 3 consecutive failures, safe mode activates to prevent restart loops.
                         </p>
                     </div>
                     <div className="flex gap-4 w-full md:w-auto">
-                        <div className="flex-1 md:flex-none p-6 bg-secondary/40 rounded-xl border border-border/50 text-center min-w-[140px]">
-                            <div className="text-2xl font-black tracking-tighter">99.98%</div>
-                            <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-widest mt-1">SLA Target</div>
-                        </div>
                         <div className="flex-1 md:flex-none p-6 bg-secondary/40 rounded-xl border border-border/50 text-center min-w-[140px]">
                             <div className="text-2xl font-black tracking-tighter">{version}</div>
                             <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-widest mt-1">Version</div>
@@ -316,28 +312,20 @@ const StatusPage: React.FC<StatusPageProps> = ({ onNavigateLogin }) => {
                     <div className="md:col-span-2 space-y-6">
                         <img src="/website-icon.png" className="w-10 h-10 grayscale opacity-40 hover:opacity-100 transition-opacity" alt="Logo" />
                         <p className="text-sm text-muted-foreground/50 max-w-xs leading-relaxed font-medium">
-                            Providing absolute stability for high-performance distributed workloads. Built for developers, trusted by engineering teams.
+                            Self-hosted Minecraft server management panel. Open-source under AGPLv3.
                         </p>
-                    </div>
-                    <div className="space-y-5">
-                        <h4 className="text-[10px] font-black uppercase tracking-[0.25em] text-foreground/30 border-b border-border/40 pb-2">Network</h4>
-                        <ul className="text-xs space-y-3 font-bold text-muted-foreground/60 transition-colors">
-                            <li className="hover:text-foreground cursor-pointer">Infrastructure Map</li>
-                            <li className="hover:text-foreground cursor-pointer">Node Registry</li>
-                            <li className="hover:text-foreground cursor-pointer">Peering Table</li>
-                        </ul>
                     </div>
                     <div className="space-y-5">
                         <h4 className="text-[10px] font-black uppercase tracking-[0.25em] text-foreground/30 border-b border-border/40 pb-2">Resources</h4>
                         <ul className="text-xs space-y-3 font-bold text-muted-foreground/60 transition-colors">
-                            <li className="hover:text-foreground cursor-pointer">Tech Docs</li>
-                            <li className="hover:text-foreground cursor-pointer">API Keys</li>
-                            <li className="hover:text-foreground cursor-pointer">SLA Agreement</li>
+                            <li className="hover:text-foreground cursor-pointer">Documentation</li>
+                            <li className="hover:text-foreground cursor-pointer">GitHub</li>
+                            <li className="hover:text-foreground cursor-pointer">Changelog</li>
                         </ul>
                     </div>
                 </div>
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-6 pt-10 border-t border-border/30 text-[10px] font-bold text-muted-foreground/20 uppercase tracking-[0.3em]">
-                    <span>&copy; 2026 CraftCommand Cloud</span>
+                    <span>&copy; 2026 CraftCommand</span>
                     <div className="flex gap-10">
                         <span className="flex items-center gap-2"><Wifi size={12} /> Status: Online</span>
                         <span>Build: {version}</span>

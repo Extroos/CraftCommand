@@ -11,6 +11,24 @@ export class SafeFileOperation {
     private static MAX_RETRIES = 5;
     private static INITIAL_DELAY = 500;
 
+    /**
+     * Security Guard: Prevent path traversal by ensuring paths are within allowed roots.
+     */
+    public static validatePath(target: string) {
+        const { DATA_DIR, SERVERS_ROOT, UPLOADS_ROOT, PROJECT_ROOT } = require('../constants');
+        const absoluteTarget = path.resolve(target);
+        
+        const allowedRoots = [DATA_DIR, SERVERS_ROOT, UPLOADS_ROOT, PROJECT_ROOT].map(r => path.resolve(r));
+        const isAllowed = allowedRoots.some(root => 
+            absoluteTarget === root || absoluteTarget.startsWith(root + path.sep)
+        );
+        
+        if (!isAllowed) {
+            logger.error(`[SafeFS] Security Violation: Attempted to access path outside of authorized directory: ${absoluteTarget}`);
+            throw new Error('SECURITY_VIOLATION: Path access denied.');
+        }
+    }
+
     private static async retry<T>(op: () => Promise<T>, description: string): Promise<T> {
         let lastError: any;
         for (let i = 0; i < this.MAX_RETRIES; i++) {
@@ -32,6 +50,7 @@ export class SafeFileOperation {
     }
 
     static async remove(path: string): Promise<void> {
+        this.validatePath(path);
         await this.retry(() => fs.remove(path), `Removing ${path}`);
     }
 
@@ -40,6 +59,7 @@ export class SafeFileOperation {
      * Prevents partial writes/corruption on sudden crash or power loss.
      */
     static async writeFile(targetPath: string, content: string | Buffer): Promise<void> {
+        this.validatePath(targetPath);
         // Ensure parent directory exists before writing
         await this.ensureDir(path.dirname(targetPath));
 
@@ -61,6 +81,7 @@ export class SafeFileOperation {
      * Atomically writes a file, but first creates a .bak copy of the original if it exists.
      */
     static async writeWithBackup(targetPath: string, content: string | Buffer): Promise<void> {
+        this.validatePath(targetPath);
         if (await fs.pathExists(targetPath)) {
             const bakPath = `${targetPath}.bak`;
             await this.retry(() => fs.copy(targetPath, bakPath, { overwrite: true }), `Creating backup ${bakPath}`);
@@ -69,10 +90,13 @@ export class SafeFileOperation {
     }
 
     static async move(src: string, dest: string, options?: fs.MoveOptions): Promise<void> {
+        this.validatePath(src);
+        this.validatePath(dest);
         await this.retry(() => fs.move(src, dest, options), `Moving ${src} to ${dest}`);
     }
 
     static async ensureDir(path: string): Promise<void> {
+        this.validatePath(path);
         await this.retry(() => fs.ensureDir(path), `Ensuring directory ${path}`);
     }
 

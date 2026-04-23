@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, Wrench, CheckCircle, Zap, Copy, Check, X, ShieldAlert, Terminal, Info, Activity, RotateCcw, ChevronDown, ChevronUp, Terminal as TermIcon, FileCode, CheckCircle2 } from 'lucide-react';
 import { useToast } from '../ui/Toast';
+import { useTranslation } from 'react-i18next';
 import { API } from '@core/services/api';
 import { DiagnosisResult } from '@shared/types';
 import { STAGGER_CONTAINER, STAGGER_ITEM } from '../../styles/motion';
@@ -21,6 +22,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
     const [showEvidence, setShowEvidence] = React.useState(false);
     const [fixStep, setFixStep] = React.useState<'idle' | 'stopping' | 'applying' | 'verifying'>('idle');
     const { addToast } = useToast();
+    const { t } = useTranslation();
 
     if (!result) return null;
 
@@ -46,7 +48,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
             console.error('Fix failed', e);
             setFixing(false);
             setFixStep('idle');
-            addToast('error', 'Fix Failed', e instanceof Error ? e.message : 'An unexpected error occurred.');
+            addToast('error', t('dashboard.power_action_failed'), e instanceof Error ? e.message : t('common.error_occurred'));
         }
     };
 
@@ -64,7 +66,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
         
         navigator.clipboard.writeText(JSON.stringify(report, null, 2));
         setCopied(true);
-        addToast('success', 'Report Copied', 'Diagnostic data copied to clipboard.');
+        addToast('success', t('common.success'), t('common.copied_clipboard'));
         setTimeout(() => setCopied(false), 2000);
     };
 
@@ -96,7 +98,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                     <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
                              <div className={`w-1.5 h-1.5 rounded-full ${isCritical ? 'bg-rose-500' : 'bg-amber-500'}`}></div>
-                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{result.severity} Issue Detected</span>
+                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('diagnosis.issue_detected', { severity: result.severity })}</span>
                         </div>
                         {!fixing && (
                             <button onClick={onDismiss} className="text-muted-foreground/60 hover:text-foreground transition-colors p-1">
@@ -107,7 +109,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                     <div className="flex items-center justify-between gap-4">
                         <h2 className="text-lg font-bold text-foreground tracking-tight">{result.title}</h2>
                         {result.ruleId && (
-                            <span className="text-[10px] font-mono font-bold text-muted-foreground/40 hidden sm:inline">RULE: {result.ruleId.toUpperCase()}</span>
+                            <span className="text-[10px] font-mono font-bold text-muted-foreground/40 hidden sm:inline">{t('diagnosis.rule')}: {result.ruleId.toUpperCase()}</span>
                         )}
                     </div>
                 </div>
@@ -119,14 +121,14 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                         <div className="flex flex-wrap items-center gap-2">
                             {result.isRootCause && (
                                 <div className="px-2 py-0.5 rounded border border-emerald-500/20 bg-emerald-500/5 text-emerald-500 text-[10px] font-bold uppercase tracking-tight">
-                                    Root Cause
+                                    {t('diagnosis.root_cause')}
                                 </div>
                             )}
                             <div className={`px-2 py-0.5 rounded border ${accentBorder} ${accentBg} ${accentColor} text-[10px] font-bold uppercase tracking-tight`}>
-                                {result.severity} Priority
+                                {t('diagnosis.priority', { severity: result.severity })}
                             </div>
                             <div className="px-2 py-0.5 rounded border border-border bg-muted/30 text-muted-foreground text-[10px] font-bold uppercase tracking-tight">
-                                Detection #{result.id.split('-')[0].toUpperCase()}
+                                {t('diagnosis.detection_id')}{result.id.split('-')[0].toUpperCase()}
                             </div>
                         </div>
 
@@ -134,7 +136,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                         <div className="space-y-3">
                             <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-tighter flex items-center gap-2 h-4">
                                 <Activity size={12} className="opacity-70" />
-                                Incident Analysis
+                                {t('diagnosis.analysis')}
                             </label>
                             <div className="text-sm text-foreground/80 leading-relaxed font-semibold">
                                 {result.explanation}
@@ -145,7 +147,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                         <div className={`p-5 rounded-lg border ${accentBorder} ${accentBg} space-y-3`}>
                             <label className={`text-[11px] font-bold ${accentColor} uppercase tracking-tighter flex items-center gap-2 h-4`}>
                                 <Wrench size={12} />
-                                Resolution Strategy
+                                {t('diagnosis.remediation')}
                             </label>
                             <div className="text-sm text-foreground font-bold tracking-tight">
                                 {result.recommendation}
@@ -156,7 +158,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex justify-between h-4">
-                                    Confidence
+                                    {t('diagnosis.confidence')}
                                     <span>{result.confidence}%</span>
                                 </label>
                                 <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden border border-border/20">
@@ -169,7 +171,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest h-4">Detected at</label>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest h-4">{t('diagnosis.detected_at')}</label>
                                 <div className="text-[11px] font-mono font-bold text-muted-foreground whitespace-nowrap">
                                     {new Date(result.timestamp).toLocaleString()}
                                 </div>
@@ -185,7 +187,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                 >
                                     <span className="flex items-center gap-2">
                                         <TermIcon size={12} />
-                                        Technical Evidence
+                                        {t('diagnosis.evidence')}
                                     </span>
                                     {showEvidence ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                 </button>
@@ -206,16 +208,16 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                             <div className="p-4 bg-muted/20 border border-border/40 rounded-lg space-y-3">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter flex items-center gap-2">
                                     <FileCode size={12} />
-                                    Impact Analysis
+                                    {t('diagnosis.impact')}
                                 </label>
                                 <ul className="space-y-1.5">
                                     <li className="text-[11px] text-foreground/70 flex items-center gap-2">
                                         <div className="w-1 h-1 bg-primary rounded-full" />
-                                        <span>System will automatically apply the recommended patch: <strong>{result.action.type.toLowerCase().replace(/_/g, ' ')}</strong></span>
+                                        <span>{t('diagnosis.patch_apply_msg')} <strong>{result.action.type.toLowerCase().replace(/_/g, ' ')}</strong></span>
                                     </li>
                                     {result.action.automaticRepair && (
                                         <li className="text-[10px] text-emerald-500/80 font-semibold italic">
-                                            * This repair is categorized as safe and non-destructive.
+                                            {t('diagnosis.repair_safe_msg')}
                                         </li>
                                     )}
                                 </ul>
@@ -227,7 +229,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                             <div className="p-4 bg-muted/20 border border-border/40 rounded-lg space-y-4">
                                 <div className="flex items-center justify-between">
                                     <span className="text-[10px] font-bold uppercase tracking-widest text-primary animate-pulse">
-                                        Fix in Progress: {fixStep.charAt(0).toUpperCase() + fixStep.slice(1)}...
+                                        {t('diagnosis.fix_progress')}: {fixStep.charAt(0).toUpperCase() + fixStep.slice(1)}...
                                     </span>
                                     <span className="text-[10px] font-mono text-muted-foreground">{fixStep === 'stopping' ? '33%' : fixStep === 'applying' ? '66%' : '90%'}</span>
                                 </div>
@@ -241,9 +243,9 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                     />
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
-                                     <div className={`text-[9px] font-bold text-center uppercase ${fixStep === 'stopping' ? 'text-primary' : 'text-muted-foreground/40'}`}>1. Isolation</div>
-                                     <div className={`text-[9px] font-bold text-center uppercase ${fixStep === 'applying' ? 'text-primary' : 'text-muted-foreground/40'}`}>2. Patching</div>
-                                     <div className={`text-[9px] font-bold text-center uppercase ${fixStep === 'verifying' ? 'text-primary' : 'text-muted-foreground/40'}`}>3. Validation</div>
+                                     <div className={`text-[9px] font-bold text-center uppercase ${fixStep === 'stopping' ? 'text-primary' : 'text-muted-foreground/40'}`}>{t('diagnosis.step_isolation')}</div>
+                                     <div className={`text-[9px] font-bold text-center uppercase ${fixStep === 'applying' ? 'text-primary' : 'text-muted-foreground/40'}`}>{t('diagnosis.step_patching')}</div>
+                                     <div className={`text-[9px] font-bold text-center uppercase ${fixStep === 'verifying' ? 'text-primary' : 'text-muted-foreground/40'}`}>{t('diagnosis.step_validation')}</div>
                                 </div>
                             </div>
                         )}
@@ -251,7 +253,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                         {/* Suppressed Issues */}
                         {result.suppressedBy && result.suppressedBy.length > 0 && (
                             <div className="space-y-2 pt-2">
-                                <label className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em] h-3">Suppressed Signals</label>
+                                <label className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em] h-3">{t('diagnosis.suppressed_signals')}</label>
                                 <div className="flex flex-wrap gap-1.5">
                                     {result.suppressedBy.map(sid => (
                                         <span key={sid} className="text-[9px] font-mono px-1.5 py-0.5 bg-muted/30 text-muted-foreground border border-border/40 rounded uppercase font-bold">
@@ -274,14 +276,14 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                 className={`px-5 py-2 ${isCritical ? 'bg-rose-500 hover:bg-rose-600 text-rose-50' : 'bg-primary hover:bg-primary/90 text-primary-foreground'} rounded-md text-[10px] font-bold tracking-tight disabled:opacity-50 transition-all flex items-center gap-2 shadow-sm`}
                             >
                                 {fixing ? <RotateCcw size={12} className="animate-spin" /> : <Zap size={12} className="fill-current" />}
-                                {fixing ? 'Applying Fix...' : 'Apply Automatic Fix'}
+                                {fixing ? t('diagnosis.applying_fix') : t('diagnosis.apply_fix')}
                             </button>
                         )}
 
                         {fixed && (
                             <div className="px-5 py-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-md text-[10px] font-bold tracking-tight flex items-center gap-2">
                                 <CheckCircle size={12} />
-                                Fix Applied Successfully
+                                {t('diagnosis.fix_success')}
                             </div>
                         )}
 
@@ -291,7 +293,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                 className="px-4 py-2 hover:bg-muted text-[10px] font-bold text-muted-foreground hover:text-foreground transition-all rounded-md flex items-center gap-2"
                             >
                                 {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                                {copied ? 'Copied' : 'Share Report'}
+                                {copied ? t('common.copied') : t('diagnosis.share_report')}
                             </button>
                         )}
                     </div>
@@ -302,7 +304,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                 onClick={() => onViewCrash && onViewCrash(result.connectedCrashReport?.id || '')}
                                 className="px-3 py-2 text-rose-500/70 hover:text-rose-500 text-[10px] font-bold transition-colors"
                             >
-                                View Crash Log
+                                {t('diagnosis.view_crash')}
                             </button>
                         )}
                         {!fixing && !fixed && (
@@ -310,7 +312,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ result, serverId, 
                                 onClick={onDismiss}
                                 className="px-4 py-2 hover:bg-muted text-[10px] font-bold text-muted-foreground/60 hover:text-foreground transition-all rounded-md"
                             >
-                                Ignore
+                                {t('common.close')}
                             </button>
                         )}
                     </div>

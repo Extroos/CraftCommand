@@ -3,6 +3,7 @@ import { PresenceEntry, ActivityEvent, ChatMessage, UserRole } from '@shared/typ
 import { socketService } from '../../core/services/socket';
 import { useServers } from '../../servers/context/ServerContext';
 import { useUser } from '../../auth/context/UserContext';
+import { useStore } from '@/store';
 
 interface CollaborationState {
     // Presence
@@ -27,213 +28,33 @@ const meetsRole = (userRole: UserRole | undefined, minRole: UserRole): boolean =
     return (ROLE_RANK[userRole] ?? 0) >= (ROLE_RANK[minRole] ?? 0);
 };
 
-export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { currentServer } = useServers();
-    const { user } = useUser();
-    const [presence, setPresence] = useState<Record<string, PresenceEntry[]>>({});
-    const [activities, setActivities] = useState<Record<string, ActivityEvent[]>>({});
-    const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
-    const [typingUsers, setTypingUsers] = useState<Record<string, { userId: string; username: string }[]>>({});
-    const lastServerId = useRef<string | null>(null);
-    const typingTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
-
-    // 2. Room re-joiner on reconnection
-    const handleReconnect = useCallback(() => {
-        if (!user) return;
-        
-        // Always rejoin global for Team Panel
-        socketService.joinServer('global', 'dashboard');
-        
-        // Rejoin specific server if applicable
-        if (lastServerId.current) {
-            socketService.joinServer(lastServerId.current, 'dashboard');
-        }
-    }, [user]);
-
-    // 3. Dynamically join specific server room for logs/status/stats
-    useEffect(() => {
-        if (!user) return;
-        
-        const serverId = currentServer?.id;
-        if (serverId === lastServerId.current) return;
-        
-        // Leave previous specific server room
-        if (lastServerId.current) {
-            socketService.leaveServer(lastServerId.current);
-        }
-        
-        // Join new specific server room
-        if (serverId && serverId !== 'global') {
-            socketService.joinServer(serverId, 'dashboard');
-            lastServerId.current = serverId;
-        } else {
-            lastServerId.current = null;
-        }
-    }, [currentServer?.id, user]);
-
-    // Socket event listeners — registered once, not per-server
-    useEffect(() => {
-        // --- Presence ---
-        const unsubPresence = socketService.onPresenceUpdate((data) => {
-            setPresence(prev => ({
-                ...prev,
-                [data.serverId]: data.users
-            }));
-        });
-
-        // --- Activity: single new event ---
-        const unsubActivity = socketService.onActivityNew((event: ActivityEvent) => {
-            setActivities(prev => {
-                const targetServerId = event.serverId || 'global';
-                const updated = { ...prev };
-
-                // 1. Update the specific server list
-                const existing = updated[targetServerId] || [];
-                if (!existing.some(e => e.id === event.id)) {
-                    updated[targetServerId] = [event, ...existing].slice(0, 100);
-                }
-
-                // 2. Aggregate into 'global' bucket if not already there
-                if (targetServerId !== 'global') {
-                    const globalExisting = updated['global'] || [];
-                    if (!globalExisting.some(e => e.id === event.id)) {
-                        updated['global'] = [event, ...globalExisting].slice(0, 200);
-                    }
-                }
-
-                return updated;
-            });
-        });
-
-        // --- Activity: history dump (late joiner catch-up) ---
-        const unsubActivityHistory = socketService.socket.on('activity:history', (data: { serverId: string; events: ActivityEvent[] }) => {
-            setActivities(prev => {
-                const existing = prev[data.serverId] || [];
-                const existingIds = new Set(existing.map(e => e.id));
-                const newEvents = data.events.filter(e => !existingIds.has(e.id));
-                const merged = [...newEvents.reverse(), ...existing].slice(0, 100);
-                return { ...prev, [data.serverId]: merged };
-            });
-        });
-
-        // --- Chat: single new message ---
-        const unsubChat = socketService.onChatMessage((message: ChatMessage) => {
-            setChatMessages(prev => {
-                const existing = prev[message.serverId] || [];
-                // Deduplicate by id
-                if (existing.some(m => m.id === message.id)) return prev;
-                const updated = [...existing, message].slice(-200);
-                return { ...prev, [message.serverId]: updated };
-            });
-        });
-
-        // --- Chat: history dump (late joiner catch-up) ---
-        const unsubChatHistory = socketService.socket.on('chat:history', (data: { serverId: string; messages: ChatMessage[] }) => {
-            setChatMessages(prev => {
-                const existing = prev[data.serverId] || [];
-                const existingIds = new Set(existing.map(m => m.id));
-                const newMsgs = data.messages.filter(m => !existingIds.has(m.id));
-                const merged = [...newMsgs, ...existing].slice(-200);
-                return { ...prev, [data.serverId]: merged };
-            });
-        });
-
-        // --- Typing indicators ---
-        const unsubTyping = socketService.onChatTyping((data) => {
-            setTypingUsers(prev => {
-                // We need to figure out which server from context
-                // Since typing events are server-scoped via rooms, we use the current
-                const entries = Object.entries(prev);
-                const updated = { ...prev };
-                // Add to all active servers (typing comes from the right room)
-                for (const [serverId] of entries) {
-                    const existing = updated[serverId] || [];
-                    if (!existing.some(u => u.userId === data.userId)) {
-                        updated[serverId] = [...existing, data];
-                    }
-                }
-                // If no entries exist yet, add to a generic key
-                if (entries.length === 0) {
-                    updated['_current'] = [data];
-                }
-                return updated;
-            });
-
-            // Clear typing indicator after 3 seconds
-            const key = `typing-${data.userId}`;
-            if (typingTimeouts.current[key]) clearTimeout(typingTimeouts.current[key]);
-            typingTimeouts.current[key] = setTimeout(() => {
-                setTypingUsers(prev => {
-                    const updated = { ...prev };
-                    for (const serverId of Object.keys(updated)) {
-                        updated[serverId] = (updated[serverId] || []).filter(u => u.userId !== data.userId);
-                    }
-                    return updated;
-                });
-            }, 3000);
-        });
-
-        // --- Errors ---
-        const unsubError = socketService.onCollabError((data) => {
-            console.warn('[Collab]', data.message);
-        });
-
-        // --- Reconnection Resilience ---
-        socketService.socket.on('reconnect', handleReconnect);
-        socketService.socket.on('connect', handleReconnect); 
-
-        // 4. Initial Join (Explicitly after listeners recorded)
-        if (user) {
-            handleReconnect();
-        }
-
-        return () => {
-            unsubPresence();
-            unsubActivity();
-            unsubChat();
-            unsubTyping();
-            unsubError();
-            socketService.socket.off('reconnect', handleReconnect);
-            socketService.socket.off('connect', handleReconnect);
-            // Manual cleanup for direct .on() calls
-            socketService.socket.off('chat:history');
-            socketService.socket.off('activity:history');
-        };
-    }, [user, handleReconnect]); // Register ONCE — but depends on user for initial join
-
-    const sendChat = useCallback((serverId: string, content: string) => {
-        socketService.sendChatMessage('global', content); // Prioritize global core
-    }, []);
-
-    const sendTyping = useCallback((serverId: string) => {
-        socketService.sendChatTyping('global');
-    }, []);
-
-    const updateActiveView = useCallback((serverId: string, view: string) => {
-        // Enforce global scope for presence but include serverId if available
-        const finalView = serverId && serverId !== 'global' ? `${serverId}::${view}` : view;
-        socketService.updateView('global', finalView);
-    }, []);
-
-    return (
-        <CollaborationContext.Provider value={{
-            presence,
-            activities,
-            chatMessages,
-            typingUsers,
-            sendChat,
-            sendTyping,
-            updateActiveView
-        }}>
-            {children}
-        </CollaborationContext.Provider>
-    );
+export const useCollaboration = () => {
+    const store = useStore();
+    return {
+        presence: store.presence,
+        activities: store.activities,
+        chatMessages: store.chatMessages,
+        typingUsers: store.typingUsers,
+        sendChat: store.sendChat,
+        sendTyping: store.sendTyping,
+        updateActiveView: store.updateActiveView
+    };
 };
 
-export const useCollaboration = () => {
-    const context = useContext(CollaborationContext);
-    if (!context) {
-        throw new Error('useCollaboration must be used within a CollaborationProvider');
-    }
-    return context;
+export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const store = useStore();
+
+    useEffect(() => {
+        let cleanup: (() => void) | void;
+        if (store.user) {
+            cleanup = store.initCollab();
+            // Initial join
+            socketService.joinServer('global', 'dashboard');
+        }
+        return () => {
+             if (cleanup) cleanup();
+        };
+    }, [store.user?.id]);
+
+    return <>{children}</>;
 };

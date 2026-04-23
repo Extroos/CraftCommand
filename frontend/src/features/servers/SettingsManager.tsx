@@ -8,6 +8,7 @@ import { ServerStatus } from '@shared/types';
 import { API } from '@core/services/api';
 import { useToast } from '../ui/Toast';
 import { useServers } from '@features/servers/context/ServerContext';
+
 import { useUser } from '@features/auth/context/UserContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
 import { getServerCapabilities } from '@shared/utils/CapabilityUtils';
@@ -15,6 +16,7 @@ import { NetworkSettings } from '../system/NetworkSettings';
 import AccessDenied from '@features/auth/components/AccessDenied';
 import { useConfirm } from '@features/ui/hooks/useConfirm';
 import { ConfirmDialog } from '@features/ui/ConfirmDialog';
+import { useTranslation } from 'react-i18next';
 
 import { SecurityConfig } from '@shared/types';
 
@@ -40,6 +42,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
     const { user } = useUser();
     const { can } = usePermissions();
     const { addToast } = useToast();
+    const { t } = useTranslation();
     const isOffline = currentServer?.status === 'OFFLINE' || currentServer?.status === 'CRASHED';
     const { isOpen: isConfirmOpen, config: confirmConfig, confirm: requestConfirm, handleConfirm, handleCancel } = useConfirm();
     const [wanConfirmed, setWanConfirmed] = useState(false);
@@ -336,13 +339,13 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
             const status = await API.getDockerStatus();
             setDockerStatus({ ...status, checking: false });
             if (status.online) {
-                addToast('success', 'Docker Online', `Connected to Docker v${status.version}`);
+                addToast('success', t('common.system'), `Connected to Docker v${status.version}`);
             } else {
-                addToast('warning', 'Docker Offline', 'The Docker Daemon is not responding.');
+                addToast('warning', t('common.system'), 'The Docker Daemon is not responding.');
             }
         } catch (e) {
             setDockerStatus({ online: false, checking: false });
-            addToast('error', 'Check Failed', 'Failed to communicate with the backend for Docker status.');
+            addToast('error', t('common.system'), 'Failed to communicate with the backend for Docker status.');
         }
     };
 
@@ -400,7 +403,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
 
     const handleAddIp = () => {
         if (!newIp.match(/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/)) {
-            addToast('error', 'Invalid IP', 'Please enter a valid IPv4 address.');
+            addToast('error', t('common.network'), 'Please enter a valid IPv4 address.');
             return;
         }
         handleSecurityChange('allowedIps', [...config.securityConfig.allowedIps, newIp]);
@@ -423,7 +426,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
 
         // Limit size: 10MB sanity check
         if (file.size > 10 * 1024 * 1024) {
-            addToast('error', 'File Too Large', 'Image must be less than 10MB.');
+            addToast('error', t('settings.save_failed'), 'Image must be less than 10MB.');
             return;
         }
 
@@ -539,9 +542,9 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
             await API.updateServer(serverId, updates);
             updateServerConfig(serverId, updates);
             setIsDirty(false);
-            addToast('success', 'Settings Saved', 'Configuration successfully updated.');
+            addToast('success', t('settings.save_success'), t('settings.save_success_desc'));
         } catch (err) {
-            addToast('error', 'Save Failed', 'Could not update server configuration.');
+            addToast('error', t('settings.save_failed'), t('settings.save_failed_desc'));
         } finally {
             setIsSaving(false);
         }
@@ -549,10 +552,10 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
 
     const handleDecommissionRequest = async () => {
         const isConfirmed = await requestConfirm({
-            title: 'Decommission Instance',
-            description: 'CRITICAL: This will permanently delete the server record and all associated files from the disk. This action is irreversible.',
-            confirmText: 'Decommission',
-            cancelText: 'Cancel'
+            title: t('settings.decommission_title'),
+            description: t('settings.decommission_confirm_desc'),
+            confirmText: t('danger.decommission'),
+            cancelText: t('common.cancel')
         });
         if (isConfirmed) handleDecommission();
     };
@@ -576,17 +579,17 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
             localStorage.removeItem('cc_serverId');
             window.location.href = '/'; 
         } catch (err) {
-            addToast('error', 'Deletion Failed', 'Could not decommission server instance.');
+            addToast('error', t('settings.decommission_failed'), t('settings.decommission_failed_desc'));
             setIsSaving(false);
         }
     };
 
     const handleResetRequest = async () => {
         const isConfirmed = await requestConfirm({
-            title: 'Factory Reset Instance',
-            description: 'This will revert all configuration settings to their default values. This action cannot be undone once committed.',
-            confirmText: 'Reset',
-            cancelText: 'Cancel'
+            title: t('settings.reset_title'),
+            description: t('settings.reset_confirm_desc'),
+            confirmText: t('danger.factory_reset'),
+            cancelText: t('common.cancel')
         });
         if (isConfirmed) handleFactoryReset();
     };
@@ -703,8 +706,8 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
     if (!can('server.settings.manage', serverId)) {
         return (
             <AccessDenied 
-                title="Configuration Restricted"
-                description="You do not have permission to modify settings for this server. Please contact an administrator for elevated access."
+                title={t('settings.restricted_title')}
+                description={t('settings.restricted_desc')}
             />
         );
     }
@@ -721,7 +724,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                 <div className="h-10 bg-muted/20 border-b border-border/60 flex items-center justify-between px-4">
                     <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-primary/40"></div>
-                        <span className="text-[11px] font-semibold text-muted-foreground tracking-tight">Configuration Settings</span>
+                        <span className="text-[11px] font-semibold text-muted-foreground tracking-tight">{t('settings.config_settings')}</span>
                     </div>
                 </div>
 
@@ -737,11 +740,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                     : 'text-white/40 hover:text-white/80 hover:bg-white/5'
                                 }`}
                             >
-                                {tab === 'NETWORKING' ? 'Networking' : 
-                                 tab === 'CONNECTIVITY' ? 'Connectivity' :
-                                 tab === 'RESOURCES' ? 'Resources' :
-                                 tab === 'PROFILES' ? 'Profiles' :
-                                 tab.charAt(0) + tab.slice(1).toLowerCase()}
+                                {t(`settings.tabs.${tab.toLowerCase()}`)}
                             </button>
                         ))}
                     </nav>
@@ -768,7 +767,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                                         }
                                     }
                                 }}
-                                placeholder="Search settings..."
+                                placeholder={t('settings.search_settings')}
                                 className="bg-black/40 border border-white/10 rounded-lg pl-7 pr-3 py-1.5 text-[10px] font-medium text-white placeholder:text-white/20 focus:ring-1 focus:ring-white/30 outline-none transition-all w-40 focus:w-52 backdrop-blur-md"
                             />
                             {settingsSearch && searchMatchTab && (
@@ -778,7 +777,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                             )}
                             {settingsSearch && !searchMatchTab && (
                                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold text-muted-foreground/40 uppercase tracking-wider">
-                                    No match
+                                    {t('settings.no_match')}
                                 </span>
                             )}
                         </div>
@@ -786,10 +785,10 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                             onClick={handleSave} 
                             disabled={isSaving || !isDirty || !can('server.settings.manage', serverId)}
                             className={`px-5 py-1.5 rounded-md text-[10px] font-bold tracking-tight disabled:opacity-30 disabled:grayscale transition-all shadow-sm flex items-center gap-2 disabled:cursor-not-allowed ${isDirty ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]' : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'}`}
-                            title={!can('server.settings.manage', serverId) ? 'Insufficient Permissions' : 'Save Settings (Ctrl+S)'}
+                            title={!can('server.settings.manage', serverId) ? t('settings.insufficient_permissions') : `${t('settings.save_settings')} (Ctrl+S)`}
                         >
                             {isSaving ? <RotateCcw size={12} className="animate-spin" /> : <Save size={12} />}
-                            {isSaving ? 'Saving Changes...' : (isDirty ? 'Save Settings *' : 'Save Settings')}
+                            {isSaving ? t('settings.saving') : (isDirty ? `${t('settings.save_settings')} *` : t('settings.save_settings'))}
 
                         </button>
                     </div>
@@ -809,13 +808,13 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ serverId }) => {
                             <div className="w-16 h-16 rounded-full bg-secondary/30 flex items-center justify-center mb-4">
                                 <Search size={32} className="text-muted-foreground/20" />
                             </div>
-                            <h3 className="text-sm font-bold text-foreground/70 uppercase tracking-widest">No matching settings</h3>
-                            <p className="text-[10px] text-muted-foreground/40 font-medium mt-1">We couldn't find any configuration items for "{settingsSearch}"</p>
+                            <h3 className="text-sm font-bold text-foreground/70 uppercase tracking-widest">{t('settings.no_results_title')}</h3>
+                            <p className="text-[10px] text-muted-foreground/40 font-medium mt-1">{t('settings.no_results_desc', { query: settingsSearch })}</p>
                             <button 
                                 onClick={() => setSettingsSearch('')}
                                 className="mt-6 px-4 py-1.5 bg-secondary hover:bg-muted text-[10px] font-bold text-muted-foreground rounded transition-all border border-border/40"
                             >
-                                Clear Search
+                                {t('settings.clear_search')}
                             </button>
                         </motion.div>
                     )}

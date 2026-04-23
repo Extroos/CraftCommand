@@ -38,8 +38,41 @@ export class InstallerService extends EventEmitter {
         this.emit('complete', { serverId });
     }
 
+    /**
+     * Purges all volatile and temporary installation state for a server.
+     * Prevents storage leaks if a server is deleted during an active install.
+     */
+    public async purgeTempState(serverId: string, serverDir: string) {
+        logger.info(`[Installer] Purging installation state for ${serverId}`);
+        
+        // 1. Clear progress Map
+        this.activeProgress.delete(serverId);
+
+        // 2. Clean temporary files in server directory
+        const tempPaths = [
+            path.join(serverDir, 'temp_extract'),
+            path.join(serverDir, 'modpack.zip'),
+            path.join(serverDir, 'modpack.mrpack'),
+            path.join(serverDir, 'server.jar.tmp')
+        ];
+
+        for (const p of tempPaths) {
+            try {
+                if (await fs.pathExists(p)) {
+                    await fs.remove(p);
+                    logger.debug(`[Installer] Cleaned temp artifact: ${p}`);
+                }
+            } catch (e) {
+                logger.warn(`[Installer] Failed to cleanup temp path ${p}: ${e}`);
+            }
+        }
+    }
+
     // Download a file with progress events
     async downloadFile(url: string, destPath: string, onProgress?: (msg: string, percent?: number) => void, serverId?: string) {
+        // v1.13.2 Security Validation
+        SafeFileOperation.validatePath(destPath);
+        
         logger.info(`[Installer] Downloading ${url} to ${destPath}`);
         const writer = fs.createWriteStream(destPath);
         
@@ -57,7 +90,7 @@ export class InstallerService extends EventEmitter {
                 timeout: 30000 // 30s timeout
             });
 
-            const totalLength = parseInt(response.headers['content-length'] || '0', 10);
+            const totalLength = parseInt(String(response.headers['content-length'] || '0'), 10);
             
             this.emit('progress', {
                 serverId,

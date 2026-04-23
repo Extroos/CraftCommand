@@ -50,6 +50,20 @@ const GlobalSettings: React.FC = () => {
         fetchSystemStatus();
     }, []);
 
+    // Auto-save (debounced)
+    useEffect(() => {
+        if (!originalSettings || !settings || saving) return;
+
+        const isDirty = JSON.stringify(settings) !== JSON.stringify(originalSettings);
+        if (!isDirty) return;
+
+        const timer = setTimeout(() => {
+            handleSave();
+        }, 1000); // 1s cooldown to prevent API saturation
+
+        return () => clearTimeout(timer);
+    }, [settings]);
+
     const loadSettings = async () => {
         try {
             setLoading(true);
@@ -116,31 +130,31 @@ const GlobalSettings: React.FC = () => {
                         <div className="p-2 bg-secondary rounded border border-border text-foreground">
                             <Settings2 size={24} />
                         </div>
-                        System Administration
+                        System Configuration
                     </h2>
                     <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mt-1 opacity-70">
-                        High-level configuration for the CraftCommand host engine.
+                        Global panel settings — auto-saved when changed
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {isDirty && (
-                        <motion.button
-                            initial={{ opacity: 0, x: 10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="flex items-center gap-2 bg-foreground text-background px-5 py-2.5 rounded border border-border font-extrabold text-[10px] uppercase tracking-widest hover:bg-foreground/90 transition-all disabled:opacity-50"
-                        >
-                            {saving ? <RefreshCcw size={14} className="animate-spin" /> : <Save size={14} />}
-                            {saving ? 'Saving...' : 'Save Changes'}
-                        </motion.button>
-                    )}
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/50">
+                        {saving ? (
+                            <RefreshCcw size={12} className="animate-spin text-zinc-500" />
+                        ) : (
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                        )}
+                        <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                            {saving ? 'Syncing...' : 'System Synced'}
+                        </span>
+                    </div>
+
                     <button 
                         onClick={() => loadSettings()}
                         className="p-2.5 rounded bg-secondary hover:bg-secondary/80 text-foreground transition-all border border-border"
+                        title="Force Refresh Source"
                     >
-                        <RefreshCcw size={18} />
+                        <RefreshCcw size={16} />
                     </button>
                 </div>
             </div>

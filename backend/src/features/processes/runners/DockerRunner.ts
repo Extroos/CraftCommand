@@ -7,6 +7,8 @@ import { Writable } from 'stream';
 import { backupService } from '../../backups/BackupService';
 import { logger } from '../../../utils/logger';
 
+import { javaManager } from '../JavaManager';
+
 const execAsync = util.promisify(exec);
 
 // Shell injection guard: only allow safe characters in Docker identifiers
@@ -53,7 +55,7 @@ export class DockerRunner extends EventEmitter implements IServerRunner {
             throw new Error('Docker Daemon is unreachable. Please ensure Docker Desktop is running and the engine is started.');
         }
 
-        const image = env.dockerImage || env.DOCKER_IMAGE || 'eclipse-temurin:17-jre';
+        const image = env.dockerImage || env.DOCKER_IMAGE || javaManager.getDockerImageForJava(env.JAVA_VERSION || '17');
         validateShellArg(image, 'Docker image', SAFE_IMAGE_REGEX);
         logger.info(`[DockerRunner] Pulling image ${image} (if missing)...`);
         this.emit('log', { id, line: `[DockerRunner] Pulling/Verifying image ${image}...`, type: 'stdout' });

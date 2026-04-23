@@ -9,7 +9,8 @@ import { useUser } from '@features/auth/context/UserContext';
 import { useServers } from '@features/servers/context/ServerContext';
 import { NetworkState } from '@shared/types/network';
 import { DdnsWizard } from './DdnsWizard';
-import { Edit2, Save, X as CloseIcon } from 'lucide-react';
+import { PublicAccessWizard } from './PublicAccessWizard';
+import { Edit2, Save, X as CloseIcon, Zap } from 'lucide-react';
 
 interface NetworkSettingsProps {
     serverId: string;
@@ -22,6 +23,7 @@ export const NetworkSettings: React.FC<NetworkSettingsProps> = ({ serverId }) =>
     const [isUpdating, setIsUpdating] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [showWizard, setShowWizard] = useState(false);
+    const [showPublicWizard, setShowPublicWizard] = useState(false);
     const { addToast } = useToast();
     const { user } = useUser();
     const { servers, updateServerConfig } = useServers();
@@ -133,11 +135,11 @@ export const NetworkSettings: React.FC<NetworkSettingsProps> = ({ serverId }) =>
                     quality={user?.preferences.visualQuality}
                 />
                 <StatusCard 
-                    title="Port Visibility"
-                    value="External Access"
-                    icon={<Shield size={18} />}
-                    status="neutral"
-                    detail="Use the wizard to verify reachability"
+                    title="Tunnel Status"
+                    value={server?.network?.publicAccess === 'cloudflare' ? 'Cloudflare' : server?.network?.publicAccess === 'playit' ? 'Playit.gg' : 'Inactive'}
+                    icon={<Zap size={18} />}
+                    status={server?.network?.publicAccess !== 'none' ? 'success' : 'neutral'}
+                    detail={server?.network?.publicAccess !== 'none' ? 'Managed Gateway Active' : 'Traditional Port Forwarding'}
                     quality={user?.preferences.visualQuality}
                 />
             </div>
@@ -335,7 +337,82 @@ export const NetworkSettings: React.FC<NetworkSettingsProps> = ({ serverId }) =>
                 </div>
             </motion.div>
 
+            {/* Public Access Card */}
+            <motion.div 
+                variants={STAGGER_ITEM}
+                className={`border border-border p-6 transition-all duration-300 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow rounded-2xl' : 'bg-card shadow-sm rounded-lg'}`}
+            >
+                <div className="flex items-start justify-between mb-6">
+                    <div className="flex gap-4">
+                        <div className="p-3 bg-violet-500/10 text-violet-500 rounded-xl">
+                            <Zap size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-bold tracking-tight">{t('settings.networking.public_access')}</h3>
+                            <p className="text-sm text-muted-foreground max-w-md">{t('settings.networking.public_access_desc')}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                        <div className="bg-secondary/30 rounded-xl p-4 border border-border/50">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <Shield size={16} className="text-primary" />
+                                    <span className="text-[10px] font-bold uppercase tracking-widest">Active Provider</span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${server?.network?.publicAccess !== 'none' ? 'bg-emerald-500/20 text-emerald-600' : 'bg-muted text-muted-foreground'}`}>
+                                    {server?.network?.publicAccess === 'cloudflare' ? 'Cloudflare' : server?.network?.publicAccess === 'playit' ? 'Playit.gg' : 'None'}
+                                </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground leading-relaxed mb-4">
+                                {server?.network?.publicAccess !== 'none' 
+                                    ? t('settings.networking.tunnel_active_desc')
+                                    : 'No automated tunnel configured. The server will rely on manual port forwarding.'
+                                }
+                            </p>
+                            <button 
+                                onClick={() => setShowPublicWizard(true)}
+                                className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition-opacity"
+                            >
+                                {t('settings.networking.provision_tunnel')} <ArrowRight size={16} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Tunnel Configuration</label>
+                        <div className="bg-muted/20 border border-border rounded-xl p-4 space-y-4">
+                            {server?.network?.publicAccess === 'cloudflare' && (
+                                <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/70">{t('settings.networking.cloudflare_token')}</label>
+                                    <div className="font-mono text-xs p-2 bg-background/50 border border-border rounded-md truncate">
+                                        ••••••••••••••••••••••••••••••••
+                                    </div>
+                                </div>
+                            )}
+                            {server?.network?.publicAccess === 'playit' && (
+                                <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/70">{t('settings.networking.playit_secret')}</label>
+                                    <div className="font-mono text-xs p-2 bg-background/50 border border-border rounded-md truncate">
+                                        ••••••••••••••••••••••••••••••••
+                                    </div>
+                                </div>
+                            )}
+                            {server?.network?.publicAccess === 'none' && (
+                                <div className="py-4 text-center">
+                                    <Activity size={24} className="text-muted-foreground/20 mx-auto mb-2" />
+                                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">No Tunnel Data</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </motion.div>
+
             {showWizard && <DdnsWizard serverId={serverId} onClose={() => { setShowWizard(false); fetchState(); }} currentIp={state?.publicIp.current} />}
+            {showPublicWizard && <PublicAccessWizard serverId={serverId} onClose={() => { setShowPublicWizard(false); fetchState(); }} />}
         </motion.div>
     );
 };

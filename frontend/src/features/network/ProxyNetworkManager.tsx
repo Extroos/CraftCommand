@@ -9,7 +9,7 @@ import { useServers } from '@features/servers/context/ServerContext';
 import { useToast } from '@features/ui/Toast';
 import { API } from '@core/services/api';
 import { useUser } from '@features/auth/context/UserContext';
-import pkg from '../../../../package.json';
+import pkg from '../../../package.json';
 import { useConfirm } from '../ui/hooks/useConfirm';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 
@@ -136,14 +136,14 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
             <div className={`p-8 border border-border rounded-2xl transition-all duration-500 ${user?.preferences.visualQuality ? 'glass-morphism quality-shadow' : 'bg-card shadow-sm'}`}>
                 <div className="flex justify-between items-center mb-8">
                     <div>
-                        <h2 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">Active Infrastructure</h2>
-                        <p className="text-[10px] text-muted-foreground/60 mt-1">Current assets registered within the proxy network.</p>
+                        <h2 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">Linked Servers</h2>
+                        <p className="text-[10px] text-muted-foreground/60 mt-1">Servers currently routed through this proxy.</p>
                     </div>
                     <button 
                         onClick={() => setIsLinking(true)}
                         className="h-10 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-[10px] uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-sm"
                     >
-                        AUTHORIZE LINK
+                        LINK SERVER
                     </button>
                 </div>
 
@@ -151,7 +151,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
                     {links.length === 0 ? (
                         <div className="py-16 border border-dashed border-border rounded-xl flex flex-col items-center justify-center text-center">
                             <Network size={28} strokeWidth={1} className="text-muted-foreground/20 mb-4" />
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">No Active Deployments</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">No servers linked yet</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -221,7 +221,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
                     </div>
                     <h3 className="text-xl font-bold text-foreground tracking-tight">Multi-Version Support</h3>
                     <p className="text-[11px] text-muted-foreground/60 max-w-xl mt-2 leading-relaxed uppercase tracking-wider font-medium">
-                        Authorize deployment of the <span className="text-foreground/60 font-bold">ViaVersion Suite</span>. 
+                        Install <span className="text-foreground/60 font-bold">ViaVersion, ViaBackwards, and ViaRewind</span> on your proxy. 
                         Enables cross-version compatibility from 1.7 to latest.
                     </p>
                 </div>
@@ -241,7 +241,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
                         </>
                     ) : (
                         <>
-                            <Download size={14} /> Deploy Bridge
+                            <Download size={14} /> Install ViaVersion
                         </>
                     )}
                 </button>
@@ -257,9 +257,9 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
                         <Globe size={13} strokeWidth={1.5} />
                         <span className="text-[9px] font-bold uppercase tracking-[0.3em]">Network Routing</span>
                     </div>
-                    <h3 className="text-xl font-bold text-foreground/40 tracking-tight">Enterprise Forced Hosts</h3>
+                    <h3 className="text-xl font-bold text-foreground/40 tracking-tight">Forced Hosts (Coming Soon)</h3>
                     <p className="text-[10px] text-muted-foreground/30 max-w-xl mt-2 leading-relaxed uppercase tracking-widest font-bold">
-                        Native Host Routing Integration (v{pkg.version})
+                        Domain-based routing support (v{pkg.version})
                     </p>
                 </div>
             </div>
@@ -277,7 +277,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
                                 <div>
                                     <div className="flex items-center gap-3 text-muted-foreground/20 mb-4">
                                         <Link2 size={16} strokeWidth={1.5} />
-                                        <span className="text-[10px] font-bold uppercase tracking-[0.3em]">Infrastructure Layer</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-[0.3em]">Proxy</span>
                                     </div>
                                     <h3 className="text-3xl font-bold text-foreground tracking-tight">Add Link</h3>
                                 </div>
@@ -323,7 +323,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
 
                                 <div>
                                     <label className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.2em] mb-4 block">
-                                        Asset Alias
+                                        Route Alias
                                     </label>
                                     <input 
                                         type="text" 
@@ -357,7 +357,7 @@ const ProxyNetworkManager: React.FC<ProxyNetworkManagerProps> = React.memo(({ se
                                         ) : (
                                             <Check size={14} strokeWidth={3} />
                                         )}
-                                        {loading ? 'Processing' : 'Authorize Link'}
+                                        {loading ? 'Processing' : 'Link Server'}
                                     </button>
                                     <button 
                                         onClick={() => setIsLinking(false)}

@@ -12,6 +12,7 @@ import {
 } from '@shared/types/network';
 import { systemSettingsService } from '../system/SystemSettingsService';
 import { logger } from '../../utils/logger';
+import { sidecarManager } from './SidecarManager';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const NETWORK_STATE_FILE = path.join(DATA_DIR, 'network-state.json');
@@ -286,6 +287,40 @@ class NetworkService extends EventEmitter {
 
     public getState(): NetworkState {
         return this.state;
+    }
+
+    /**
+     * Lifecycle Hook: Called when a server process is starting
+     */
+    public async onServerStart(serverId: string) {
+        const { getServer } = require('../servers/ServerService');
+        const server = getServer(serverId);
+        if (!server || !server.network) return;
+
+        const { publicAccess, tunnelToken, playitSecret } = server.network;
+
+        try {
+            if (publicAccess === 'cloudflare' && tunnelToken) {
+                logger.info(`[NetworkService:${serverId}] Activating Cloudflare Tunnel...`);
+                await sidecarManager.startCloudflare(serverId, tunnelToken);
+            } else if (publicAccess === 'playit' && playitSecret) {
+                logger.info(`[NetworkService:${serverId}] Activating Playit.gg Agent...`);
+                // We'll use a virtual path for the secret in the server directory
+                const secretPath = path.join(server.workingDirectory, '.playit_secret');
+                await fs.writeFile(secretPath, playitSecret);
+                await sidecarManager.startPlayit(serverId, secretPath);
+            }
+        } catch (err: any) {
+            logger.error(`[NetworkService:${serverId}] Failed to start sidecar: ${err.message}`);
+        }
+    }
+
+    /**
+     * Lifecycle Hook: Called when a server process stops or is cleaned up
+     */
+    public onServerStop(serverId: string) {
+        logger.info(`[NetworkService:${serverId}] Cleaning up networking sidecars...`);
+        sidecarManager.stopAllForServer(serverId);
     }
 }
 

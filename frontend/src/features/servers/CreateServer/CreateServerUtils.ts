@@ -76,7 +76,17 @@ export const synthesizeDefaultState = (
     if (software !== currentData.software) {
         newData.templateId = undefined;
         newData.modpackUrl = undefined;
-        newData.usePurpur = false; // Reset toggle when explicitly switching software buttons
+        
+        // Only reset Purpur if we are actually switching to a different BASE software category
+        const currentIsPaperBase = currentData.software === 'Paper' || currentData.software === 'Purpur';
+        const newIsPaperBase = software === 'Paper' || software === 'Purpur';
+        
+        if (!newIsPaperBase) {
+            newData.usePurpur = false;
+        } else if (newIsPaperBase) {
+            // Ensure software field correctly reflects the toggle
+            newData.software = newData.usePurpur ? 'Purpur' : 'Paper';
+        }
     }
 
     return newData;
@@ -121,15 +131,15 @@ export const syncFormDataForModpack = (
 
 export const validateFormData = (data: FormData): { isValid: boolean; error?: string } => {
     if (!data.name || data.name.trim().length < 3) {
-        return { isValid: false, error: 'Instance name must be at least 3 characters.' };
+        return { isValid: false, error: 'err_name_short' };
     }
     
     if (data.port < 1 || data.port > 65535) {
-        return { isValid: false, error: 'Invalid port number (1-65535).' };
+        return { isValid: false, error: 'err_invalid_port' };
     }
 
     if (data.ram < 0.5) {
-        return { isValid: false, error: 'Minimum RAM is 0.5 GB.' };
+        return { isValid: false, error: 'err_min_ram' };
     }
 
     return { isValid: true };

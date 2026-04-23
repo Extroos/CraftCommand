@@ -7,7 +7,7 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
-$RuntimeDir = Join-Path $PSScriptRoot "..\.runtimes\node"
+$RuntimeDir = Join-Path $PSScriptRoot "..\..\.runtimes\node"
 $NodeExe = Join-Path $RuntimeDir "node.exe"
 
 # If Node exists locally, exit

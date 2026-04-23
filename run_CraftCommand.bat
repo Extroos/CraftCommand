@@ -22,6 +22,11 @@ set "BOLD=%E%[1m"
 
 :: --- ARGUMENT PARSING ---
 if "%~1"=="--join" goto :HANDLE_JOIN
+
+:: --- PRE-FLIGHT CHECKS ---
+call :VALIDATE_ENVIRONMENT
+if !errorlevel! neq 0 exit /b !errorlevel!
+
 goto :MAIN_SETUP
 
 :HANDLE_JOIN
@@ -86,21 +91,92 @@ echo          Usage: %~nx0 --join ^<PANEL_URL^> ^<TOKEN^>
 exit /b 1
 
 :MAIN_SETUP
+goto :VERSION_SYNC
 
 :: ============================================================================
 ::  CRAFTCOMMAND — Platform Launcher
 :: ============================================================================
 
-:: --- DEPENDENCY VALIDATION ---
+:: --- UI HEADER: HERO CARD ---
+:PRINT_HERO
+echo.
+echo  %CC%%BOLD%      __      __                 __      __ %R%
+echo  %CC% ██████╗██████╗  █████╗ ███████╗████████╗   ██████╗ ██████╗ ███╗   ███╗███╗   ███╗ █████╗ ███╗   ██╗██████╗ %R%
+echo  %CC% ██╔════╝██╔══██╗██╔══██╗██╔════╝╚══██╔══╝  ██╔════╝██╔═══██╗████╗ ████║████╗ ████║██╔══██╗████╗  ██║██╔══██╗%R%
+echo  %CC% ██║     ██████╔╝███████║█████╗     ██║     ██║     ██║   ██║██╔████╔██║██╔████╔██║███████║██╔██╗ ██║██║  ██║%R%
+echo  %CC% ██║     ██╔══██╗██╔══██║██╔══╝     ██║     ██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║██║╚██╗██║██║  ██║%R%
+echo  %CC% ╚██████╗██║  ██║██║  ██║██║        ██║     ╚██████╗╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║██║ ╚████║██████╔╝%R%
+echo  %CC%  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝        ╚═╝      ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝ %R%
+exit /b 0
+
+:VALIDATE_ENVIRONMENT
+set "NODE_OK=0"
 where node >nul 2>nul
-if !errorlevel! neq 0 (
-    echo.
-    echo   %CR%%BOLD% ERROR %R%  Node.js is not installed or not in PATH.
-    echo          Please install Node.js from https://nodejs.org/
-    pause
-    exit /b 1
+if !errorlevel! equ 0 set "NODE_OK=1"
+if exist ".runtimes\node\node.exe" (
+    set "PATH=%CD%\.runtimes\node;!PATH!"
+    set "NODE_OK=1"
 )
 
+if "!NODE_OK!"=="1" (
+    :: Refresh path one last time to ensure NPM is visible
+    where npm >nul 2>nul
+    if !errorlevel! neq 0 (
+        set "PATH=%CD%\.runtimes\node;!PATH!"
+    )
+    call :CHECK_OPTIONAL_DEPENDENCIES
+    exit /b 0
+)
+
+cls
+call :PRINT_HERO
+echo.
+echo  %CY%%BOLD% DEPENDECY MISSING %R%  Node.js is required to run CraftCommand.
+echo.
+echo   %CGY%CraftCommand can automatically install it for you.%R%
+echo.
+echo   %BOLD%[1]%R% Install via %CC%Winget%R% (System-wide, recommended)
+echo   %BOLD%[2]%R% Install via %CC%Bootstrapper%R% (Local folder, zero-config)
+echo   %BOLD%[0]%R% Exit
+echo.
+set /p n_choice="  %CC%%BOLD%TERM: %R%"
+
+if "%n_choice%"=="1" (
+    echo.
+    echo   %CC% Installing Node.js via winget... %R%
+    winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+    if !errorlevel! equ 0 (
+        echo.
+        echo   %CG%%BOLD%SUCCESS!%R% Node.js installed.
+        echo   %CY%Please RESTART this script to refresh your environment.%R%
+        pause
+        exit
+    ) else (
+        echo   %CR% Winget installation failed. %R%
+        pause
+        goto :VALIDATE_ENVIRONMENT
+    )
+)
+if "%n_choice%"=="2" (
+    echo.
+    echo   %CC% Bootstrapping portable runtime... %R%
+    powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\core\bootstrap-runtime.ps1"
+    if !errorlevel! equ 0 (
+        set "PATH=%CD%\.runtimes\node;!PATH!"
+        echo.
+        echo   %CG%%BOLD%SUCCESS!%R% Portable runtime is ready.
+        ping 127.0.0.1 -n 3 >nul
+        exit /b 0
+    ) else (
+        echo   %CR% Bootstrapping failed. %R%
+        pause
+        goto :VALIDATE_ENVIRONMENT
+    )
+)
+if "%n_choice%"=="0" exit /b 1
+goto :VALIDATE_ENVIRONMENT
+
+:VERSION_SYNC
 :: --- VERSION SYNC ---
 set "CC_VERSION=1.12.5"
 if exist "version.json" (
@@ -199,7 +275,7 @@ if "!AUTO_UPDATE!"=="true" (
                 echo.
                 echo   %CG%%BOLD%SUCCESS!%R% System is now stable on version !REMOTE_VER!.
                 echo   %CGY%Configuration synchronized. Launching...%R%
-                timeout /t 3 >nul
+                ping 127.0.0.1 -n 4 >nul
                 goto MENU
             ) else (
                 echo.
@@ -347,7 +423,6 @@ echo  %CGY%---------------------------------------------------------------------
 echo.
 
 :: Check Node.js
-:: Check Node.js
 set "NODE_PATH=.runtimes\node\node.exe"
 where node >nul 2>nul
 if %errorlevel% neq 0 (
@@ -355,15 +430,28 @@ if %errorlevel% neq 0 (
         set "PATH=%CD%\.runtimes\node;%PATH%"
     ) else (
         echo.
-        echo   %CY%%BOLD%!%R%  Node.js not found. Installing portable runtime...
-        powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\core\bootstrap-runtime.ps1"
-        if !errorlevel! neq 0 (
-            echo   %CR%Failed to download Node.js. Please install manually.%R%
+        echo   %CY%%BOLD%!%R%  Node.js not found. Attempting auto-bootstrap...
+        if exist "scripts\core\bootstrap-runtime.ps1" (
+            powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\core\bootstrap-runtime.ps1"
+            if !errorlevel! equ 0 (
+                set "PATH=%CD%\.runtimes\node;%PATH%"
+            ) else (
+                echo   %CR%Failed to bootstrap runtime. Please install Node.js manually.%R%
+                pause
+                exit /b 1
+            )
+        ) else (
+            echo   %CR%Bootstrap script missing. Please install Node.js manually.%R%
             pause
             exit /b 1
         )
-        set "PATH=%CD%\.runtimes\node;%PATH%"
     )
+)
+
+:: Ensure NPM is in path (Refresh)
+where npm >nul 2>nul
+if %errorlevel% neq 0 (
+    if exist ".runtimes\node\npm.cmd" set "PATH=%CD%\.runtimes\node;%PATH%"
 )
 
 for /f "delims=" %%v in ('node -v') do set "NODE_V=%%v"
@@ -381,14 +469,33 @@ if "%MISSING_DEPS%"=="1" (
     echo.
     echo   %CY%%BOLD%!%R%  First-time setup: installing dependencies
     echo.
-    echo     %CGY%[1/3]%R% Frontend
-    cd frontend && call npm install >nul 2>nul && cd ..
-    echo     %CGY%[2/3]%R% Backend
-    cd backend && call npm install >nul 2>nul && cd ..
-    echo     %CGY%[3/4]%R% Root
-    call npm install >nul 2>nul
-    echo     %CGY%[4/4]%R% Node Agent
-    cd agent && call npm install >nul 2>nul && cd ..
+    
+    if exist "frontend" (
+        echo     %CGY%[1/4]%R% Frontend...
+        cd frontend && (call npm install --no-audit --no-fund >nul 2>nul || (echo   %CR%[FAIL] Frontend deps failed.%R% && cd .. && goto MENU)) && cd ..
+    ) else (
+        echo     %CY%[!]%R% Frontend directory missing, skipping.
+    )
+
+    if exist "backend" (
+        echo     %CGY%[2/4]%R% Backend...
+        cd backend && (call npm install --no-audit --no-fund >nul 2>nul || (echo   %CR%[FAIL] Backend deps failed.%R% && cd .. && goto MENU)) && cd ..
+    ) else (
+        echo     %CR%[ERROR]%R% Backend directory missing! Platform cannot start.
+        pause
+        goto MENU
+    )
+
+    echo     %CGY%[3/4]%R% Shared/Root...
+    call npm install --no-audit --no-fund >nul 2>nul || echo %CR%[FAIL] Root deps failed.%R%
+
+    if exist "agent" (
+        echo     %CGY%[4/4]%R% Node Agent...
+        cd agent && (call npm install --no-audit --no-fund >nul 2>nul || echo %CR%[FAIL] Agent deps failed.%R%) && cd ..
+    ) else (
+        echo     %CY%[!]%R% Agent directory missing, skipping.
+    )
+
     echo.
     echo   %CG%%BOLD%+%R%  Dependencies resolved
 )
@@ -416,10 +523,16 @@ echo   Protocol   %BOLD%%CG%!B_TYPE!%R%
 echo   Access     %BOLD%%CC%!ACC_URL!%R%
 echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
+echo.
 echo   %CGY%Streaming logs...%R%
 echo.
 
-call npm run start:all
+:: Try to use concurrently (dev script) as it's the standard for dev launch
+call npm run dev
+if !errorlevel! neq 0 (
+    :: Fallback to start:all if dev failed/missing
+    call npm run start:all
+)
 if %errorlevel% neq 0 (
     echo.
     echo   %CR%%BOLD%X%R%  Process terminated  %CGY%Exit code: %errorlevel%%R%
@@ -645,6 +758,26 @@ echo.
 pause
 goto MENU
 
+:CHECK_OPTIONAL_DEPENDENCIES
+:: Check for Docker
+where docker >nul 2>nul
+if !errorlevel! neq 0 (
+    echo.
+    echo   %CY%%BOLD%[OPTIONAL]%R% %CGY%Docker%R% is not installed. 
+    echo   %CGY%         Docker is recommended for isolated Minecraft server hosting.%R%
+    echo   %CGY%         You can install it later via %CC%https://www.docker.com%R%
+)
+
+:: Check for Git (needed for some npm dependencies)
+where git >nul 2>nul
+if !errorlevel! neq 0 (
+    echo.
+    echo   %CY%%BOLD%[OPTIONAL]%R% %CGY%Git%R% is not installed. 
+    echo   %CGY%         Some advanced features might require Git.%R%
+)
+ping 127.0.0.1 -n 2 >nul
+exit /b 0
+
 :: ============================================================================
 ::  NODE AGENT
 :: ============================================================================
@@ -674,3 +807,96 @@ title CraftCommand - Node Agent [%N_ID:~0,8%...]
 node dist/agent/src/index.js --panel-url http://localhost:3001 --node-id %N_ID% --secret %N_SEC%
 cd ..
 goto MENU
+
+:: ============================================================================
+::  SECURITY: HTTPS & DOMAIN BRIDGE
+:: ============================================================================
+:HTTPS_MENU
+cls
+echo.
+echo  %CC%%BOLD% SECURITY: HTTPS ^& DOMAIN BRIDGE %R%
+echo  %CGY%-----------------------------------------------------------------------%R%
+echo.
+echo   CraftCommand uses %CC%Caddy%R% for automated SSL/HTTPS.
+echo.
+echo   %BOLD%Requirements:%R%
+echo    1. A domain name (e.g. yourpanel.com)
+echo    2. Ports %BOLD%80%R% and %BOLD%443%R% forwarded to this machine.
+echo.
+echo  %CGY%[1]%R% Setup new Domain ^& Start HTTPS
+echo  %CGY%[2]%R% Start existing Configuration
+echo  %CGY%[3]%R% Stop HTTPS Proxy
+echo.
+echo  %CGY%[0]%R% Back to Menu
+echo.
+set /p h_choice="  %CC%%BOLD%TERM: %R%"
+
+if "%h_choice%"=="1" goto HTTPS_SETUP
+if "%h_choice%"=="2" goto HTTPS_START
+if "%h_choice%"=="3" goto HTTPS_STOP
+if "%h_choice%"=="0" goto MENU
+goto HTTPS_MENU
+
+:HTTPS_SETUP
+echo.
+echo   %CY%%BOLD%STEP 1:%R% Enter your public domain name.
+echo   %CGY%(e.g. craft.mydomain.com or mypanel.duckdns.org)%R%
+echo.
+set /p USER_DOMAIN="  Domain: "
+if "%USER_DOMAIN%"=="" goto HTTPS_MENU
+
+echo.
+echo   %CY%%BOLD%STEP 2:%R% Generating Caddyfile...
+(
+echo # Generated by CraftCommand Launcher
+echo %USER_DOMAIN% {
+echo     handle /api/* {
+echo         reverse_proxy localhost:3001
+echo     }
+echo     handle /socket.io/* {
+echo         reverse_proxy localhost:3001
+echo     }
+echo     handle {
+echo         reverse_proxy localhost:3000
+echo     }
+echo     header {
+echo         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+echo         X-Frame-Options "SAMEORIGIN"
+echo         X-Content-Type-Options "nosniff"
+echo     }
+echo }
+) > "Caddyfile"
+
+echo   %CG% SUCCESS %R% Configuration generated.
+goto HTTPS_START
+
+:HTTPS_START
+if not exist "Caddyfile" (
+    echo   %CR% ERROR %R% No Caddyfile found. Run Setup first.
+    pause
+    goto HTTPS_MENU
+)
+
+if not exist "proxy\caddy.exe" (
+    echo   %CR% ERROR %R% Caddy binary missing in proxy/ folder.
+    pause
+    goto HTTPS_MENU
+)
+
+echo.
+echo   %CC% Launching Caddy Bridge... %R%
+start "CraftCommand - HTTPS Bridge" /d "%CD%" "proxy\caddy.exe" run --config Caddyfile
+echo.
+echo   %CG% BRIDGE ACTIVE %R% Your panel is now being secured.
+echo   %CGY%Check the new window for SSL issuance logs.%R%
+echo.
+pause
+goto HTTPS_MENU
+
+:HTTPS_STOP
+taskkill /f /fi "windowtitle eq CraftCommand - HTTPS Bridge*" >nul 2>nul
+echo.
+echo   %CY% BRIDGE STOPPED %R% HTTPS proxy has been terminated.
+echo.
+pause
+goto HTTPS_MENU

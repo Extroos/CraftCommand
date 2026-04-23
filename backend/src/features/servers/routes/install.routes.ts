@@ -27,8 +27,17 @@ router.post('/install', requirePermission('server.settings'), async (req, res) =
 
     if (!server) return res.status(404).json({ error: 'Server not found' });
 
+    let installType = type;
     try {
-        logger.info(`[Installation] Request for server ${id} | Type: ${type} | Version: ${version}`);
+        // Safety: If type is missing or mismatched (e.g. Paper instead of Purpur), 
+        // fallback to the official metadata stored on the server record
+        if ((!installType || installType === 'paper') && server.software === 'Purpur') {
+            installType = 'purpur';
+        } else if (!installType && server.software) {
+            installType = server.software.toLowerCase();
+        }
+
+        logger.info(`[Installation] Request for server ${id} | Type: ${installType} (requested: ${type}) | Version: ${version}`);
 
         const onProgress = (msg: string, percent: number = -1) => {
             if (req.io) {
@@ -47,22 +56,22 @@ router.post('/install', requirePermission('server.settings'), async (req, res) =
             saveServer(s);
         }
 
-        if (type === 'paper') {
+        if (installType === 'paper') {
             await installerService.installPaper(id, server.workingDirectory, version || '1.21.11', build, onProgress);
             server.executable = 'server.jar';
             saveServer(server);
-        } else if (type === 'purpur') {
+        } else if (installType === 'purpur') {
             await installerService.installPurpur(id, server.workingDirectory, version || '1.21.11', build, onProgress);
             server.executable = 'server.jar';
             server.status = ServerStatus.OFFLINE;
             saveServer(server);
-        } else if (type === 'vanilla') {
+        } else if (installType === 'vanilla') {
             await installerService.installVanilla(id, server.workingDirectory, version || '1.21.11', onProgress);
-        } else if (type === 'fabric') {
+        } else if (installType === 'fabric') {
             await installerService.installFabric(id, server.workingDirectory, version || '1.21.11', onProgress);
-        } else if (type === 'modpack' && url) {
+        } else if (installType === 'modpack' && url) {
             await installerService.installModpackFromZip(id, server.workingDirectory, url, version, onProgress, server.software);
-        } else if (type === 'forge') {
+        } else if (installType === 'forge') {
             logger.info(`[Installation] Starting Async Forge Install for ${id}`);
             installerService.installForge(id, server.workingDirectory, version || '1.21.1', (req.body as any).localModpack, build, onProgress)
                 .then(executable => {
@@ -84,21 +93,21 @@ router.post('/install', requirePermission('server.settings'), async (req, res) =
             
             res.json({ success: true, message: 'Installation started in background.' });
             return; 
-        } else if (type === 'neoforge') {
+        } else if (installType === 'neoforge') {
             const executable = await installerService.installNeoForge(id, server.workingDirectory, version || '1.21.1', build, onProgress);
             server.executable = executable;
             server.javaVersion = 'Java 21';
             saveServer(server);
-        } else if (type === 'spigot') {
+        } else if (installType === 'spigot') {
             await installerService.installSpigot(id, server.workingDirectory, version || '1.21.1', onProgress);
-        } else if (type === 'velocity') {
+        } else if (installType === 'velocity') {
             await installerService.installVelocity(id, server.workingDirectory, { version: version || '3.4.0-SNAPSHOT', build }, onProgress);
             const s = getServer(id);
             if (s) {
                 s.executable = 'velocity.jar';
                 saveServer(s);
             }
-        } else if (type === 'bedrock') {
+        } else if (installType === 'bedrock') {
             const bVersion = version || '1.26.0.2';
             await installerService.installBedrock(id, server.workingDirectory, bVersion, onProgress);
             const s = getServer(id);
@@ -113,13 +122,13 @@ router.post('/install', requirePermission('server.settings'), async (req, res) =
         } else {
             return res.status(400).json({ 
                 error: 'Invalid installation type or missing parameters',
-                details: { receivedType: type, supported: ['paper', 'purpur', 'vanilla', 'fabric', 'modpack', 'forge', 'neoforge', 'spigot', 'velocity', 'bedrock'] }
+                details: { receivedType: installType, supported: ['paper', 'purpur', 'vanilla', 'fabric', 'modpack', 'forge', 'neoforge', 'spigot', 'velocity', 'bedrock'] }
             });
         }
 
         if (server.advancedFlags) {
             if (server.advancedFlags.installSpark) {
-                if (type === 'paper' || type === 'purpur' || type === 'spigot') {
+                if (installType === 'paper' || installType === 'purpur' || installType === 'spigot') {
                      await installerService.installSpark(server.workingDirectory);
                 }
             }
@@ -148,11 +157,11 @@ router.post('/install', requirePermission('server.settings'), async (req, res) =
 
         res.json({ success: true, message: 'Installation complete' });
         if (req.user) {
-            auditService.log(req.user.id, 'TEMPLATE_INSTALL', id, { type, version });
+            auditService.log(req.user.id, 'TEMPLATE_INSTALL', id, { type: installType, version });
         }
 
     } catch (e: any) {
-        logger.error(`[Installation] Fatal error during ${type} install for ${id}: ${e}`);
+        logger.error(`[Installation] Fatal error during ${installType} install for ${id}: ${e}`);
         const s = getServer(id);
         if (s) {
             s.status = ServerStatus.OFFLINE;

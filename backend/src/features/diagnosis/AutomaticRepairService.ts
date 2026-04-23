@@ -14,7 +14,7 @@ import { backupService } from '../backups/BackupService';
 import { healthMonitoringService } from '../system/HealthMonitoringService';
 import { nodeRegistryService } from '../nodes/NodeRegistryService';
 import { auditService } from '../system/AuditService';
-import { ServerConfig, ServerStatus, NodeStatus } from '@shared/types';
+import { ServerConfig, ServerStatus, NodeStatus, ServerLifecyclePolicy } from '@shared/types';
 import { RecoveryState, StabilityMarker } from '@shared/types/health';
 import { ErrorCode } from '../../utils/ErrorCodes';
 
@@ -27,6 +27,7 @@ class AutomaticRepairService extends EventEmitter {
     private activeRecoveries: Map<string, RecoveryState> = new Map();
     private stabilityMarkers: Map<string, StabilityMarker> = new Map();
     private healthCheckLocks: Set<string> = new Set();
+    private creationTimes: Map<string, number> = new Map(); // Phase 66: Birth Grace Period
     
     private STABILITY_FILE = path.join(process.cwd(), 'backend', 'data', 'stability.json');
     private HEALTH_LOG_FILE = path.join(process.cwd(), 'logs', 'health.log');
@@ -74,6 +75,7 @@ class AutomaticRepairService extends EventEmitter {
     }
 
     private isInitialized = false;
+    private isMonitoringFirstPass = true;
 
     public initialize() {
         if (this.isInitialized) return;
@@ -97,9 +99,15 @@ class AutomaticRepairService extends EventEmitter {
     private startMonitoring() {
         logger.info('[RepairService] Proactive Monitoring ACTIVE. Checking system health...');
         
-        // Main Loop: 10s tick
-        this.checkInterval = setInterval(async () => {
+        // Dynamic tick: Uses healthSnapshotInterval from settings (in minutes), falls back to 10s.
+        // We use setTimeout (self-rescheduling) instead of setInterval so interval changes take effect immediately.
+        const scheduleNextTick = () => {
             const v3Settings = systemSettingsService.getSettings().app.automaticRepairV3;
+            // healthSnapshotInterval is in minutes. Convert to ms. Minimum 10s to prevent hot-looping.
+            const intervalMs = Math.max(10000, ((v3Settings?.healthSnapshotInterval ?? 0.167) * 60000));
+            
+            this.checkInterval = setTimeout(async () => {
+            try {
             // Use runtime require for ServerService to prevent top-level circular dependency
             const { getServers } = require('../servers/ServerService');
             const servers = getServers();
@@ -110,11 +118,44 @@ class AutomaticRepairService extends EventEmitter {
             const localStats = await SI.currentLoad().catch(() => ({ currentLoad: 0 }));
             const memoryUsage = (os.totalmem() - os.freemem()) / os.totalmem() * 100;
 
-            const isOverloaded = memoryUsage > 92 || localStats.currentLoad > 95;
+            // v3.3: IO Throttling — Skip repairs if disk IO exceeds configured threshold
+            const ioThreshold = v3Settings?.ioThrottlingThreshold ?? 80;
+            let diskIoPercent = 0;
+            try {
+                const diskIO = await SI.disksIO();
+                // Estimate IO saturation: rIO + wIO as a rough % (capped at 100)
+                if (diskIO && (diskIO.rIO_sec || diskIO.wIO_sec)) {
+                    // Normalize: 100MB/s combined = ~100%. Tuned for consumer SSDs.
+                    diskIoPercent = Math.min(100, ((diskIO.rIO_sec + diskIO.wIO_sec) / (100 * 1024 * 1024)) * 100);
+                }
+            } catch { /* si may not support disksIO on all platforms */ }
+
+            const isIoThrottled = diskIoPercent > ioThreshold;
+            if (isIoThrottled) {
+                logger.debug(`[RepairService] Disk IO at ${diskIoPercent.toFixed(1)}% exceeds threshold ${ioThreshold}%. Throttling repairs.`);
+            }
+
+            const isOverloaded = memoryUsage > 92 || localStats.currentLoad > 95 || isIoThrottled;
 
             for (const server of servers) {
+                // Guard: Existence Check (v3.2)
+                // If the server was deleted midway through the loop, skip it
+                const { getServer } = require('../servers/ServerService');
+                if (!getServer(server.id)) {
+                    continue;
+                }
+
                 const marker = this.getStabilityMarker(server.id);
                 if (marker.isSafeMode) continue;
+
+                // --- Phase 66: Birth Grace Period (v3.2) ---
+                // Newly created servers get 2 minutes of immunity from integrity checks
+                // to allow the installer to finish downloading core files.
+                const creationTime = this.creationTimes.get(server.id);
+                if (creationTime && (Date.now() - creationTime < 120000)) {
+                    logger.debug(`[RepairService] ${server.id} is in Birth Grace Period. Skipping sentinel.`);
+                    continue;
+                }
 
                 // Drift Detection (v3) 
                 const isDriftFixActive = v3Settings?.driftDetectionEnabled !== false;
@@ -141,7 +182,29 @@ class AutomaticRepairService extends EventEmitter {
                     }
                 }
             }
-        }, 10000);
+
+            // Cleanup expired grace periods to avoid slow leak
+            if (this.creationTimes.size > 0) {
+                const now = Date.now();
+                for (const [id, time] of this.creationTimes.entries()) {
+                    if (now - time > 600000) { // 10 minutes max tracking
+                        this.creationTimes.delete(id);
+                    }
+                }
+            }
+
+            // After the first complete pass of all servers, we disable global auto-start
+            // for offline servers. Subsequent recoveries will only trigger for DRIFT/CRASH.
+            if (this.isMonitoringFirstPass) {
+                this.isMonitoringFirstPass = false;
+                logger.debug('[RepairService] Initial monitoring pass complete. Auto-start watchdog throttled to drift-only.');
+            }
+            } finally {
+                scheduleNextTick(); // Reschedule next tick regardless of success/failure
+            }
+        }, intervalMs);
+        };
+        scheduleNextTick(); // Begin first tick
     }
 
     private async evalServerHealth(server: any, isOverloaded: boolean) {
@@ -167,10 +230,41 @@ class AutomaticRepairService extends EventEmitter {
         }
 
         const isRunning = processManager.isRunning(server.id);
+        const defaultPolicy = systemSettingsService.getSettings()?.app?.defaultLifecyclePolicy || ServerLifecyclePolicy.ADAPTIVE;
+        const policy = server.lifecyclePolicy || defaultPolicy;
         
-        if (!isRunning && server.autoStart) {
+        if (!isRunning) {
             if (processManager.isStopping(server.id)) return;
-            this.initiateRecovery(server.id, 'ZOMBIE_REPAIR');
+
+            // Policy-Based Startup Logic
+            switch (policy) {
+                case ServerLifecyclePolicy.RESILIENT:
+                    // Watchdog: Always try to keep it online, unless manually stopped
+                    if (!processManager.isIntentionalStop(server.id)) {
+                        this.initiateRecovery(server.id, 'WATCHDOG_RESTART');
+                    }
+                    break;
+
+                case ServerLifecyclePolicy.ADAPTIVE:
+                    // Adaptive: Restore if it was ONLINE during Panel boot
+                    if (this.isMonitoringFirstPass && server.status === ServerStatus.ONLINE) {
+                        // --- Phase 67: Staggered Restore (Prevent Boot Storm) ---
+                        // We add a 2.5s delay between each server recovery to avoid CPU spikes on PC boot.
+                        await new Promise(r => setTimeout(r, 2500));
+                        this.initiateRecovery(server.id, 'STATE_RESTORE');
+                    }
+                    break;
+
+                case ServerLifecyclePolicy.MANUAL:
+                    // Manual: Never auto-start
+                    break;
+
+                default:
+                    // Legacy autoStart fallback (if applicable)
+                    if (server.autoStart && this.isMonitoringFirstPass) {
+                        this.initiateRecovery(server.id, 'ZOMBIE_REPAIR');
+                    }
+            }
             return;
         }
 
@@ -460,6 +554,13 @@ class AutomaticRepairService extends EventEmitter {
     private async checkFileIntegrity(server: any): Promise<boolean> {
         if (!server.workingDirectory || !fs.existsSync(server.workingDirectory)) return false;
 
+        // Guard: Installation & Startup Immunity (v3.2)
+        // If the server is currently being installed or starting, do not perform integrity checks.
+        const { ServerStatus } = require('@shared/types');
+        if (server.status === ServerStatus.INSTALLING || server.status === ServerStatus.STARTING) {
+            return false;
+        }
+
         const executable = server.executable || 'server.jar';
         const corePath = path.join(server.workingDirectory, executable);
         
@@ -522,6 +623,23 @@ class AutomaticRepairService extends EventEmitter {
         marker.consecutiveCrashes = 0;
         marker.score = 100;
         this.saveStabilityMarkers();
+    }
+
+    /**
+     * Completely removes all records for a server.
+     * Use this when a server is DELETED.
+     */
+    public clear(serverId: string) {
+        logger.info(`[RepairService] Purging recovery state and stability markers for ${serverId}`);
+        this.activeRecoveries.delete(serverId);
+        this.stabilityMarkers.delete(serverId);
+        this.healthCheckLocks.delete(serverId);
+        this.creationTimes.delete(serverId); // Cleanup grace period
+        this.saveStabilityMarkers(); // Persist the removal to disk
+    }
+
+    public trackCreation(serverId: string) {
+        this.creationTimes.set(serverId, Date.now());
     }
 }
 

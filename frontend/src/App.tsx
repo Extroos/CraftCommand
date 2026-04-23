@@ -124,7 +124,7 @@ const ServerRouteWrapper: React.FC<{ tab: TabView }> = ({ tab }) => {
         if (serverId && (!currentServer || currentServer.id !== serverId)) {
             setCurrentServerById(serverId);
         }
-    }, [serverId, currentServer, setCurrentServerById]);
+    }, [serverId, currentServer, setCurrentServerById, servers]);
 
     const renderTab = () => {
         if (serversLoading || systemLoading || (serverId && !currentServer)) {
@@ -323,6 +323,10 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
     return (
         <ErrorBoundary>
+            {/* 
+                Performance Note: Monolithic Context Providers have been refactored into Zustand slices.
+                The following wrappers are now lean bridges for initialization and UI overlays.
+            */}
             <UserProvider>
                 <ThemeProvider>
                     <SystemProvider>

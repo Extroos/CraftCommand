@@ -1,27 +1,31 @@
-# Caddyfile Example for CraftCommand
-# Rename to 'Caddyfile' and place in your Caddy directory
+# CraftCommand - Caddy Reverse Proxy Configuration (Smart Template)
+# ==============================================================================
+# INSTRUCTIONS:
+# 1. Replace 'your-panel.com' with your actual domain or dynamic DNS (e.g. lbogos.duckdns.org)
+# 2. Ensure Port 80 and 443 are open in your router/firewall.
+# 3. Run: caddy.exe run --config Caddyfile 
 
-# Replace with your domain or IP
-my-craftcommand.com {
-    # Reverse Proxy for Dashboard
-    handle / {
-        reverse_proxy localhost:3000
-    }
-    
-    # Reverse Proxy for API & Socket.IO
-    # Note: Socket.IO requires WebSocket support (enabled by default in Caddy)
+your-panel.com {
+    # [1] Backend API & Real-time WebSocket
     handle /api/* {
-        reverse_proxy localhost:3000
+        reverse_proxy localhost:3001
     }
     
     handle /socket.io/* {
+        reverse_proxy localhost:3001
+    }
+
+    # [2] Frontend Dashboard (Smart Logic)
+    # We proxy to port 3000 so we don't have to worry about absolute file paths.
+    handle {
         reverse_proxy localhost:3000
     }
 
-    # Security Headers
+    # [3] Security Hardening
     header {
-        Strict-Transport-Security "max-age=31536000;"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
         X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
+        -Server
     }
 }

@@ -18,6 +18,7 @@ interface UpdateStateInfo {
     currentStep?: string;
     error?: string;
     targetVersion?: string;
+    isAutoUpdate?: boolean;
 }
 
 interface SystemUpdateCardProps {
@@ -169,7 +170,7 @@ export const SystemUpdateCard: React.FC<SystemUpdateCardProps> = ({ variant = 'c
             );
         }
 
-        if (statusInfo.status === 'READY_TO_INSTALL' || (statusInfo.isAutoUpdate && statusInfo.status === 'READY_TO_INSTALL')) {
+        if (statusInfo.status === 'READY_TO_INSTALL') {
              return (
                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4 space-y-3 animate-in zoom-in-95">
                     <div className="flex items-center gap-3">
@@ -205,7 +206,7 @@ export const SystemUpdateCard: React.FC<SystemUpdateCardProps> = ({ variant = 'c
                         </button>
                         <p className="text-[10px] text-center text-emerald-600/60 mt-2">
                             {statusInfo.isAutoUpdate 
-                                ? 'Patch was autonomously downloaded and verified.'
+                                ? 'Patch was automatically downloaded and verified.'
                                 : 'Applying this patch will restart the backend service. (~10s downtime)'}
                         </p>
                     </div>

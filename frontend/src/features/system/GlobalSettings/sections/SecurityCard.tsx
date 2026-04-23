@@ -3,6 +3,7 @@ import { Shield, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { STAGGER_ITEM } from '../../../../styles/motion';
 import { GlobalSettings, UserProfile } from '@shared/types';
+import { useToast } from '../../../ui/Toast';
 
 interface SecurityCardProps {
     settings: GlobalSettings;
@@ -11,6 +12,30 @@ interface SecurityCardProps {
 }
 
 export const SecurityCard: React.FC<SecurityCardProps> = ({ settings, setSettings, user }) => {
+    const { addToast } = useToast();
+
+    const toggle2FA = () => {
+        const isEnabling = !settings.app.security?.forceAdmin2FA;
+        const isAdmin = user?.role === 'ADMIN' || user?.role === 'OWNER';
+
+        // Pre-flight: Block if the current user would lock themselves out
+        if (isEnabling && isAdmin && !user?.twoFactorEnabled) {
+            addToast('error', 'Security', 'You must enable 2FA on your own account before enforcing this policy. Go to your Profile → Security to set it up.');
+            return;
+        }
+
+        setSettings({
+            ...settings,
+            app: { 
+                ...settings.app, 
+                security: { 
+                    ...settings.app.security,
+                    forceAdmin2FA: isEnabling
+                } 
+            }
+        });
+    };
+
     return (
         <motion.div 
             variants={STAGGER_ITEM}
@@ -38,18 +63,7 @@ export const SecurityCard: React.FC<SecurityCardProps> = ({ settings, setSetting
                         </p>
                     </div>
                         <button
-                            onClick={() => {
-                                setSettings({
-                                    ...settings,
-                                    app: { 
-                                        ...settings.app, 
-                                        security: { 
-                                            ...settings.app.security,
-                                            forceAdmin2FA: !settings.app.security?.forceAdmin2FA 
-                                        } 
-                                    }
-                                });
-                            }}
+                            onClick={toggle2FA}
                             className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
                                 settings.app.security?.forceAdmin2FA ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-700'
                             }`}

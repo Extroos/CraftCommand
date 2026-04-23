@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Webhook, Plus, Trash2, Play, Check, AlertCircle, Loader2, Save, X, Settings2, Bell, Link, Info, Activity } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { STAGGER_CONTAINER, STAGGER_ITEM } from '../../../styles/motion';
 
 import { API } from '@core/services/api';
@@ -11,17 +12,19 @@ interface ExtensionsManagerProps {
     serverId: string;
 }
 
-const AVAILABLE_TRIGGERS: { value: WebhookTrigger; label: string; description: string }[] = [
-    { value: 'SERVER_START', label: 'Server Start', description: 'Triggered when the server finishes starting up.' },
-    { value: 'SERVER_STOP', label: 'Server Stop', description: 'Triggered when the server is stopped.' },
-    { value: 'SERVER_CRASH', label: 'Server Crash', description: 'Triggered when the server process crashes.' },
-    { value: 'BACKUP_COMPLETE', label: 'Backup Complete', description: 'Triggered after a successful backup.' },
-    { value: 'PLAYER_JOIN', label: 'Player Join', description: 'Triggered when a player connects to the server.' },
-    { value: 'PLAYER_LEAVE', label: 'Player Leave', description: 'Triggered when a player disconnects.' },
-];
-
 export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }) => {
+    const { t } = useTranslation();
     const { addToast } = useToast();
+    
+    const AVAILABLE_TRIGGERS: { value: WebhookTrigger; label: string; description: string }[] = [
+        { value: 'SERVER_START', label: t('settings.extensions.triggers.SERVER_START'), description: t('settings.extensions.triggers.SERVER_START_DESC') },
+        { value: 'SERVER_STOP', label: t('settings.extensions.triggers.SERVER_STOP'), description: t('settings.extensions.triggers.SERVER_STOP_DESC') },
+        { value: 'SERVER_CRASH', label: t('settings.extensions.triggers.SERVER_CRASH'), description: t('settings.extensions.triggers.SERVER_CRASH_DESC') },
+        { value: 'BACKUP_COMPLETE', label: t('settings.extensions.triggers.BACKUP_COMPLETE'), description: t('settings.extensions.triggers.BACKUP_COMPLETE_DESC') },
+        { value: 'PLAYER_JOIN', label: t('settings.extensions.triggers.PLAYER_JOIN'), description: t('settings.extensions.triggers.PLAYER_JOIN_DESC') },
+        { value: 'PLAYER_LEAVE', label: t('settings.extensions.triggers.PLAYER_LEAVE'), description: t('settings.extensions.triggers.PLAYER_LEAVE_DESC') },
+    ];
+
     const [webhooks, setWebhooks] = useState<WebhookConfig[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -45,7 +48,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
             const data = await API.getWebhooks(serverId);
             setWebhooks(data);
         } catch (e: any) {
-            addToast('error', 'Fetch Failed', e.message || 'Failed to load webhooks');
+            addToast('error', t('settings.extensions.fetch_failed'), e.message || t('settings.extensions.fetch_failed_desc'));
         } finally {
             setIsLoading(false);
         }
@@ -53,19 +56,19 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
 
     const handleCreate = async () => {
         if (!form.name || !form.url) {
-            addToast('warning', 'Missing Info', 'Please provide a name and URL for the webhook.');
+            addToast('warning', t('settings.extensions.missing_info'), t('settings.extensions.missing_info_desc'));
             return;
         }
 
         setIsSaving(true);
         try {
             await API.createWebhook(serverId, form);
-            addToast('success', 'Webhook Created', 'Extension has been added successfully.');
+            addToast('success', t('settings.extensions.create_success'), t('settings.extensions.create_success_desc'));
             setShowAddForm(false);
             setForm({ name: '', url: '', enabled: true, triggers: ['SERVER_CRASH', 'SERVER_START'] });
             loadWebhooks();
         } catch (e: any) {
-            addToast('error', 'Creation Failed', e.message || 'Failed to create webhook');
+            addToast('error', t('settings.extensions.create_failed'), e.message || 'Failed to create webhook');
         } finally {
             setIsSaving(false);
         }
@@ -74,10 +77,10 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
     const handleDelete = async (id: string) => {
         try {
             await API.deleteWebhook(id);
-            addToast('success', 'Webhook Deleted', 'Extension removed.');
+            addToast('success', t('settings.extensions.delete_success'), t('settings.extensions.delete_success_desc'));
             loadWebhooks();
         } catch (e: any) {
-            addToast('error', 'Delete Failed', e.message || 'Failed to remove webhook');
+            addToast('error', t('settings.extensions.delete_failed'), e.message || 'Failed to remove webhook');
         }
     };
 
@@ -86,12 +89,12 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
         try {
             const res = await API.testWebhook(id);
             if (res.success) {
-                addToast('success', 'Test Success', `Webhook responded with status ${res.status}`);
+                addToast('success', t('settings.extensions.test_success'), t('settings.extensions.test_success_desc', { status: res.status }));
             } else {
-                addToast('error', 'Test Failed', `Webhook responded with status ${res.status}`);
+                addToast('error', t('settings.extensions.test_failed'), t('settings.extensions.test_failed_desc', { status: res.status }));
             }
         } catch (e: any) {
-            addToast('error', 'Test Error', e.message || 'Failed to trigger test webhook');
+            addToast('error', t('settings.extensions.test_error'), e.message || t('settings.extensions.test_error_desc'));
         } finally {
             setTestingId(null);
         }
@@ -121,8 +124,8 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                         <Webhook size={14} className="text-primary/70" />
                     </div>
                     <div>
-                        <h3 className="text-xs font-bold text-foreground/90 uppercase tracking-wider">Webhook Extensions</h3>
-                        <p className="text-[9px] text-muted-foreground/50 font-medium tracking-tight">Send webhook notifications when events happen.</p>
+                        <h3 className="text-xs font-bold text-foreground/90 uppercase tracking-wider">{t('settings.extensions.title')}</h3>
+                        <p className="text-[9px] text-muted-foreground/50 font-medium tracking-tight">{t('settings.extensions.subtitle')}</p>
                     </div>
                 </div>
                 <button
@@ -130,7 +133,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                     className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-1.5 rounded-md text-[10px] font-bold tracking-tight flex items-center gap-2 transition-all shadow-sm"
                 >
                     {showAddForm ? <X size={12} /> : <Plus size={12} />}
-                    {showAddForm ? 'Cancel' : 'New Extension'}
+                    {showAddForm ? t('common.cancel') : t('settings.extensions.new')}
                 </button>
             </div>
 
@@ -146,11 +149,11 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1.5 group">
                                     <label className="text-[11px] font-bold text-muted-foreground/80 lowercase tracking-normal flex items-center gap-1.5">
-                                        <Info size={10} className="text-primary/60" /> Display Name
+                                        <Info size={10} className="text-primary/60" /> {t('settings.extensions.display_name')}
                                     </label>
                                     <input
                                         type="text"
-                                        placeholder="Discord Server Alerts"
+                                        placeholder={t('settings.extensions.placeholder_name')}
                                         value={form.name}
                                         onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
                                         className="w-full bg-background border border-border/60 rounded-md px-3 py-1.5 text-[11px] font-semibold text-foreground outline-none focus:border-primary transition-colors"
@@ -158,11 +161,11 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                                 </div>
                                 <div className="space-y-1.5 group">
                                     <label className="text-[11px] font-bold text-muted-foreground/80 lowercase tracking-normal flex items-center gap-1.5">
-                                        <Link size={10} className="text-primary/60" /> Webhook URL
+                                        <Link size={10} className="text-primary/60" /> {t('settings.extensions.webhook_url')}
                                     </label>
                                     <input
                                         type="text"
-                                        placeholder="https://discord.com/api/webhooks/..."
+                                        placeholder={t('settings.extensions.placeholder_url')}
                                         value={form.url}
                                         onChange={e => setForm(prev => ({ ...prev, url: e.target.value }))}
                                         className="w-full bg-background border border-border/60 rounded-md px-3 py-1.5 text-[11px] font-mono text-primary/80 outline-none focus:border-primary transition-colors"
@@ -172,7 +175,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
 
                             <div className="space-y-2">
                                 <label className="text-[11px] font-bold text-muted-foreground/80 lowercase tracking-normal flex items-center gap-1.5">
-                                    <Bell size={10} className="text-primary/60" /> Event Subscriptions
+                                    <Bell size={10} className="text-primary/60" /> {t('settings.extensions.event_subscriptions')}
                                 </label>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-2">
                                     {AVAILABLE_TRIGGERS.map(t => (
@@ -204,7 +207,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                                     className="bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-1.5 rounded-md text-[10px] font-bold tracking-tight flex items-center gap-2 transition-all shadow-sm"
                                 >
                                     {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                    {isSaving ? 'Registering...' : 'Register Webhook'}
+                                    {isSaving ? t('settings.extensions.registering') : t('settings.extensions.register_btn')}
                                 </button>
                             </div>
                         </div>
@@ -216,7 +219,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                 {isLoading ? (
                     <div className="py-12 flex flex-col items-center gap-3 text-muted-foreground/20">
                         <Loader2 size={24} className="animate-spin" />
-                        <span className="text-[10px] font-bold tracking-[0.2em] uppercase">Checking Integrations</span>
+                        <span className="text-[10px] font-bold tracking-[0.2em] uppercase">{t('settings.extensions.checking_integrations')}</span>
                     </div>
                 ) : webhooks.length === 0 ? (
                     <motion.div 
@@ -225,8 +228,8 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                     >
                         <Webhook size={32} strokeWidth={1} />
                         <div>
-                            <h4 className="text-[11px] font-bold text-foreground">Zero Integrations</h4>
-                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Automate your workflow by pushing events to external services.</p>
+                            <h4 className="text-[11px] font-bold text-foreground">{t('settings.extensions.zero_integrations')}</h4>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{t('settings.extensions.empty_desc')}</p>
                         </div>
                     </motion.div>
                 ) : (
@@ -247,10 +250,10 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                                             {wh.enabled ? (
                                                 <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase tracking-widest border border-emerald-500/20 shadow-sm shadow-emerald-500/5">
                                                     <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                    Online
+                                                    {t('settings.extensions.online')}
                                                 </div>
                                             ) : (
-                                                <span className="px-1.5 py-0.5 rounded-[4px] bg-muted/20 text-muted-foreground/40 text-[8px] font-black uppercase tracking-widest border border-border/20">Muted</span>
+                                                <span className="px-1.5 py-0.5 rounded-[4px] bg-muted/20 text-muted-foreground/40 text-[8px] font-black uppercase tracking-widest border border-border/20">{t('settings.extensions.muted')}</span>
                                             )}
                                         </div>
                                         <div className="flex items-center gap-2 mt-1">
@@ -277,14 +280,14 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ serverId }
                                         onClick={() => handleTest(wh.id)}
                                         disabled={testingId === wh.id}
                                         className="p-2 hover:bg-emerald-500/10 rounded-md text-muted-foreground/40 hover:text-emerald-500 transition-colors shadow-none"
-                                        title="Send Test"
+                                        title={t('settings.extensions.send_test')}
                                     >
                                         {testingId === wh.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                                     </button>
                                     <button
                                         onClick={() => handleDelete(wh.id)}
                                         className="p-2 hover:bg-rose-500/10 rounded-md text-muted-foreground/40 hover:text-rose-500 transition-colors shadow-none"
-                                        title="Delete Webhook"
+                                        title={t('settings.extensions.delete_webhook')}
                                     >
                                         <Trash2 size={14} />
                                     </button>

@@ -2,12 +2,12 @@
 
 Self-hosted Node.js management panel for Minecraft (Java & Bedrock). Built for process supervision, automated crash recovery, and integrated mod management.
 
-![version](https://img.shields.io/badge/version-v1.13.0-emerald)
+![version](https://img.shields.io/badge/version-v1.13.2-emerald)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)
 ![license](https://img.shields.io/badge/license-AGPLv3-blue.svg)
 
 > **BETA SOFTWARE**: This project is now in a technically verified Beta state.
-> Tested primarily on Windows 11 and Ubuntu 22.04 LTS. Proceed with caution in production.
+> Fully tested on Windows 11, Ubuntu 22.04 LTS, and Docker (Compose).
 
 ---
 
@@ -32,25 +32,25 @@ CraftCommand is a web panel that lets you create, configure, start, stop, and mo
 **What doesn't work yet (or is incomplete):**
 
 -     **Linux & macOS support**     Full native support via `run_CraftCommand.sh`. Includes `systemd` units for panel and agent processes.
--     **Remote Agent Support (One-Click)**     Secure, token-based node enrollment. Manage 100+ physical servers from one central panel.
--     **Docker & Scalability**     `docker-compose.yml` runs both the backend and agents. Integrated SQLite storage for large-scale setups.
+-     **Remote Agent Support**     Secure, token-based node enrollment. Manage 100s of physical servers from one central panel.
+-     **Docker & Scalability**     `docker-compose.yml` runs both the backend and agents. One-click deployment with shared context support.
 
 ---
 
 ## How It Works (Architecture)
 
-CraftCommand implements a **Decoupled Control Plane** architecture, separating the management logic from the execution environment. This allows for high-density local management and seamless multi-node scaling.
+The web panel (backend) and the Minecraft processes run as separate components. The backend handles authentication, configuration, and the UI. "Runners" handle the actual server processes. This separation lets you optionally manage servers on remote machines.
 
-### Core Architectural Layers
+### Components
 
-1.  **Control Plane (Panel Backend)**: A Node.js/Express service responsible for authentication (JWT/TOTP), global configuration management, and the centralized **Diagnostic Engine**. It maintains a stateless relationship with the Runners.
-2.  **Execution Plane (Runners)**: Pluggable bridges that manage the lifecycle of Minecraft processes.
-    - **NativeRunner**: Direct process management via \child_process.spawn()\. Uses a **Heuristic Top-Down Aggregator** to monitor process trees with minimal CPU overhead.
-    - **DockerRunner**: Interfaces with the \docker.sock\ to manage containers with hardware-level isolation.
-    - **RemoteRunner**: A WebSocket-based bridge that proxies commands to remote agents, allowing a single panel to manage servers across different physical locations.
-3.  **Data Plane (Minecraft Instance)**: The actual Java or Bedrock process, monitored via stdout/stdin streams and periodic health checks.
+1.  **Panel Backend**: Node.js/Express service. Handles auth (JWT/TOTP), configuration, and crash diagnosis. Does not run Minecraft processes directly — it delegates to runners.
+2.  **Runners**: The part that actually starts and stops Minecraft.
+    - **NativeRunner**: Spawns `java -jar server.jar` as a child process on the same machine. Monitors the process tree for orphaned children.
+    - **DockerRunner**: Creates containers via the Docker socket (`docker.sock`) for hardware-isolated servers.
+    - **RemoteRunner**: Forwards commands over WebSocket to an agent running on a different machine.
+3.  **Minecraft Process**: The actual Java or Bedrock server. The panel reads its console output (`stdout`) and sends commands via `stdin`.
 
-### Technical System Overview
+### System Overview
 
 ```
                       +---------------------------------+
@@ -61,8 +61,8 @@ CraftCommand implements a **Decoupled Control Plane** architecture, separating t
                                WebSocket (Socket.IO)
                                        |
                       +---------------------------------+
-                      |    Backend (Control Plane)      |
-                      |  (Diagnostics + Orchestration)  |
+                      |         Panel Backend           |
+                      |   (Config + Crash Diagnosis)    |
                       +---------------------------------+
                         |              |              |
                  +--------------+ +-----------+ +---------------+
@@ -174,12 +174,12 @@ Recent community audits have been addressed with the following implementations:
 
 ## Current Status
 
-**Version:** 1.13.0 (April 2026)
+**Version:** 1.13.2 (April 2026)
 **Maturity:** Beta Feature-complete, technically verified for production-like environments.
 
 | What                     | Status  | Notes                             |
 | ------------------------ | ------- | --------------------------------- |
-| Windows single-machine   | Works   | Verified 100% parity with Linux   |
+| Windows single-machine   | Works   | Cross-platform verified           |
 | Multi-server management  | Works   | Supports 100s of active instances |
 | User management & 2FA    | Works   | Role-based permissions support    |
 | Crash recovery           | Works   | 40+ diagnostic auto-fix patterns  |

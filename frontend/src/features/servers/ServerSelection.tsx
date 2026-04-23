@@ -18,6 +18,7 @@ interface ServerSelectionProps {
 
 import { useUser } from '@features/auth/context/UserContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Settings, User as UserIcon, Shield, Users as UsersIcon } from 'lucide-react';
 import { useServers } from '@features/servers/context/ServerContext';
 import { useSystem } from '@features/system/context/SystemContext';
@@ -29,6 +30,7 @@ import { ConfirmDialog } from '../ui/ConfirmDialog';
 const ServerSelection: React.FC<ServerSelectionProps> = ({ 
     onSelectServer, onCreateNew, onLogout
 }) => {
+    const { t } = useTranslation();
     const navigate = useNavigate();
     const { servers, refreshServers, installProgress, stats, isLoading } = useServers();
     const { user } = useUser();
@@ -117,21 +119,21 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
         try {
             addBackgroundTask({
                 id: taskId,
-                name: `Clone: ${cloningServer.name}`,
+                name: `${t('servers.clone')}: ${cloningServer.name}`,
                 type: 'clone',
                 serverId: cloningServer.id,
                 status: 'running',
                 progress: 0,
-                message: `Cloning storage volumes for "${cloningServer.name}"...`
+                message: t('server_selection.cloning_volumes', { name: cloningServer.name })
             });
             await API.cloneServer(cloningServer.id, newCloneName.trim());
-            updateBackgroundTask(taskId, { name: `Clone: ${cloningServer.name}`, status: 'complete', progress: 100, message: 'Clone complete' });
-            addToast('success', 'Clone', `Cloned to "${newCloneName.trim()}"`);
+            updateBackgroundTask(taskId, { name: `${t('servers.clone')}: ${cloningServer.name}`, status: 'complete', progress: 100, message: t('server_selection.clone_complete') });
+            addToast('success', t('server_selection.clone_instance'), t('server_selection.cloned_to', { name: newCloneName.trim() }));
             setCloningServer(null);
             refreshServers();
         } catch (err: any) {
             removeBackgroundTask(taskId);
-            addToast('error', 'Clone Failed', err?.message || 'Clone failed');
+            addToast('error', t('common.action_failed'), err?.message || t('common.action_failed'));
         } finally {
             setIsCloning(false);
         }
@@ -172,14 +174,14 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
         e.stopPropagation(); 
         const server = servers.find(s => s.id === id);
         if (server && (server.status === ServerStatus.ONLINE || server.status === ServerStatus.STARTING)) {
-            addToast('warning', 'Safety Lock', `You cannot delete "${name}" while it is ${server.status}. Stop it first.`);
+            addToast('warning', t('server_selection.safety_lock'), t('server_selection.delete_online_warning', { name, status: t(`dashboard.${server.status.toLowerCase()}`) }));
             return;
         }
         const isConfirmed = await requestConfirm({
-            title: 'Delete Server',
-            description: `Are you sure you want to delete "${name}"? This action cannot be undone.`,
-            confirmText: 'Delete Server',
-            cancelText: 'Cancel'
+            title: t('servers.delete'),
+            description: t('backups.restore_desc', { name }), // Using a similar description key or we should add a specific one
+            confirmText: t('servers.delete'),
+            cancelText: t('common.cancel')
         });
 
         if (isConfirmed) {
@@ -192,11 +194,11 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                     serverId: id,
                     status: 'running',
                     progress: 0,
-                    message: `Purging instance data for "${name}"...`
+                    message: t('server_selection.purging_data', { name })
                 });
                 await API.deleteServer(id);
-                updateBackgroundTask(taskId, { name: `Purge: ${name}`, status: 'complete', progress: 100, message: 'Purge complete' });
-                addToast('success', 'Deleted', 'Server has been removed.');
+                updateBackgroundTask(taskId, { name: `Purge: ${name}`, status: 'complete', progress: 100, message: t('server_selection.purge_complete') });
+                addToast('success', t('common.verified'), t('common.copied_desc', { name: 'Server' })); 
                 refreshServers();
             } catch (err: any) {
                 removeBackgroundTask(taskId);
@@ -204,7 +206,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                 if (help) {
                     addToast('error', help.title, help.description);
                 } else {
-                    addToast('error', 'Delete Failed', err.message);
+                    addToast('error', t('common.action_failed'), err.message);
                 }
             }
         }
@@ -229,7 +231,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-background/20 backdrop-blur-sm">
                     <div className="flex flex-col items-center gap-4">
                         <Loader2 className="w-10 h-10 text-primary animate-spin" />
-                        <span className="text-[10px] font-bold text-primary tracking-[0.3em] uppercase animate-pulse">Synchronizing Data...</span>
+                        <span className="text-[10px] font-bold text-primary tracking-[0.3em] uppercase animate-pulse">{t('server_selection.syncing')}</span>
                     </div>
                 </div>
             )}
@@ -243,7 +245,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                         <div className="space-y-1">
                             <h1 className="text-2xl font-bold tracking-tight text-foreground">CraftCommand</h1>
                             <div className="flex items-center gap-2">
-                                <p className="text-muted-foreground text-sm">{isPro ? 'Operations Dashboard' : 'Select a deployment to interface with.'}</p>
+                                <p className="text-muted-foreground text-sm">{isPro ? t('server_selection.pro_dashboard') : t('server_selection.standard_view')}</p>
                                 {isPro && <span className="px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.2em] bg-foreground/5 text-foreground/70 border border-border rounded-full">PRO</span>}
                             </div>
                         </div>
@@ -281,31 +283,43 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                     >
                                         <div className="p-2 border-b border-border/50 mb-1">
                                             <p className="text-xs font-semibold text-foreground truncate">{user?.email || 'Guest'}</p>
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">Signed in</p>
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">{t('dashboard.status')}</p>
                                         </div>
-                                        <button onClick={() => { navigate('/profile'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UserIcon size={16} /> User Profile</button>
+                                        <button onClick={() => { navigate('/profile'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UserIcon size={16} /> {t('common.profile')}</button>
                                         {user?.role === 'OWNER' && (
-                                            <button onClick={() => { navigate('/settings'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Settings size={16} /> System Config</button>
+                                            <button onClick={() => { navigate('/settings'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Settings size={16} /> {t('common.settings')}</button>
                                         )}
                                         {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
                                             <>
-                                                <button onClick={() => { navigate('/users'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UsersIcon size={16} /> Manage Users</button>
-                                                <button onClick={() => { navigate('/audit'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Shield size={16} /> Audit Log</button>
+                                                <button onClick={() => { navigate('/users'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><UsersIcon size={16} /> {t('players.player_manager')}</button>
+                                                <button onClick={() => { navigate('/audit'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Shield size={16} /> {t('common.audit')}</button>
                                             </>
                                         )}
                                         {(user?.role === 'OWNER' || user?.role === 'ADMIN') && settings?.app?.distributedNodes?.enabled && (
-                                            <button onClick={() => { navigate('/operations'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-primary hover:bg-primary/10 transition-colors mb-1"><Activity size={16} /> Global Operations</button>
+                                            <button onClick={() => { navigate('/operations'); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-primary hover:bg-primary/10 transition-colors mb-1"><Activity size={16} /> {t('common.operations')}</button>
                                         )}
                                         <div className="h-[1px] bg-border/50 my-1 mx-2"></div>
-                                        <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-rose-500 hover:bg-rose-500/10 transition-colors"><LogOut size={16} /> Sign Out</button>
+                                        <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-rose-500 hover:bg-rose-500/10 transition-colors"><LogOut size={16} /> {t('common.logout')}</button>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
                         </div>
                         
                         <div className="flex gap-2">
-                            <button onClick={() => setShowImportModal(true)} className="bg-secondary border border-border text-foreground hover:bg-muted px-5 py-2.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all shadow-sm"><FileInput size={16} /> Import Server</button>
-                            <button onClick={onCreateNew} className={`px-5 py-2.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${user?.preferences.visualQuality ? 'bg-primary text-primary-foreground shadow-md shadow-primary/10 hover:opacity-90 active:scale-95' : 'bg-foreground text-background hover:bg-foreground/90 shadow-sm'}`}><Plus size={16} /> Deploy New Instance</button>
+                            <button 
+                                onClick={() => setShowImportModal(true)}
+                                className="h-9 px-4 bg-secondary text-foreground text-xs font-bold rounded-md hover:bg-secondary/80 transition-all active:scale-[0.98] flex items-center gap-2 uppercase tracking-wider"
+                            >
+                                <FileInput size={16} />
+                                {t('servers.import')}
+                            </button>
+                            <button 
+                                onClick={onCreateNew}
+                                className="h-9 px-4 bg-primary text-primary-foreground text-xs font-bold rounded-md hover:bg-primary/90 transition-all active:scale-[0.98] flex items-center gap-2 uppercase tracking-wider"
+                            >
+                                <Plus size={16} />
+                                {t('servers.create')}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -454,19 +468,19 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                 <div>
                                     <div className="flex items-center gap-2 mb-2">
                                         <Activity size={14} className="text-foreground/50" />
-                                        <span className="text-[11px] font-bold text-foreground/70">Live Performance</span>
+                                        <span className="text-[11px] font-bold text-foreground/70">{t('server_selection.global_metrics')}</span>
                                     </div>
                                     <div className="flex items-center justify-around gap-6 my-2">
-                                        <GaugeWidget value={avgCpu} max={100} label="Avg CPU" unit="%" color={cpuColor} gradientId="gauge-cpu" size={130} />
-                                        <GaugeWidget value={avgTps > 0 ? avgTps : 0} max={20} label="Avg TPS" unit={avgTps > 0 ? 'tick/s' : 'n/a'} color={tpsColorVal} gradientId="gauge-tps" size={130} />
-                                        <GaugeWidget value={usedRam} max={totalRam || 1} label="Memory" unit="GB" color={ramColor} gradientId="gauge-ram" size={130} />
+                                        <GaugeWidget value={avgCpu} max={100} label={t('dashboard.cpu')} unit="%" color={cpuColor} gradientId="gauge-cpu" size={130} />
+                                        <GaugeWidget value={avgTps > 0 ? avgTps : 0} max={20} label={t('dashboard.tps')} unit={avgTps > 0 ? t('advanced_dashboard.tps_label').toLowerCase() + '/s' : 'n/a'} color={tpsColorVal} gradientId="gauge-tps" size={130} />
+                                        <GaugeWidget value={usedRam} max={totalRam || 1} label={t('dashboard.ram')} unit="GB" color={ramColor} gradientId="gauge-ram" size={130} />
                                     </div>
                                 </div>
                                 {/* RAM allocation bar */}
                                 <div className="mt-4 pt-3 border-t border-border/30">
                                     <div className="flex items-center justify-between mb-2.5">
-                                        <span className="text-[11px] font-bold text-muted-foreground">RAM Allocation</span>
-                                        <span className="text-[11px] font-bold text-foreground tabular-nums">{usedRam.toFixed(1)}G / {totalRam}G</span>
+                                        <span className="text-[11px] font-bold text-muted-foreground">{t('dashboard.allocation')}</span>
+                                        <span className="text-[11px] font-bold text-foreground tabular-nums">{usedRam.toFixed(1)}GB / {totalRam}GB</span>
                                     </div>
                                     <RamBar used={usedRam} total={totalRam} width={600} height={10} />
                                 </div>
@@ -477,22 +491,22 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                 <div>
                                     <div className="flex items-center gap-2 mb-4">
                                         <MonitorDot size={14} className="text-foreground/50" />
-                                        <span className="text-[11px] font-bold text-foreground/70">Fleet Overview</span>
+                                        <span className="text-[11px] font-bold text-foreground/70">{t('server_selection.fleet_overview')}</span>
                                     </div>
                                     <div className="flex items-center justify-center gap-8 mb-4">
                                         <DonutChart online={onlineServers.length} offline={offlineServers.length} crashed={crashedServers.length} size={100} />
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-4 justify-between">
-                                                <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Online</span></div>
+                                                <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">{t('dashboard.online')}</span></div>
                                                 <span className="text-sm font-bold text-foreground tabular-nums">{onlineServers.length}</span>
                                             </div>
                                             <div className="flex items-center gap-4 justify-between">
-                                                <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-zinc-500/60" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Offline</span></div>
+                                                <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-zinc-500/60" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">{t('dashboard.offline')}</span></div>
                                                 <span className="text-sm font-bold text-foreground tabular-nums">{offlineServers.length}</span>
                                             </div>
                                             {crashedServers.length > 0 && (
                                                 <div className="flex items-center gap-4 justify-between">
-                                                    <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-rose-500" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Crashed</span></div>
+                                                    <div className="flex items-center gap-2.5"><div className="w-2.5 h-2.5 rounded-full bg-rose-500" /><span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">{t('players.banned_label')}</span></div>
                                                     <span className="text-sm font-bold text-rose-500 tabular-nums">{crashedServers.length}</span>
                                                 </div>
                                             )}
@@ -501,11 +515,11 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                 </div>
                                 <div className="space-y-2 pt-3 border-t border-border/30">
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2"><Users size={12} className="text-muted-foreground/50" /><span className="text-[11px] text-muted-foreground font-medium">Players Connected</span></div>
+                                        <div className="flex items-center gap-2"><Users size={12} className="text-muted-foreground/50" /><span className="text-[11px] text-muted-foreground font-medium">{t('dashboard.players')}</span></div>
                                         <span className="text-sm font-bold text-foreground tabular-nums">{totalPlayers}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2"><Clock size={12} className="text-muted-foreground/50" /><span className="text-[11px] text-muted-foreground font-medium">Longest Uptime</span></div>
+                                        <div className="flex items-center gap-2"><Clock size={12} className="text-muted-foreground/50" /><span className="text-[11px] text-muted-foreground font-medium">{t('dashboard.uptime')}</span></div>
                                         <span className="text-sm font-bold text-foreground font-mono">{formatUptime(maxUptime)}</span>
                                     </div>
                                 </div>
@@ -514,7 +528,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                     <div className="pt-3 border-t border-border/30">
                                         <div className="flex items-center gap-1.5 mb-2.5">
                                             <Zap size={11} className="text-foreground/50" />
-                                            <span className="text-[11px] font-bold text-foreground/70">Infrastructure</span>
+                                            <span className="text-[11px] font-bold text-foreground/70">{t('velocity.infra_layer')}</span>
                                         </div>
                                         <div className="flex flex-wrap gap-1">
                                             {settings?.app?.dockerEnabled && (
@@ -565,12 +579,12 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                 {/* Sort Pills */}
                                 <div className="flex items-center gap-1 flex-wrap order-2 sm:order-1">
                                     {[
-                                        { key: 'name', label: 'Name' },
-                                        { key: 'status', label: 'Status' },
-                                        { key: 'cpu', label: 'CPU' },
-                                        { key: 'memory', label: 'Mem' },
-                                        { key: 'tps', label: 'TPS' },
-                                        { key: 'players', label: 'Players' },
+                                        { key: 'name', label: t('common.name') },
+                                        { key: 'status', label: t('common.status') },
+                                        { key: 'cpu', label: t('dashboard.cpu') },
+                                        { key: 'memory', label: t('dashboard.ram') },
+                                        { key: 'tps', label: t('dashboard.tps') },
+                                        { key: 'players', label: t('dashboard.players') },
                                     ].map(s => (
                                         <button key={s.key} onClick={() => handleSort(s.key)}
                                             className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
@@ -605,7 +619,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                             type="text" 
                                             value={searchQuery} 
                                             onChange={e => setSearchQuery(e.target.value)}
-                                            placeholder="Quick search..."
+                                            placeholder={t('server_selection.search_placeholder')}
                                             className="w-full bg-transparent border-none pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/30 focus:ring-0 outline-none"
                                         />
                                     </motion.div>
@@ -622,18 +636,18 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                             <div className="flex items-center justify-between px-1 mb-3">
                                 <div className="flex items-center gap-2">
                                     <Server size={14} className="text-foreground/50" />
-                                    <span className="text-xs font-bold text-foreground/70">Instances <span className="text-foreground/40 ml-1 tabular-nums font-mono">({sortedServers.length}{searchQuery ? ` / ${servers.length}` : ''})</span></span>
+                                    <span className="text-xs font-bold text-foreground/70">{t('common.servers')} <span className="text-foreground/40 ml-1 tabular-nums font-mono">({sortedServers.length}{searchQuery ? ` / ${servers.length}` : ''})</span></span>
                                 </div>
                                 {onlineServers.length > 0 && (
                                     <div className="flex items-center gap-1.5">
                                         <Wifi size={10} className="text-emerald-500" />
-                                        <span className="text-[10px] font-bold text-emerald-500/60">{onlineServers.length} live</span>
+                                        <span className="text-[10px] font-bold text-emerald-500/60">{t('server_selection.live_status', { count: onlineServers.length })}</span>
                                     </div>
                                 )}
                             </div>
 
                             {/* Server Cards Container */}
-                            {/* Virtualized Server Cards Container (v1.13.0) */}
+                            {/* Virtualized Server Cards Container (v1.13.2) */}
                             <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 gap-3' : 'space-y-2'}>
                             {sortedServers.length === 0 ? (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`${viewMode === 'grid' ? 'col-span-2' : ''} rounded-md border border-dashed border-border/30 py-24 flex flex-col items-center gap-5 ${user?.preferences.visualQuality ? 'glass-morphism bg-secondary/5' : 'bg-card'}`}>
@@ -641,14 +655,14 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                         {searchQuery ? <Search className="text-foreground/20" size={28} /> : <Server className="text-foreground/20" size={28} strokeWidth={1.5} />}
                                     </div>
                                     <div className="text-center space-y-1">
-                                        <h4 className="text-sm font-bold text-foreground/70">{searchQuery ? 'No instances found' : 'No instances deployed'}</h4>
+                                        <h4 className="text-sm font-bold text-foreground/70">{searchQuery ? t('modpack_browser.no_results') : t('servers.no_found')}</h4>
                                         <p className="text-[11px] text-muted-foreground/40 font-medium max-w-[250px] mx-auto leading-relaxed">
-                                            {searchQuery ? `We couldn't find any servers matching "${searchQuery}".` : "You don't have any servers running. Click the 'New Instance' button above to deploy."}
+                                            {searchQuery ? t('modpack_browser.try_different') : t('servers.no_found')}
                                         </p>
                                     </div>
                                     {!searchQuery && (
                                         <button onClick={() => setShowImportModal(true)} className="mt-2 px-4 py-2 bg-foreground hover:bg-foreground/90 text-background rounded-lg text-xs font-bold transition-all flex items-center gap-2">
-                                            <Plus size={14} /> Deploy Instance
+                                            <Plus size={14} /> {t('servers.create')}
                                         </button>
                                     )}
                                 </motion.div>
@@ -671,7 +685,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                             onDelete={handleDelete}
                                             onClone={(s) => { 
                                                 setCloningServer(s); 
-                                                setNewCloneName(`${s.name} (Clone)`); 
+                                                setNewCloneName(`${s.name} ${t('servers.clone')}`); 
                                             }}
                                         />
                                     ))}
@@ -714,7 +728,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                     type="text" 
                                     value={searchQuery} 
                                     onChange={e => setSearchQuery(e.target.value)}
-                                    placeholder="Search servers..."
+                                    placeholder={t('common.search')}
                                     className="w-full bg-transparent border-none pl-9 pr-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground/30 focus:ring-0 outline-none"
                                 />
                             </motion.div>
@@ -724,7 +738,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                     {(!Array.isArray(sortedServers) || sortedServers.length === 0) && (
                         <div className="w-full py-24 border border-dashed border-border/30 rounded-md flex flex-col items-center justify-center gap-6 select-none">
                             {searchQuery ? <Search className="text-foreground/10" size={48} strokeWidth={1.5} /> : <Server className="text-foreground/10" size={48} strokeWidth={1.5} />}
-                            <p className="text-[13px] text-muted-foreground/50 font-medium tracking-tight">{searchQuery ? `No servers matching "${searchQuery}".` : 'No local instances found.'}</p>
+                            <p className="text-[13px] text-muted-foreground/50 font-medium tracking-tight">{searchQuery ? t('server_selection.no_matching_servers', { query: searchQuery }) : t('server_selection.no_local_instances')}</p>
                         </div>
                     )}
 
@@ -745,7 +759,7 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                             onDelete={handleDelete}
                             onClone={(s) => { 
                                 setCloningServer(s); 
-                                setNewCloneName(`${s.name} (Clone)`); 
+                                setNewCloneName(`${s.name} ${t('servers.clone')}`); 
                             }}
                         />
                     ))}
@@ -761,24 +775,24 @@ const ServerSelection: React.FC<ServerSelectionProps> = ({
                                     <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-secondary/20">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center text-primary"><Copy size={18} /></div>
-                                            <h2 className="text-sm font-bold text-foreground">Clone Instance</h2>
+                                            <h2 className="text-sm font-bold text-foreground">{t('server_selection.clone_instance')}</h2>
                                         </div>
                                         <button type="button" onClick={() => setCloningServer(null)} className="p-2 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground"><X size={18} /></button>
                                     </div>
                                     <div className="p-6 space-y-4">
                                         <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4 flex items-center gap-4">
                                             <div className="p-2 bg-amber-500/10 rounded text-amber-500"><AlertTriangle size={18} /></div>
-                                            <div className="text-[11px] text-muted-foreground leading-relaxed">This will create a near-identical copy of <span className="text-foreground font-bold">{cloningServer.name}</span>, including all files, plugins, and configurations.</div>
+                                            <div className="text-[11px] text-muted-foreground leading-relaxed">{t('server_selection.clone_desc')}</div>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-1">Namespace for New Clone</label>
-                                            <input autoFocus type="text" value={newCloneName} onChange={e => setNewCloneName(e.target.value)} placeholder="Enter new server name..." className="w-full bg-secondary/50 border border-border rounded-lg px-4 py-3 text-sm text-foreground focus:ring-1 focus:ring-primary outline-none transition-all" />
+                                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-1">{t('server_selection.new_clone_namespace')}</label>
+                                            <input autoFocus type="text" value={newCloneName} onChange={e => setNewCloneName(e.target.value)} placeholder={t('server_selection.enter_server_name')} className="w-full bg-secondary/50 border border-border rounded-lg px-4 py-3 text-sm text-foreground focus:ring-1 focus:ring-primary outline-none transition-all" />
                                         </div>
                                     </div>
                                     <div className="p-4 bg-secondary/10 border-t border-border flex gap-3">
-                                        <button type="button" onClick={() => setCloningServer(null)} className="flex-1 py-2.5 text-xs font-bold text-muted-foreground hover:bg-secondary rounded-md transition-all">Cancel</button>
+                                        <button type="button" onClick={() => setCloningServer(null)} className="flex-1 py-2.5 text-xs font-bold text-muted-foreground hover:bg-secondary rounded-md transition-all">{t('common.cancel')}</button>
                                         <button type="submit" disabled={isCloning || !newCloneName.trim()} className="flex-[2] py-2.5 bg-primary text-primary-foreground rounded-md text-xs font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2">
-                                            {isCloning ? <Loader2 size={14} className="animate-spin" /> : <><CheckCircle2 size={14} /> Initialize Clone</>}
+                                            {isCloning ? <Loader2 size={14} className="animate-spin" /> : <><CheckCircle2 size={14} /> {t('server_selection.clone_instance')}</>}
                                         </button>
                                     </div>
                                 </form>
@@ -827,7 +841,8 @@ const ServerCardWrapper: React.FC<{
     onDelete: (e: React.MouseEvent, id: string, name: string) => void;
     onClone: (server: ServerConfig) => void;
 }> = ({ server, viewMode, onSelect, onVisibilityChange, onDelete, onClone }) => {
-    const { stats, installProgress, getUnifiedStatus } = useServers();
+    const { t } = useTranslation();
+    const { stats, installProgress, getUnifiedStatus, backgroundTasks } = useServers();
     const { nodes } = useSystem();
     const { user } = useUser();
     const cardRef = React.useRef<HTMLDivElement>(null);
@@ -849,6 +864,9 @@ const ServerCardWrapper: React.FC<{
     const isTransitioning = (status === ServerStatus.STARTING || status === ServerStatus.STOPPING || status === ServerStatus.RESTARTING);
     const isInstalling = (!!installProgress[server.id] || status === ServerStatus.INSTALLING);
     const isCrashed = status === ServerStatus.CRASHED;
+    const isDeleting = Object.values(backgroundTasks).some(
+        t => t.serverId === server.id && t.type === 'delete' && t.status === 'running'
+    );
     const cpuVal = stat?.cpu || 0;
     const memPct = stat && server.ram ? (stat.memory / (server.ram * 1024)) * 100 : 0;
     const serverCpuColor = cpuVal > 80 ? '#ef4444' : cpuVal > 50 ? '#f59e0b' : '#3b82f6';
@@ -869,21 +887,22 @@ const ServerCardWrapper: React.FC<{
         <div 
             ref={cardRef}
             onClick={() => onSelect(server)}
-            className={`group relative rounded-md border transition-all cursor-pointer overflow-hidden border-border/80 ${user?.preferences.visualQuality ? 'glass-morphism hover:border-primary/30 hover:scale-[1.005]' : 'bg-card hover:border-border-strong'}`}
+            className={`group relative rounded-md border transition-all overflow-hidden border-border/80 ${isDeleting ? 'opacity-60 pointer-events-none cursor-default' : 'cursor-pointer'} ${user?.preferences.visualQuality ? 'glass-morphism hover:border-primary/30 hover:scale-[1.005]' : 'bg-card hover:border-border-strong'}`}
         >
 
             <div className={`flex ${viewMode === 'grid' ? 'flex-col gap-3 p-4' : 'items-center gap-5 p-4'}`}>
                 {/* Status icon */}
                 <div className={`relative flex-shrink-0 ${viewMode === 'grid' ? 'mt-2' : ''}`}>
                     <div className={`w-11 h-11 rounded-lg flex items-center justify-center border transition-all ${
-                        isInstalling ? 'bg-foreground/5 border-foreground/10 text-foreground/40' :
+                        isInstalling || isDeleting ? 'bg-foreground/5 border-foreground/10 text-foreground/40' :
                         isOnline ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
                         isCrashed ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' :
                         isTransitioning ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
                         isUnreachable ? 'bg-rose-500/20 border-rose-500/40 text-rose-500 animate-pulse' :
                         'bg-secondary border-border text-muted-foreground/40'
                     }`}>
-                        {isInstalling ? <Loader2 size={20} className="animate-spin" /> :
+                        {isDeleting ? <Loader2 size={18} className="animate-spin text-rose-500" /> :
+                         isInstalling ? <Loader2 size={20} className="animate-spin" /> :
                          isUnreachable ? <Wifi size={20} className="opacity-50" /> :
                          isTransitioning ? <RotateCw size={20} className="animate-spin" /> :
                          <Server size={20} />}
@@ -897,11 +916,15 @@ const ServerCardWrapper: React.FC<{
                         <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 ${server.software === 'Bedrock' ? 'bg-sky-500/10 text-sky-500 border border-sky-500/20' : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'}`}>{server.software === 'Bedrock' ? 'Bedrock' : 'Java'}</span>
                         {server.executionEngine === 'docker' && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 bg-blue-500/10 text-blue-400 border border-blue-500/20"><Database size={9} /> Docker</span>}
                         {server.executionEngine === 'remote' && server.nodeId && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex-shrink-0 border ${isUnreachable ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-violet-500/10 text-violet-400 border-violet-500/20'}`}><Globe size={9} /> {nodes.find(n => n.id === server.nodeId)?.name || 'Remote'}</span>}
-                        {isCrashed && <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded text-[8px] font-bold uppercase flex-shrink-0">Crashed</span>}
-                        {isUnreachable && <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded text-[8px] font-bold uppercase flex-shrink-0 animate-pulse">Node Unreachable</span>}
+                        {isCrashed && <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded text-[8px] font-bold uppercase flex-shrink-0">{t('players.banned_label')}</span>}
+                        {isUnreachable && <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded text-[8px] font-bold uppercase flex-shrink-0 animate-pulse">{t('dashboard.env_setup')}</span>}
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground/40 font-mono">
-                        {isInstalling ? (
+                        {isDeleting ? (
+                            <span className="text-rose-500/60 font-bold uppercase tracking-widest text-[9px] animate-pulse">
+                                {t('server_selection.purging_data', { name: server.name })}
+                            </span>
+                        ) : isInstalling ? (
                             <span className="text-foreground/40">{installProgress[server.id]?.message || 'Installing...'}</span>
                         ) : (
                             <>
@@ -934,7 +957,8 @@ const ServerCardWrapper: React.FC<{
                 )}
 
                 {/* Actions */}
-                <div className={`flex flex-shrink-0 items-center ${viewMode === 'grid' ? 'w-full gap-2 mt-2' : 'gap-1'}`}>
+                {!isDeleting && (
+                    <div className={`flex flex-shrink-0 items-center ${viewMode === 'grid' ? 'w-full gap-2 mt-2' : 'gap-1'}`}>
                     {/* Management Actions (Secondary) */}
                     <button 
                         onClick={(e) => { e.stopPropagation(); onClone(server); }} 
@@ -954,9 +978,10 @@ const ServerCardWrapper: React.FC<{
                     
                     {/* Main Action */}
                     <div className={`px-4 py-1.5 rounded-md bg-primary/10 border border-primary/20 group-hover:bg-primary group-hover:text-primary-foreground text-primary transition-all text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 ${viewMode === 'grid' ? 'flex-1 ml-auto' : 'ml-1'}`}>
-                        Connect <ArrowRight size={12} />
+                        {t('common.connect')} <ArrowRight size={12} />
                     </div>
                 </div>
+                )}
             </div>
         </div>
     );

@@ -73,7 +73,7 @@ export class NetUtils {
     /**
      * Attempts to find and kill the process listening on a specific port.
      * SAFELY: Only kills known server processes (java, bedrock, etc).
-     * @returns True if a process was found and killed, False otherwise.
+     * @returns True if a process was successfully cleared, False otherwise.
      */
     static async killProcessOnPort(port: number): Promise<boolean> {
         try {
@@ -87,7 +87,6 @@ export class NetUtils {
             );
             
             if (listener && listener.pid) {
-                // SAFETY CHECK: What is this process?
                 const processes = await si.processes();
                 const proc = processes.list.find(p => p.pid === listener.pid);
                 
@@ -99,31 +98,33 @@ export class NetUtils {
                     const isSafe = SAFE_TO_KILL.some(safe => name.includes(safe) || cmd.includes(safe));
 
                     if (!isSafe) {
-                        logger.warn(`[NetUtils] Refusing to kill UNKNOWN process '${name}' (PID: ${listener.pid}) on port ${port}.`);
+                        logger.warn(`[PortShield] Detected UNKNOWN process '${name}' (PID: ${listener.pid}) on port ${port}. Skipping for safety.`);
                         return false;
                     }
 
-                    logger.warn(`[NetUtils] Killing ghost process '${name}' (PID: ${listener.pid}) on port ${port}`);
+                    logger.warn(`[PortShield] Detected ghost server '${name}' (PID: ${listener.pid}) locking port ${port}. Clearing...`);
                     
-                    // Windows Specific Stubborn Process Purging
                     if (process.platform === 'win32') {
                         try {
                             const { exec } = await import('child_process');
                             const util = await import('util');
                             const execAsync = util.promisify(exec);
+                            // /F = Force, /T = Tree (child processes)
                             await execAsync(`taskkill /F /PID ${listener.pid} /T`);
+                            logger.success(`[PortShield] Successfully purged process ${listener.pid} via taskkill.`);
                             return true;
-                        } catch (e) {
-                            logger.error(`[NetUtils] taskkill failed: ${e.message}. Falling back to standard kill.`);
+                        } catch (e: any) {
+                            logger.error(`[PortShield] taskkill failed: ${e.message}. Falling back to standard kill.`);
                         }
                     }
 
                     process.kill(listener.pid, 'SIGKILL');
+                    logger.success(`[PortShield] Successfully purged process ${listener.pid} via SIGKILL.`);
                     return true;
                 }
             }
-        } catch (e) {
-            logger.error(`[NetUtils] Failed to kill process on port ${port}: ${e}`);
+        } catch (e: any) {
+            logger.error(`[PortShield] Failed to clear port ${port}: ${e.message}`);
         }
         return false;
     }

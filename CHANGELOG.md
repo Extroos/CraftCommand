@@ -2,9 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
-# Changelog
+## [1.13.2] - 2026-04-12 - UI & Architectural Hardening
 
-All notable changes to this project will be documented in this file.
+### Added
+- **Zustand State Migration**: Transitioned the entire frontend from nested Contexts to a high-performance, modular Zustand store, eliminating re-render cascades and optimizing state lookups.
+- **Multi-Language Feature**: Implemented support for 11 languages with 1:1 schema parity and full structural integrity.
+- **Header Refactoring**: Fully transitioned the navigation Header component to the i18next framework for all supported locales.
+
+### Fixed (Deep State Integrity)
+- **Full State Cleanup**: Implemented zero-trace server deletion that targets ghost state in shared services and the OS host.
+- **Scheduler Memory Pruning**: Fixed a persistent memory leak where deleted servers remained in the global `ScheduleService` task observer map.
+- **Proxy Ghost Link Removal**: Velocity proxies now automatically remove links to deleted backend servers, preventing "Ghost Connectivity" log spam and CPU overhead on the proxy.
+- **OS Firewall Sanitization**: Implemented automatic flushing of host-level firewall rules (`netsh`/`iptables`) created by the automated firewall service. Rules are now tagged with server IDs for deterministic cleanup.
+- **Installer Temp Space**: Fixed a storage leak where `temp_extract` folders and modpack zip files were orphaned if a server was deleted during an active deployment.
+- **Migration Artifact Cleanup**: Added automated daily pruning of legacy `.migrated_` backup folders from previous data migrations.
+- **Collaboration Sync**: Fixed a cross-talk bug where typing indicators were mirrored across all server consoles; they are now correctly siloed by server ID.
+
+### Hardened (System & Infrastructure Audit)
+- **SafeFS Path Guard**: Implemented a system-wide security guard in `SafeFileOperation.ts` that enforces strict directory boundaries. All file writes, moves, and deletions are now validated against authorized root directories (`SERVERS_ROOT`, `DATA_DIR`), preventing path-traversal exploits.
+- **Lifecycle Status Locking**: Hardened `BackupService` and `PluginService` to block restores and installations while the server is `ONLINE` or `STARTING`, eliminating `EBUSY` file-lock conflicts and JAR corruption.
+- **Command Injection Prevention**: Refactored `NativeRunner` to use array-based `spawn` for permissions fixes (`icacls`), bypassing the host shell and eliminating injection risks via manipulated directory paths.
+- **Socket Terminal Sanitization**: Implemented strict length limits and control-character stripping for incoming console commands to prevent DoS attempts and terminal escape sequence exploits.
+- **Reliable Cloud Sync**: Transitioned cloud backup destinations to the `SafeFileOperation` engine, ensuring configuration persistence is atomic and resilient to power loss.
+- **Startup Timeout Cleanup**: Fixed a memory leak in `ProcessManager` where orphaned failure-watchdog timeouts remained in memory after server deletion.
 
 ## [1.13.0] - 2026-04-11 - Infrastructure Hardening
 

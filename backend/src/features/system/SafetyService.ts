@@ -41,27 +41,32 @@ export class SafetyService {
         }
 
         // 2. Check EULA (Definitive Physical Check)
-        const eulaPath = path.join(server.workingDirectory, 'eula.txt');
+        // Bedrock servers do not use Java's EULA system — skip entirely
         let isEulaPhysicallyAccepted = false;
         
-        if (!fs.existsSync(eulaPath)) {
-            // v4.8: If no eula.txt exists, it's effectively NOT accepted because Minecraft will create one and stop.
-            throw new SafetyError(
-                'EULA Not Found. Server failed to start because the Minecraft EULA has not been accepted.',
-                'EULA_NOT_ACCEPTED',
-                { path: eulaPath }
-            );
-        }
+        if (server.software === 'Bedrock') {
+            isEulaPhysicallyAccepted = true; // Bedrock has no EULA file
+        } else {
+            const eulaPath = path.join(server.workingDirectory, 'eula.txt');
+            
+            if (!fs.existsSync(eulaPath)) {
+                throw new SafetyError(
+                    'EULA Not Found. Server failed to start because the Minecraft EULA has not been accepted.',
+                    'EULA_NOT_ACCEPTED',
+                    { path: eulaPath }
+                );
+            }
 
-        const eulaContent = await fs.readFile(eulaPath, 'utf8');
-        isEulaPhysicallyAccepted = eulaContent.match(/^eula\s*=\s*true/m) !== null;
-        
-        if (!isEulaPhysicallyAccepted) {
-            throw new SafetyError(
-                'EULA Not Accepted. Server failed to start because the Minecraft EULA has not been accepted.',
-                'EULA_NOT_ACCEPTED',
-                { path: eulaPath }
-            );
+            const eulaContent = await fs.readFile(eulaPath, 'utf8');
+            isEulaPhysicallyAccepted = eulaContent.match(/^eula\s*=\s*true/m) !== null;
+            
+            if (!isEulaPhysicallyAccepted) {
+                throw new SafetyError(
+                    'EULA Not Accepted. Server failed to start because the Minecraft EULA has not been accepted.',
+                    'EULA_NOT_ACCEPTED',
+                    { path: eulaPath }
+                );
+            }
         }
 
         // 3. Environment Integrity (Directory)

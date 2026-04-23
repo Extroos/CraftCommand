@@ -23,14 +23,37 @@ class ApiService {
         return token ? { 'Authorization': `Bearer ${token}` } : {};
     }
 
+    private async fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 20000) {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+            });
+            clearTimeout(id);
+            return response;
+        } catch (error: any) {
+            clearTimeout(id);
+            if (error.name === 'AbortError') {
+                throw new Error('TIMEOUT');
+            }
+            throw error;
+        }
+    }
+
     private async handleResponse(res: Response, fullPath: string) {
         if (!res.ok) {
             // Session Guard: Auto-logout on auth failure
+            // Note: We avoid immediate redirect if it's a critical background check that might recover.
             if (res.status === 401 || res.status === 403) {
-                console.warn(`[ApiService] Session expired or forbidden (${res.status}). Redirecting to login.`);
-                localStorage.removeItem('cc_token');
+                console.warn(`[ApiService] Session expired or forbidden (${res.status}).`);
+                
+                // Only redirect to login if we ARE NOT already there (prevent loops)
                 if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-                    window.location.href = '/login?expired=true';
+                    // localStorage.removeItem('cc_token'); // We keep it for background re-auth potential
+                    // window.location.href = '/login?expired=true'; // DISABLED global redirect per user request "No forced logout"
                 }
             }
 
@@ -42,63 +65,63 @@ class ApiService {
         return res.json();
     }
 
-    async get(path: string): Promise<any> {
+    async get(path: string, timeoutMs?: number): Promise<any> {
         const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
-        const res = await fetch(fullPath, {
+        const res = await this.fetchWithTimeout(fullPath, {
             headers: this.getAuthHeader()
-        });
+        }, timeoutMs);
         return this.handleResponse(res, fullPath);
     }
 
-    async post(path: string, body: any): Promise<any> {
+    async post(path: string, body: any, timeoutMs?: number): Promise<any> {
         const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
-        const res = await fetch(fullPath, {
+        const res = await this.fetchWithTimeout(fullPath, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 ...this.getAuthHeader()
             },
             body: JSON.stringify(body)
-        });
+        }, timeoutMs);
         return this.handleResponse(res, fullPath);
     }
 
-    async patch(path: string, body: any): Promise<any> {
+    async patch(path: string, body: any, timeoutMs?: number): Promise<any> {
         const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
-        const res = await fetch(fullPath, {
+        const res = await this.fetchWithTimeout(fullPath, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
                 ...this.getAuthHeader()
             },
             body: JSON.stringify(body)
-        });
+        }, timeoutMs);
         return this.handleResponse(res, fullPath);
     }
 
-    async put(path: string, body: any): Promise<any> {
+    async put(path: string, body: any, timeoutMs?: number): Promise<any> {
         const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
-        const res = await fetch(fullPath, {
+        const res = await this.fetchWithTimeout(fullPath, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
                 ...this.getAuthHeader()
             },
             body: JSON.stringify(body)
-        });
+        }, timeoutMs);
         return this.handleResponse(res, fullPath);
     }
 
-    async delete(path: string, body?: any): Promise<any> {
+    async delete(path: string, body?: any, timeoutMs?: number): Promise<any> {
         const fullPath = path.startsWith(API_URL) ? path : `${API_URL}${path}`;
-        const res = await fetch(fullPath, {
+        const res = await this.fetchWithTimeout(fullPath, {
             method: 'DELETE',
             headers: {
                 ...this.getAuthHeader(),
                 ...(body ? { 'Content-Type': 'application/json' } : {})
             },
             body: body ? JSON.stringify(body) : undefined
-        });
+        }, timeoutMs);
         return this.handleResponse(res, fullPath);
     }
 
@@ -113,11 +136,11 @@ class ApiService {
     }
 
     async importLocal(name: string, path: string, config: Partial<ServerConfig> = {}): Promise<ServerConfig> {
-        return this.post('/servers/import/local', { name, path, config });
+        return this.post('/servers/import/local', { name, path, config }, 300000); // 5 minutes
     }
 
     async analyzeLocal(path: string): Promise<ImportAnalysis> {
-        return this.post('/servers/import/analyze-local', { path });
+        return this.post('/servers/import/analyze-local', { path }, 120000); // 2 minutes
     }
 
     async importArchive(name: string, file: File, config: Partial<ServerConfig> = {}): Promise<ServerConfig> {
@@ -126,11 +149,11 @@ class ApiService {
         formData.append('name', name);
         formData.append('config', JSON.stringify(config));
         
-        const res = await fetch(`${API_URL}/servers/import/archive`, {
+        const res = await this.fetchWithTimeout(`${API_URL}/servers/import/archive`, {
             method: 'POST',
             headers: this.getAuthHeader(),
             body: formData
-        });
+        }, 900000); // 15 minutes for large uploads/extractions
         
         if (!res.ok) {
             const data = await res.json();
@@ -144,11 +167,11 @@ class ApiService {
         const formData = new FormData();
         formData.append('file', file);
         
-        const res = await fetch(`${API_URL}/servers/import/analyze-archive`, {
+        const res = await this.fetchWithTimeout(`${API_URL}/servers/import/analyze-archive`, {
             method: 'POST',
             headers: this.getAuthHeader(),
             body: formData
-        });
+        }, 300000); // 5 minutes
         
         if (!res.ok) {
             const data = await res.json();
@@ -270,11 +293,11 @@ class ApiService {
     }
 
     async installServer(id: string, type: 'paper'|'modpack'|'vanilla'|'fabric'|'forge'|'spigot'|'neoforge'|'purpur'|'bedrock'|'velocity', data: any): Promise<void> {
-        await this.post(`/servers/${id}/install`, { type, ...data });
+        await this.post(`/servers/${id}/install`, { type, ...data }, 600000); // 10 minutes for heavy modpacks
     }
     
     async deleteServer(id: string): Promise<void> {
-        await this.delete(`/servers/${id}`);
+        await this.delete(`/servers/${id}`, undefined, 300000); // 5 minutes for deep purge
     }
 
     async fixNodeCapability(nodeId: string, capability: string): Promise<{ ok: boolean, message?: string }> {
@@ -300,7 +323,7 @@ class ApiService {
     }
 
     async installViaSuite(proxyId: string): Promise<void> {
-        await this.post('/network/proxy/install-via-suite', { proxyId });
+        await this.post('/network/proxy/install-via-suite', { proxyId }, 600000); // 10 minutes
     }
     
     async searchFiles(id: string, query: string, dir: string = '.', content: boolean = false): Promise<any[]> {
@@ -345,7 +368,7 @@ class ApiService {
     }
 
     async extractFile(id: string, filePath: string): Promise<void> {
-        await this.post(`/servers/${id}/files/extract`, { filePath });
+        await this.post(`/servers/${id}/files/extract`, { filePath }, 300000); // 5 minutes
     }
 
     async downloadFile(id: string, path: string): Promise<void> {
@@ -421,7 +444,7 @@ class ApiService {
     }
 
     async deleteFiles(id: string, paths: string[]): Promise<void> {
-        await this.post(`/servers/${id}/files/delete-bulk`, { paths });
+        await this.post(`/servers/${id}/files/delete-bulk`, { paths }, 300000); // 5 mins for massive dirs
     }
 
     async moveFile(id: string, source: string, dest: string): Promise<void> {
@@ -483,7 +506,7 @@ class ApiService {
     // --- Backups ---
 
     async createBackup(id: string, description?: string, worldOnly?: boolean): Promise<any> {
-        return this.post(`/servers/${id}/backups`, { description, worldOnly });
+        return this.post(`/servers/${id}/backups`, { description, worldOnly }, 600000); // 10 minutes
     }
 
     async getBackups(id: string): Promise<any[]> {
@@ -491,7 +514,7 @@ class ApiService {
     }
 
     async restoreBackup(id: string, backupId: string, worldOnly?: boolean): Promise<void> {
-        await this.post(`/servers/${id}/backups/${backupId}/restore`, { worldOnly });
+        await this.post(`/servers/${id}/backups/${backupId}/restore`, { worldOnly }, 600000); // 10 minutes
     }
 
     async deleteBackup(id: string, backupId: string): Promise<void> {
@@ -499,8 +522,33 @@ class ApiService {
     }
 
     async downloadBackup(id: string, backupId: string): Promise<void> {
-        // Trigger direct browser download
-        window.open(`${API_URL}/servers/${id}/backups/${backupId}/download`, '_blank');
+        // Trigger authenticated direct browser download
+        const url = `${API_URL}/servers/${id}/backups/${backupId}/download`;
+        const res = await fetch(url, {
+            headers: this.getAuthHeader()
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to initialize download');
+        }
+
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        
+        const disposition = res.headers.get('Content-Disposition');
+        let filename = `backup-${backupId}.zip`;
+        if (disposition && disposition.includes('filename=')) {
+            filename = disposition.split('filename=')[1].replace(/['"]/g, '');
+        }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
     }
 
     async toggleBackupLock(id: string, backupId: string): Promise<{ success: boolean, locked: boolean }> {
@@ -714,6 +762,10 @@ class ApiService {
 
     async checkSystemUpdates(force: boolean = false): Promise<any> {
         return this.post(`/system/update/check?force=${force}`, {});
+    }
+
+    async getPersistenceStatus(): Promise<{ status: 'OK' | 'PATH_DRIFT' | 'UNREGISTERED' | 'ERROR' }> {
+        return this.get('/settings/persistence/status');
     }
 
     async getTemplates(): Promise<ServerTemplate[]> {

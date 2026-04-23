@@ -30,7 +30,7 @@ Updating follows a strict "Trust Nothing" protocol:
 - **Signature Verification**: Every \`manifest.json\` is paired with a \`manifest.sig\`. The panel validates this signature using a local **Ed25519 Public Key** (\`keys/update_public_key.pem\`).
 - **Content Hashing**: Once the manifest is trusted, the panel computes a **SHA256 hash** of the downloaded update bundle. This must match the exact string signed in the manifest. If a single bit differs, the update is aborted.
 
-### 2. Infrastructure Integrity Gate
+### 2. Compatibility Check
 In distributed environments, updating the Panel could orphan older Agents.
 - **Compatibility Audit**: Before installation, the service scans the **Node Registry**. It compares each remote node's \`agentVersion\` against the \`minAgentVersion\` defined in the manifest.
 - **Interlock**: If a node is identified as incompatible, the update is blocked to prevent breaking the cluster connection.
@@ -71,7 +71,7 @@ On Windows hosts, the service executes \`icacls\` permissions grants before star
         icon: <Zap size={18} />,
         description: "StartupManager, Native execution, and Docker orchestration.",
         content: `
-# Server Lifecycle Orchestration
+# Server Startup Pipeline
 
 The execution engine follows a deterministic phase-based startup sequence (Priority 0 -> 1 -> 2) to ensure hardware safety and software compatibility.
 
@@ -99,16 +99,16 @@ The Native Runner manages game servers as host-level child processes:
     // CHAPTER: RESILIENCY
     resiliency_diagnosis: {
         chapter: "Resiliency",
-        title: "Stethoscope Diagnosis",
+        title: "Crash Diagnosis",
         icon: <Activity size={18} />,
         description: "Regex-based log parsing and crash identification.",
         content: `
-# DiagnosisService (Stethoscope)
+# DiagnosisService (Crash Analyzer)
 
-The Diagnosis Service (Codename: **Stethoscope**) performs non-destructive, regex-based log triage to identify the root cause of server failures.
+The Diagnosis Service performs non-destructive, regex-based log triage to identify the root cause of server failures.
 
 ### 1. Throttled System Observation
-To avoid CPU overhead during mass diagnostic scans, the system fetches OS metrics (CPU load, RAM usage, Disk I/O) at a throttled rate of **5 seconds**. If a scan is triggered within 5 seconds of the last poll, the service uses cached telemetry.
+To avoid CPU overhead during mass diagnostic scans, the system fetches OS metrics (CPU load, RAM usage, Disk I/O) at a throttled rate of **5 seconds**. If a scan is triggered within 5 seconds of the last poll, the service uses cached data.
 
 ### 2. Log Triage Patterns (Regex)
 The engine scans the last 1,000 log lines using a deterministic dictionary of rules:
@@ -121,7 +121,7 @@ The engine scans the last 1,000 log lines using a deterministic dictionary of ru
 - **MOD_DEPENDENCY**: High-precision mapping of **100+ common mod packages**. If it detects a crash caused by \`software.bernie.geckolib\`, it identifies **Geckolib** as missing and attempts a Modrinth cross-reference.
 
 ### 3. False Positive Suppression
-As of v1.12.8, the system tracks "Resolved Rules" per server. If a fix has been applied but the server hasn't been restarted yet, any remaining error strings in the log buffer are suppressed to prevent duplicate UI alerts.
+As of v1.12.8, the system tracks "Resolved Rules" per server. If a fix has been applied but the server hasn't been restarted yet, remaining error strings in the log buffer are suppressed to prevent duplicate UI alerts.
 `
     },
     resiliency_repair: {
@@ -135,7 +135,7 @@ As of v1.12.8, the system tracks "Resolved Rules" per server. If a fix has been 
 The Repair Service orchestrates a multi-stage recovery pipeline to keep servers online without administrator intervention.
 
 ### 1. The Recovery Pipeline Stages
-- **STAGE: TRIAGE**: Calls the Stethoscope service to identify a fixable root cause.
+- **STAGE: TRIAGE**: Calls the Diagnosis service to identify a fixable root cause.
 - **STAGE: SNAPSHOT**: Before applying any fix, the system triggers an atomic **Sidecar Backup** labeled "Pre-fix Snapshot" to ensure zero data loss if the fix fails.
 - **STAGE: REPAIR**: Executes the specific fix handler (e.g., swapping a Java version or purging a ghost PID).
 - **STAGE: VERIFY**: Restarts the server and monitors health with **Exponential Backoff** (starting at 60s, doubling per failure) to ensure long-term stability.
@@ -162,9 +162,9 @@ To prevent infinite crash-loops, the system permits a maximum of **3 recovery at
         content: `
 # Cross-Play (Bedrock Bridge)
 
-The Network Fabric enables Bedrock clients to connect to Java Edition servers through automated **Geyser** and **Floodgate** injection.
+CraftCommand can configure Bedrock clients to connect to Java Edition servers through automated **Geyser** and **Floodgate** injection.
 
-### 1. Topology Awareness
+### 1. Network Layout Detection
 The system detects and configures the bridge based on your infrastructure:
 - **Standalone Topology**: Geyser and Floodgate are installed directly on the backend server.
 - **Velocity Topology**: Geyser (the gate) is installed on the **Velocity Proxy**, while Floodgate (the key) is installed on **BOTH** the Proxy and the Backend. This ensures Bedrock players maintain consistent UUIDs and skins across the entire network bridge.
@@ -222,7 +222,7 @@ Upon successful authentication, the node enters the **RECOVERING** state.
 - **PID Reconciliation**: The agent sends an \`agent:sync\` payload containing all currently running Server IDs.
 - **Admission**: The Panel reconciles this list against the database. Only after this sync is complete does the node transition to **ONLINE** and become eligible for new deployment tasks.
 
-### 3. Telemetry Orchestration
+### 3. Log Streaming
 To optimize network bandwidth for high-traffic servers (e.g. 50+ players), the system uses **Log Batching**. Instead of sending every stdout line as a separate packet, the agent coalesces lines into a single \`agent:log-batch\` event.
 
 ### 4. Global Panel IP Push
@@ -453,7 +453,7 @@ const KnowledgeBase: React.FC = () => {
                             <div className="p-4 border-t border-border bg-muted/5 flex items-center justify-between">
                                 <div className="flex items-center gap-3 text-muted-foreground/60 text-[9px] font-bold uppercase tracking-widest">
                                     <Info size={12} className="text-primary/70" />
-                                    <span>Branch ID: 8fe59810-769e-4290-ada8...</span>
+                                    <span>CraftCommand v1.13.0 — Technical Reference</span>
                                 </div>
                                 <div className="text-[9px] font-bold text-muted-foreground opacity-40">
                                     Module Reference: v1.13.0 (Technical)

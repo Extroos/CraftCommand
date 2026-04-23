@@ -166,6 +166,12 @@ const startup = async () => {
         // Start Embedded Agent (if enabled)
         const { localAgentManager } = await import('./features/nodes/LocalAgentManager');
         localAgentManager.initialize();
+
+        // --- Phase 67: Self-Healing Persistence (v3.2) ---
+        const { hostPersistenceService } = await import('./features/system/HostPersistenceService');
+        hostPersistenceService.verifyPersistencePath().catch(err => {
+            logger.error(`[HostPersistence] Startup verification failed: ${err.message}`);
+        });
     } catch (e: any) {
         logger.error(`Service initialization failed: ${e.message}`);
     }
@@ -224,6 +230,17 @@ const startMain = async () => {
     app.use(cors({ origin: CORS_ORIGIN }));
     app.use(compression());
     app.use(express.json({ limit: '1mb' }));
+
+    // Public Health Checks (Bypasses AuthMiddleware)
+    app.get('/health', (req, res) => {
+        let version = 'unknown';
+        try {
+            const versionData = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../version.json'), 'utf-8'));
+            version = versionData.version;
+        } catch (e) {}
+        res.json({ status: 'UP', version });
+    });
+    app.get('/api/health', (req, res) => res.json({ status: 'UP', timestamp: Date.now() }));
 
     // Global Rate Limiting
     const limiter = rateLimit({
@@ -287,7 +304,7 @@ const startMain = async () => {
                 <body>
                     <div class="card">
                         <h1>UI Component Missing</h1>
-                        <p>The Web Dashboard assets (v1.11.3) were not found or are currently being updated.</p>
+                        <p>The Web Dashboard assets (v1.13.2) were not found or are currently being updated.</p>
                         <p>This usually occurs after a partial update or a manual file deletion.</p>
                         <button onclick="runUpdate()">Repair Installation</button>
                         <p id="status" style="margin-top: 1rem; font-size: 0.9rem; color: #94a3b8;"></p>
@@ -362,3 +379,5 @@ const startMain = async () => {
 };
 
 startMain();
+// Reload nudge
+// Reload nudge Phase 2

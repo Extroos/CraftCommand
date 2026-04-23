@@ -14,7 +14,7 @@ Manages ZIP archival, cloud uploads (S3/Sftp), and selective restoration (Full, 
 
 - **Provider Lifecycle**: All cloud destinations MUST implement the `ICloudBackupProvider` interface via the `createCloudProvider` factory.
 - **Concurrency Guard**: Only ONE backup/restore operation allowed per server ID at a time.
-- **Atomic Cloud Sync**: Every local backup creation should verify enabled cloud destinations for immediate upload.
+- **Verified Cloud Sync**: Every local backup creation should verify enabled cloud destinations for immediate upload.
 - **Scope Awareness**: World-only backups must correctly identify world folders based on `server.properties` (`level-name`).
 - **Path Verification**: Restores MUST overwrite existing files but maintain a temporary fallback if the ZIP extraction fails.
 

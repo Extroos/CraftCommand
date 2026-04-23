@@ -1,73 +1,78 @@
 # CraftCommand Node Agent — Docker Image
 #
-# Build:
-#   docker build -t craftcommand-agent .
-#
-# Run:
-#   docker run -d \
-#     --name craftcommand-agent \
-#     -e PANEL_URL=http://host.docker.internal:3001 \
-#     -e NODE_ID=your-node-uuid \
-#     -e NODE_SECRET=your-secret \
-#     -v /opt/mc-servers:/app/servers \
-#     craftcommand-agent
+# Build (RUN FROM ROOT):
+#   docker build -t craftcommand-agent -f agent/Dockerfile .
 
 # ── Stage 1: Build ──
 FROM node:20-slim AS builder
-
 WORKDIR /build
 
-# Copy package files first for better layer caching
-COPY package*.json ./
-RUN npm ci --production=false
+# Copy component package files
+WORKDIR /build/agent
+COPY agent/package*.json ./
+WORKDIR /build/shared
+COPY shared/package*.json ./
 
-# Copy source
+# Install dependencies
+# 1. Shadow shared dependencies at root for cross-component resolution
+RUN npm install fs-extra @types/fs-extra
+
+# 2. Install component-specific dependencies (Fresh Resolution)
+WORKDIR /build/agent
+RUN rm -f package-lock.json && npm install
+RUN mkdir -p dist
+
+# Copy source and build
+WORKDIR /build
 COPY tsconfig.json ./
-COPY src/ ./src/
+COPY agent/ ./agent/
+COPY shared/ ./shared/
 
-# Build TypeScript
-RUN npm run build
+WORKDIR /build/agent
+RUN npm run build && npm prune --omit=dev
 
-# ── Stage 2: Production ──
+# ── Stage 2: JRE Provider ──
+FROM eclipse-temurin:21-jre AS jre-provider
+
+# ── Stage 3: Production ──
 FROM node:20-slim
 
-# Install Java for running Minecraft servers
+# Install runtime tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-21-jre-headless \
     curl \
+    ca-certificates \
+    gnupg \
+    procps \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && chmod a+r /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" | \
+    tee /etc/apt/local.sources.list.d/docker.list > /dev/null \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
+
+# Inject JRE from provider
+ENV JAVA_HOME=/opt/java/openjdk
+COPY --from=jre-provider $JAVA_HOME $JAVA_HOME
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 WORKDIR /app
 
-# Copy built output and production dependencies
-COPY --from=builder /build/package*.json ./
-RUN npm ci --production
-
-COPY --from=builder /build/dist/ ./dist/
+# Copy pruned dependencies and built output
+COPY --from=builder /build/agent/package*.json ./
+COPY --from=builder /build/agent/node_modules ./node_modules
+COPY --from=builder /build/agent/dist ./dist
 
 # Create server storage directory
 RUN mkdir -p /app/servers
 
 # Default environment variables
 ENV NODE_ENV=production
-ENV PANEL_URL=http://host.docker.internal:3001
+ENV PANEL_URL=http://backend:3001
 ENV NODE_ID=docker-agent
 ENV NODE_SECRET=change-me
 ENV SERVERS_DIR=/app/servers
 
-# Health check — agent should be connectable
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD node -e "const http = require('http'); http.get('http://localhost:3002/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))" || exit 1
-
-# Expose agent health port (optional)
-EXPOSE 3002
-
 # Start the agent
-CMD ["node", "dist/index.js", \
-    "--panel-url", "${PANEL_URL}", \
-    "--node-id", "${NODE_ID}", \
-    "--secret", "${NODE_SECRET}", \
-    "--servers-dir", "${SERVERS_DIR}"]
-
-# Use shell form to expand env vars
-ENTRYPOINT ["/bin/sh", "-c", "node dist/index.js --panel-url $PANEL_URL --node-id $NODE_ID --secret $NODE_SECRET --servers-dir $SERVERS_DIR"]
+ENTRYPOINT ["/bin/sh", "-c", "node dist/agent/src/index.js --panel-url $PANEL_URL --node-id $NODE_ID --secret $NODE_SECRET --servers-dir $SERVERS_DIR"]

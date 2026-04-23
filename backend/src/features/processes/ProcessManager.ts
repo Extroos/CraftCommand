@@ -9,6 +9,7 @@ import { logger } from '../../utils/logger';
 import { statsRingBuffer } from '../diagnosis/StatsRingBuffer';
 import { ErrorCode, SystemError } from '../../utils/ErrorCodes';
 import { logStreamer } from '../../utils/LogStreamer';
+import { networkService } from '../network/NetworkService';
 
 
 class ProcessManager extends EventEmitter {
@@ -18,6 +19,7 @@ class ProcessManager extends EventEmitter {
     private onlineTimes: Map<string, number> = new Map();
     private statusCache: Map<string, any> = new Map();
     private stoppingServers: Set<string> = new Set();
+    private intentionalStops: Set<string> = new Set(); // v3.2: Tracks explicit user STOP commands
     private gracefulShutdowns: Map<string, boolean> = new Map();
     private updatingStatuses: Set<string> = new Set();
     private startupLocks: Set<string> = new Set();
@@ -245,6 +247,9 @@ class ProcessManager extends EventEmitter {
             return;
         }
 
+        this.clearStartupLock(id);
+        this.intentionalStops.delete(id); // Manual start clears any previous stop intent
+        
         // --- AUTOMATIC REPAIR RESET (v2.2) ---
         // If the user manually starts the server, we assume they've triaged it.
         // Resetting stability markers allows Automatic Repair to resume monitoring.
@@ -301,6 +306,10 @@ class ProcessManager extends EventEmitter {
         this.startupTimeouts.set(id, timeout);
 
         this.attachRunnerListeners(id, runner);
+        
+        // --- PUBLIC ACCESS SIDE-CAR (v1.14.0) ---
+        // We trigger this in the background, but don't await so the server boot can proceed
+        networkService.onServerStart(id).catch(e => logger.error(`[ProcessManager] Networking sidecar launch failed: ${e}`));
 
         try {
             await runner.start(id, runCommand, cwd, env);
@@ -310,6 +319,7 @@ class ProcessManager extends EventEmitter {
             }
         } catch (err: any) {
             this.cleanupRunner(id);
+            this.clearStartupLock(id);
             // Wrap in SystemError if not already one
             if (!(err instanceof SystemError)) {
                 throw new SystemError(ErrorCode.E_PROC_SPAWN_FAIL, err.message);
@@ -379,6 +389,86 @@ class ProcessManager extends EventEmitter {
         // Attach listeners
         runner.on('log', logHandler);
         runner.on('close', closeHandler);
+
+        // --- CONSOLE RECOVERY (v2.0) ---
+        // If the process is already ONLINE (recovered), we need to fill the log history from disk
+        // since the original stdout pipes are gone.
+        if (initialStatus === ServerStatus.ONLINE) {
+            const { getServer } = require('../servers/ServerService');
+            const server = getServer(id);
+            if (server) {
+                logStreamer.tail(server.workingDirectory, this.MAX_LOGS).then(lines => {
+                    const history = this.logHistory.get(id) || [];
+                    if (history.length === 0) {
+                        this.logHistory.set(id, lines);
+                        // Emit recovered logs to any active socket listeners
+                        lines.forEach(line => this.emit('log', { id, line, type: 'stdout' }));
+                    }
+                }).catch(err => logger.error(`[ProcessManager:${id}] Failed to tail logs for recovery: ${err}`));
+            }
+        }
+    }
+
+    /**
+     * Purges all volatile state for a server. 
+     * Use this when a server is DELETED to prevent memory leaks.
+     */
+    public cleanupServer(id: string) {
+        logger.info(`[ProcessManager] Purging all transient state for server ${id}`);
+        
+        // 1. Detach listeners BEFORE deleting the runner reference
+        const listeners = this.runnerListeners.get(id);
+        const runner = this.activeRunners.get(id);
+        if (listeners && runner) {
+            runner.removeListener('log', listeners.log);
+            runner.removeListener('close', listeners.close);
+        }
+        this.runnerListeners.delete(id);
+
+        // 2. Clear State Maps
+        this.activeRunners.delete(id);
+        this.logHistory.delete(id);
+        this.startTimes.delete(id);
+        this.onlineTimes.delete(id);
+        this.statusCache.delete(id);
+        this.stoppingServers.delete(id);
+        this.gracefulShutdowns.delete(id);
+        this.updatingStatuses.delete(id);
+        this.players.delete(id);
+        this.lastEmittedStatus.delete(id);
+        this.activityHistory.delete(id);
+        this.lastActivityTime.delete(id);
+        this.serverEpochs.delete(id);
+        this.intentionalStops.delete(id);
+
+        // 3. Clear Startup Protection
+        const timeout = this.startupTimeouts.get(id);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.startupTimeouts.delete(id);
+        }
+        this.clearStartupLock(id);
+
+        // --- NETWORKING CLEANUP ---
+        networkService.onServerStop(id);
+    }
+
+    public isIntentionalStop(id: string): boolean {
+        return this.intentionalStops.has(id);
+    }
+
+    /**
+     * Public API for marking a server stop as intentional or unintentional.
+     * Used by ScheduleService to coordinate scheduled restarts/stops.
+     */
+    public setIntentional(id: string, isIntentional: boolean): void {
+        if (isIntentional) {
+            this.intentionalStops.add(id);
+            this.stoppingServers.add(id); // Synchronize stopping logic
+        } else {
+            this.intentionalStops.delete(id);
+            this.stoppingServers.delete(id);
+        }
     }
 
     private handleServerLog(id: string, line: string, type: 'stdout' | 'stderr') {
@@ -505,6 +595,9 @@ class ProcessManager extends EventEmitter {
     private handleServerClose(id: string, code: number) {
         logger.info(`[ProcessManager] Server ${id} closed with code ${code}`);
         
+        // --- NETWORKING TEARDOWN ---
+        networkService.onServerStop(id);
+        
         // Phase 62: Startup Race Protection (v1.12.16)
         // If a new startup is already in lock-phase, ignore close events from the previous session/purging
         if (this.startupLocks.has(id)) {
@@ -515,11 +608,28 @@ class ProcessManager extends EventEmitter {
         this.clearStartupLock(id);
 
         const isIntentional = this.stoppingServers.has(id);
-        const finalStatus = (!isIntentional && code !== 0 && code !== null) ? ServerStatus.CRASHED : ServerStatus.OFFLINE;
-        
+        let finalStatus = ServerStatus.OFFLINE;
+
         this.stoppingServers.delete(id);
         const { getServer, saveServer, invalidateDiagnosisCache } = require('../servers/ServerService');
         const server = getServer(id);
+
+        if (!isIntentional) {
+            // Unintentional stop
+            if (code !== 0 && code !== null) {
+                finalStatus = ServerStatus.CRASHED; // Classic crash
+            } else if (server) {
+                // Determine if a code 0 exit should be treated as a crash based on globally configured policy
+                const { systemSettingsService } = require('../../system/SystemSettingsService');
+                const defaultPolicy = systemSettingsService.getSettings()?.app?.defaultLifecyclePolicy || 'ADAPTIVE';
+                const policy = server.lifecyclePolicy || defaultPolicy;
+                if (policy === 'RESILIENT' || policy === 'ADAPTIVE') {
+                    logger.warn(`[ProcessManager:${id}] Op /stop detected (code 0 without panel intent). Marking as CRASHED to trigger auto-restart.`);
+                    finalStatus = ServerStatus.CRASHED;
+                }
+            }
+        }
+
         if (server) {
             if (isIntentional || finalStatus === ServerStatus.CRASHED) {
                 delete server.startTime;
@@ -545,6 +655,7 @@ class ProcessManager extends EventEmitter {
         }, true); // PERSIST final state
     }
 
+
     async stopServer(id: string, force: boolean = false) {
         const runner = this.activeRunners.get(id);
         if (runner) {
@@ -552,6 +663,7 @@ class ProcessManager extends EventEmitter {
                 throw new SystemError(ErrorCode.E_PROC_TIMEOUT, 'Server is initializing. Use force stop if necessary.');
             }
             this.stoppingServers.add(id);
+            this.intentionalStops.add(id);
 
             if (force) {
                 await runner.kill?.(id, 'SIGKILL');
@@ -616,7 +728,7 @@ class ProcessManager extends EventEmitter {
         this.gracefulShutdowns.set(id, true);
 
         // Broadcast warnings
-        const intervals = [delaySeconds, 10, 5, 3, 2, 1];
+        const intervals = [delaySeconds, 60, 30, 15, 10, 5, 3, 2, 1];
         const uniqueIntervals = [...new Set(intervals.filter(s => s > 0 && s <= delaySeconds))].sort((a, b) => b - a);
 
         for (const seconds of uniqueIntervals) {
@@ -698,6 +810,10 @@ class ProcessManager extends EventEmitter {
 
     isRunning(id: string): boolean {
         return this.activeRunners.has(id);
+    }
+
+    getStatus(id: string) {
+        return this.statusCache.get(id) || { status: ServerStatus.OFFLINE, online: false };
     }
 
     async createBackup(id: string, serverDir: string, description?: string, worldOnly?: boolean) {
@@ -903,27 +1019,41 @@ class ProcessManager extends EventEmitter {
 
     }
     async shutdown() {
-        logger.info('[ProcessManager] Shutting down all active servers...');
+        logger.info('[ProcessManager] Orchestrating panel shutdown...');
         
         // 1. Stop Sync Loops
-        // (We can't easily stop the private intervals without refactoring to store their IDs, 
-        // but since the process is exiting, we just need to stop spawning NEW things)
         Array.from(this.startupTimeouts.values()).forEach(clearTimeout);
         this.startupTimeouts.clear();
         this.startupLocks.clear();
 
-        // 2. Kill all Active Runners
-        const killPromises = Array.from(this.activeRunners.keys()).map(async (id) => {
+        // 2. Lifecycle Audit: Determine which servers should die and which should survive
+        const allServers = Array.from(this.activeRunners.keys());
+        const { getServer } = require('../servers/ServerService');
+
+        const killPromises = allServers.map(async (id) => {
             try {
-                logger.info(`[ProcessManager] Killing server ${id}...`);
-                await this.stopServer(id, true); // Force kill
+                const server = getServer(id);
+                
+                // --- LIFECYCLE SYNC (v2.0) ---
+                // Native servers (Attached) MUST die with the panel.
+                // Node Agent servers (Detached) SHOULD SURVIVE panel closure.
+                const isDetached = server?.executionEngine === 'remote' || server?.executionEngine === 'docker';
+                
+                if (isDetached) {
+                    logger.info(`[ProcessManager] ${id} is Detached (Node Agent/Docker). Allowing it to survive panel exit.`);
+                    // We don't stop it, but we might want to unbind listeners if we were still running
+                    return;
+                }
+
+                logger.info(`[ProcessManager] ${id} is Native (Attached). Terminating before exit...`);
+                await this.stopServer(id, true); // Force kill as we are exiting
             } catch (e) {
-                logger.error(`[ProcessManager] Failed to kill ${id}: ${e}`);
+                logger.error(`[ProcessManager] Failed during shutdown for ${id}: ${e}`);
             }
         });
 
         await Promise.all(killPromises);
-        logger.info('[ProcessManager] All servers stopped.');
+        logger.info('[ProcessManager] Shutdown synchronization complete.');
     }
 }
 

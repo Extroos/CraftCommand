@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Globe, Zap, Settings2, Settings, Info, Layers } from 'lucide-react';
 import { FormData } from './types';
@@ -7,7 +8,7 @@ import { useSystem } from '@features/system/context/SystemContext';
 import { useUser } from '@features/auth/context/UserContext';
 import ModpackBrowser from '../ModpackBrowser';
 
-interface ProConfigProps {
+interface AdvancedConfigProps {
     formData: FormData;
     setFormData: React.Dispatch<React.SetStateAction<FormData>>;
     handleDeploy: () => void;
@@ -20,7 +21,7 @@ interface ProConfigProps {
     capabilities: any;
     bedrockVersions?: { latest: string, versions: string[] };
 }
-const ProConfig: React.FC<ProConfigProps> = ({ 
+const AdvancedConfig: React.FC<AdvancedConfigProps> = ({ 
     formData, 
     setFormData, 
     handleDeploy, 
@@ -32,6 +33,7 @@ const ProConfig: React.FC<ProConfigProps> = ({
     capabilities,
     bedrockVersions
 }) => {
+    const { t } = useTranslation();
     const { settings } = useSystem();
     const { user } = useUser();
     return (
@@ -49,7 +51,7 @@ const ProConfig: React.FC<ProConfigProps> = ({
                         <div className="p-1.5 bg-primary/5 rounded border border-primary/10">
                             <Layers size={14} className="text-primary" />
                         </div>
-                        <h3 className="text-[10px] font-bold text-foreground uppercase tracking-[0.2em]">Instance Software</h3>
+                        <h3 className="text-[10px] font-bold text-foreground uppercase tracking-[0.2em]">{t('create_server.instance_software') || 'Instance Software'}</h3>
                     </div>
                     <div className="p-6">
                         {renderSoftwareStep()}
@@ -62,7 +64,7 @@ const ProConfig: React.FC<ProConfigProps> = ({
                         <div className="p-1.5 bg-primary/5 rounded border border-primary/10">
                             <Settings2 size={14} className="text-primary" />
                         </div>
-                        <h3 className="text-[10px] font-bold text-foreground uppercase tracking-[0.2em]">Instance Parameters</h3>
+                        <h3 className="text-[10px] font-bold text-foreground uppercase tracking-[0.2em]">{t('create_server.params')}</h3>
                     </div>
                     <div className="p-6">
                         {renderDetailsStep()}
@@ -76,7 +78,7 @@ const ProConfig: React.FC<ProConfigProps> = ({
                         <div className={`border border-border rounded-xl p-5 bg-card shadow-sm ${user?.preferences?.visualQuality ? 'glass-morphism' : ''}`}>
                             <div className="flex items-center gap-3 mb-4">
                                 <Globe size={14} className="text-primary" />
-                                <h3 className="text-[10px] font-bold text-foreground uppercase tracking-widest">Target Node</h3>
+                                <h3 className="text-[10px] font-bold text-foreground uppercase tracking-widest">{t('create_server.deploy_node')}</h3>
                             </div>
                             <div className="relative group">
                                 <select 
@@ -84,8 +86,8 @@ const ProConfig: React.FC<ProConfigProps> = ({
                                     onChange={e => setFormData(prev => ({ ...prev, nodeId: e.target.value }))}
                                     className="w-full bg-muted/20 border border-border rounded-lg py-2 px-3 outline-none text-[10px] text-foreground font-bold uppercase tracking-widest cursor-pointer hover:bg-muted/40 transition-all appearance-none"
                                 >
-                                    <option value="auto">Automatic (Recommended)</option>
-                                    <option value="local">Local Panel</option>
+                                    <option value="auto">{t('create_server.auto_node')}</option>
+                                    <option value="local">{t('create_server.local_node')}</option>
                                     {nodes.filter(n => n.id !== 'local').map(node => (
                                         <option key={node.id} value={node.id}>
                                             {node.name || node.host}
@@ -100,13 +102,13 @@ const ProConfig: React.FC<ProConfigProps> = ({
                     <div className={`border border-border rounded-xl p-5 bg-card shadow-sm col-span-1 md:col-span-1 ${user?.preferences?.visualQuality ? 'glass-morphism' : ''}`}>
                         <div className="flex items-center gap-3 mb-4">
                             <Zap size={14} className="text-primary" />
-                            <h3 className="text-[10px] font-bold text-foreground uppercase tracking-widest">Runtime Logic</h3>
+                            <h3 className="text-[10px] font-bold text-foreground uppercase tracking-widest">{t('create_server.runtime_logic') || 'Runtime Logic'}</h3>
                         </div>
                         <div className="space-y-3">
                             {[
-                                { id: 'aikarFlags', label: "Aikar Flags", desc: "Performance flags" },
-                                { id: 'installSpark', label: "Spark Profiler", desc: "Auto-diagnostics" },
-                                { id: 'onlineMode', label: "Official Auth", desc: "Mojang validation" }
+                                { id: 'aikarFlags', label: t('create_server.aikar_flags'), desc: t('create_server.perf_flags') },
+                                { id: 'installSpark', label: t('create_server.spark_profiler'), desc: t('create_server.auto_diag') },
+                                { id: 'onlineMode', label: t('create_server.official_auth'), desc: t('create_server.mojang_val') }
                             ].map(flag => (
                                 <label key={flag.id} className="flex items-center justify-between group cursor-pointer">
                                     <div className="flex flex-col">
@@ -137,17 +139,17 @@ const ProConfig: React.FC<ProConfigProps> = ({
             <div className="xl:col-span-4 sticky top-6 space-y-6">
                 <div className={`border border-border rounded-xl bg-card shadow-sm overflow-hidden ${user?.preferences?.visualQuality ? 'glass-morphism' : ''}`}>
                     <div className="px-6 py-4 border-b border-border bg-muted/5">
-                        <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] text-center">Provisioning Summary</h3>
+                        <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] text-center">{t('create_server.summary')}</h3>
                     </div>
                     {renderReviewStep()}
                 </div>
                 
                 <div className="p-4 rounded-xl border border-dashed border-border bg-muted/5 text-[9px] text-muted-foreground/50 uppercase tracking-widest font-medium leading-relaxed">
-                    Dedicate resources are isolated from other instances. Verify terminal console for post-provisioning logic.
+                    {t('create_server.isolation_note')}
                 </div>
             </div>
         </motion.div>
     );
 };
 
-export default ProConfig;
+export default AdvancedConfig;

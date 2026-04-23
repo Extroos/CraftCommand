@@ -203,6 +203,16 @@ export function setupAgentNamespace(io: Server): void {
         const remoteRunner = runnerFactory.getRemoteRunner();
         remoteRunner.registerNode(nodeId, socket);
 
+        // --- Settings Sync ---
+        const syncSettings = () => {
+            const s = systemSettingsService.getSettings();
+            socket.emit('agent:settings-sync', {
+                dockerEnabled: s.app?.dockerEnabled || false,
+                baseServersPath: s.app?.baseServersPath || ''
+            });
+        };
+        syncSettings();
+
         // Set node to RECOVERING until first sync is complete
         nodeRegistryService.updateStatus(nodeId, NodeStatus.RECOVERING);
 
@@ -320,6 +330,15 @@ export function setupAgentNamespace(io: Server): void {
                 nodeName,
                 reason
             });
+        });
+    });
+
+    // Push settings to ALL agents when global settings change
+    systemSettingsService.on('updated', (s) => {
+        logger.info('[AgentHandler] Global settings updated, syncing to all nodes...');
+        agentNs.emit('agent:settings-sync', {
+            dockerEnabled: s.app?.dockerEnabled || false,
+            baseServersPath: s.app?.baseServersPath || ''
         });
     });
 

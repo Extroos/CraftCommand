@@ -66,6 +66,9 @@ export interface SystemSettings {
                 burstThreshold: number; // requests per second
             };
         };
+        defaultExecutionEngine?: 'native' | 'remote' | 'docker';
+        defaultLifecyclePolicy?: string;
+        hostPersistenceEnabled?: boolean;
     };
 }
 
@@ -141,7 +144,7 @@ class SystemSettingsService extends EventEmitter {
                         dockerEnabled: false,
                         storageProvider: 'json',
                         distributedNodes: { 
-                            enabled: false,
+                            enabled: true,
                             nodeHeartbeatThresholdMs: 60000, 
                             mirrorRemoteBackups: false 
                         },
@@ -158,7 +161,9 @@ class SystemSettingsService extends EventEmitter {
                             edgeCaching: { enabled: false, cacheSizeMB: 512 },
                             trafficCompression: { enabled: true, level: 6 },
                             ddosShield: { enabled: true, burstThreshold: 50 }
-                        }
+                        },
+                        defaultExecutionEngine: 'native',
+                        defaultLifecyclePolicy: 'ADAPTIVE'
                     }
                 };
                 const tempPath = `${SETTINGS_FILE}.tmp`;
@@ -177,7 +182,7 @@ class SystemSettingsService extends EventEmitter {
                 }
                 if (loaded.app.distributedNodes === undefined) {
                     loaded.app.distributedNodes = { 
-                        enabled: false, 
+                        enabled: true, 
                         nodeHeartbeatThresholdMs: 60000,
                         mirrorRemoteBackups: false
                     };
@@ -212,6 +217,12 @@ class SystemSettingsService extends EventEmitter {
                         trafficCompression: { enabled: true, level: 6 },
                         ddosShield: { enabled: true, burstThreshold: 50 }
                     };
+                }
+                if (loaded.app.defaultExecutionEngine === undefined) {
+                    loaded.app.defaultExecutionEngine = 'native';
+                }
+                if (loaded.app.defaultLifecyclePolicy === undefined) {
+                    loaded.app.defaultLifecyclePolicy = 'ADAPTIVE';
                 }
             }
             return loaded;
@@ -306,6 +317,23 @@ class SystemSettingsService extends EventEmitter {
             // Trigger Network Config Regeneration if relevant settings changed
             if (updates.app?.advancedNetworking || updates.app?.https) {
                 this.regenerateNetworkConfigs();
+            }
+
+            // --- Side Effect: Host Persistence ---
+            if (updates.app?.hostPersistenceEnabled !== undefined) {
+                const { hostPersistenceService } = require('./HostPersistenceService');
+                const shouldEnable = updates.app.hostPersistenceEnabled;
+                
+                (async () => {
+                    const active = await hostPersistenceService.isPersistenceEnabled();
+                    if (shouldEnable && !active) {
+                        await hostPersistenceService.enablePersistence();
+                    } else if (!shouldEnable && active) {
+                        await hostPersistenceService.disablePersistence();
+                    }
+                })().catch(err => {
+                    logger.error(`[SystemSettingsService] Persistence side-effect failed: ${err.message}`);
+                });
             }
 
             this.emit('updated', this.getSettings());

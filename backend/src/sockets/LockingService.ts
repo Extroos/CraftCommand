@@ -68,6 +68,22 @@ class LockingService {
             }
         }
     }
+
+    /**
+     * Releases all locks associated with a server.
+     * resourceId format: "server:serverId:..."
+     */
+    releaseAllForServer(serverId: string): string[] {
+        const released: string[] = [];
+        const prefix = `server:${serverId}:`;
+        for (const [id, lock] of this.locks.entries()) {
+            if (id.startsWith(prefix) || id === `server:${serverId}`) {
+                this.locks.delete(id);
+                released.push(id);
+            }
+        }
+        return released;
+    }
 }
 
 export const lockingService = new LockingService();

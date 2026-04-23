@@ -123,14 +123,23 @@ export class TemplateService {
         const template = this.getTemplate(templateId);
         if (!template) throw new Error('Template not found');
 
-        logger.info(`[TemplateService] Installing ${template.name} on ${server.name}...`);
+        let effectiveType = template.type;
+        
+        // Safety Strategy: Resolve Software Type from server record
+        // If the server record says it's Purpur, then a 'Paper' template should deploy Purpur.
+        if (effectiveType === 'Paper' && server.software === 'Purpur') {
+            effectiveType = 'Purpur';
+            logger.info(`[TemplateService] Auto-resolving "Paper" template to "Purpur" based on server metadata for ${server.id}`);
+        }
+
+        logger.info(`[TemplateService] Installing ${template.name} on ${server.name} (Effective Type: ${effectiveType})...`);
 
         if (template.downloadUrl) {
-            await installerService.installModpackFromZip(serverId, server.workingDirectory, template.downloadUrl, template.version, undefined, template.type);
+            await installerService.installModpackFromZip(serverId, server.workingDirectory, template.downloadUrl, template.version, undefined, effectiveType);
             return;
         }
 
-        switch (template.type) {
+        switch (effectiveType) {
             case 'Paper':
                 await installerService.installPaper(serverId, server.workingDirectory, template.version, template.build || 'latest');
                 break;

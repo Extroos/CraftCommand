@@ -123,12 +123,27 @@ class PresenceTracker {
     /**
      * Get count of active viewers per server (for dashboard overview).
      */
-    getServerCounts(): Record<string, number> {
+    getViewersCount(): Record<string, number> {
         const counts: Record<string, number> = {};
-        for (const [serverId, users] of this.presence) {
+        for (const [serverId, users] of this.presence.entries()) {
             counts[serverId] = users.size;
         }
         return counts;
+    }
+
+    /**
+     * Completely purges all presence tracking for a server.
+     * Use this when a server is DELETED.
+     */
+    public clear(serverId: string) {
+        this.presence.delete(serverId);
+        // Also remove from socketMap to avoid stale references during disconnect
+        for (const [socketId, mappings] of this.socketMap.entries()) {
+            const updated = mappings.filter(m => m.serverId !== serverId);
+            if (updated.length !== mappings.length) {
+                this.socketMap.set(socketId, updated);
+            }
+        }
     }
 }
 

@@ -1,5 +1,5 @@
-import React from 'react';
 import { AlertTriangle, ShieldAlert, RotateCcw, ArrowRightLeft, Zap, Copy } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface DangerZoneProps {
     isOffline: boolean;
@@ -11,6 +11,7 @@ interface DangerZoneProps {
 export const DangerZone: React.FC<DangerZoneProps> = ({
     isOffline, onReset, onDecommission, onClone
 }) => {
+    const { t } = useTranslation();
     return (
         <div className="bg-rose-500/[0.03] border border-rose-500/30 rounded-md p-4 relative overflow-hidden group shadow-sm transition-all hover:border-rose-500/50">
             <div className="flex items-center gap-2 mb-4 pb-3 border-b border-rose-500/20">
@@ -18,8 +19,8 @@ export const DangerZone: React.FC<DangerZoneProps> = ({
                     <AlertTriangle className="text-rose-500" size={14} />
                 </div>
                 <div>
-                    <h3 className="text-xs font-bold text-rose-600">Danger Zone</h3>
-                    <p className="text-[10px] text-rose-500/70 font-medium opacity-80">High-risk destructive operations</p>
+                    <h3 className="text-xs font-bold text-rose-600">{t('settings.danger.title')}</h3>
+                    <p className="text-[10px] text-rose-500/70 font-medium opacity-80">{t('settings.danger.subtitle')}</p>
                 </div>
             </div>
             <div className="space-y-3">
@@ -28,7 +29,7 @@ export const DangerZone: React.FC<DangerZoneProps> = ({
                     {!isOffline && (
                         <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded-md mb-1">
                             <ShieldAlert size={12} className="text-amber-500" />
-                            <span className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Instance must be OFFLINE for destructive tasks</span>
+                            <span className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">{t('settings.danger.offline_warning')}</span>
                         </div>
                     )}
 
@@ -44,7 +45,7 @@ export const DangerZone: React.FC<DangerZoneProps> = ({
                     >
                         <div className="flex items-center gap-2.5">
                             <Copy size={14} className="text-blue-500/80" />
-                            <span className="text-[9px] font-black uppercase tracking-widest text-blue-500/90">Clone Instance</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-blue-500/90">{t('settings.danger.clone')}</span>
                         </div>
                         <ArrowRightLeft size={12} className="text-blue-500/30" />
                     </button>
@@ -60,7 +61,7 @@ export const DangerZone: React.FC<DangerZoneProps> = ({
                     >
                         <div className="flex items-center gap-2.5">
                             <RotateCcw size={14} className={`text-rose-500/70 ${isOffline ? 'group-hover/btn:rotate-180 transition-transform duration-500' : ''}`} />
-                            <span className="text-[9px] font-black uppercase tracking-widest text-rose-500/80">Factory Reset Stack</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-rose-500/80">{t('settings.danger.factory_reset_stack')}</span>
                         </div>
                         <ArrowRightLeft size={12} className="text-rose-500/30" />
                     </button>
@@ -77,7 +78,7 @@ export const DangerZone: React.FC<DangerZoneProps> = ({
                     >
                         <div className="flex items-center gap-2.5">
                             <AlertTriangle size={14} className="text-rose-500" />
-                            <span className="text-[9px] font-black uppercase tracking-widest text-rose-500">Decommission Instance</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-rose-500">{t('settings.danger.decommission')}</span>
                         </div>
                         <Zap size={12} className={`text-rose-500 ${isOffline ? '' : ''}`} />
                     </button>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FormData, WizardStep } from './types';
 import { ServerTemplate, NodeInfo } from '@shared/types';
@@ -34,19 +35,20 @@ const WizardMode: React.FC<WizardModeProps> = ({
     capabilities,
     bedrockVersions
 }) => {
+    const { t } = useTranslation();
     const { settings } = useSystem();
     const { user } = useUser();
 
-    const handleTemplateSelect = (t: ServerTemplate) => {
+    const handleTemplateSelect = (template: ServerTemplate) => {
+        const isPurpurMatch = template.type === 'Purpur' || (template.type === 'Paper' && formData.usePurpur);
         setFormData(prev => ({
             ...prev,
-            templateId: t.id,
-            software: t.type,
-            version: t.version,
-            usePurpur: false,
-            ram: Math.max(prev.ram, Math.ceil((t.recommendedRam || 4096) / 1024)),
+            templateId: template.id,
+            software: isPurpurMatch ? 'Purpur' : template.type,
+            version: template.version,
+            usePurpur: isPurpurMatch,
+            ram: Math.max(prev.ram, Math.ceil((template.recommendedRam || 4096) / 1024)),
         }));
-        // setStep('details'); // REMOVED: No more instant jump
     };
 
     // Group templates
@@ -88,7 +90,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                 isActive ? 'bg-primary' : 'bg-muted/30'
                             }`} />
                             <span className={`text-[9px] font-bold uppercase tracking-[0.15em] transition-colors duration-300 ${isActive ? 'text-foreground' : 'text-muted-foreground/30'}`}>
-                                {s}
+                                {t(`common.${s}`) || s}
                             </span>
                         </div>
                     );
@@ -105,8 +107,8 @@ const WizardMode: React.FC<WizardModeProps> = ({
                         className="space-y-6"
                     >
                         <div className="text-center space-y-1 mb-2">
-                            <h2 className="text-xl font-bold text-foreground tracking-tight">Provisioning Target</h2>
-                            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest opacity-50">Choose Deployment Environment</p>
+                            <h2 className="text-xl font-bold text-foreground tracking-tight">{t('create_server.provisioning_target')}</h2>
+                            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest opacity-50">{t('create_server.choose_env')}</p>
                         </div>
 
                         {/* Software & Templates Grid */}
@@ -114,7 +116,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                                 {/* Official Software Options (Direct Selection) */}
                                 {softwareOptions
-                                    .filter(sw => !gameTemplates.some(t => t.type === sw.id)) // Deduplicate: Hide if template exists
+                                    .filter(sw => !gameTemplates.some(tmpl => tmpl.type === sw.id)) // Deduplicate: Hide if template exists
                                     .map(sw => (
                                     <button
                                         key={sw.id}
@@ -152,19 +154,19 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                                 {sw.id === 'Paper' && (formData.software === 'Paper' || formData.software === 'Purpur') && formData.usePurpur ? 'Purpur' : sw.id}
                                             </div>
                                             <div className="text-[9px] text-muted-foreground mt-2 font-bold uppercase tracking-wider opacity-60">
-                                                {sw.id === 'Paper' && formData.usePurpur ? 'Optimized Fork' : 'Primary Source'}
+                                                {sw.id === 'Paper' && formData.usePurpur ? t('create_server.optimized_fork') : t('create_server.primary_source')}
                                             </div>
                                         </div>
                                     </button>
                                 ))}
 
                                 {/* Templates */}
-                                {gameTemplates.map(t => (
+                                {gameTemplates.map(tmpl => (
                                     <button
-                                        key={t.id}
-                                        onClick={() => handleTemplateSelect(t)}
+                                        key={tmpl.id}
+                                        onClick={() => handleTemplateSelect(tmpl)}
                                         className={`group relative flex flex-col items-start p-4 gap-4 rounded-xl border transition-all duration-200 ${
-                                            formData.templateId === t.id
+                                            formData.templateId === tmpl.id
                                             ? 'bg-primary/5 border-primary'
                                             : 'bg-muted/20 border-border hover:border-muted-foreground/30 hover:bg-muted/30'
                                         }`}
@@ -172,23 +174,23 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                         <div className="flex items-center justify-between w-full">
                                             <div className="w-8 h-8">
                                                 <img 
-                                                    src={getIconPath(t.type)} 
-                                                    alt={t.name}
-                                                    className={`w-full h-full object-contain transition-transform duration-300 ${formData.templateId === t.id ? 'scale-110' : 'group-hover:scale-105 opacity-80'}`}
+                                                    src={getIconPath(tmpl.type)} 
+                                                    alt={tmpl.name}
+                                                    className={`w-full h-full object-contain transition-transform duration-300 ${formData.templateId === tmpl.id ? 'scale-110' : 'group-hover:scale-105 opacity-80'}`}
                                                 />
                                             </div>
-                                            {formData.templateId === t.id && (
+                                            {formData.templateId === tmpl.id && (
                                                 <div className="p-1 bg-primary rounded-full text-primary-foreground">
                                                     <Check size={10} strokeWidth={4} />
                                                 </div>
                                             )}
                                         </div>
                                         <div className="text-left">
-                                            <div className="font-bold text-[12px] leading-none text-foreground">{t.name}</div>
+                                            <div className="font-bold text-[12px] leading-none text-foreground">{tmpl.name}</div>
                                             <div className="text-[9px] text-muted-foreground mt-2 font-medium flex items-center gap-2">
-                                                <span className="font-bold uppercase tracking-wider opacity-60">{t.version}</span>
+                                                <span className="font-bold uppercase tracking-wider opacity-60">{tmpl.version}</span>
                                                 <span className="w-1 h-1 bg-muted-foreground/20 rounded-full" />
-                                                <span className="font-mono text-[8px] opacity-40">{Math.ceil((t.recommendedRam || 4096)/1024)}GB</span>
+                                                <span className="font-mono text-[8px] opacity-40">{t('create_server.ram_short', { ram: Math.ceil((tmpl.recommendedRam || 4096)/1024) })}</span>
                                             </div>
                                         </div>
                                     </button>
@@ -209,15 +211,15 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                             <Link size={20} className="text-indigo-400" />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-bold text-white">Custom Modpack URL</h3>
-                                            <p className="text-[10px] text-zinc-500 font-medium">Direct download link (.zip) or Modrinth Project ID.</p>
+                                            <h3 className="text-sm font-bold text-white">{t('create_server.custom_url')}</h3>
+                                            <p className="text-[10px] text-zinc-500 font-medium">{t('create_server.custom_url_desc')}</p>
                                         </div>
                                     </div>
                                     <input 
                                         type="text"
                                         value={formData.modpackUrl || ''}
                                         onChange={(e) => setFormData(prev => ({ ...prev, modpackUrl: e.target.value }))}
-                                        placeholder="https://example.com/modpack.zip or modrinth:project-id"
+                                        placeholder={t('create_server.custom_url_placeholder')}
                                         className="w-full bg-black/40 border border-white/10 rounded-lg py-3 px-4 outline-none text-xs text-white font-mono placeholder:text-zinc-700 focus:border-indigo-500/50 transition-colors"
                                     />
                                 </div>
@@ -237,8 +239,8 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                             <img src="/software-icons/purpur.png" className="w-5 h-5 object-contain" alt="Purpur" />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-bold text-white">Optimize with Purpur</h3>
-                                            <p className="text-[10px] text-zinc-500 font-medium max-w-[320px]">Recommended optimization for Paper-based servers.</p>
+                                            <h3 className="text-sm font-bold text-white">{t('create_server.use_purpur')}</h3>
+                                            <p className="text-[10px] text-zinc-500 font-medium max-w-[320px]">{t('create_server.purpur_desc')}</p>
                                         </div>
                                     </div>
                                     <label className="relative inline-flex items-center cursor-pointer">
@@ -265,7 +267,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                 disabled={!formData.templateId && !formData.software}
                                 className="group flex items-center gap-3 px-14 py-3.5 bg-primary text-primary-foreground rounded-lg text-[10px] font-bold uppercase tracking-[0.2em] hover:opacity-90 disabled:opacity-20 transition-all shadow-lg"
                              >
-                                Configure Parameters <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                                {t('create_server.configuring')} <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                              </button>
                              <div className="flex items-center gap-4 opacity-10">
                                 <div className="h-px w-8 bg-foreground" />
@@ -285,10 +287,10 @@ const WizardMode: React.FC<WizardModeProps> = ({
                     >
                          <div className="text-center space-y-1 mb-8">
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[9px] font-bold uppercase tracking-wider mb-2">
-                                {formData.usePurpur ? 'Purpur' : formData.software} Node • {formData.version}
+                                {t('create_server.instance_node_template', { software: formData.usePurpur ? 'Purpur' : formData.software, version: formData.version })}
                             </div>
-                            <h2 className="text-xl font-bold text-foreground tracking-tight">Resource Allocation</h2>
-                            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest opacity-50">Hardware Provisioning</p>
+                            <h2 className="text-xl font-bold text-foreground tracking-tight">{t('create_server.resource_allocation')}</h2>
+                            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest opacity-50">{t('create_server.hardware_provisioning')}</p>
                         </div>
                         
                         {/* Phase 4: Node Selection - Only if Distributed Nodes is Enabled */}
@@ -299,8 +301,8 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                         <Globe size={14} className="text-cyan-400" />
                                     </div>
                                     <div>
-                                        <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">Deployment Node</h3>
-                                        <p className="text-[9px] text-zinc-500 font-medium">Automatic selection optimizes for latency and resource availability.</p>
+                                        <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">{t('create_server.deploy_node')}</h3>
+                                        <p className="text-[9px] text-zinc-500 font-medium">{t('create_server.node_desc')}</p>
                                     </div>
                                 </div>
 
@@ -309,8 +311,8 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                     onChange={e => setFormData(prev => ({ ...prev, nodeId: e.target.value }))}
                                     className="w-full bg-black/40 border border-white/10 rounded-lg py-2 px-3 outline-none text-xs text-white font-medium cursor-pointer hover:bg-black/60 transition-colors"
                                 >
-                                    <option value="auto">Automatic (Recommended)</option>
-                                    <option value="local">Local Panel (Current System)</option>
+                                    <option value="auto">{t('create_server.auto_node')}</option>
+                                    <option value="local">{t('create_server.local_node')}</option>
                                     {nodes.filter(n => n.id !== 'local').map(node => (
                                         <option key={node.id} value={node.id}>
                                             {node.name || node.host} ({node.status})
@@ -327,14 +329,14 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                 onClick={() => setStep('software')} 
                                 className="text-muted-foreground hover:text-foreground text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2 ml-1"
                             >
-                                <ArrowRight size={14} className="rotate-180" /> Change Software
+                                <ArrowRight size={14} className="rotate-180" /> {t('create_server.change_software')}
                             </button>
                             <button 
                                 disabled={!formData.name}
                                 onClick={() => setStep('review')} 
                                 className="group flex items-center gap-3 px-8 py-3 bg-primary text-primary-foreground rounded-lg text-[10px] font-bold uppercase tracking-[0.1em] hover:opacity-90 disabled:opacity-20 transition-all shadow-md"
                             >
-                                Finalize Provisioning <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                                {t('create_server.finalize')} <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                             </button>
                         </div>
                     </motion.div>
@@ -347,8 +349,8 @@ const WizardMode: React.FC<WizardModeProps> = ({
                         animate={{ opacity: 1, scale: 1 }}
                     >
                         <div className="text-center space-y-1 mb-6">
-                            <h2 className="text-lg font-black text-white uppercase tracking-tight">Ready to Deploy?</h2>
-                            <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest opacity-60">Final Validation</p>
+                            <h2 className="text-lg font-black text-white uppercase tracking-tight">{t('create_server.ready')}</h2>
+                            <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest opacity-60">{t('create_server.validation')}</p>
                         </div>
 
                         {renderReviewStep()}
@@ -358,7 +360,7 @@ const WizardMode: React.FC<WizardModeProps> = ({
                                 onClick={() => setStep('details')} 
                                 className="text-muted-foreground hover:text-white text-xs font-bold uppercase tracking-wider transition-colors"
                             >
-                                ← Adjust Configuration
+                                ← {t('create_server.adjust')}
                             </button>
                         </div>
                     </motion.div>

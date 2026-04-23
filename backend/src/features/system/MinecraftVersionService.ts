@@ -59,7 +59,7 @@ export class MinecraftVersionService {
             
             logger.warn('[MinecraftVersionService] No cache available. Serving hardcoded safety fallbacks.');
             return {
-                latest: { release: '26.1', snapshot: '26.1-rc1' },
+                latest: { release: '26.1', snapshot: '26.1.1-rc1' },
                 versions: [
                     { id: '26.1', type: 'release', url: '', time: '', releaseTime: '' },
                     { id: '1.21.11', type: 'release', url: '', time: '', releaseTime: '' },

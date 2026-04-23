@@ -298,7 +298,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [fileSystem, searchTerm, sortConfig, searchResults, deletingItemIds]);
+    }, [fileSystem, searchTerm, sortConfig, searchResults]);
 
     // Helpers (Removed legacy recursive helpers)
 
@@ -461,6 +461,9 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
 
     const processUpload = async (file: File) => {
         if (!canManage) return;
+        const fileSize = file.size > 1024 * 1024 
+            ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` 
+            : `${(file.size / 1024).toFixed(1)} KB`;
 
         setUploadProgress({ visible: true, progress: 0, filename: file.name });
         
@@ -828,7 +831,7 @@ const FileManager: React.FC<FileManagerProps> = ({ serverId }) => {
                                                                 } else {
                                                                     try {
                                                                         const content = await API.getFileContent(serverId, file.path);
-                                                                        setEditorFile({ node: file, content, originalContent: content });
+                                                                        setEditorFile({ node: file, content });
                                                                         updateActiveView(serverId, `files:${file.name}`);
                                                                     } catch (e) {
                                                                         addToast('error', 'Read Error', 'Could not read file content.');

@@ -116,6 +116,48 @@ export class ScheduleRepository {
             this.historyLogs.create({ id, serverId, entry });
         }
     }
+
+    /**
+     * Purges all schedules and history for a deleted server.
+     */
+    public async deleteForServer(serverId: string) {
+        logger.info(`[ScheduleRepo] Purging data for server ${serverId}`);
+        
+        // 1. Delete tasks
+        const tasks = this.scheduleTasks.findAll().filter(t => t.serverId === serverId);
+        for (const t of tasks) {
+            this.scheduleTasks.delete(t.id);
+        }
+
+        // 2. Delete history
+        const history = this.historyLogs.findAll().filter(h => h.serverId === serverId);
+        for (const h of history) {
+            this.historyLogs.delete(h.id);
+        }
+    }
+
+    /**
+     * Cleans up migration backup directories older than 24 hours.
+     */
+    public async pruneMigrationBackups() {
+        if (!fs.existsSync(this.schedulesDir)) return;
+        
+        const parentDir = path.dirname(this.schedulesDir);
+        const items = await fs.readdir(parentDir);
+        const now = Date.now();
+        const TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+        for (const item of items) {
+            if (item.includes('.migrated_')) {
+                const itemPath = path.join(parentDir, item);
+                const stats = await fs.stat(itemPath);
+                if (now - stats.mtimeMs > TTL) {
+                    logger.info(`[ScheduleRepo] Pruning old migration backup: ${item}`);
+                    await fs.remove(itemPath);
+                }
+            }
+        }
+    }
 }
 
 export const scheduleRepository = new ScheduleRepository();

@@ -56,6 +56,7 @@ class AuthService {
                 accentColor: 'emerald',
                 reducedMotion: false,
                 visualQuality: false,
+                language: 'en',
                 backgrounds: {},
                 notifications: { browser: true, sound: true, events: { onJoin: true, onCrash: true } },
                 terminal: { fontSize: 13, fontFamily: 'monospace' }
@@ -169,6 +170,7 @@ class AuthService {
                 accentColor: 'emerald',
                 reducedMotion: false,
                 visualQuality: false,
+                language: 'en',
                 backgrounds: {},
                 notifications: { browser: true, sound: true, events: { onJoin: true, onCrash: true } },
                 terminal: { fontSize: 13, fontFamily: 'monospace' }
@@ -245,6 +247,12 @@ class AuthService {
             this.validatePassword(updates.password);
             finalUpdates.passwordHash = bcrypt.hashSync(updates.password, 10);
             delete finalUpdates.password;
+            
+            // FIX: Invalidate all sessions to kill stolen tokens if password is rotated
+            this.revokeAllSessions(id, actor ? actor.id : id).catch(e => {
+                const { logger: log } = require('../../utils/logger');
+                log.error(`[AuthService] Failed to revoke sessions after password update for ${id}: ${e.message}`);
+            });
         }
         delete finalUpdates.passwordHash; // Protect against raw passwordHash updates if still present in input
 
@@ -486,6 +494,9 @@ class AuthService {
         // Hash and save
         const passwordHash = await bcrypt.hash(newPassword, 10);
         userRepository.update(userId, { passwordHash });
+
+        // FIX: Invalidate all sessions to kill stolen tokens 
+        await this.revokeAllSessions(userId, userId);
 
         auditService.log(userId, 'USER_UPDATE', userId, { action: 'PASSWORD_CHANGED' });
     }

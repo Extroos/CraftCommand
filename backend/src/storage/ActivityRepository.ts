@@ -58,6 +58,18 @@ class ActivityRepository implements StorageProvider<ActivityEvent> {
             this.saveAll(all.slice(0, this.MAX_HISTORY));
         }
     }
+
+    /**
+     * Completely removes all activity for a server.
+     * Use this when a server is DELETED.
+     */
+    public deleteForServer(serverId: string): void {
+        const all = this.findAll();
+        const filtered = all.filter(e => e.serverId !== serverId);
+        if (filtered.length !== all.length) {
+            this.saveAll(filtered);
+        }
+    }
 }
 
 export const activityRepository = new ActivityRepository();

@@ -70,6 +70,7 @@ export interface UserProfile {
         reducedMotion: boolean;
         visualQuality: boolean;
         theme?: 'dark' | 'light' | 'system';  // Theme preference
+        language?: string; // Preferred language (e.g., 'en', 'es', 'fr')
         backgrounds?: CustomBackgrounds;
         dashboardLayout?: any; // Stores react-grid-layout state
         notifications: {
@@ -161,6 +162,7 @@ export interface ServerConfig {
     workingDirectory: string;
     executable?: string; // Custom JAR or start script
     startTime?: number; // Timestamp
+    lifecyclePolicy?: ServerLifecyclePolicy;
     advancedFlags?: ServerAdvancedFlags;
     onlineMode?: boolean;
     maxPlayers?: number;
@@ -259,6 +261,12 @@ export enum ServerStatus {
     NODE_UNREACHABLE = 'NODE_UNREACHABLE'
 }
 
+export enum ServerLifecyclePolicy {
+    MANUAL = 'MANUAL',          // Only start when clicked
+    ADAPTIVE = 'ADAPTIVE',      // Restore state on boot (Default)
+    RESILIENT = 'RESILIENT'     // Watchdog: Always try to be ONLINE
+}
+
 export interface GlobalSettings {
     app: {
         hostMode: boolean;
@@ -296,6 +304,9 @@ export interface GlobalSettings {
         professionalMode?: boolean;
         network?: NetworkConfig;
         backupLimitGB?: number;
+        defaultExecutionEngine?: 'native' | 'remote' | 'docker';
+        defaultLifecyclePolicy?: ServerLifecyclePolicy;
+        hostPersistenceEnabled?: boolean; // If true, agent is registered for OS boot
     };
     discordBot?: DiscordBotConfig;
     webhooks?: WebhookConfig[];

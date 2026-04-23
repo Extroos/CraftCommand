@@ -225,6 +225,7 @@ export const setupSocket = (socketIo: Server) => {
                     timestamp: Date.now()
                 });
             }
+
         });
 
         socket.on('server:leave', ({ serverId }) => {
@@ -418,6 +419,12 @@ export const setupSocket = (socketIo: Server) => {
 
         socket.on('disconnect', () => {
             logger.info(`[Socket] ✗ Disconnected: ${user.username} [${socket.id}]`);
+
+            // Cleanup Rate Limiter memory for this user if no other sockets remain
+            const userSockets = io.sockets.adapter.rooms.get(`user:${user.id}`);
+            if (!userSockets || userSockets.size === 0) {
+                rateLimitMap.delete(user.id);
+            }
 
             // Release all locks held by this socket (#6 — Ghost Locks)
             const released = lockingService.releaseAllForSocket(socket.id);

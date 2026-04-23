@@ -82,7 +82,7 @@ export const registerBroadcasters = (io: Server) => {
     });
     javaManager.on('error', (data: any) => {
         const payload = typeof data === 'string' ? { message: data } : data;
-        io.emit('install:error', payload);
+        io.emit('server:install:error', payload);
     });
     javaManager.on('complete', (data: any) => {
         io.emit('server:install:complete', data);

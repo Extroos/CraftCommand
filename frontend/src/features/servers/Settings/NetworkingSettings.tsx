@@ -4,6 +4,7 @@ import { Gamepad2, Download, Network, Zap, Activity, Cpu, AlertTriangle } from '
 import { STAGGER_ITEM } from '../../../styles/motion';
 import { SettingsInputField as InputField } from './SettingsInputField';
 import { NetworkSettings } from '../../system/NetworkSettings';
+import { useTranslation } from 'react-i18next';
 
 interface NetworkingSettingsProps {
     currentServer: any;
@@ -28,13 +29,7 @@ export const NetworkingSettings: React.FC<NetworkingSettingsProps> = ({
     isCrossPlayLoading, capabilities, config, errors, handleChange, servers, stats,
     setConfig, setIsDirty, user
 }) => {
-    // Only check if isDirty logic here by passing setIsDirty explicitly when changes occur
-    // isDirty boolean itself isn't needed here unless we want to conditionally render the "Restart Required" warning based on changes made here.
-    // Let's check locally if advancedFlags networking actually changed
-    // In original code, it just checks global `isDirty` which might show even if other things changed.
-    // To match behavior exactly, we could pass `isDirty` from parent.
-    // Let's assume parent passes `isDirty` if we need it, but we can also just show it if `isDirty` and this tab is open. 
-    // Wait, let's add `isDirty` to props just in case.
+    const { t } = useTranslation();
     
     return (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 xl:col-span-3">
@@ -53,8 +48,8 @@ export const NetworkingSettings: React.FC<NetworkingSettingsProps> = ({
                                 <Gamepad2 size={14} className="text-violet-500" />
                             </div>
                             <div>
-                                <h3 className="text-xs font-bold text-foreground/90">Cross-Play</h3>
-                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">Bedrock Edition Support</p>
+                                <h3 className="text-xs font-bold text-foreground/90">{t('settings.networking.crossplay')}</h3>
+                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.networking.bedrock_support')}</p>
                             </div>
                         </div>
                         
@@ -62,11 +57,11 @@ export const NetworkingSettings: React.FC<NetworkingSettingsProps> = ({
                             <div className="flex items-center justify-between p-3 bg-secondary/30 rounded border border-border/50">
                                 <div>
                                     <div className="font-medium text-xs flex items-center gap-2">
-                                        Enable Bedrock Support
-                                        {crossPlayStatus?.enabled && <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-500/20 text-emerald-600 uppercase tracking-wider">Active</span>}
+                                        {t('settings.networking.enable_bedrock')}
+                                        {crossPlayStatus?.enabled && <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-500/20 text-emerald-600 uppercase tracking-wider">{t('common.active')}</span>}
                                     </div>
                                     <p className="text-[10px] text-muted-foreground mt-0.5 max-w-[200px]">
-                                        Allows Bedrock players (Mobile, Console) to join this Java server using Geyser.
+                                        {t('settings.networking.bedrock_desc')}
                                     </p>
                                 </div>
                                 <button
@@ -88,7 +83,7 @@ export const NetworkingSettings: React.FC<NetworkingSettingsProps> = ({
                                 <div className="space-y-3 ">
                                     <div className="p-2 bg-violet-500/5 border border-violet-500/10 rounded-md">
                                         <div className="flex justify-between items-center mb-1">
-                                            <span className="text-[9px] font-bold uppercase tracking-widest text-violet-600/80">Bedrock UDP Port</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-widest text-violet-600/80">{t('settings.networking.bedrock_port')}</span>
                                             <span className="text-[9px] font-mono text-muted-foreground">{crossPlayStatus.bedrockPort || 19132}</span>
                                         </div>
                                         <div className="h-1 bg-violet-500/20 rounded-full overflow-hidden">
@@ -98,7 +93,7 @@ export const NetworkingSettings: React.FC<NetworkingSettingsProps> = ({
                                     
                                     <div className="flex items-center gap-2 p-2 bg-secondary/40 rounded border border-border/50">
                                         <Download size={12} className="text-muted-foreground" />
-                                        <div className="text-[9px] font-bold text-muted-foreground">Geyser + Floodgate Installed</div>
+                                        <div className="text-[9px] font-bold text-muted-foreground">{t('settings.networking.geyser_installed')}</div>
                                     </div>
                                 </div>
                             )}
@@ -114,48 +109,48 @@ export const NetworkingSettings: React.FC<NetworkingSettingsProps> = ({
                         </div>
                         <div className="flex-1">
                             <div className="flex justify-between items-center">
-                                <h3 className="text-xs font-bold text-foreground/90">Networking Configuration</h3>
+                                <h3 className="text-xs font-bold text-foreground/90">{t('settings.networking.config')}</h3>
                                 {servers.find(s => s.id === serverId)?.status === 'ONLINE' && (
                                     <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                                         <div className="w-1 h-1 rounded-full bg-emerald-600" />
-                                        <span className="text-[9px] font-bold text-emerald-600">Live Engine Active</span>
+                                        <span className="text-[9px] font-bold text-emerald-600">{t('settings.networking.live_engine')}</span>
                                     </div>
                                 )}
                             </div>
-                            <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">Throughput & Latency Tuning</p>
+                            <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-tight opacity-60">{t('settings.networking.tuning')}</p>
                         </div>
                     </div>
 
                     {capabilities.supportsJava && (
                         <div className="grid grid-cols-2 gap-3 mb-4">
                             <InputField 
-                                label="Socket Buffer" 
+                                label={t('settings.networking.socket_buffer')} 
                                 propKey="advancedFlags.socketBuffer" 
                                 type="number" 
                                 suffix="kb" 
                                 config={config} 
                                 errors={errors} 
                                 handleChange={handleChange} 
-                                note="Optimizes high-traffic flow"
+                                note={t('settings.networking.socket_buffer_note')}
                             />
                             <InputField 
-                                label="Compress Thresh." 
+                                label={t('settings.networking.compress_thresh')} 
                                 propKey="advancedFlags.compressionThreshold" 
                                 type="number" 
                                 suffix="b" 
                                 config={config} 
                                 errors={errors} 
                                 handleChange={handleChange} 
-                                note="Packet compression limit"
+                                note={t('settings.networking.compress_thresh_note')}
                             />
                         </div>
                     )}
 
                     <div className="space-y-2">
                          {[
-                             { label: 'Aikar\'s Flags (Adaptive)', key: 'aikarFlags', icon: <Zap size={10} className="text-amber-500" />, desc: 'G1GC Optimization Suite', requires: 'G1GC', javaOnly: true },
-                             { label: 'Spark Trace Engine', key: 'installSpark', icon: <Activity size={10} className="text-purple-500" />, desc: 'Real-time Profiler Plugin', javaOnly: true },
-                             { label: 'GraalVM Native JIT', key: 'useGraalVM', icon: <Cpu size={10} className="text-emerald-500" />, desc: 'Advanced Bytecode Compiler', javaOnly: true },
+                             { label: t('settings.networking.aikar_flags'), key: 'aikarFlags', icon: <Zap size={10} className="text-amber-500" />, desc: t('settings.networking.aikar_desc'), requires: 'G1GC', javaOnly: true },
+                             { label: t('settings.networking.spark'), key: 'installSpark', icon: <Activity size={10} className="text-purple-500" />, desc: t('settings.networking.spark_desc'), javaOnly: true },
+                             { label: t('settings.networking.graalvm'), key: 'useGraalVM', icon: <Cpu size={10} className="text-emerald-500" />, desc: t('settings.networking.graalvm_desc'), javaOnly: true },
                          ].filter(item => !item.javaOnly || capabilities.supportsJava).map((item) => {
                              const isRunning = servers.find(s => s.id === serverId)?.status === 'ONLINE';
                              const activeStats = (stats as any)?.[serverId];
@@ -181,7 +176,7 @@ export const NetworkingSettings: React.FC<NetworkingSettingsProps> = ({
                                                     <span className="text-[9px] uppercase font-black tracking-wider text-muted-foreground group-hover:text-foreground/80 transition-colors">{item.label}</span>
                                                     {isRunning && isActiveOnProcess && (
                                                         <div className="group/v relative">
-                                                            <span className="text-[7px] font-black bg-emerald-500/20 text-emerald-600 px-1 rounded uppercase tracking-tighter cursor-help">Verified</span>
+                                                            <span className="text-[7px] font-black bg-emerald-500/20 text-emerald-600 px-1 rounded uppercase tracking-tighter cursor-help">{t('common.verified')}</span>
                                                         </div>
                                                     )}
                                                  </div>

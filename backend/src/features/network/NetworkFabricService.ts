@@ -44,7 +44,7 @@ class NetworkFabricService {
 
         logger.info('[NetworkFabric] Initialized — listening for server lifecycle events');
         
-        // Start autonomous shielding monitor
+        // Start automated firewall monitor
         this.startAutonomousShielding();
 
         // Start L7 Watchdog
@@ -348,28 +348,25 @@ class NetworkFabricService {
      * Physically blocks an IP address at the OS networking layer.
      * Prevents malicious traffic from reaching any server port.
      */
-    async blockIP(ip: string, options: { reason?: string, port?: number } = {}): Promise<boolean> {
+    async blockIP(ip: string, options: { reason?: string, port?: number, serverId?: string } = {}): Promise<boolean> {
         if (!ip || ip === '127.0.0.1' || ip === 'localhost') return false;
         
-        const { reason = 'Protocol Violation', port } = options;
-        const platform = os.platform();
-        logger.warn(`[NetworkFabric] 🛡️ Initiating Hardware Block for ${ip} ${port ? `on port ${port}` : ''} (Reason: ${reason})`);
+        const { reason = 'Protocol Violation', port, serverId } = options;
+        logger.warn(`[NetworkFabric] Shielding Triggered: Blocking ${ip} due to ${reason}`);
 
+        const isWin = process.platform === 'win32';
+        // Prefix with serverId for deep-purge tracking
+        const ruleName = serverId ? `CC_BLOCK_${serverId}_${ip.replace(/\D/g, '')}` : `CC_GUARD_${ip.replace(/\D/g, '')}`;
+        
         try {
-            if (platform === 'win32') {
-                // Windows Advanced Firewall Rule
-                const ruleName = `CC_BLOCK_${ip.replace(/\./g, '_')}${port ? `_P${port}` : ''}`;
-                let cmd = `netsh advfirewall firewall add rule name="${ruleName}" dir=in action=block remoteip=${ip} description="CraftCommand Auto-Block: ${reason}"`;
+            if (isWin) {
+                let cmd = `netsh advfirewall firewall add rule name="${ruleName}" dir=in action=block remoteip=${ip}`;
                 if (port) cmd += ` localport=${port} protocol=TCP`;
                 await execAsync(cmd);
-            } else if (platform === 'linux') {
-                // Linux iptables (requires sudo/root)
-                let cmd = `iptables -A INPUT -s ${ip} -j DROP -m comment --comment "CC_BLOCK: ${reason}"`;
-                if (port) cmd = `iptables -A INPUT -s ${ip} -p tcp --dport ${port} -j DROP -m comment --comment "CC_BLOCK: ${reason}"`;
-                await execAsync(cmd);
             } else {
-                logger.error(`[NetworkFabric] Firewall block not supported on platform: ${platform}`);
-                return false;
+                let cmd = `iptables -A INPUT -s ${ip} -j DROP -m comment --comment "${ruleName}"`;
+                if (port) cmd = `iptables -A INPUT -s ${ip} -p tcp --dport ${port} -j DROP -m comment --comment "${ruleName}"`;
+                await execAsync(cmd);
             }
 
             logger.success(`[NetworkFabric] IP ${ip} physically blocked at OS firewall.`);
@@ -383,16 +380,27 @@ class NetworkFabricService {
     /**
      * Removes a firewall block for an IP.
      */
-    async unblockIP(ip: string): Promise<boolean> {
+    async unblockIP(ip: string, serverId?: string): Promise<boolean> {
+        if (!ip) return false;
+        
         const platform = os.platform();
+        const ruleName = serverId 
+            ? `CC_BLOCK_${serverId}_${ip.replace(/\D/g, '')}` 
+            : `CC_GUARD_${ip.replace(/\D/g, '')}`;
+
         try {
             if (platform === 'win32') {
-                const ruleName = `CC_BLOCK_${ip.replace(/\./g, '_')}`;
                 await execAsync(`netsh advfirewall firewall delete rule name="${ruleName}"`);
             } else if (platform === 'linux') {
-                await execAsync(`iptables -D INPUT -s ${ip} -j DROP`);
+                // For Linux, we need to find the rule with this specific comment
+                const { stdout } = await execAsync('iptables -S');
+                const rules = stdout.split('\n').filter(r => r.includes(ruleName));
+                for (const rule of rules) {
+                    const deleteCmd = rule.replace('-A', '-D');
+                    await execAsync(`iptables ${deleteCmd}`);
+                }
             }
-            logger.info(`[NetworkFabric] IP ${ip} unblocked.`);
+            logger.info(`[NetworkFabric] Firewall rule ${ruleName} for IP ${ip} removed.`);
             return true;
         } catch (e: any) {
             logger.warn(`[NetworkFabric] Failed to unblock IP ${ip} (may already be unblocked): ${e.message}`);
@@ -400,7 +408,39 @@ class NetworkFabricService {
         }
     }
 
-    // ─── AUTONOMOUS SHIELDING ────────────────────────────
+    /**
+     * Deep-cleans all firewall rules associated with a specific server.
+     * Called during server deletion (Deep Purge).
+     */
+    async clearRulesForServer(serverId: string): Promise<void> {
+        logger.info(`[NetworkFabric] Purging firewall rules for server ${serverId}...`);
+        const isWin = process.platform === 'win32';
+        const prefix = `CC_BLOCK_${serverId}_`;
+
+        try {
+            if (isWin) {
+                // Powershell can filter by name prefix. Using -Name matches the netsh name.
+                const psCmd = `Get-NetFirewallRule -Name "${prefix}*" -ErrorAction SilentlyContinue | Remove-NetFirewallRule`;
+                await execAsync(`powershell -Command "${psCmd}"`);
+            } else {
+                // Linux/Iptables: Search for rules containing the serverId prefix in the comment
+                const { stdout } = await execAsync('iptables -S');
+                const rules = stdout.split('\n').filter(r => r.includes(prefix));
+                for (const rule of rules) {
+                    const deleteCmd = rule.replace('-A', '-D');
+                    await execAsync(`iptables ${deleteCmd}`);
+                }
+            }
+            logger.success(`[NetworkFabric] Firewall rules for ${serverId} purged.`);
+        } catch (e: any) {
+            // Silently continue if no rules found, but log if it's a real error
+            if (!e.message?.includes('No rules match') && !e.message?.includes('could not find')) {
+                logger.error(`[NetworkFabric] Error during rule purge for ${serverId}: ${e.message}`);
+            }
+        }
+    }
+
+    // ─── AUTOMATED FIREWALL RULES ────────────────────────
 
     /**
      * Monitors real-time stats for traffic anomalies.

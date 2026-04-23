@@ -69,6 +69,32 @@ export class ProxyService {
     }
 
     /**
+     * Purges all links to a backend server across all proxies.
+     * Use this during deep-purge to prevent ghost connectivity.
+     */
+    public async unlinkAll(backendId: string): Promise<void> {
+        const proxies = getServers().filter(s => s.software === 'Velocity');
+        let affectedCount = 0;
+
+        for (const proxy of proxies) {
+            if (proxy.network?.proxyConfig?.links?.some((l: any) => l.serverId === backendId)) {
+                logger.info(`[ProxyService] Removing ghost link for ${backendId} from proxy ${proxy.name}`);
+                proxy.network.proxyConfig.links = proxy.network.proxyConfig.links.filter((l: any) => l.serverId !== backendId);
+                saveServer(proxy);
+                this.syncAdvancedVelocityConfig(proxy.id);
+                
+                // Hot-reload so the fabric change takes effect
+                await this.triggerVelocityReload(proxy.id);
+                affectedCount++;
+            }
+        }
+
+        if (affectedCount > 0) {
+            logger.success(`[ProxyService] Purged ${affectedCount} ghost proxy links for ${backendId}.`);
+        }
+    }
+
+    /**
      * Finds the proxy server that a backend server is linked to.
      */
     public findProxyForServer(backendId: string): any | null {

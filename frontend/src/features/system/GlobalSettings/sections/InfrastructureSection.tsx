@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Monitor, Database, Layers, Check } from 'lucide-react';
+import { Shield, Monitor, Database, Layers, Check, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { STAGGER_ITEM } from '../../../../styles/motion';
 import { GlobalSettings, UserProfile } from '@shared/types';
@@ -152,6 +152,9 @@ export const InfrastructureSection: React.FC<InfrastructureSectionProps> = ({
                             <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight">
                                 Enable SQLite for better data integrity and crash resilience. Disabling switches back to standard JSON files.
                             </p>
+                            <p className="text-[9px] text-rose-500/80 mt-1.5 font-bold leading-tight flex items-center gap-1 bg-rose-500/10 w-fit p-1 rounded">
+                                <AlertTriangle size={10} /> Data is migrated automatically, but always take a manual backup before switching storage drivers.
+                            </p>
                         </div>
                             <button
                                 onClick={() => {
@@ -202,7 +205,7 @@ export const InfrastructureSection: React.FC<InfrastructureSectionProps> = ({
                         <div className="flex justify-between items-start gap-4">
                         <div>
                             <div className="font-bold text-[11px] flex items-center gap-2">
-                                Distributed Nodes Engine
+                                Distributed Nodes System
                                 {settings.app.distributedNodes?.enabled && <Check size={12} className="text-emerald-500" />}
                             </div>
                             <p className="text-[9px] text-muted-foreground mt-0.5 font-medium leading-tight max-w-[280px]">

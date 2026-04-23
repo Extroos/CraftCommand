@@ -1,13 +1,12 @@
 {
-    "version": "1.13.0",
+    "version": "1.13.2",
     "status": "beta",
-    "codename": "Stable Infrastructure",
-    "title": "Linux Support & Process Hardening",
+    "codename": "Zero-Config Stabilization",
+    "title": "Platform Hardening & Networking Orchestration",
     "notes": [
-        "Added native Linux and macOS support via POSIX-compliant shell launchers.",
-        "Integrated systemd unit templates for reliable background process management.",
-        "Refactored process monitoring with port-release verification loops.",
-        "Implemented boot-time cleanup of orphaned temporary directories.",
-        "Enhanced security with JIT session tracking and stricter rate limiting."
+        "Automated Binary Provisioning: New utility for auto-detecting and downloading cloudflared/playit binaries.",
+        "Domain Bridge: One-click HTTPS orchestration with automated Caddy configuration for all users.",
+        "Launcher Synchronization: Fully aligned .bat and .sh launchers with dependency guards and UI hardening.",
+        "Deep Registry Integration: Integrated network lifecycle hooks into server startup and deep-merge data persistence."
     ]
 }

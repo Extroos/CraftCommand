@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown, ShieldAlert, Network, RotateCcw, AlertTriangle, Key, Fingerprint, Lock, Unlock, Info, Shield, Activity } from 'lucide-react';
+import { ChevronDown, ShieldAlert, Network, RotateCcw, AlertTriangle, Key, Fingerprint, Lock, Unlock, Info, Shield, Activity, Plus, Trash2 } from 'lucide-react';
 import { STAGGER_ITEM } from '../../../styles/motion';
+import { useTranslation } from 'react-i18next';
+import { SettingsInputField as InputField } from './SettingsInputField';
 
 interface SecuritySettingsProps {
     config: any;
@@ -14,6 +16,7 @@ interface SecuritySettingsProps {
 export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
     config, handleChange, handleSecurityChange, globalSettings, currentServer
 }) => {
+    const { t } = useTranslation();
     const [newIp, setNewIp] = useState('');
 
     const handleAddIp = () => {
@@ -42,8 +45,8 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                                 <ShieldAlert size={14} className="text-rose-500/70" />
                             </div>
                             <div>
-                                <h3 className="text-xs font-bold text-foreground/90">L3/L4 Firewall</h3>
-                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">Packet Filter logic</p>
+                                <h3 className="text-xs font-bold text-foreground/90">{t('settings.security.internal_firewall')}</h3>
+                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.security.rule_based')}</p>
                             </div>
                         </div>
                         <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
@@ -57,27 +60,30 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                     
                     <div className={`space-y-4 transition-all duration-300 ${!config.securityConfig.firewallEnabled ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100'}`}>
                         <div className="bg-muted/10 border border-border/40 rounded-md p-3">
-                            <h4 className="text-[9px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 text-foreground/70"><Network size={12} className="text-primary/70" /> ACL: Source Address Whitelist</h4>
+                            <h4 className="text-[9px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 text-foreground/70"><Network size={12} className="text-primary/70" /> {t('settings.security.acl_whitelist')}</h4>
                             <div className="flex gap-2 mb-3">
                                 <input 
-                                    type="text" 
+                                    type="text"
+                                    id="ipInput"
+                                    placeholder={t('settings.security.ip_placeholder')}
                                     value={newIp}
                                     onChange={(e) => setNewIp(e.target.value)}
-                                    placeholder="0.0.0.0" 
-                                    className="flex-1 bg-background border border-border/60 rounded-md px-2.5 py-1.5 text-[11px] font-mono text-primary/80 focus:outline-none focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground/20"
+                                    className="flex-1 bg-background border border-border/60 rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 hover:border-primary/40 focus:border-primary transition-all"
                                 />
-                                <button onClick={handleAddIp} className="bg-primary/90 text-primary-foreground px-3 rounded-md text-[9px] font-black uppercase tracking-widest hover:bg-primary transition-all">Add Hook</button>
+                                <button onClick={handleAddIp} className="bg-primary/90 text-primary-foreground px-3 rounded-md text-[9px] font-black uppercase tracking-widest hover:bg-primary transition-all flex items-center gap-1">
+                                    <Plus size={10} /> {t('settings.security.add_ip')}
+                                </button>
                             </div>
                             
                             <div className="flex flex-wrap gap-1.5">
                                 {config.securityConfig.allowedIps.map((ip: string) => (
                                     <div key={ip} className="bg-primary/5 border border-primary/20 text-primary/80 px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-2 group/ip hover:bg-primary/10 transition-colors">
                                         {ip}
-                                        <button onClick={() => handleRemoveIp(ip)} className="hover:text-primary transition-opacity"><RotateCcw className="rotate-45" size={10} /></button>
+                                        <button onClick={() => handleRemoveIp(ip)} className="hover:text-primary transition-opacity"><Trash2 size={10} /></button>
                                     </div>
                                 ))}
                                 {config.securityConfig.allowedIps.length === 0 && (
-                                    <span className="text-[9px] text-muted-foreground/40 font-mono flex items-center gap-2 uppercase font-bold tracking-tighter"><AlertTriangle size={10}/> No Policy defined (ANY/ANY)</span>
+                                    <span className="text-[9px] text-muted-foreground/40 font-mono flex items-center gap-2 uppercase font-bold tracking-tighter"><AlertTriangle size={10}/> {t('settings.security.no_policy')}</span>
                                 )}
                             </div>
                         </div>
@@ -95,15 +101,15 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                             <Key size={14} className="text-primary/70" />
                         </div>
                         <div>
-                            <h3 className="text-xs font-bold text-foreground/90">Access Control</h3>
-                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">Auth Policy Enforcement</p>
+                            <h3 className="text-xs font-bold text-foreground/90">{t('settings.security.access_control')}</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.security.auth_policy')}</p>
                         </div>
                     </div>
                     
                     <div className="space-y-2">
                         {[
-                            { label: 'Multifactor Auth (2FA)', key: 'requireOp2fa', icon: <Fingerprint size={12} /> },
-                            { label: 'Enforce SSL/TLS Layer', key: 'forceSsl', icon: <Lock size={12} /> },
+                            { label: t('settings.security.mfa'), key: 'requireOp2fa', icon: <Fingerprint size={12} /> },
+                            { label: t('settings.security.ssl_tls'), key: 'forceSsl', icon: <Lock size={12} /> },
                         ].map((item) => (
                             <label key={item.key} className="group flex items-center justify-between px-3 py-2 rounded-md border border-border/40 bg-muted/20 hover:bg-muted/40 cursor-pointer transition-all">
                                 <div className="flex items-center gap-2.5">
@@ -138,8 +144,8 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                                     <Unlock size={12} />
                                 </div>
                                 <div>
-                                    <h4 className={`text-[9px] font-black uppercase tracking-wider ${!config.onlineMode ? 'text-rose-400' : 'text-muted-foreground/80'}`}>Bypass MD5 Auth</h4>
-                                    <p className="text-[7px] font-bold text-muted-foreground/40 uppercase tracking-tighter">OFFLINE_MODE_UNSECURE</p>
+                                    <h4 className={`text-[9px] font-black uppercase tracking-wider ${!config.onlineMode ? 'text-rose-400' : 'text-muted-foreground/80'}`}>{t('settings.security.bypass_md5')}</h4>
+                                    <p className="text-[7px] font-bold text-muted-foreground/40 uppercase tracking-tighter">{t('settings.security.offline_mode_warning')}</p>
                                 </div>
                             </div>
                             <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
@@ -154,11 +160,10 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                         {currentServer?.software === 'Velocity' && (
                             <div className="mt-2 p-3 bg-primary/5 border border-primary/10 rounded-lg">
                                 <p className="text-[9px] font-bold text-primary/70 uppercase tracking-tight flex items-center gap-1.5">
-                                    <Info size={10} /> Proxy Auth Layer
+                                    <Info size={10} /> {t('settings.security.proxy_auth')}
                                 </p>
                                 <p className="text-[9px] text-muted-foreground leading-relaxed mt-1">
-                                    This affects the Proxy's internal authentication. For public use, 
-                                    <span className="text-primary/70 font-bold ml-1 uppercase underline decoration-primary/20">Online Mode: ON</span> is highly recommended to protect downstream backends.
+                                    {t('settings.security.proxy_auth_desc')}
                                 </p>
                             </div>
                         )}
@@ -178,8 +183,8 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                             <Shield size={14} className="text-primary/70" />
                         </div>
                         <div>
-                            <h3 className="text-xs font-bold text-foreground/90">Threat Mitigation</h3>
-                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">Edge Protection Stack</p>
+                            <h3 className="text-xs font-bold text-foreground/90">{t('settings.security.threat_mitigation')}</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.security.edge_stack')}</p>
                         </div>
                     </div>
                     
@@ -192,7 +197,7 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                             <div className="flex justify-between items-center mb-1.5">
                                 <label className={`text-[9px] font-black uppercase tracking-widest ${
                                     config.securityConfig.ddosProtection ? 'text-primary' : 'text-muted-foreground/60'
-                                }`}>DDoS Mitigation</label>
+                                }`}>{t('settings.security.ddos_mitigation')}</label>
                                 <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all cursor-pointer ${
                                     config.securityConfig.ddosProtection
                                     ? 'bg-primary border-primary justify-end' 
@@ -201,18 +206,18 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                                      <div className={`w-2 h-2 rounded-full transition-all ${config.securityConfig.ddosProtection ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
                                 </div>
                             </div>
-                            <p className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-tighter leading-tight">Stateful Packet Inspection (SPI) & Throttling</p>
+                            <p className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-tighter leading-tight">{t('settings.security.spi_throttling')}</p>
                         </div>
 
                         {/* Geographic Lock — Coming Soon */}
                         <div className="space-y-1 group/select opacity-50">
                             <div className="flex items-center justify-between">
-                                <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Geographic Lock</label>
-                                <span className="text-[7px] font-black uppercase tracking-widest text-muted-foreground/40 bg-muted/40 px-1.5 py-0.5 rounded">Coming Soon</span>
+                                <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{t('settings.security.geo_lock')}</label>
+                                <span className="text-[7px] font-black uppercase tracking-widest text-muted-foreground/40 bg-muted/40 px-1.5 py-0.5 rounded">{t('settings.security.coming_soon')}</span>
                             </div>
                             <div className="relative">
                                 <select disabled className="w-full bg-muted/20 border border-border/40 rounded-md px-2.5 py-1.5 text-[11px] text-muted-foreground/60 focus:outline-none appearance-none cursor-not-allowed">
-                                    <option value="">Status: Global (OPEN)</option>
+                                    <option value="">{t('settings.security.global_open')}</option>
                                 </select>
                                 <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/20">
                                     <ChevronDown size={12} />
@@ -233,15 +238,15 @@ export const SecuritySettings: React.FC<SecuritySettingsProps> = ({
                             <Activity size={14} className="text-primary/70" />
                         </div>
                         <div>
-                            <h3 className="text-xs font-bold text-foreground/90">System Integrity</h3>
-                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">FIM: File Integrity Monitoring</p>
+                            <h3 className="text-xs font-bold text-foreground/90">{t('settings.security.system_integrity')}</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.security.fim_desc')}</p>
                         </div>
                     </div>
                     
-                    <p className="text-[9px] font-bold text-muted-foreground/60 mb-4 leading-relaxed uppercase tracking-tight">Core assets (server.jar, eula.txt) are under kernel-level write-protection.</p>
+                    <p className="text-[9px] font-bold text-muted-foreground/60 mb-4 leading-relaxed uppercase tracking-tight">{t('settings.security.kernel_protection')}</p>
                     <button disabled className="w-full py-1.5 bg-muted/20 text-muted-foreground/40 border border-border/30 rounded-md text-[9px] font-black uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2">
-                        Perform MD5/SHA2 Validation
-                        <span className="text-[7px] font-black bg-muted/40 px-1.5 py-0.5 rounded">Coming Soon</span>
+                        {t('settings.security.perform_validation')}
+                        <span className="text-[7px] font-black bg-muted/40 px-1.5 py-0.5 rounded">{t('settings.security.coming_soon')}</span>
                     </button>
                 </motion.div>
             </div>

@@ -292,5 +292,54 @@
     "lastCrash": 0,
     "consecutiveCrashes": 0,
     "isSafeMode": false
+  },
+  "local-1775937734266": {
+    "serverId": "local-1775937734266",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
+  },
+  "local-1776011558711": {
+    "serverId": "local-1776011558711",
+    "score": 70,
+    "lastCrash": 0,
+    "consecutiveCrashes": 1,
+    "isSafeMode": false
+  },
+  "local-1776011697985": {
+    "serverId": "local-1776011697985",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
+  },
+  "local-1776014342721": {
+    "serverId": "local-1776014342721",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
+  },
+  "test1": {
+    "serverId": "test1",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
+  },
+  "local-1776089799957": {
+    "serverId": "local-1776089799957",
+    "score": 100,
+    "lastCrash": 0,
+    "consecutiveCrashes": 0,
+    "isSafeMode": false
+  },
+  "local-1776091053560": {
+    "serverId": "local-1776091053560",
+    "score": 70,
+    "lastCrash": 0,
+    "consecutiveCrashes": 1,
+    "isSafeMode": false
   }
 }

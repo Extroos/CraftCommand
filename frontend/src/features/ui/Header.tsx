@@ -10,6 +10,7 @@ import {
 import { TabView, UserProfile, ServerConfig } from '@shared/types';
 
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { API } from '@core/services/api';
 
 interface HeaderProps {
@@ -39,27 +40,27 @@ import { useNotifications } from '@features/system/context/NotificationContext';
 import { useSystem } from '@features/system/context/SystemContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
 
-const formatDistanceToNow = (timestamp: number | string, options?: { addSuffix?: boolean }) => {
+const formatDistanceToNow = (timestamp: number | string, t: any, options?: { addSuffix?: boolean }) => {
     const date = new Date(timestamp);
     const now = new Date();
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     
     let interval = seconds / 31536000;
-    if (interval > 1) return Math.floor(interval) + " years" + (options?.addSuffix ? " ago" : "");
+    if (interval > 1) return Math.floor(interval) + " " + t('common.unit_years') + (options?.addSuffix ? t('common.ago_suffix') : "");
     
     interval = seconds / 2592000;
-    if (interval > 1) return Math.floor(interval) + " months" + (options?.addSuffix ? " ago" : "");
+    if (interval > 1) return Math.floor(interval) + " " + t('common.unit_months') + (options?.addSuffix ? t('common.ago_suffix') : "");
     
     interval = seconds / 86400;
-    if (interval > 1) return Math.floor(interval) + " days" + (options?.addSuffix ? " ago" : "");
+    if (interval > 1) return Math.floor(interval) + " " + t('common.unit_days') + (options?.addSuffix ? t('common.ago_suffix') : "");
     
     interval = seconds / 3600;
-    if (interval > 1) return Math.floor(interval) + " hours" + (options?.addSuffix ? " ago" : "");
+    if (interval > 1) return Math.floor(interval) + " " + t('common.unit_hours') + (options?.addSuffix ? t('common.ago_suffix') : "");
     
     interval = seconds / 60;
-    if (interval > 1) return Math.floor(interval) + " minutes" + (options?.addSuffix ? " ago" : "");
+    if (interval > 1) return Math.floor(interval) + " " + t('common.unit_minutes') + (options?.addSuffix ? t('common.ago_suffix') : "");
     
-    return Math.floor(seconds) + " seconds" + (options?.addSuffix ? " ago" : "");
+    return Math.floor(seconds) + " " + t('common.unit_seconds') + (options?.addSuffix ? t('common.ago_suffix') : "");
 };
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -67,6 +68,7 @@ const Header: React.FC<HeaderProps> = ({
     onNavigateProfile, onNavigateUsers, onNavigateGlobalSettings, onNavigateAuditLog, onNavigateOperations,
     currentServer 
 }) => {
+    const { t } = useTranslation();
     const { servers } = useServers();
     const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
     const { user } = useUser();
@@ -126,36 +128,36 @@ const Header: React.FC<HeaderProps> = ({
         const serverId = currentServer.id;
 
         const nav: NavItem[] = [
-            { id: 'DASHBOARD', label: 'Overview', icon: <LayoutDashboard size={16} />, type: 'link' },
-            ...(isVelocity && can('server.proxy.manage', serverId) ? [{ id: 'NETWORK', label: 'Proxy Network', icon: <Webhook size={16} />, type: 'link' }] as NavItem[] : []),
-            ...(can('server.console.read', serverId) ? [{ id: 'CONSOLE', label: 'Terminal', icon: <TerminalSquare size={16} />, type: 'link' }] as NavItem[] : []),
-            ...(can('server.files.read', serverId) ? [{ id: 'FILES', label: 'Files', icon: <FolderOpen size={16} />, type: 'link' }] as NavItem[] : []),
+            { id: 'DASHBOARD', label: t('common.dashboard'), icon: <LayoutDashboard size={16} />, type: 'link' },
+            ...(isVelocity && can('server.proxy.manage', serverId) ? [{ id: 'NETWORK', label: t('common.network'), icon: <Webhook size={16} />, type: 'link' }] as NavItem[] : []),
+            ...(can('server.console.read', serverId) ? [{ id: 'CONSOLE', label: t('common.terminal'), icon: <TerminalSquare size={16} />, type: 'link' }] as NavItem[] : []),
+            ...(can('server.files.read', serverId) ? [{ id: 'FILES', label: t('common.files'), icon: <FolderOpen size={16} />, type: 'link' }] as NavItem[] : []),
             {
-                label: isVelocity ? 'Network' : 'Manage',
+                label: isVelocity ? t('common.network') : t('common.operations'),
                 icon: <Layers size={16} />,
                 type: 'dropdown',
                 children: [
                     ...(!isVelocity ? [
-                        ...(can('server.players.manage', serverId) ? [{ id: 'PLAYERS', label: 'Players', icon: <Users size={16} /> }] : []),
-                        ...(can('server.schedules.manage', serverId) ? [{ id: 'SCHEDULES', label: 'Schedules', icon: <CalendarClock size={16} /> }] : []),
-                        ...(can('server.backups.manage', serverId) ? [{ id: 'BACKUPS', label: 'Backups', icon: <ArchiveRestore size={16} /> }] : []),
+                        ...(can('server.players.manage', serverId) ? [{ id: 'PLAYERS', label: t('common.players'), icon: <Users size={16} /> }] : []),
+                        ...(can('server.schedules.manage', serverId) ? [{ id: 'SCHEDULES', label: t('common.schedules'), icon: <CalendarClock size={16} /> }] : []),
+                        ...(can('server.backups.manage', serverId) ? [{ id: 'BACKUPS', label: t('common.backups'), icon: <ArchiveRestore size={16} /> }] : []),
                         ...(can('server.settings', serverId) ? [
-                             { id: 'DATABASES', label: 'Databases', icon: <Database size={16} /> }
+                             { id: 'DATABASES', label: t('common.databases'), icon: <Database size={16} /> }
                         ] : [])
                     ] : []),
-                    ...(capabilities.supportsPlugins && !isVelocity && can('server.plugins.view', serverId) ? [{ id: 'PLUGINS', label: 'Plugins', icon: <Package size={16} /> }] : []),
-                    ...(capabilities.supportsMap && can('server.map.view', serverId) ? [{ id: 'MAP', label: 'Server Map', icon: <MapIcon size={16} /> }] : []),
-                    ...(can('server.integrations.manage', serverId) ? [{ id: 'INTEGRATIONS', label: 'Integrations', icon: <Webhook size={16} /> }] : []),
-                    ...(can('server.settings', serverId) ? [{ id: 'ACCESS', label: 'Access Control', icon: <Shield size={16} /> }] : []),
+                    ...(capabilities.supportsPlugins && !isVelocity && can('server.plugins.view', serverId) ? [{ id: 'PLUGINS', label: t('common.plugins'), icon: <Package size={16} /> }] : []),
+                    ...(capabilities.supportsMap && can('server.map.view', serverId) ? [{ id: 'MAP', label: t('common.server_map'), icon: <MapIcon size={16} /> }] : []),
+                    ...(can('server.integrations.manage', serverId) ? [{ id: 'INTEGRATIONS', label: t('common.integrations'), icon: <Webhook size={16} /> }] : []),
+                    ...(can('server.settings', serverId) ? [{ id: 'ACCESS', label: t('common.access_control'), icon: <Shield size={16} /> }] : []),
                 ] as { id: TabView; label: string; icon: React.ReactNode }[]
             },
             {
-                label: 'System',
+                label: t('common.system'),
                 icon: <ServerCog size={16} />,
                 type: 'dropdown',
                 children: [
-                    ...(can('server.settings', serverId) ? [{ id: 'SETTINGS', label: 'Settings', icon: <Settings size={16} /> }] : []),
-                    ...(can('server.console.read', serverId) ? [{ id: 'KNOWLEDGE_BASE', label: 'Setup Guide', icon: <BookOpenCheck size={16} /> }] : []),
+                    ...(can('server.settings', serverId) ? [{ id: 'SETTINGS', label: t('common.settings'), icon: <Settings size={16} /> }] : []),
+                    ...(can('server.console.read', serverId) ? [{ id: 'KNOWLEDGE_BASE', label: t('common.guide'), icon: <BookOpenCheck size={16} /> }] : []),
                 ] as { id: TabView; label: string; icon: React.ReactNode }[]
             }
         ];
@@ -185,7 +187,7 @@ const Header: React.FC<HeaderProps> = ({
             return (
                 <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/5 rounded border border-amber-500/20">
                     <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
-                    <span className="text-[11px] text-amber-600 dark:text-amber-500 font-semibold">Initializing</span>
+                    <span className="text-[11px] text-amber-600 dark:text-amber-500 font-semibold">{t('common.initializing')}</span>
                 </div>
             );
         }
@@ -193,7 +195,7 @@ const Header: React.FC<HeaderProps> = ({
              return (
                 <div className="flex items-center gap-2 px-3 py-1 bg-muted rounded border border-border">
                     <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30"></span>
-                    <span className="text-[11px] text-muted-foreground font-semibold">Discovery mode</span>
+                    <span className="text-[11px] text-muted-foreground font-semibold">{t('common.discovery_mode')}</span>
                 </div>
             );
         }
@@ -202,7 +204,7 @@ const Header: React.FC<HeaderProps> = ({
                 <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/5 rounded border border-emerald-500/20">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
                     <span className="text-[11px] text-emerald-600 dark:text-emerald-500 font-semibold">
-                        {onlineCount}/{totalCount} systems active
+                        {t('common.systems_active', { online: onlineCount, total: totalCount })}
                     </span>
                 </div>
             );
@@ -210,7 +212,7 @@ const Header: React.FC<HeaderProps> = ({
         return (
             <div className="flex items-center gap-2 px-3 py-1 bg-rose-500/5 rounded border border-rose-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                <span className="text-[11px] text-rose-600 dark:text-rose-500 font-semibold">Systems offline</span>
+                <span className="text-[11px] text-rose-600 dark:text-rose-500 font-semibold">{t('common.systems_offline')}</span>
             </div>
         );
     };
@@ -227,7 +229,7 @@ const Header: React.FC<HeaderProps> = ({
                             whileTap={{ scale: 0.95 }}
                             onClick={onBackToServerList}
                             className="bg-secondary/50 border border-border hover:bg-secondary text-muted-foreground hover:text-foreground p-2 rounded-lg transition-colors mr-1"
-                            title="Back to Server List"
+                            title={t('common.back_to_servers')}
                         >
                             <ChevronLeft size={20} />
                         </motion.button>
@@ -247,7 +249,7 @@ const Header: React.FC<HeaderProps> = ({
                                 </motion.div>
                             ) : (
                                 <span className="text-[10px] text-primary font-semibold mt-1 flex items-center gap-1 opacity-60">
-                                    {settings?.app?.professionalMode ? <><Zap size={10} className="fill-primary text-primary" /> Professional</> : <i>Standard Edition</i>}
+                                    {settings?.app?.professionalMode ? <><Zap size={10} className="fill-primary text-primary" /> {t('common.professional')}</> : <i>{t('common.standard_edition')}</i>}
                                 </span>
                             )}
                         </div>
@@ -311,7 +313,7 @@ const Header: React.FC<HeaderProps> = ({
                         <button
                             onClick={() => onNavigateProfile('2FA')}
                             className={`px-2 py-1 rounded-md border hidden sm:flex items-center justify-center transition-colors ${user?.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground'}`}
-                            title={user?.twoFactorEnabled ? '2FA Protected' : 'Security: Off'}
+                            title={user?.twoFactorEnabled ? t('common.twofactor_protected') : t('common.security_off')}
                         >
                             <Shield size={14} className={user?.twoFactorEnabled ? 'fill-emerald-500/20' : ''} />
                         </button>
@@ -323,7 +325,7 @@ const Header: React.FC<HeaderProps> = ({
                             <button 
                                 onClick={() => setActivityTrayOpen(!isActivityTrayOpen)}
                                 className={`relative p-2 rounded-lg transition-all ${isActivityTrayOpen ? 'bg-primary text-primary-foreground shadow-lg' : 'text-muted-foreground hover:text-primary hover:bg-primary/10'}`}
-                                title="Cluster Activity Monitor"
+                                title={t('common.activity_monitor')}
                             >
                                 <Activity size={18} />
                                 {(Object.keys(backgroundTasks).length > 0 || Object.keys(installProgress).length > 0) && (
@@ -346,12 +348,12 @@ const Header: React.FC<HeaderProps> = ({
                                 {notificationDropdown && (
                                     <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute top-full right-0 mt-2 w-80 md:w-96 bg-card border border-border rounded-lg shadow-2xl z-50 flex flex-col max-h-[80vh]">
                                         <div className="p-3 border-b border-border flex justify-between items-center bg-muted/30 rounded-t-lg">
-                                            <h3 className="font-semibold text-sm">Notifications</h3>
-                                            {unreadCount > 0 && <button onClick={() => markAllAsRead()} className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"><Check size={12} /> Mark all read</button>}
+                                            <h3 className="font-semibold text-sm">{t('profile.notifications')}</h3>
+                                            {unreadCount > 0 && <button onClick={() => markAllAsRead()} className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"><Check size={12} /> {t('common.mark_all_read')}</button>}
                                         </div>
                                         <div className="overflow-y-auto flex-1 p-1">
                                             {notifications.length === 0 ? (
-                                                <div className="py-8 text-center text-muted-foreground"><Bell className="mx-auto mb-2 opacity-20" size={32} /><p className="text-xs">No notifications</p></div>
+                                                <div className="py-8 text-center text-muted-foreground"><Bell className="mx-auto mb-2 opacity-20" size={32} /><p className="text-xs">{t('common.no_notifications')}</p></div>
                                             ) : (
                                                 <div className="flex flex-col gap-1">
                                                     {notifications.map(n => (
@@ -363,7 +365,7 @@ const Header: React.FC<HeaderProps> = ({
                                                                         {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0"></span>}
                                                                     </div>
                                                                     <p className="text-xs text-muted-foreground break-words line-clamp-3">{n.message}</p>
-                                                                    <p className="text-[10px] text-muted-foreground/60 mt-1.5 font-mono">{formatDistanceToNow(n.createdAt, { addSuffix: true })}</p>
+                                                                    <p className="text-[10px] text-muted-foreground/60 mt-1.5 font-mono">{formatDistanceToNow(n.createdAt, t, { addSuffix: true })}</p>
                                                                     {n.link && n.actionLabel && (
                                                                         <button onClick={() => { if (n.link === '/settings/system' && onNavigateGlobalSettings) { onNavigateGlobalSettings(); setNotificationDropdown(false); } else if (!n.link.startsWith('/')) window.open(n.link, '_blank'); }} className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 transition-colors">
                                                                             {n.actionLabel}{n.link.startsWith('/') ? <Settings size={10} /> : <ExternalLink size={10} />}
@@ -401,12 +403,12 @@ const Header: React.FC<HeaderProps> = ({
                             </button>
                             <AnimatePresence>{userDropdown && (
                                 <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-2xl z-[110] p-1">
-                                    <div className="p-2 border-b border-border/50 mb-1"><p className="text-xs font-semibold text-foreground truncate">{user?.email || 'Guest'}</p><p className="text-[10px] text-muted-foreground mt-0.5">Signed in</p></div>
-                                    <button onClick={() => { onNavigateProfile(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><User size={16} /> User Profile</button>
-                                    {onNavigateGlobalSettings && can('system.settings.manage') && <button onClick={() => { onNavigateGlobalSettings(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Settings size={16} /> System Config</button>}
-                                    {onNavigateUsers && hostMode && can('users.manage') && <button onClick={() => { onNavigateUsers(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Users size={16} /> Manage Users</button>}
-                                    {onNavigateAuditLog && can('system.audit.view') && <button onClick={() => { onNavigateAuditLog(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Shield size={16} /> Audit Log</button>}
-                                    <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"><LogOut size={16} /> Sign Out</button>
+                                    <div className="p-2 border-b border-border/50 mb-1"><p className="text-xs font-semibold text-foreground truncate">{user?.email || 'Guest'}</p><p className="text-[10px] text-muted-foreground mt-0.5">{t('common.signed_in')}</p></div>
+                                    <button onClick={() => { onNavigateProfile(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><User size={16} /> {t('common.profile')}</button>
+                                    {onNavigateGlobalSettings && can('system.settings.manage') && <button onClick={() => { onNavigateGlobalSettings(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Settings size={16} /> {t('common.settings')}</button>}
+                                    {onNavigateUsers && hostMode && can('users.manage') && <button onClick={() => { onNavigateUsers(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Users size={16} /> {t('common.manage_users')}</button>}
+                                    {onNavigateAuditLog && can('system.audit.view') && <button onClick={() => { onNavigateAuditLog(); setUserDropdown(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors mb-1"><Shield size={16} /> {t('common.audit')}</button>}
+                                    <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"><LogOut size={16} /> {t('common.logout')}</button>
                                 </motion.div>
                             )}</AnimatePresence>
                         </div>
@@ -428,7 +430,7 @@ const Header: React.FC<HeaderProps> = ({
                             <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
                                 <div className="flex items-center gap-2">
                                     <img src="/website-icon.png" alt="Logo" className="w-6 h-6 object-contain" />
-                                    <span className="text-sm font-semibold text-foreground">Navigation</span>
+                                    <span className="text-sm font-semibold text-foreground">{t('common.navigation')}</span>
                                 </div>
                                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 hover:bg-rose-500/10 hover:text-rose-500 rounded-lg transition-colors"><X size={20} /></button>
                             </div>
@@ -436,7 +438,7 @@ const Header: React.FC<HeaderProps> = ({
                             <div className="flex-1 overflow-y-auto p-4 space-y-6">
                                 {currentServer && (
                                     <div className="space-y-2">
-                                        <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2">Manage</p>
+                                        <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2">{t('common.manage')}</p>
                                         <div className="space-y-1">
                                             {navigation.map(item => (
                                                 <div key={item.label}>
@@ -462,7 +464,7 @@ const Header: React.FC<HeaderProps> = ({
                                 )}
 
                                 <div className="space-y-4">
-                                    <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2">Subsystems</p>
+                                    <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2">{t('common.subsystems')}</p>
                                     <div className="px-2">{getStatusUI()}</div>
                                     <button onClick={() => { onNavigateProfile('2FA'); setIsMobileMenuOpen(false); }} className={`w-full flex items-center justify-center px-4 py-2.5 rounded-lg border transition-all ${user?.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-muted/30 text-muted-foreground border-border'}`}>
                                         <Shield size={16} className={user?.twoFactorEnabled ? 'fill-emerald-500/20' : ''} />
@@ -482,8 +484,8 @@ const Header: React.FC<HeaderProps> = ({
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => { onNavigateProfile(); setIsMobileMenuOpen(false); }} className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-secondary text-xs font-bold text-muted-foreground hover:text-foreground transition-all"><User size={14} /> Profile</button>
-                                    <button onClick={() => { onLogout(); setIsMobileMenuOpen(false); }} className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-rose-50/10 text-xs font-bold text-rose-500 hover:bg-rose-500 hover:text-white transition-all"><LogOut size={14} /> Quit</button>
+                                    <button onClick={() => { onNavigateProfile(); setIsMobileMenuOpen(false); }} className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-secondary text-xs font-bold text-muted-foreground hover:text-foreground transition-all"><User size={14} /> {t('common.profile')}</button>
+                                    <button onClick={() => { onLogout(); setIsMobileMenuOpen(false); }} className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-rose-50/10 text-xs font-bold text-rose-500 hover:bg-rose-500 hover:text-white transition-all"><LogOut size={14} /> {t('common.quit')}</button>
                                 </div>
                             </div>
                         </motion.div>

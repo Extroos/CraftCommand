@@ -1,6 +1,6 @@
 import { StorageProvider } from './StorageProvider';
 import { StorageFactory } from './StorageFactory';
-import {  ServerConfig  } from '@shared/types';
+import {  ServerConfig, ServerLifecyclePolicy  } from '@shared/types';
 // import { systemSettingsService } from '../features/system/SystemSettingsService'; // No longer needed directly here
 
 export class ServerRepository implements StorageProvider<ServerConfig> {
@@ -92,6 +92,17 @@ export class ServerRepository implements StorageProvider<ServerConfig> {
         // 4. Critical Navigation Fields
         if (!sanitized.workingDirectory) {
             sanitized.workingDirectory = `C:/servers/${sanitized.id}`;
+        }
+
+        // 5. Lifecycle Policy (v1.14.0) — Uses global default from System Settings
+        if (!sanitized.lifecyclePolicy) {
+            try {
+                const { systemSettingsService } = require('../features/system/SystemSettingsService');
+                const globalDefault = systemSettingsService.getSettings()?.app?.defaultLifecyclePolicy;
+                sanitized.lifecyclePolicy = globalDefault || ServerLifecyclePolicy.ADAPTIVE;
+            } catch {
+                sanitized.lifecyclePolicy = ServerLifecyclePolicy.ADAPTIVE;
+            }
         }
 
         return sanitized;

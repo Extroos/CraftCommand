@@ -1,9 +1,11 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useServers } from '../context/ServerContext';
 
 const DeploymentProgressOverlay: React.FC = () => {
+    const { t } = useTranslation();
     const { installProgress, servers } = useServers();
     
     // Get active deployments
@@ -14,9 +16,10 @@ const DeploymentProgressOverlay: React.FC = () => {
     return (
         <div className="fixed bottom-6 left-6 z-[100] flex flex-col-reverse gap-3 max-w-sm w-full pointer-events-none">
             <AnimatePresence mode="popLayout">
-                {activeDeployments.map(([serverId, progress]) => {
+                {activeDeployments.map(([serverId, progressData]) => {
+                    const progress = progressData as { percent: number; message: string };
                     const server = servers.find(s => s.id === serverId);
-                    const serverName = server?.name || 'Installing Server...';
+                    const serverName = server?.name || t('create_server.installing_server');
                     const isComplete = progress.percent === 100;
                     const isFailed = progress.message.toLowerCase().includes('failed') || progress.message.toLowerCase().includes('error');
 

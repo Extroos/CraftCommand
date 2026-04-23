@@ -1,13 +1,16 @@
 {
   "name": "craftcommand",
   "private": true,
-  "version": "1.13.0",
+  "version": "1.13.2",
   "license": "AGPL-3.0-only",
   "author": "Extroos",
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix frontend\" \"npm run start --prefix backend\" --names \"FRONT,BACK\" --prefix-colors \"cyan,magenta\" --kill-others",
     "lint": "npm run lint --prefix frontend && npm run lint --prefix backend",
     "build": "npm run build --prefix frontend",
+    "build:backend": "npm run build --prefix backend",
+    "build:agent": "npm run build --prefix agent",
+    "build:all": "npm run build && npm run build:backend && npm run build:agent",
     "preview": "npm run preview --prefix frontend",
     "start:backend": "npm run start --prefix backend",
     "start:all": "npm run dev"

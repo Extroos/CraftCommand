@@ -16,6 +16,9 @@ export const PluginFolderMissingRule: DiagnosisRule = {
     analyze: async (server: ServerConfig): Promise<DiagnosisResult | null> => {
         const supports = ['Paper', 'Spigot', 'Purpur', 'BungeeCord', 'Velocity'].includes(server.software);
         if (!supports || !server.workingDirectory || !server.hasStarted) return null;
+        
+        // Guard: Skip if the server is currently starting or installing (v4.6: Startup stability)
+        if (server.status === ServerStatus.STARTING || server.status === ServerStatus.INSTALLING) return null;
 
         // Guard: Skip if the server hasn't been initialized yet (executable missing)
         const execFile = server.executable || (server.software === 'Bedrock' ? 'bedrock_server.exe' : 'server.jar');

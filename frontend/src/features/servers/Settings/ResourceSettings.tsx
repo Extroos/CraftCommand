@@ -2,6 +2,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Key, RotateCcw, ShieldCheck, ChevronRight, Lock, Eye, ShieldAlert, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { STAGGER_ITEM } from '../../../styles/motion';
 import { useToast } from '../../ui/Toast';
 import { useConfirm } from '../../ui/hooks/useConfirm';
@@ -40,16 +41,17 @@ const ResourceCard: React.FC<{
 );
 
 export const ResourceSettings: React.FC<ResourceSettingsProps> = ({ serverId }) => {
+    const { t } = useTranslation();
     const { addToast } = useToast();
     const { isOpen: isConfirmOpen, config: confirmConfig, confirm, handleConfirm, handleCancel } = useConfirm();
     const [isRotatingKey, setIsRotatingKey] = React.useState(false);
 
     const handleRotateKey = async () => {
         const isConfirmed = await confirm({
-            title: 'Rotate API Secret',
-            description: 'Rotating this secret will instantly invalidate ALL custom scripts and third-party integrations using this ID. This is a destructive security operation.',
-            confirmText: 'Rotate Secret',
-            cancelText: 'Cancel',
+            title: t('settings.resources.rotate_title'),
+            description: t('settings.resources.rotate_desc_dialog'),
+            confirmText: t('settings.resources.rotate_confirm'),
+            cancelText: t('common.cancel'),
             isDestructive: true
         });
 
@@ -58,9 +60,9 @@ export const ResourceSettings: React.FC<ResourceSettingsProps> = ({ serverId }) 
         setIsRotatingKey(true);
         try {
             await API.rotateApiKey();
-            addToast('warning', 'Security Event', 'Server secret key rotation complete. All previous sessions have been purged.');
+            addToast('warning', t('settings.resources.security_event'), t('settings.resources.rotate_success_desc'));
         } catch (e: any) {
-            addToast('error', 'Rotation Failed', e.message || 'Failed to rotate API key.');
+            addToast('error', t('settings.connectivity.rotate_failed'), e.message || t('settings.resources.rotate_key_failed'));
         } finally {
             setIsRotatingKey(false);
         }
@@ -78,15 +80,15 @@ export const ResourceSettings: React.FC<ResourceSettingsProps> = ({ serverId }) 
                             <Key size={16} className="text-rose-500/70" />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-foreground/90 uppercase tracking-tight">API Interface Integration</h3>
-                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">API tokens for this server</p>
+                            <h3 className="text-sm font-bold text-foreground/90 uppercase tracking-tight">{t('settings.resources.api_title')}</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.resources.api_desc')}</p>
                         </div>
                     </div>
 
                     <div className="flex flex-col md:flex-row gap-6 items-center">
                         <div className="flex-1 space-y-4">
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.2em]">Application Secret</label>
+                             <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.2em]">{t('settings.resources.app_secret')}</label>
                                 <div className="flex items-center gap-2">
                                     <div className="flex-1 px-3 py-2 bg-muted/20 border border-border/40 rounded-md font-mono text-xs flex items-center justify-between group">
                                         <span className="text-muted-foreground/30 select-none">••••••••••••••••••••••••••••••••</span>
@@ -96,36 +98,36 @@ export const ResourceSettings: React.FC<ResourceSettingsProps> = ({ serverId }) 
                                         onClick={handleRotateKey}
                                         disabled={isRotatingKey}
                                         className="h-[34px] px-4 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/20 rounded-md text-[9px] font-black text-rose-500 uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-50"
-                                    >
+                                     >
                                         {isRotatingKey ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
-                                        {isRotatingKey ? 'Rotating...' : 'Rotate Key'}
+                                        {isRotatingKey ? t('common.processing') : t('settings.resources.rotate_key')}
                                     </button>
                                 </div>
                             </div>
                         </div>
 
                         <div className="w-full md:w-64 p-4 bg-muted/10 border border-border/40 rounded-md border-l-4 border-l-rose-500/40" style={{ backdropFilter: 'blur(4px)' }}>
-                             <div className="flex items-center gap-2 mb-2">
+                              <div className="flex items-center gap-2 mb-2">
                                  <ShieldAlert size={14} className="text-rose-500/70" />
-                                 <h4 className="text-[9px] font-black text-rose-500/80 uppercase tracking-widest">Security Warning</h4>
+                                 <h4 className="text-[9px] font-black text-rose-500/80 uppercase tracking-widest">{t('settings.resources.security_warning')}</h4>
                              </div>
                              <p className="text-[9px] text-muted-foreground leading-relaxed uppercase font-bold tracking-tight opacity-60">
-                                 Rotating this secret will instantly invalidate all custom scripts, monitoring agent hooks, and third-party integrations using this ID.
+                                 {t('settings.resources.rotate_warning_text')}
                              </p>
                         </div>
                     </div>
                 </div>
 
                 <div className="p-6 bg-primary/5 rounded-md border border-primary/10 flex flex-col items-center justify-center text-center">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 border border-primary/20">
+                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 border border-primary/20">
                         <Lock size={20} className="text-primary/70" />
                     </div>
-                    <h4 className="text-xs font-black text-foreground/80 uppercase tracking-widest mb-2">Immutable Logs</h4>
+                    <h4 className="text-xs font-black text-foreground/80 uppercase tracking-widest mb-2">{t('settings.resources.immutable_logs')}</h4>
                     <p className="text-[10px] text-muted-foreground font-medium mb-4 leading-relaxed uppercase tracking-tighter">
-                        All resource allocations and key rotations are logged to the global system audit trail for security compliance.
+                        {t('settings.resources.immutable_logs_desc')}
                     </p>
                     <button className="text-[9px] font-black text-primary/60 hover:text-primary transition-all uppercase tracking-[0.2em] flex items-center gap-2">
-                        View Audit Trail <ChevronRight size={12} />
+                        {t('settings.resources.view_audit')} <ChevronRight size={12} />
                     </button>
                 </div>
             </motion.div>

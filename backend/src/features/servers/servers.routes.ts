@@ -9,6 +9,7 @@ import { importService } from '../installer/ImportService';
 import { ValidationUtils } from '../../utils/ValidationUtils';
 import { nodeSchedulerService } from '../nodes/NodeSchedulerService';
 import { nodeRegistryService } from '../nodes/NodeRegistryService';
+import { systemSettingsService } from '../system/SystemSettingsService';
 
 import fs from 'fs-extra';
 import path from 'path';
@@ -228,6 +229,8 @@ router.post('/', requirePermission('server.create'), async (req, res) => {
     const defaultExecutable = isBedrock ? (process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server') : 'server.jar';
     const defaultCommand = isBedrock ? (process.platform === 'win32' ? 'bedrock_server.exe' : './bedrock_server') : 'server.jar';
 
+    const defaultEngine = systemSettingsService.getSettings()?.app?.defaultExecutionEngine || 'native';
+    
     const newServer = {
         ...config,
         id,
@@ -235,12 +238,18 @@ router.post('/', requirePermission('server.create'), async (req, res) => {
         workingDirectory: serverDir,
         executable: config.executable || defaultExecutable,
         executionCommand: config.executionCommand || defaultCommand,
+        executionEngine: config.executionEngine || defaultEngine,
         status: ServerStatus.OFFLINE,
         hasStarted: false
     };
     
     saveServer(newServer);
     
+    // Phase 66: Birth Grace Period (v3.2)
+    // Notify Repair Service to grant immunity during installation
+    const { automaticRepairService } = require('../diagnosis/AutomaticRepairService');
+    automaticRepairService.trackCreation(id);
+
     const { fileWatcherService } = await import('../files/FileWatcherService');
     fileWatcherService.watchServer(id, serverDir);
 

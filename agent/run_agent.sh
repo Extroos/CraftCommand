@@ -28,19 +28,25 @@ echo ""
 
 # ── Dependency Check ──
 
+# Support portable runtime relative to root
+if ! command -v node &>/dev/null; then
+    if [ -f "../.runtimes/node/bin/node" ]; then
+        export PATH="$PWD/../.runtimes/node/bin:$PATH"
+    fi
+fi
+
 if ! command -v node &> /dev/null; then
     echo -e "${RED}✗ Node.js is not installed.${NC}"
     echo -e "  Install with: ${YELLOW}sudo apt install nodejs${NC} or visit https://nodejs.org/"
     exit 1
 fi
 
-NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
-if [ "$NODE_VERSION" -lt 18 ]; then
-    echo -e "${RED}✗ Node.js 18+ required. Found: $(node -v)${NC}"
-    exit 1
-fi
-
 echo -e "${GREEN}✓${NC} Node.js $(node -v)"
+
+# ── Load Environment ──
+if [ -f ".env" ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
 
 # ── Install Dependencies ──
 
@@ -76,21 +82,33 @@ echo ""
 
 # ── Validate Arguments ──
 
-if [ $# -eq 0 ]; then
-    echo -e "${YELLOW}Usage:${NC}"
-    echo "  ./run_agent.sh --panel-url http://<panel-ip>:3001 --node-id <uuid> --secret <token>"
-    echo ""
-    echo -e "${YELLOW}Options:${NC}"
-    echo "  --panel-url <url>     URL of the CraftCommand panel (required)"
-    echo "  --node-id <uuid>      UUID of this node from panel enrollment (required)"
-    echo "  --secret <token>      Shared secret for authentication"
-    echo "  --servers-dir <path>  Root directory for server files (default: ./servers)"
-    echo "  --max-servers <n>     Max concurrent servers (default: 10)"
-    echo ""
-    echo -e "${YELLOW}Example:${NC}"
-    echo "  ./run_agent.sh --panel-url http://192.168.1.10:3001 --node-id abc12345-1234-1234-1234-123456789abc --secret my-secret"
-    exit 0
+# ── Interactive Setup ──
+
+if [ -z "$PANEL_URL" ] || [ -z "$AGENT_NODE_ID" ]; then
+    if [ $# -eq 0 ]; then
+        echo -e "${YELLOW} [INPUT REQUIRED] ${NC}"
+        echo -e " Enter your Node Credentials (found in Dashboard -> Nodes -> Add Node)"
+        echo -e " These will be saved to .env for future zero-config startups.\n"
+        
+        read -p "  > Panel URL [$PANEL_URL]: " UI_PANEL
+        read -p "  > Node ID:   " UI_NODE_ID
+        read -p "  > Secret:    " UI_SECRET
+        
+        [ ! -z "$UI_PANEL" ] && PANEL_URL=$UI_PANEL
+        [ ! -z "$UI_NODE_ID" ] && AGENT_NODE_ID=$UI_NODE_ID
+        [ ! -z "$UI_SECRET" ] && AGENT_NODE_SECRET=$UI_SECRET
+        
+        cat <<EOF > .env
+PANEL_URL=$PANEL_URL
+AGENT_NODE_ID=$AGENT_NODE_ID
+AGENT_NODE_SECRET=$AGENT_NODE_SECRET
+EOF
+        echo -e "\n${GREEN}Settings saved to .env${NC}"
+    fi
 fi
+
+# Fallback defaults for log output
+: ${PANEL_URL:="http://localhost:3001"}
 
 # ── Start Agent ──
 

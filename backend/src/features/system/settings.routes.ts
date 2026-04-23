@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { verifyToken, requireRole } from '../../middleware/authMiddleware';
 import { systemSettingsService } from './SystemSettingsService';
+import { hostPersistenceService } from './HostPersistenceService';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -44,6 +45,36 @@ router.put('/global', verifyToken, requireRole(['OWNER']), async (req, res) => {
     } catch (error) {
         logger.error(`Failed to update global settings: ${error}`);
         res.status(500).json({ error: 'Failed to save settings' });
+    }
+});
+
+// POST /api/settings/persistence - Toggle host persistence (Startup register)
+router.post('/persistence', verifyToken, requireRole(['OWNER']), async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        const success = enabled 
+            ? await hostPersistenceService.enablePersistence() 
+            : await hostPersistenceService.disablePersistence();
+            
+        if (success) {
+            systemSettingsService.updateSettings({ app: { hostPersistenceEnabled: enabled } });
+            res.json({ success: true, enabled });
+        } else {
+            res.status(500).json({ error: 'Persistence operation failed' });
+        }
+    } catch (error) {
+        logger.error(`Persistence toggle failed: ${error}`);
+        res.status(500).json({ error: 'Failed to toggle persistence' });
+    }
+});
+
+// GET /api/settings/persistence/status - Check health of OS persistence
+router.get('/persistence/status', verifyToken, async (req, res) => {
+    try {
+        const status = await hostPersistenceService.getPersistenceStatus();
+        res.json({ status });
+    } catch (error) {
+        res.status(500).json({ status: 'ERROR' });
     }
 });
 

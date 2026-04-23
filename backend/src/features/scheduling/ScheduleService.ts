@@ -135,6 +135,12 @@ export class ScheduleService extends EventEmitter {
         super();
         this.preloadAllSchedules();
         this.startScheduler();
+        this.startCleanupInterval();
+    }
+
+    private startCleanupInterval() {
+        // Daily cleanup of old migration artifacts
+        setInterval(() => scheduleRepository.pruneMigrationBackups(), 24 * 60 * 60 * 1000);
     }
 
     // Pre-load ALL schedules from repository on boot so we never miss a first-minute run
@@ -167,35 +173,43 @@ export class ScheduleService extends EventEmitter {
     private async checkSchedules() {
         const now = new Date();
         
-        for (const [serverId, tasks] of this.tasks.entries()) {
-            for (const task of tasks) {
-                if (!task.isActive) continue;
+        // Run each server's tasks concurrently to prevent one slow task from blocking others
+        const serverPromises: Promise<void>[] = [];
 
-                // One-time task: check if runAt date has passed
-                if (task.runOnce && task.runAt) {
-                    const runAt = new Date(task.runAt);
-                    if (now >= runAt && (!task.lastRun || new Date(task.lastRun as string) < runAt)) {
-                        logger.info(`[ScheduleService] Executing one-time task "${task.name}" for server ${serverId}`);
+        for (const [serverId, tasks] of this.tasks.entries()) {
+            const serverWork = async () => {
+                for (const task of tasks) {
+                    if (!task.isActive) continue;
+
+                    // One-time task: check if runAt date has passed
+                    if (task.runOnce && task.runAt) {
+                        const runAt = new Date(task.runAt);
+                        if (now >= runAt && (!task.lastRun || new Date(task.lastRun as string) < runAt)) {
+                            logger.info(`[ScheduleService] Executing one-time task "${task.name}" for server ${serverId}`);
+                            await this.executeTask(serverId, task);
+                            task.lastRun = now.toISOString();
+                            task.isActive = false; // Auto-disable after one-time execution
+                            this.saveSchedules(serverId, tasks);
+                            continue;
+                        }
+                    }
+
+                    // Standard cron task
+                    if (isDue(task.cron, now)) {
+                        logger.info(`[ScheduleService] Executing task "${task.name}" for server ${serverId}`);
                         await this.executeTask(serverId, task);
+                        
+                        // Update last run and next run
                         task.lastRun = now.toISOString();
-                        task.isActive = false; // Auto-disable after one-time execution
+                        task.nextRun = calculateNextRun(task.cron);
                         this.saveSchedules(serverId, tasks);
-                        continue;
                     }
                 }
-
-                // Standard cron task
-                if (isDue(task.cron, now)) {
-                    logger.info(`[ScheduleService] Executing task "${task.name}" for server ${serverId}`);
-                    await this.executeTask(serverId, task);
-                    
-                    // Update last run and next run
-                    task.lastRun = now.toISOString();
-                    task.nextRun = calculateNextRun(task.cron);
-                    this.saveSchedules(serverId, tasks);
-                }
-            }
+            };
+            serverPromises.push(serverWork());
         }
+
+        await Promise.allSettled(serverPromises);
     }
 
     private async logExecution(serverId: string, taskName: string, success: boolean, message: string) {
@@ -259,6 +273,7 @@ export class ScheduleService extends EventEmitter {
                     'system@craftcommand.internal'
                 );
             } else if (type === 'restart') {
+                processManager.setIntentional(serverId, true);
                 processManager.stopServer(serverId);
                 await this.logExecution(serverId, taskName, true, "Restart: Stop initiated");
                 
@@ -270,6 +285,7 @@ export class ScheduleService extends EventEmitter {
                 }
 
                 try {
+                    processManager.setIntentional(serverId, false);
                     await startServer(serverId);
                     await this.logExecution(serverId, taskName, true, "Restart: Server started");
 
@@ -286,9 +302,11 @@ export class ScheduleService extends EventEmitter {
                     throw new Error(`Restart start failed: ${e.message}`);
                 }
             } else if (type === 'start') {
+                processManager.setIntentional(serverId, false);
                 await startServer(serverId);
                 await this.logExecution(serverId, taskName, true, "Server started");
             } else if (type === 'stop') {
+                processManager.setIntentional(serverId, true);
                 processManager.stopServer(serverId);
                 await this.logExecution(serverId, taskName, true, "Server stop initiated");
             } else {
@@ -381,6 +399,19 @@ export class ScheduleService extends EventEmitter {
     private async saveSchedules(serverId: string, tasks: ScheduleTask[]) {
         this.tasks.set(serverId, tasks);
         await scheduleRepository.saveSchedules(serverId, tasks);
+    }
+
+    /**
+     * Purges all volatile and persistent scheduling state for a server.
+     */
+    public async clear(serverId: string) {
+        logger.info(`[ScheduleService] Purging all scheduling state for ${serverId}`);
+        
+        // 1. Clear memory map (stops background polling for this ID)
+        this.tasks.delete(serverId);
+
+        // 2. Clear database storage
+        await scheduleRepository.deleteForServer(serverId);
     }
 }
 

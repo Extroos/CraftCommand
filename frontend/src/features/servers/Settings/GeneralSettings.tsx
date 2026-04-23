@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Activity, Server, Globe, X, RotateCcw, ShieldAlert, Check, Gamepad2, ChevronDown, ScrollText, Swords, Feather, Ghost, AlertTriangle, Image, Upload, Clock, Shield, MonitorPlay, AlertCircle } from 'lucide-react';
 import { STAGGER_ITEM } from '../../../styles/motion';
 import { SettingsInputField as InputField } from './SettingsInputField';
+import { useTranslation } from 'react-i18next';
 
 interface GeneralSettingsProps {
     config: any;
@@ -26,6 +27,8 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
     currentServer, globalSettings, wanConfirmed, setWanConfirmed,
     capabilities, isUploadingIcon, handleIconUpload, iconInputRef
 }) => {
+    const { t } = useTranslation();
+    
     return (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
             <div className="space-y-3 xl:col-span-2">
@@ -40,14 +43,14 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                                 <Globe size={14} className="text-blue-500" />
                             </div>
                             <div>
-                                <h3 className="text-xs font-bold text-foreground/90">Velocity Integration</h3>
-                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">Proxy Network Configuration</p>
+                                <h3 className="text-xs font-bold text-foreground/90">{t('settings.general.velocity')}</h3>
+                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.general.proxy_desc')}</p>
                             </div>
                         </div>
                         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                             <div className="space-y-1">
-                                <p className="text-[11px] font-bold text-foreground/80">Linked to <span className="text-primary">{linkedProxy.name}</span></p>
-                                <p className="text-[9px] text-muted-foreground/60 leading-tight">This server is currently managed by a Velocity proxy. Direct joins are disabled via <span className="text-primary/70 font-mono italic">online-mode=false</span>.</p>
+                                <p className="text-[11px] font-bold text-foreground/80">{t('settings.general.linked_to')} <span className="text-primary">{linkedProxy.name}</span></p>
+                                <p className="text-[9px] text-muted-foreground/60 leading-tight">{t('settings.general.proxy_managed')}</p>
                             </div>
                             <button 
                                 onClick={handleUnlink}
@@ -55,7 +58,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                                 className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 px-4 py-1.5 rounded-md text-[10px] font-bold tracking-tight border border-rose-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
                             >
                                 {isUnlinking ? <RotateCcw size={12} className="animate-spin" /> : <X size={12} />}
-                                Unlink from Velocity
+                                {t('settings.general.unlink_proxy')}
                             </button>
                         </div>
                     </motion.div>
@@ -72,38 +75,38 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                                 <MonitorPlay size={14} className="text-blue-500" />
                             </div>
                             <div>
-                                <h3 className="text-xs font-bold text-foreground/90">Proxy Configuration</h3>
-                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">Port & Network Settings</p>
+                                <h3 className="text-xs font-bold text-foreground/90">{t('settings.general.proxy_config')}</h3>
+                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.general.network_settings')}</p>
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1 group/select">
-                                <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">Forwarding Mode</label>
+                                <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">{t('settings.general.forwarding')}</label>
                                 <div className="relative">
                                     <select 
                                         value={config.forwardingMode}
                                         onChange={(e) => handleChange('forwardingMode', e.target.value)}
                                         className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
                                     >
-                                        <option value="modern">Modern (Recommended)</option>
-                                        <option value="bungeeguard">BungeeGuard (Advanced)</option>
-                                        <option value="legacy">Legacy (IP Forwarding)</option>
-                                        <option value="none">None (Local Only)</option>
+                                        <option value="modern">{t('settings.general.forwarding_modern')}</option>
+                                        <option value="bungeeguard">{t('settings.general.forwarding_bungeeguard')}</option>
+                                        <option value="legacy">{t('settings.general.forwarding_legacy')}</option>
+                                        <option value="none">{t('settings.general.forwarding_none')}</option>
                                     </select>
                                     <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
                                         <ChevronDown size={12} />
                                     </div>
                                 </div>
                                 <p className="text-[9px] text-muted-foreground/50 italic leading-tight mt-1">
-                                    {config.forwardingMode === 'modern' ? 'High security via shared secret. Best for modern networks.' : 
-                                     config.forwardingMode === 'bungeeguard' ? 'Requires separate plugin on backend servers.' :
-                                     'Compatibility modes for older or specialized setups.'}
+                                    {config.forwardingMode === 'modern' ? t('settings.general.modern_desc') : 
+                                     config.forwardingMode === 'bungeeguard' ? t('settings.general.bungeeguard_desc') :
+                                     t('settings.general.legacy_desc')}
                                 </p>
                             </div>
 
                             <div className="space-y-1.5 group">
                                 <label className="text-[11px] font-bold text-muted-foreground/80 group-hover:text-foreground transition-colors flex justify-between items-center h-4 tracking-normal">
-                                    Forwarding Secret
+                                    {t('settings.general.forwarding_secret')}
                                 </label>
                                 <div className="relative flex items-center bg-background border border-border/60 rounded-md transition-all group-focus-within:ring-1 group-focus-within:ring-primary/20 group-hover:border-primary/40 focus-within:border-primary">
                                     <input 
@@ -111,7 +114,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                                         value={config.proxySecret}
                                         onChange={(e) => handleChange('proxySecret', e.target.value)}
                                         className="flex-1 min-w-0 bg-transparent px-2.5 py-1.5 text-[11px] outline-none font-mono text-primary/80 tabular-nums"
-                                        placeholder="Auto-generated if empty"
+                                        placeholder={t('settings.general.auto_generated')}
                                     />
                                     <button 
                                         onClick={() => handleChange('proxySecret', Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15))}
@@ -135,16 +138,31 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                             <Server size={14} className="text-primary/70" />
                         </div>
                         <div>
-                            <h3 className="text-xs font-bold text-foreground/90">Core Instance</h3>
-                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">Identity & Network Mapping</p>
+                            <h3 className="text-xs font-bold text-foreground/90">{t('settings.general.node_config')}</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.general.core_instance')}</p>
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="md:col-span-2">
-                            <InputField label="Server Name" propKey="serverName" placeholder="My Awesome Server" config={config} errors={errors} handleChange={handleChange} />
+                            <InputField 
+                                label={t('settings.general.server_name')}
+                                propKey="serverName" 
+                                placeholder="My Awesome Server" 
+                                config={config} 
+                                errors={errors} 
+                                handleChange={handleChange} 
+                            />
                         </div>
                         <div>
-                            <InputField label="Interface IP" propKey="ip" mono note="Bind address (0.0.0.0 for global)" config={config} errors={errors} handleChange={handleChange} />
+                            <InputField 
+                                label={t('settings.general.interface_ip')}
+                                propKey="ip" 
+                                mono 
+                                note={t('settings.general.bind_address')} 
+                                config={config} 
+                                errors={errors} 
+                                handleChange={handleChange} 
+                            />
                             {config.ip === '0.0.0.0' && currentServer?.software === 'Bedrock' && (
                                 <motion.div 
                                     initial={{ opacity: 0, height: 0 }}
@@ -153,11 +171,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                                 >
                                     <ShieldAlert size={14} className="text-amber-500 shrink-0 mt-0.5" />
                                     <div className="space-y-1">
-                                        <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">WAN Exposure Warning</p>
+                                        <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">{t('settings.general.wan_warning')}</p>
                                         <p className="text-[10px] text-amber-200/70 leading-relaxed font-medium">
-                                            Binding to <span className="text-amber-400 font-mono">0.0.0.0</span> exposes this Bedrock server to the internet. 
-                                            Ensure you have opened <span className="text-emerald-400 font-bold">UDP port {config.port}</span> in your router firewall. 
-                                             TCP rules will not work for Bedrock.
+                                            {t('settings.general.wan_warning_desc', { port: config.port })}
                                          </p>
                                          <label className="flex items-center gap-2 cursor-pointer select-none group/confirm mt-2">
                                              <div 
@@ -171,7 +187,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                                                  {wanConfirmed && <Check size={10} className="text-black" strokeWidth={4} />}
                                              </div>
                                              <span className="text-[9px] font-bold text-amber-500/80 group-hover/confirm:text-amber-500 transition-colors">
-                                                 I confirm the UDP firewall rules are configured on my router
+                                                 {t('settings.general.wan_confirm')}
                                              </span>
                                          </label>
                                      </div>
@@ -179,7 +195,15 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                             )}
                         </div>
                         <div>
-                            <InputField label="Service Port" propKey="port" type="number" mono config={config} errors={errors} handleChange={handleChange} />
+                            <InputField 
+                                label={t('settings.general.service_port')}
+                                propKey="port" 
+                                type="number" 
+                                mono 
+                                config={config} 
+                                errors={errors} 
+                                handleChange={handleChange} 
+                            />
                         </div>
                     </div>
                 </motion.div>
@@ -197,24 +221,44 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                                 <Gamepad2 size={14} className="text-primary/70" />
                             </div>
                             <div>
-                                <h3 className="text-xs font-bold text-foreground/90">Gameplay Environment</h3>
-                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">Runtime Behavioral rules</p>
+                                <h3 className="text-xs font-bold text-foreground/90">{t('settings.general.gameplay')}</h3>
+                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.general.behavior_rules')}</p>
                             </div>
                         </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
                         <div className="space-y-1 group/select">
-                            <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">Default Gamemode</label>
+                            <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">{t('settings.general.java_version')}</label>
+                            <div className="relative">
+                                <select 
+                                    value={config.javaVersion}
+                                    onChange={(e) => handleChange('javaVersion', e.target.value)}
+                                    className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
+                                >
+                                    <option value="Do Not Override">{t('settings.general.do_not_override')}</option>
+                                    <option value="Java 8">{t('settings.general.java_8')}</option>
+                                    <option value="Java 11">{t('settings.general.java_11')}</option>
+                                    <option value="Java 17">{t('settings.general.java_17')}</option>
+                                    <option value="Java 21">{t('settings.general.java_21')}</option>
+                                </select>
+                                <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
+                                    <ChevronDown size={12} />
+                                </div>
+                            </div>
+                            <p className="text-[9px] text-muted-foreground/50 italic leading-tight mt-1">{t('settings.general.java_version_desc')}</p>
+                        </div>
+                        <div className="space-y-1 group/select">
+                            <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">{t('settings.general.gamemode')}</label>
                             <div className="relative">
                                 <select 
                                     value={config.gamemode}
                                     onChange={(e) => handleChange('gamemode', e.target.value)}
                                     className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
                                 >
-                                    <option value="survival">Survival</option>
-                                    <option value="creative">Creative</option>
-                                    <option value="adventure">Adventure</option>
-                                    <option value="spectator">Spectator</option>
+                                    <option value="survival">{t('players.gamemode_survival')}</option>
+                                    <option value="creative">{t('players.gamemode_creative')}</option>
+                                    <option value="adventure">{t('players.gamemode_adventure')}</option>
+                                    <option value="spectator">{t('players.gamemode_spectator')}</option>
                                 </select>
                                 <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
                                     <ChevronDown size={12} />
@@ -224,17 +268,17 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
 
                         {/* Difficulty */}
                         <div className="space-y-1 group/select">
-                            <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">Difficulty</label>
+                            <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">{t('settings.general.difficulty')}</label>
                             <div className="relative">
                                 <select 
                                     value={config.difficulty}
                                     onChange={(e) => handleChange('difficulty', e.target.value)}
                                     className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
                                 >
-                                    <option value="peaceful">Peaceful</option>
-                                    <option value="easy">Easy</option>
-                                    <option value="normal">Normal</option>
-                                    <option value="hard">Hard</option>
+                                    <option value="peaceful">{t('settings.general.peaceful')}</option>
+                                    <option value="easy">{t('settings.general.easy')}</option>
+                                    <option value="normal">{t('settings.general.normal')}</option>
+                                    <option value="hard">{t('settings.general.hard')}</option>
                                 </select>
                                 <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
                                     <ChevronDown size={12} />
@@ -244,12 +288,12 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
 
                         {/* Max Players */}
                         <div>
-                            <InputField label="Max Players" propKey="maxPlayers" type="number" config={config} errors={errors} handleChange={handleChange} />
+                            <InputField label={t('settings.general.max_players')} propKey="maxPlayers" type="number" config={config} errors={errors} handleChange={handleChange} />
                         </div>
 
                         <div className="space-y-1.5 font-sans">
                             <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-muted-foreground flex justify-between">
-                                View Distance
+                                {t('settings.general.view_distance')}
                                 {errors.viewDistance && <span className="text-rose-500 normal-case flex items-center gap-1"><AlertCircle size={10} /> {errors.viewDistance}</span>}
                             </label>
                             <div className="relative flex items-center gap-4 h-[34px] px-1">
@@ -265,14 +309,14 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                         </div>
 
                         <div className="md:col-span-2 space-y-1.5 group/motd">
-                            <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-muted-foreground group-hover/motd:text-foreground transition-colors">MOTD</label>
+                            <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-muted-foreground group-hover/motd:text-foreground transition-colors">{t('settings.general.motd')}</label>
                             <div className="relative">
                                 <input 
                                     type="text" 
                                     value={config.motd}
                                     onChange={(e) => handleChange('motd', e.target.value)}
                                     className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono text-foreground placeholder:text-muted-foreground transition-colors hover:border-muted-foreground/50"
-                                    placeholder="A Minecraft Server"
+                                    placeholder={t('settings.general.motd_placeholder')}
                                 />
                                 <div className="absolute right-3 top-2.5 text-muted-foreground">
                                     <ScrollText size={12} />
@@ -282,20 +326,20 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                         
                         {/* Seed */}
                         <div className="md:col-span-2">
-                            <InputField label="Level Seed" propKey="levelSeed" placeholder="(Leave empty for random)" mono config={config} errors={errors} handleChange={handleChange} />
+                            <InputField label={t('settings.general.level_seed')} propKey="levelSeed" placeholder={t('settings.general.seed_placeholder')} mono config={config} errors={errors} handleChange={handleChange} />
                         </div>
                             {capabilities.supportsJava && (
                                 <div className="space-y-1 md:col-span-2">
-                                    <InputField label="JVM Optimization Flags" propKey="jvmOptions" placeholder="-Xms1G -XX:+UseG1GC" note="Standard JVM arguments" config={config} errors={errors} handleChange={handleChange} />
+                                    <InputField label={t('settings.general.jvm_flags')} propKey="jvmOptions" placeholder={t('settings.general.jvm_flags_placeholder')} note={t('settings.general.jvm_flags_desc')} config={config} errors={errors} handleChange={handleChange} />
                                 </div>
                             )}
 
                         <div className="md:col-span-2 grid grid-cols-2 gap-3 pt-2">
                             {[
-                                { label: 'PvP Enabled', key: 'pvp', icon: <Swords size={12} /> },
-                                { label: 'Allow Flight', key: 'allowFlight', icon: <Feather size={12} /> },
-                                { label: 'Spawn Monsters', key: 'spawnMonsters', icon: <Ghost size={12} /> },
-                                ...(capabilities.supportsJava ? [{ label: 'Hardcore Mode', key: 'hardcore', icon: <AlertTriangle size={12} /> }] : [])
+                                { label: t('settings.general.pvp'), key: 'pvp', icon: <Swords size={12} /> },
+                                { label: t('settings.general.flight'), key: 'allowFlight', icon: <Feather size={12} /> },
+                                { label: t('settings.general.monsters'), key: 'spawnMonsters', icon: <Ghost size={12} /> },
+                                ...(capabilities.supportsJava ? [{ label: t('settings.general.hardcore'), key: 'hardcore', icon: <AlertTriangle size={12} /> }] : [])
                             ].map((item) => (
                                 <label key={item.key} className="group flex items-center justify-between p-4 rounded-xl border border-border bg-muted/30 hover:bg-muted/50 cursor-pointer transition-all duration-200">
                                     <div className="flex items-center gap-3">
@@ -324,51 +368,132 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 </motion.div>
                 )}
 
-                {/* Proxy Dynamics - Special for Velocity */}
-                {currentServer?.software === 'Velocity' && (
-                    <motion.div 
-                        variants={STAGGER_ITEM}
-                        className={`p-6 transition-all duration-300 bg-card rounded-md border border-border/40 shadow-sm`}
-                    >
-                        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
-                            <div className="p-1.5 rounded-md bg-cyan-500/10 border border-cyan-500/20 shadow-inner group-hover:bg-cyan-500/20 transition-colors">
-                                <Activity size={14} className="text-cyan-500" />
-                            </div>
-                            <div>
-                                <h3 className="text-xs font-bold text-foreground/90">Proxy Dynamics</h3>
-                                <p className="text-[10px] text-muted-foreground font-medium opacity-70">Capacity & Identity Routing</p>
-                            </div>
+                {/* Automation & Background Tasks */}
+                <motion.div 
+                    variants={STAGGER_ITEM}
+                    className={`p-6 transition-all duration-300 bg-card rounded-md border border-border/40 shadow-sm`}
+                >
+                    <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                        <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                            <RotateCcw size={14} className="text-primary/70" />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InputField label="Max Slots" propKey="maxPlayers" type="number" config={config} errors={errors} handleChange={handleChange} note="Total concurrent connections allowed" />
-                            
-                            <div className="md:col-span-2 space-y-1.5 group/motd">
-                                <label className="text-[9px] uppercase tracking-[0.2em] font-bold text-muted-foreground group-hover/motd:text-foreground transition-colors">Public MOTD</label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        value={config.motd}
-                                        onChange={(e) => handleChange('motd', e.target.value)}
-                                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono text-foreground placeholder:text-muted-foreground transition-colors hover:border-muted-foreground/50"
-                                        placeholder="A Velocity Proxy"
-                                    />
-                                    <div className="absolute right-3 top-2.5 text-muted-foreground">
-                                        <ScrollText size={12} />
-                                    </div>
-                                </div>
-                            </div>
+                        <div>
+                            <h3 className="text-xs font-bold text-foreground/90">{t('settings.general.automation')}</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.general.automation_desc')}</p>
+                        </div>
+                    </div>
 
-                            {capabilities.supportsJava && (
-                                <div className="md:col-span-2">
-                                    <InputField label="Tuning Flags" propKey="jvmOptions" placeholder="-Xms1G -XX:+UseG1GC" note="High-performance JVM arguments for proxy scaling" config={config} errors={errors} handleChange={handleChange} />
+                    <div className="space-y-2">
+                        {[
+                            { label: t('settings.general.auto_start'), key: 'autoStart', icon: <Clock size={12} /> },
+                            { label: t('settings.general.watchdog'), key: 'crashDetection', icon: <AlertTriangle size={12} /> },
+                            { label: t('settings.general.player_sync'), key: 'includeInTotal', icon: <Shield size={12} /> },
+                            { label: t('settings.general.public_status'), key: 'publicStatus', icon: <Globe size={12} /> },
+                        ].map((item) => (
+                            <label key={item.key} className="group flex items-center justify-between px-3 py-2 rounded-md border border-border/40 bg-muted/20 hover:bg-muted/40 cursor-pointer transition-all">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="text-muted-foreground/60 group-hover:text-primary transition-colors">
+                                        {item.icon}
+                                    </div>
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/80 group-hover:text-foreground/80 transition-colors">{item.label}</span>
                                 </div>
-                            )}
-                        </div>
-                    </motion.div>
-                )}
+                                <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all ${
+                                    config[item.key as keyof typeof config] 
+                                    ? 'bg-primary border-primary justify-end' 
+                                    : 'bg-muted border-border justify-start'
+                                }`}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={config[item.key as keyof typeof config] as boolean}
+                                        onChange={(e) => handleChange(item.key, e.target.checked)}
+                                        className="sr-only"
+                                    />
+                                    <div className={`w-2 h-2 rounded-full transition-all ${config[item.key as keyof typeof config] ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
+                                </div>
+                            </label>
+                        ))}
+                    </div>
+                </motion.div>
             </div>
+
             {/* Sidebar for General */}
             <div className="space-y-3 xl:col-span-1">
+                {/* Advanced Node Settings */}
+                <motion.div 
+                    variants={STAGGER_ITEM}
+                    className={`p-6 transition-all duration-300 bg-card rounded-md border border-border/40 shadow-sm`}
+                >
+                    <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
+                        <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
+                            <Activity size={14} className="text-primary/70" />
+                        </div>
+                        <div>
+                            <h3 className="text-xs font-bold text-foreground/90">{t('settings.general.resources')}</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.general.resources_desc')}</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <InputField 
+                            label={t('settings.general.ram_alloc')}
+                            propKey="ram" 
+                            type="number" 
+                            config={config} 
+                            errors={errors} 
+                            handleChange={handleChange} 
+                            note={t('settings.general.ram_alloc_desc')}
+                        />
+
+                        <div className="space-y-1 group/select">
+                            <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">{t('settings.general.cpu_priority')}</label>
+                            <div className="relative">
+                                <select 
+                                    value={config.cpuPriority}
+                                    onChange={(e) => handleChange('cpuPriority', e.target.value)}
+                                    className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
+                                >
+                                    <option value="normal">{t('settings.general.priority_normal')}</option>
+                                    <option value="high">{t('settings.general.priority_high')}</option>
+                                    <option value="realtime">{t('settings.general.priority_realtime')}</option>
+                                </select>
+                                <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
+                                    <ChevronDown size={12} />
+                                </div>
+                            </div>
+                            <p className="text-[9px] text-muted-foreground/50 italic leading-tight mt-1">{t('settings.general.cpu_priority_desc')}</p>
+                        </div>
+
+                        <div className="space-y-1 group/select">
+                            <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground group-hover/select:text-foreground transition-colors">{t('settings.general.execution_engine')}</label>
+                            <div className="relative">
+                                <select 
+                                    value={config.executionEngine}
+                                    onChange={(e) => handleChange('executionEngine', e.target.value)}
+                                    className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20 appearance-none transition-colors hover:border-primary/40"
+                                >
+                                    <option value="native">{t('settings.general.engine_native')}</option>
+                                    <option value="docker">{t('settings.general.engine_docker')}</option>
+                                    <option value="remote">{t('settings.general.engine_remote')}</option>
+                                </select>
+                                <div className="absolute right-2.5 top-2 pointer-events-none text-muted-foreground/50">
+                                    <ChevronDown size={12} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {config.executionEngine === 'docker' && (
+                            <InputField 
+                                label={t('settings.general.docker_image')}
+                                propKey="dockerImage" 
+                                placeholder={t('settings.general.image_placeholder')} 
+                                config={config} 
+                                errors={errors} 
+                                handleChange={handleChange} 
+                            />
+                        )}
+                    </div>
+                </motion.div>
+
                 {/* Server Appearance */}
                 <motion.div 
                     variants={STAGGER_ITEM}
@@ -379,15 +504,15 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                             <Image size={14} className="text-primary/70" />
                         </div>
                         <div>
-                            <h3 className="text-xs font-bold text-foreground/90">Appearance</h3>
-                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">Visual Identity</p>
+                            <h3 className="text-xs font-bold text-foreground/90">{t('settings.general.appearance')}</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">{t('settings.general.appearance_desc')}</p>
                         </div>
                     </div>
 
                     <div className="flex flex-col items-center gap-4">
                         <div className="relative group/icon">
                             <div className={`w-24 h-24 rounded-2xl border border-border/80 flex items-center justify-center overflow-hidden bg-muted/20 transition-all ${isUploadingIcon ? 'opacity-50' : 'group-hover/icon:border-primary/50'}`}>
-                                <img src={currentServer?.iconUrl || '/website-icon.png'} alt="Server Icon" className="w-full h-full object-cover" />
+                                <img src={currentServer?.iconUrl || '/website-icon.png'} alt={t('settings.general.appearance')} className="w-full h-full object-cover" />
                                 
                                 {isUploadingIcon && (
                                     <div className="absolute inset-0 flex items-center justify-center bg-background/40 ">
@@ -407,7 +532,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
 
                         <div className="text-center">
                             <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest">{capabilities.softwareCategory === 'BEDROCK' ? 'world_icon.png' : 'server-icon.png'}</p>
-                            <p className="text-[8px] text-muted-foreground/40 mt-0.5">Recommended: 64x64 PNG</p>
+                            <p className="text-[8px] text-muted-foreground/40 mt-0.5">{t('settings.general.recommended_icon')}</p>
                         </div>
 
                         <input 
@@ -417,54 +542,6 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                             accept="image/*"
                             className="hidden"
                         />
-                    </div>
-                </motion.div>
-
-                {/* Automation & Toggles */}
-                <motion.div 
-                    variants={STAGGER_ITEM}
-                    className={`p-6 transition-all duration-300 bg-card rounded-md border border-border/40 shadow-sm`}
-                >
-
-                    <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border/60">
-                        <div className="p-1.5 rounded-md bg-muted/40 border border-border shadow-inner group-hover:bg-muted/60 transition-colors">
-                            <RotateCcw size={14} className="text-primary/70" />
-                        </div>
-                        <div>
-                            <h3 className="text-xs font-bold text-foreground/90">Automation</h3>
-                            <p className="text-[10px] text-muted-foreground font-medium opacity-70">Background logic hooks</p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        {[
-                            { label: 'Instance Auto-Boot', key: 'autoStart', icon: <Clock size={12} /> },
-                            { label: 'Watchdog / Crash Rec.', key: 'crashDetection', icon: <AlertTriangle size={12} /> },
-                            { label: 'Global Player Sync', key: 'includeInTotal', icon: <Shield size={12} /> },
-                            { label: 'API Public Exposure', key: 'publicStatus', icon: <Globe size={12} /> },
-                        ].map((item) => (
-                            <label key={item.key} className="group flex items-center justify-between px-3 py-2 rounded-md border border-border/40 bg-muted/20 hover:bg-muted/40 cursor-pointer transition-all">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="text-muted-foreground/60 group-hover:text-primary transition-colors">
-                                        {item.icon}
-                                    </div>
-                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/80 group-hover:text-foreground/80 transition-colors">{item.label}</span>
-                                </div>
-                                 <div className={`w-7 h-3.5 rounded-full border flex items-center p-0.5 transition-all ${
-                                        config[item.key as keyof typeof config] 
-                                        ? 'bg-primary border-primary justify-end' 
-                                        : 'bg-muted border-border justify-start'
-                                    }`}>
-                                        <input 
-                                            type="checkbox" 
-                                            checked={config[item.key as keyof typeof config] as boolean}
-                                            onChange={(e) => handleChange(item.key, e.target.checked)}
-                                            className="sr-only"
-                                        />
-                                        <div className={`w-2 h-2 rounded-full transition-all ${config[item.key as keyof typeof config] ? 'bg-primary-foreground' : 'bg-muted-foreground'}`} />
-                                    </div>
-                            </label>
-                        ))}
                     </div>
                 </motion.div>
             </div>

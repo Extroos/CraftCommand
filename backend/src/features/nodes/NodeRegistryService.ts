@@ -535,28 +535,53 @@ export class NodeRegistryService extends EventEmitter {
     /**
      * Mark stale nodes as OFFLINE (no heartbeat within threshold).
      */
-    sweepStaleNodes(): void {
-        const settings = systemSettingsService.getSettings();
-        const thresholdMs = settings.app.distributedNodes?.nodeHeartbeatThresholdMs || 60000;
+    private sweepStaleNodes(): void {
         const now = Date.now();
+        const settings = systemSettingsService.getSettings();
+        const threshold = settings?.app?.distributedNodes?.nodeHeartbeatThresholdMs || 300000; // Default 5 min
         let changed = false;
-        for (const [id, node] of this.nodes) {
-            // Hardening: Local node never expires from sweep (it's part of the host process)
-            if (id === 'local') {
-                if (node.status !== NodeStatus.ONLINE) {
-                    node.status = NodeStatus.ONLINE;
-                    changed = true;
-                }
-                continue;
-            }
 
-            if (node.status === NodeStatus.ONLINE && (now - node.lastHeartbeat) > thresholdMs) {
+        for (const [id, node] of this.nodes.entries()) {
+            // Local node is exempt from heartbeat timeouts (hardening)
+            if (id === 'local') continue;
+
+            if (node.status === NodeStatus.ONLINE && now - node.lastHeartbeat > threshold) {
+                logger.warn(`[NodeRegistry] Node "${node.name}" (${id}) timed out. Marking OFFLINE.`);
                 node.status = NodeStatus.OFFLINE;
-                changed = true;
-                logger.warn(`[NodeRegistry] Node "${node.name}" (${id}) went OFFLINE (no heartbeat for ${Math.round(thresholdMs / 1000)}s).`);
                 this.emit('status', { nodeId: id, status: node.status, node });
+                changed = true;
             }
         }
+        if (changed) this.scheduleSave();
+        this.sweepJoinTokens();
+    }
+
+    /**
+     * Remove expired join tokens and abandoned "pending" node entries.
+     */
+    private sweepJoinTokens(): void {
+        const now = Date.now();
+        let changed = false;
+
+        // 1. Cleanup expired join tokens
+        for (const [token, entry] of this.joinTokens.entries()) {
+            if (now > entry.expires) {
+                this.joinTokens.delete(token);
+            }
+        }
+
+        // 2. Cleanup "pending" nodes that haven't paired within 15 mins
+        for (const [id, node] of this.nodes.entries()) {
+            if (node.status === NodeStatus.ENROLLING && node.host === 'pending') {
+                const age = now - node.enrolledAt;
+                if (age > 15 * 60 * 1000) {
+                    logger.warn(`[NodeRegistry] Purging abandoned node enrollment: ${node.name} (${id})`);
+                    this.nodes.delete(id);
+                    changed = true;
+                }
+            }
+        }
+
         if (changed) this.scheduleSave();
     }
     
