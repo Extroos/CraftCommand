@@ -24,8 +24,10 @@ export const JavaBinaryMissingRule: DiagnosisRule = {
         const majorVer = versionStr.replace('Java ', '').trim();
         const isWindows = process.platform === 'win32';
         const binName = isWindows ? 'java.exe' : 'java';
-        const relativeJavaPath = path.join('runtimes', majorVer, 'bin', binName);
-        const absolutePath = path.join(process.cwd(), 'backend', relativeJavaPath);
+        
+        // v1.13.3: Use unified .runtimes path
+        const rootDir = path.resolve(__dirname, '../../../../');
+        const absolutePath = path.join(rootDir, '.runtimes', 'java', majorVer, 'bin', binName);
 
         // Check logs first for reactive detection
         const hasLogMatch = logs.some(l => /java.io.IOException: Cannot run program/i.test(l) || /executable file not found/i.test(l) || /is not recognized as an internal or external command/i.test(l));

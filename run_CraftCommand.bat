@@ -23,6 +23,21 @@ set "BOLD=%E%[1m"
 :: --- ARGUMENT PARSING ---
 if "%~1"=="--join" goto :HANDLE_JOIN
 
+:: --- ONEDRIVE PROTECTION ---
+set "ONEDRIVE_DETECTED=false"
+echo "%CD%" | findstr /i "OneDrive" >nul
+if !errorlevel! equ 0 set "ONEDRIVE_DETECTED=true"
+
+if "%ONEDRIVE_DETECTED%"=="true" (
+    echo.
+    echo   %CY%%BOLD%[WARNING]%R% %CY%OneDrive/Desktop Path Detected%R%
+    echo   Running from these folders causes %BOLD%EPERM%R% installation errors.
+    echo.
+    echo   %BOLD%Fix:%R% Move this folder to %CC%C:\CraftCommand%R%
+    echo.
+    pause
+)
+
 :: --- PRE-FLIGHT CHECKS ---
 call :VALIDATE_ENVIRONMENT
 if !errorlevel! neq 0 exit /b !errorlevel!
@@ -195,10 +210,11 @@ if not exist "node_modules" (
     echo.
     echo   %CY%%BOLD% INITIAL SETUP DETECTED %R%
     echo   %CGY%Setting up core dependencies for first launch...%R%
-    call npm install >nul 2>nul
+    call npm install
     if !errorlevel! neq 0 (
-        echo   %CR%[ERROR] Dependency installation failed. Check your network.%R%
+        echo   %CR%[ERROR] Root dependency installation failed.%R%
         pause
+        goto :MENU
     )
 )
 
@@ -469,17 +485,32 @@ if "%MISSING_DEPS%"=="1" (
     echo.
     echo   %CY%%BOLD%!%R%  First-time setup: installing dependencies
     echo.
+
+    :: --- RUN-ANYWHERE PERMISSION GUARD ---
+    :: This forcefully unlocks files if we are on Desktop/OneDrive
+    icacls "%~dp0." /grant %USERNAME%:F /q >nul 2>nul
     
     if exist "frontend" (
         echo     %CGY%[1/4]%R% Frontend...
-        cd frontend && (call npm install --no-audit --no-fund >nul 2>nul || (echo   %CR%[FAIL] Frontend deps failed.%R% && cd .. && goto MENU)) && cd ..
+        cd frontend && (call npm install --no-audit --no-fund || (echo   %CR%[FAIL] Frontend deps failed.%R% && pause && cd .. && goto MENU)) && cd ..
     ) else (
         echo     %CY%[!]%R% Frontend directory missing, skipping.
     )
 
     if exist "backend" (
         echo     %CGY%[2/4]%R% Backend...
-        cd backend && (call npm install --no-audit --no-fund >nul 2>nul || (echo   %CR%[FAIL] Backend deps failed.%R% && cd .. && goto MENU)) && cd ..
+        cd backend && (call npm install --no-audit --no-fund || (
+            echo.
+            echo   %CR%[FAIL] Backend installation was blocked.%R%
+            echo   This is usually caused by %BOLD%Desktop/OneDrive locks%R%.
+            echo.
+            echo   %CY%[ACTION]%R% Move this folder to %CC%C:\CraftCommand%R% and try again.
+            echo   %CGY%         Running from C:\ resolves 99%% of permission errors.%R%
+            echo.
+            pause
+            cd ..
+            goto MENU
+        )) && cd ..
     ) else (
         echo     %CR%[ERROR]%R% Backend directory missing! Platform cannot start.
         pause
@@ -487,11 +518,11 @@ if "%MISSING_DEPS%"=="1" (
     )
 
     echo     %CGY%[3/4]%R% Shared/Root...
-    call npm install --no-audit --no-fund >nul 2>nul || echo %CR%[FAIL] Root deps failed.%R%
-
+    call npm install --no-audit --no-fund || (echo %CR%[FAIL] Root deps failed.%R% && pause && goto MENU)
+ 
     if exist "agent" (
         echo     %CGY%[4/4]%R% Node Agent...
-        cd agent && (call npm install --no-audit --no-fund >nul 2>nul || echo %CR%[FAIL] Agent deps failed.%R%) && cd ..
+        cd agent && (call npm install --no-audit --no-fund || (echo %CR%[FAIL] Agent deps failed.%R% && pause && cd .. && goto MENU)) && cd ..
     ) else (
         echo     %CY%[!]%R% Agent directory missing, skipping.
     )
@@ -731,26 +762,57 @@ goto MENU
 :REINSTALL
 cls
 echo.
-echo  %CY%%BOLD% MAINTENANCE MODE%R%
+echo  %CY%%BOLD% MAINTENANCE MODE: NUCLEAR CLEANUP %R%
 echo  %CGY%-----------------------------------------------------------------------%R%
 echo.
-<nul set /p "=  Flush and reinstall all deps? %CGY%(y/n)%CW%: %R%"
+echo   This mode will:
+echo    1. Wipe ALL node_modules and lock-files
+echo    2. Force-clear the NPM cache (Resolves 404 errors)
+echo    3. Re-install every dependency from scratch
+echo.
+if "%ONEDRIVE_DETECTED%"=="true" (
+    echo   %CR%%BOLD%[DETECTION]%R% You are still in a OneDrive folder.
+    echo   Permissions %BOLD%WILL%R% fail unless you move to %CC%C:\CraftCommand%R%
+    echo.
+)
+<nul set /p "=  Confirm Nuclear Reset? %CGY%(y/n)%CW%: %R%"
 set confirm=
 set /p confirm=""
 if /i not "!confirm!"=="y" goto MENU
 
 echo.
-echo   %CGY%[1/3]%R% Flushing node_modules...
-if exist "frontend\node_modules" rmdir /s /q "frontend\node_modules"
-if exist "backend\node_modules" rmdir /s /q "backend\node_modules"
-if exist "node_modules" rmdir /s /q "node_modules"
+echo   %CGY%[1/4]%R% Cleaning Registry/Cache...
+call npm cache clean --force
 
-echo   %CGY%[2/3]%R% Reinstalling frontend...
+echo   %CGY%[2/4]%R% Flushing node_modules (Force-unlocking)...
+:: Strip attributes that cause EPERM
+attrib -r -s /s /d "node_modules\*" >nul 2>nul
+attrib -r -s /s /d "backend\node_modules\*" >nul 2>nul
+attrib -r -s /s /d "frontend\node_modules\*" >nul 2>nul
+
+echo   %CY%[ACTION] Reseting Directory Permissions...%R%
+icacls "%CD%" /grant %USERNAME%:F /T >nul 2>nul
+
+for /d /r . %%d in (node_modules) do @if exist "%%d" (
+    echo     Deleting: %%d
+    rmdir /s /q "%%d" 2>nul
+)
+
+echo   %CGY%[3/4]%R% Removing poison lock-files & resetting registry...
+call npm config set registry https://registry.npmjs.org/
+del /s /q /f "package-lock.json" >nul 2>nul
+del /s /q /f "yarn.lock" >nul 2>nul
+for /r . %%f in (package-lock.json) do del /f /q "%%f" >nul 2>nul
+for /r . %%f in (yarn.lock) do del /f /q "%%f" >nul 2>nul
+
+echo   %CGY%[4/4]%R% Reinstalling all components...
+echo     Root...
+call npm install
+echo     Backend...
+cd backend && call npm install && cd ..
+echo     Frontend...
 cd frontend && call npm install && cd ..
 
-echo   %CGY%[3/3]%R% Reinstalling backend...
-cd backend && call npm install && cd ..
-call npm install
 
 echo.
 echo   %CG%%BOLD%+%R%  Dependencies restored.
@@ -800,8 +862,14 @@ echo   Initializing agent...
 cd agent
 if not exist "dist\agent\src\index.js" (
     echo   [System] Preparing agent...
-    if not exist "node_modules" call npm install >nul 2>nul
-    call npm run build >nul 2>nul
+    if not exist "node_modules" call npm install
+    call npm run build
+    if !errorlevel! neq 0 (
+        echo   %CR%[ERROR]%R% Agent build failed.
+        pause
+        cd ..
+        goto MENU
+    )
 )
 title CraftCommand - Node Agent [%N_ID:~0,8%...]
 node dist/agent/src/index.js --panel-url http://localhost:3001 --node-id %N_ID% --secret %N_SEC%

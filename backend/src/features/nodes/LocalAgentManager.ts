@@ -114,9 +114,21 @@ class LocalAgentManager {
             shell: false, 
             detached: true,
             windowsHide: true, 
-            stdio: 'ignore', // Decouple from Panel pipes to prevent EPIPE on Panel exit
+            stdio: ['ignore', 'pipe', 'pipe'], // Capture output for first few failures
             env: { ...process.env, FORCE_COLOR: '1' }
         });
+
+        // Diagnostic piping: only if we have failures or for initial debug
+        if (this.agentProcess.stdout) {
+            this.agentProcess.stdout.on('data', (data) => {
+                logger.debug(`[LocalAgent Out] ${data.toString().trim()}`);
+            });
+        }
+        if (this.agentProcess.stderr) {
+            this.agentProcess.stderr.on('data', (data) => {
+                logger.error(`[LocalAgent Err] ${data.toString().trim()}`);
+            });
+        }
 
         // Fully unref the process so the Panel doesn't wait for it on exit
         if (this.agentProcess) {

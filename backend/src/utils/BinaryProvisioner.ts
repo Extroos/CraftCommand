@@ -71,7 +71,8 @@ export class BinaryProvisioner {
             const tempPath = binPath + '.tmp';
             const writer = fs.createWriteStream(tempPath);
 
-            response.data.pipe(writer);
+            // TypeScript safety: cast to any for stream piping
+            (response.data as any).pipe(writer);
 
             await new Promise<void>((resolve, reject) => {
                 writer.on('finish', () => resolve());

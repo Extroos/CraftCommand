@@ -97,11 +97,8 @@ export const createSystemSlice: StateCreator<StoreState, [["zustand/devtools", n
         // Socket Synchronization
         const socket = socketService.socket;
         if (socket) {
-            const handleSettingsUpdated = (data: any) => {
-                if (data && data.version) {
-                    const { settings } = get();
-                    set({ settings: settings ? { ...settings, version: data.version } : { ...data } });
-                }
+            const handleSettingsUpdated = () => {
+                get().refreshSettings();
             };
             socket.on('settings:updated', handleSettingsUpdated);
             

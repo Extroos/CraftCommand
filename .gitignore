@@ -65,6 +65,7 @@ backend/secrets.json
 /web/
 /backend/web/
 /runtimes/
+/.runtimes/
 /backend/src/runtimes/
 pids/
 *.pid

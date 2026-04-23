@@ -5,8 +5,7 @@ import { getServer, diagnoseServer, getServers, saveServer } from '../ServerServ
 import { processManager } from '../../processes/ProcessManager';
 import { ServerStatus } from '@shared/types';
 import net from 'net';
-
-const util = require('minecraft-server-util');
+import mcstatus from 'mcstatus';
 
 const router = express.Router({ mergeParams: true });
 
@@ -78,11 +77,7 @@ router.get('/query', async (req, res) => {
                  }
 
                  let status: any;
-                 if (server.software === 'Bedrock') {
-                     status = await util.statusBedrock('127.0.0.1', server.port, { timeout: 2000 });
-                 } else {
-                     status = await util.status('127.0.0.1', server.port, { timeout: 2000 });
-                 }
+                 status = await mcstatus.checkStatus({ host: '127.0.0.1', port: server.port });
                  
                  if (!processManager.isRunning(id)) {
                      if (processManager.isStarting(id)) return;
@@ -90,13 +85,14 @@ router.get('/query', async (req, res) => {
                      return; 
                  }
 
+                 // mcstatus fields (checkStatus): players, max_players, ping, version
                  processManager.updateCachedStatus(id, {
                      online: true,
-                     players: status.players.online,
-                     playerList: status.players.sample ? status.players.sample.map((p: any) => p.name) : (status.players.list || []), 
-                     maxPlayers: status.players.max,
-                     latency: status.roundTripLatency,
-                     version: server.software === 'Bedrock' ? status.version : status.version.name
+                     players: status.players,
+                     playerList: [], // mcstatus simplified doesn't provide sample
+                     maxPlayers: status.max_players,
+                     latency: status.ping,
+                     version: status.version
                  });
 
                  if (server.status !== ServerStatus.ONLINE && !processManager.isStarting(id)) {
@@ -104,55 +100,43 @@ router.get('/query', async (req, res) => {
                      saveServer(server);
                  }
              } catch (e) {
+                 // Fallback for failed status (Port check or Query)
                  try {
-                     const q = await util.queryFull('127.0.0.1', server.port, { timeout: 1500 });
-                     
-                     if (!processManager.isRunning(id)) {
+                      // Attempt a simple TCP check as mcstatus.query is sometimes overkill for offline detection
+                      const isPortOpen = await new Promise((resolve) => {
+                          const socket = new net.Socket();
+                          socket.setTimeout(500);
+                          socket.on('connect', () => { socket.destroy(); resolve(true); });
+                          socket.on('error', () => { socket.destroy(); resolve(false); });
+                          socket.on('timeout', () => { socket.destroy(); resolve(false); });
+                          socket.connect(server.port, '127.0.0.1');
+                      });
+
+                      if (!processManager.isRunning(id)) {
                          processManager.updateCachedStatus(id, { online: false, status: ServerStatus.OFFLINE });
                          return;
-                     }
+                      }
 
-                     processManager.updateCachedStatus(id, {
-                         online: true,
-                         players: q.players.online,
-                         playerList: q.players.list || [],
-                         maxPlayers: q.players.max,
-                         latency: 1, 
-                         version: q.version
-                     });
-
-                     if (server.status !== ServerStatus.ONLINE && !processManager.isStarting(id)) {
-                         server.status = ServerStatus.ONLINE;
-                         saveServer(server);
-                     }
+                      if (isPortOpen) {
+                          processManager.updateCachedStatus(id, { online: true, latency: 1 });
+                      } else {
+                          const isRunning = processManager.isRunning(id);
+                          processManager.updateCachedStatus(id, { 
+                              online: isRunning, 
+                              players: 0, 
+                              playerList: [] 
+                          });
+                          
+                          if (!isRunning) {
+                              if (server.startTime || server.status !== ServerStatus.OFFLINE) {
+                                  delete server.startTime;
+                                  server.status = ServerStatus.OFFLINE;
+                                  saveServer(server);
+                              }
+                          }
+                      }
                  } catch (qe) {
-                     const isPortOpen = await new Promise((resolve) => {
-                         const socket = new net.Socket();
-                         socket.setTimeout(200);
-                         socket.on('connect', () => { socket.destroy(); resolve(true); });
-                         socket.on('error', () => { socket.destroy(); resolve(false); });
-                         socket.on('timeout', () => { socket.destroy(); resolve(false); });
-                         socket.connect(server.port, '127.0.0.1');
-                     });
-
-                     if (isPortOpen) {
-                         processManager.updateCachedStatus(id, { online: true, latency: 1 });
-                     } else {
-                         const isRunning = processManager.isRunning(id);
-                         processManager.updateCachedStatus(id, { 
-                             online: isRunning, 
-                             players: 0, 
-                             playerList: [] 
-                         });
-                         
-                         if (!isRunning) {
-                             if (server.startTime || server.status !== ServerStatus.OFFLINE) {
-                                 delete server.startTime;
-                                 server.status = ServerStatus.OFFLINE;
-                                 saveServer(server);
-                             }
-                         }
-                     }
+                      // Silent fail for fallback
                  }
              } finally {
                  processManager.setUpdatingStatus(id, false);

@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 
 import Header from './features/ui/Header';
 import Dashboard from './features/dashboard/Dashboard';
+import AdvancedDashboard from './features/dashboard/AdvancedDashboard';
 import Console from './features/servers/Console';
 import KnowledgeBase from './features/installer/KnowledgeBase';
 import FileManager from './features/files/FileManager';
@@ -140,8 +141,9 @@ const ServerRouteWrapper: React.FC<{ tab: TabView }> = ({ tab }) => {
 
         switch (tab) {
             case 'DASHBOARD':
-                return currentServer.software === 'Velocity' 
-                    ? <VelocityDashboard serverId={currentServer.id} /> 
+                if (currentServer.software === 'Velocity') return <VelocityDashboard serverId={currentServer.id} />;
+                return settings.app.detailedDashboard 
+                    ? <AdvancedDashboard serverId={currentServer.id} /> 
                     : <Dashboard serverId={currentServer.id} />;
             case 'CONSOLE': return <Console serverId={currentServer.id} />;
             case 'FILES': return <FileManager serverId={currentServer.id} />;

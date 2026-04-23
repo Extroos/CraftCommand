@@ -283,7 +283,7 @@ export const createServerSlice: StateCreator<StoreState, [["zustand/devtools", n
                             return { installProgress: newProgress };
                         });
                     }
-                }, 3000);
+                }, 500); // v1.13.3: Faster cleanup for instant checks
             }
         });
 

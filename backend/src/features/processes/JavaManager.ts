@@ -23,20 +23,47 @@ export class JavaManager extends EventEmitter {
         logger.info(`[JavaManager] Request to ensure ${version}`);
         
         const majorVer = version.replace('Java ', '').trim(); 
+        const provisionerPath = path.resolve(__dirname, '../../../../scripts/core/runtime-provisioner.cjs');
+        const provisioner = require(provisionerPath);
         
+        // 1. Proactive check: Skip if already correctly provisioned (v1.13.3)
+        const rootDir = path.resolve(__dirname, '../../../../');
+        const runtimeDir = path.join(rootDir, '.runtimes', 'java', majorVer);
+        const binName = process.platform === 'win32' ? 'java.exe' : 'java';
+        const javaPath = path.join(runtimeDir, 'bin', binName);
+        
+        if (fs.existsSync(javaPath)) {
+            logger.debug(`[JavaManager] ${version} already provisioned at ${javaPath}. Skipping status emission.`);
+            this.currentStatus = null; // Ensure stale status is cleared (v1.13.3)
+            const env = await provisioner.provisionJava(majorVer);
+            return { path: javaPath, env };
+        }
+
         // v1.14.0: Unified Provisioning
         try {
             this.currentStatus = { message: `Provisioning ${version}...`, phase: 'provisioning' };
             this.emit('status', { ...this.currentStatus, serverId });
             
-            const provisioner = require('../../../scripts/core/runtime-provisioner.cjs');
             const env = await provisioner.provisionJava(majorVer);
             
             this.currentStatus = null;
             this.emit('complete', { serverId });
-            
+
+            if (!env || typeof env.JAVA_HOME !== 'string') {
+                throw new Error(`Invalid environment returned from provisioner: ${JSON.stringify(env)}`);
+            }
+
+            const javaPath = path.join(env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
+
+            if (!fs.existsSync(javaPath)) {
+                logger.error(`[JavaManager] Provisioning claimed success, but binary missing at ${javaPath}`);
+                throw new Error(`Java binary not found at ${javaPath}`);
+            }
+
+            logger.debug(`[JavaManager] Provisioning complete. Path: ${javaPath}`);
+
             return {
-                path: path.join(env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'),
+                path: javaPath,
                 env
             };
         } catch (e: any) {
@@ -69,16 +96,22 @@ export class JavaManager extends EventEmitter {
             foundJavas.push({ version: versionString, path: finalPath });
         } catch (e) { logger.debug(`[JavaManager] Error detecting system Java on PATH: ${e}`); }
         
-        // Check Managed Runtimes
-        const runtimesDir = path.join(__dirname, '../../runtimes');
-        if (await fs.pathExists(runtimesDir)) {
-             const dirs = await fs.readdir(runtimesDir);
-             for (const dir of dirs) {
-                 const bin = path.join(runtimesDir, dir, 'bin', 'java.exe');
-                 if (await fs.pathExists(bin)) {
-                     foundJavas.push({ version: `Managed Java ${dir}`, path: bin });
-                 }
-             }
+        // Check Managed Runtimes (Legacy & Unified)
+        const rootDir = path.resolve(__dirname, '../../../../');
+        const unifiedRuntimes = path.join(rootDir, '.runtimes', 'java');
+        const legacyRuntimes = path.join(__dirname, '../../runtimes');
+        
+        for (const runtimesDir of [unifiedRuntimes, legacyRuntimes]) {
+            if (await fs.pathExists(runtimesDir)) {
+                const dirs = await fs.readdir(runtimesDir);
+                for (const dir of dirs) {
+                    const binName = process.platform === 'win32' ? 'java.exe' : 'java';
+                    const bin = path.join(runtimesDir, dir, 'bin', binName);
+                    if (await fs.pathExists(bin)) {
+                        foundJavas.push({ version: `Managed Java ${dir}`, path: bin });
+                    }
+                }
+            }
         }
 
         // Common Windows Paths

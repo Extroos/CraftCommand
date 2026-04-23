@@ -10,7 +10,7 @@ import { useUser } from '@features/auth/context/UserContext';
 import { useCollaboration } from '@features/collaboration/context/CollaborationContext';
 import { useSystem } from '@features/system/context/SystemContext';
 import { usePermissions } from '@features/auth/hooks/usePermissions';
-import AdvancedDashboard from './AdvancedDashboard';
+import DashboardPro from './DashboardPro';
 
 interface DashboardProps {
 serverId: string;
@@ -66,7 +66,7 @@ const isPro = settings?.app?.professionalMode ?? false;
 const server = servers.find(s => s.id === serverId);
 
     if (isPro) {
-        return <AdvancedDashboard serverId={serverId} />;
+        return <DashboardPro serverId={serverId} />;
     }
 
     // Check if software is Java-based

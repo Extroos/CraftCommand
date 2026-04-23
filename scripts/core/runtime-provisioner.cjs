@@ -47,7 +47,7 @@ function getDownloadUrl(javaVersion) {
 async function downloadFile(url, dest) {
     return new Promise((resolve, reject) => {
         https.get(url, (res) => {
-            if (res.statusCode === 302 || res.statusCode === 301) {
+            if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
                 downloadFile(res.headers.location, dest).then(resolve).catch(reject);
                 return;
             }
@@ -74,7 +74,10 @@ async function provisionJava(version) {
     const javaVer = VERSION_MAP[version] || version;
     const targetDir = path.join(RUNTIME_DIR, javaVer);
     
-    if (fs.existsSync(targetDir)) {
+    const binName = process.platform === 'win32' ? 'java.exe' : 'java';
+    const binPath = path.join(targetDir, 'bin', binName);
+    
+    if (fs.existsSync(targetDir) && fs.existsSync(binPath)) {
         return getJavaEnv(javaVer);
     }
 
@@ -89,33 +92,37 @@ async function provisionJava(version) {
         
         console.log(`[Runtime] Extracting Java ${javaVer}...`);
         if (process.platform === 'win32') {
-            // Use PowerShell for zero-dep extraction if AdmZip isnt available yet
+            // Use PowerShell for zero-dep extraction
             execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${targetDir}' -Force"`);
+            
+            // Flatten: Find the deepest directory that contains 'bin' and move its contents to targetDir
+            const findBinCmd = `powershell -Command "(Get-ChildItem -Path '${targetDir}' -Recurse -Directory -Filter 'bin' | Select-Object -First 1).Parent.FullName"`;
+            const sourceParent = execSync(findBinCmd).toString().trim();
+            
+            if (sourceParent && sourceParent.toLowerCase() !== targetDir.toLowerCase()) {
+                console.log(`[Runtime] Flattening directory structure from ${sourceParent}...`);
+                execSync(`powershell -Command "Move-Item -Path '${sourceParent}\\*' -Destination '${targetDir}' -Force -ErrorAction SilentlyContinue"`);
+            }
         } else {
             execSync(`tar -xzf "${archivePath}" -C "${targetDir}" --strip-components=1`);
         }
         
-        fs.unlinkSync(archivePath);
+        if (fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
         
-        // Find the bin folder (Adoptium often puts it in a subfolder)
-        const items = fs.readdirSync(targetDir);
-        for (const item of items) {
-            const subDir = path.join(targetDir, item);
-            if (fs.statSync(subDir).isDirectory() && fs.existsSync(path.join(subDir, 'bin'))) {
-                // Move everything up
-                const files = fs.readdirSync(subDir);
-                for (const f of files) {
-                    fs.renameSync(path.join(subDir, f), path.join(targetDir, f));
-                }
-                fs.rmdirSync(subDir);
-                break;
-            }
+        // Final verification check
+        const binPath = path.join(targetDir, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
+        if (!fs.existsSync(binPath)) {
+            throw new Error(`Extraction failed: Java binary not found at ${binPath}`);
         }
 
         console.log(`[Runtime] Java ${javaVer} ready.`);
         return getJavaEnv(javaVer);
     } catch (err) {
         console.error(`[Runtime] Failed to provision Java ${javaVer}:`, err.message);
+        // Cleanup failed directory to allow retry
+        if (fs.existsSync(targetDir)) {
+            try { fs.rmSync(targetDir, { recursive: true, force: true }); } catch (e) {}
+        }
         throw err;
     }
 }

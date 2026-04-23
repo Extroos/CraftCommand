@@ -87,7 +87,8 @@ export class StartupManager {
             // 3. Resolve Java (Skip for Bedrock)
             let javaPath = '';
             if (server.software !== 'Bedrock') {
-                javaPath = await javaManager.ensureJava(server.javaVersion || 'Java 17', id);
+                const result = await javaManager.ensureJava(server.javaVersion || 'Java 17', id);
+                javaPath = result.path;
             }
 
             // 4. Build Command
@@ -244,7 +245,7 @@ export class StartupManager {
         const jarFile = server.executable || defaultJar;
         
         // Use generic java for Docker, absolute for Native
-        const actualJava = engine === 'docker' ? 'java' : `"${javaPath}"`;
+        const actualJava = engine === 'docker' ? 'java' : javaPath;
 
         // Prepend Java Bin to PATH (Keep this as backup)
         const javaBin = path.dirname(javaPath);

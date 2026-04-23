@@ -1111,7 +1111,7 @@ export class InstallerService extends EventEmitter {
             else requiredJava = 'Java 8';
 
             logger.info(`[Installer:Forge] Ensuring ${requiredJava} exists...`);
-            const javaPath = await javaManager.ensureJava(requiredJava);
+            const { path: javaPath } = await javaManager.ensureJava(requiredJava);
             logger.info(`[Installer:Forge] Java ready at: ${javaPath}`);
 
             // Extract Local Modpack if provided
@@ -1272,7 +1272,7 @@ export class InstallerService extends EventEmitter {
             const jMsg = `Ensuring ${requiredJava} exists...`;
             this.updateProgress(serverId, jMsg);
             onProgress?.(jMsg);
-            const javaPath = await javaManager.ensureJava(requiredJava);
+            const { path: javaPath } = await javaManager.ensureJava(requiredJava);
 
             const vMsg = `Fetching NeoForge version for ${version}...`;
             this.updateProgress(serverId, vMsg);
