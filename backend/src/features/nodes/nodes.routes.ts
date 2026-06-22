@@ -318,38 +318,62 @@ router.post('/:id/fix', verifyToken, requireRole(['OWNER']), requireDistributedN
 router.post('/:id/shutdown', verifyToken, requireRole(['OWNER']), requireDistributedNodes, async (req, res) => {
     try {
         const { id } = req.params;
-
         const node = nodeRegistryService.getNode(id);
-        if (!node) {
-            return res.status(404).json({ error: 'Node not found.' });
-        }
+        if (!node) return res.status(404).json({ error: 'Node not found.' });
 
-        // Hardening: Prevent shutting down the "local" node if it's the host
-        if (id === 'local') {
-             return res.status(403).json({ error: 'Cannot shutdown the Local Node as it is part of the host system.' });
-        }
+        if (id === 'local') return res.status(403).json({ error: 'Cannot shutdown the Local Node.' });
+        if (node.status !== 'ONLINE') return res.status(409).json({ error: 'Node must be ONLINE.' });
 
-        if (node.status !== 'ONLINE') {
-            return res.status(409).json({ error: 'Node must be ONLINE to be shutdown.' });
-        }
-
-        logger.info(`[Nodes] Triggering SHUTDOWN for node "${node.name}" (${id})`);
-        
-        // Import sendToAgent dynamically
         const { sendToAgent } = await import('./NodeAgentHandler');
-        
         await sendToAgent(id, 'agent:shutdown', {});
         
-        res.json({ message: 'Shutdown command sent to agent.' });
-
-        auditService.log(req.user.id, 'SYSTEM_SETTINGS_UPDATE', id, {
-            action: 'NODE_SHUTDOWN',
-            nodeName: node.name
-        }, req.ip);
-
+        auditService.log(req.user.id, 'SYSTEM_SETTINGS_UPDATE', id, { action: 'NODE_SHUTDOWN', nodeName: node.name }, req.ip);
+        res.json({ message: 'Shutdown command sent.' });
     } catch (error: any) {
-        logger.error(`[Nodes] Failed to shutdown node: ${error}`);
-        res.status(500).json({ error: error.message || 'Failed to shutdown node' });
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/nodes/:id/restart — Remote restart of a node agent
+ */
+router.post('/:id/restart', verifyToken, requireRole(['OWNER']), requireDistributedNodes, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const node = nodeRegistryService.getNode(id);
+        if (!node) return res.status(404).json({ error: 'Node not found.' });
+
+        if (id === 'local') return res.status(403).json({ error: 'Cannot restart the Local Node via this endpoint.' });
+        if (node.status !== 'ONLINE') return res.status(409).json({ error: 'Node must be ONLINE to be restarted.' });
+
+        const { restartNode } = await import('./NodeAgentHandler');
+        await restartNode(id);
+        
+        auditService.log(req.user.id, 'SYSTEM_SETTINGS_UPDATE', id, { action: 'NODE_RESTART', nodeName: node.name }, req.ip);
+        res.json({ message: 'Restart command sent to node.' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/nodes/:id/diagnostics — Trigger remote diagnostics
+ */
+router.post('/:id/diagnostics', verifyToken, requireRole(['OWNER', 'ADMIN']), requireDistributedNodes, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const node = nodeRegistryService.getNode(id);
+        if (!node) return res.status(404).json({ error: 'Node not found.' });
+
+        if (node.status !== 'ONLINE') return res.status(409).json({ error: 'Node must be ONLINE to run diagnostics.' });
+
+        const { runDiagnostics } = await import('./NodeAgentHandler');
+        await runDiagnostics(id);
+        
+        auditService.log(req.user.id, 'SYSTEM_SETTINGS_UPDATE', id, { action: 'NODE_DIAGNOSTICS', nodeName: node.name }, req.ip);
+        res.json({ message: 'Diagnostics triggered on node.' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
     }
 });
 

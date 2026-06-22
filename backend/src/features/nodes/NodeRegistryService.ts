@@ -475,7 +475,6 @@ export class NodeRegistryService extends EventEmitter {
         if (!node) return false;
 
         // ── SECURITY CHALLENGE VERIFICATION ──
-        // v1.15.0: Nodes must sign the heartbeat using their enrollmentSecret
         if (nodeId !== 'local' && node.enrollmentSecret) {
             if (!signature || !nonce) {
                 logger.warn(`[NodeRegistry] Node "${node.name}" (${nodeId}) sent unsigned heartbeat. Rejecting.`);
@@ -490,8 +489,20 @@ export class NodeRegistryService extends EventEmitter {
             }
         }
 
-        node.lastHeartbeat = Date.now();
-        if (health) node.health = health;
+        // ── TELEMETRY & LATENCY ──
+        const now = Date.now();
+        const lastHb = node.lastHeartbeat || now;
+        // Basic heuristic: time since last HB minus the expected 30s interval
+        const estimatedLatency = Math.max(0, now - lastHb - 30000); 
+        
+        node.lastHeartbeat = now;
+        if (health) {
+            // Use type assertion to bridge the new 'latency' field until shared types refresh fully
+            (node as any).health = {
+                ...health,
+                latency: nodeId === 'local' ? 0 : estimatedLatency
+            };
+        }
 
         // 1. Determine Status Based on Health Metrics
         const newStatus = this.calculateNodeStatus(node, health);

@@ -729,6 +729,7 @@ export interface NodeHealth {
     diskTotal: number;     // bytes
     serverCount: number;   // active servers on this node
     uptime: number;        // seconds
+    latency?: number;      // ping in ms
 }
 
 export interface NodeCapabilities {

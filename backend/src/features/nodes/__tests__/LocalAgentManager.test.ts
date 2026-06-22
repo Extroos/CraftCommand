@@ -35,6 +35,7 @@ mockProcess.stdout = new EventEmitter();
 mockProcess.stderr = new EventEmitter();
 mockProcess.kill = jest.fn();
 mockProcess.pid = 12345;
+mockProcess.unref = jest.fn();
 
 jest.mock('child_process', () => ({
     spawn: jest.fn().mockReturnValue(mockProcess)

@@ -71,6 +71,22 @@ export async function sendToAgent(nodeId: string, event: string, data: any, time
 }
 
 /**
+ * Send a restart command to the node agent itself
+ */
+export async function restartNode(nodeId: string): Promise<any> {
+    logger.info(`[AgentHandler] Initiating remote restart for node ${nodeId}`);
+    return sendToAgent(nodeId, 'agent:restart', { timestamp: Date.now() });
+}
+
+/**
+ * Trigger a diagnostics run on the remote node
+ */
+export async function runDiagnostics(nodeId: string): Promise<any> {
+    logger.info(`[AgentHandler] Triggering remote diagnostics for node ${nodeId}`);
+    return sendToAgent(nodeId, 'agent:diagnostics', { timestamp: Date.now() });
+}
+
+/**
  * Get count of currently connected agents
  */
 export function getConnectedAgentCount(): number {
